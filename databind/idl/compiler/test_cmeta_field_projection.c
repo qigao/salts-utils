@@ -989,6 +989,11 @@ suite("compiler_cmeta_field_projection") {
         field = field_projection_add_field(record, "OptionalStorage", "value", "uint32");
         check_not_null(field);
         check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        record = field_projection_add_record(root, "messages", "OptionalNested");
+        check_not_null(field_projection_add_field(record, "OptionalNested", "child", "Sample"));
+        field = field_projection_add_field(record, "OptionalNested", "value", "uint32");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
 
         for (i = 0; i <= 33u; ++i) {
             char name[32];
@@ -1052,8 +1057,11 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "OptionalStorage"),
             "cmeta_graph_supported"));
-        check_not_null(field_projection_child(
+        check_null(field_projection_child(
             field_projection_record(root, "messages", "Sample"),
+            "cmeta_canonical_message"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "BoolStorage"),
             "cmeta_canonical_message"));
         check_null(field_projection_child(
             field_projection_record(root, "messages", "OptionalStorage"),
