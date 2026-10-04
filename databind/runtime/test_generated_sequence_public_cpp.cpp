@@ -70,15 +70,27 @@ int main() {
     return 7;
 
   NativeHeaderMap_init(&map_owner);
-  if (map_owner.headers.cmeta.descriptor == nullptr ||
-      map_owner.headers.raw.key_type == nullptr ||
-      map_owner.headers.raw.value_type == nullptr ||
-      !cmeta_type_equal(
-          map_owner.headers.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF) ||
-      !cmeta_type_equal(
+  if (map_owner.headers.cmeta.descriptor == nullptr) {
+    NativeHeaderMap_clear(&map_owner);
+    return 80;
+  }
+  if (map_owner.headers.raw.key_type == nullptr) {
+    NativeHeaderMap_clear(&map_owner);
+    return 81;
+  }
+  if (map_owner.headers.raw.value_type == nullptr) {
+    NativeHeaderMap_clear(&map_owner);
+    return 82;
+  }
+  if (!cmeta_type_equal(
+          map_owner.headers.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF)) {
+    NativeHeaderMap_clear(&map_owner);
+    return 83;
+  }
+  if (!cmeta_type_equal(
           map_owner.headers.raw.value_type, &NativeHeader_CMETA_TYPE)) {
     NativeHeaderMap_clear(&map_owner);
-    return 8;
+    return 84;
   }
   if (!generic_constructor_is(&map_owner.headers, "cstl.Map", 2u) ||
       !cmeta_type_equal(
