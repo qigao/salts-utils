@@ -119,6 +119,7 @@ void _cxml_lexer_close(_cxml_lexer *cxlexer){
 void _cxml_token_init(_cxml_token *token) {
     memset(token, 0, sizeof(*token));
     token->literal_type = CXML_NON_LITERAL;
+    token->owns_start = false;
 }
 
 inline static int get_length(_cxml_lexer *cxlexer) {
@@ -168,6 +169,7 @@ static _cxml_token new_cxml_token(_cxml_lexer *cxlexer, _cxml_token_t type) {
     token.line = cxlexer->start_line;
     token.column = cxlexer->start_column;
     token.byte_offset = cxlexer->start_byte_offset;
+    token.owns_start = false;
     if (cxlexer->_stream && is_volatile_type(type))
     {
         /*
@@ -179,6 +181,7 @@ static _cxml_token new_cxml_token(_cxml_lexer *cxlexer, _cxml_token_t type) {
         */
         token.start = ALLOC(char, (token.length + 1));
         memcpy(token.start, cxlexer->start, token.length);
+        token.owns_start = true;
     }else{
         token.start = cxlexer->start;
     }
@@ -204,6 +207,7 @@ static _cxml_token new_cxml_err_token(_cxml_lexer *cxlexer, const char *msg) {
     strncat(temp + msg_len, token.start, token.length);
     token.start = temp;
     token.length = len;
+    token.owns_start = true;
     return token;
 }
 
@@ -212,7 +216,8 @@ static _cxml_token lex_comment(_cxml_lexer *cxlexer) {
     _cxml_token dummy_tok = {
         .line=cxlexer->start_line,
         .column=cxlexer->start_column,
-        .byte_offset=cxlexer->start_byte_offset
+        .byte_offset=cxlexer->start_byte_offset,
+        .owns_start=false
     };
 
      /*
@@ -1242,6 +1247,9 @@ void cxml_print_tokens(const char *src) {
         printf("%02d\t\t", token.type);
         printf("%*s\t\t", 0x1e, cxml_token_type_as_str(token.type));
         printf("'%.*s'\n", token.length, token.start);
-        if (token.type == CXML_TOKEN_ERROR || token.type == CXML_TOKEN_EOF) break;
+        if (token.type == CXML_TOKEN_ERROR || token.type == CXML_TOKEN_EOF) {
+            if (token.owns_start) FREE(token.start);
+            break;
+        }
     }
 }
