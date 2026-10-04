@@ -110,6 +110,7 @@ static void check_generated_generic_field(
   declared = field->declared_type;
   check_not_null(declared);
   check_true(cmeta_declared_type_valid(declared));
+  check_false(cmeta_declared_type_constructible(declared));
   if (declared == NULL || !cmeta_declared_type_valid(declared))
     return;
 
