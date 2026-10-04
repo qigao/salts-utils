@@ -370,13 +370,12 @@ spec("DataBind flat Binary canonical writer") {
             &writer, &owner, &error),
         DATA_BIND_OK);
     check_true(write_token(writer, map_begin()));
-    check_equal(
-        cserde_writer_write(writer, &(cserde_token){
-            .kind = CSERDE_STRING,
-            .value.slice = {
-                (const unsigned char *)"count", 5u,
-                CSERDE_VIEW_STABLE}}),
-        CSERDE_INVALID_STATE);
+    {
+      cserde_token bad = key("count");
+      check_equal(
+          cserde_writer_write(writer, &bad),
+          CSERDE_INVALID_STATE);
+    }
     (void)data_bind_binary_writer_close(writer, owner, NULL);
 
     writer = NULL;
@@ -388,11 +387,12 @@ spec("DataBind flat Binary canonical writer") {
         DATA_BIND_OK);
     check_true(write_token(writer, map_begin()));
     check_true(write_token(writer, key("flag")));
-    check_equal(
-        cserde_writer_write(writer, &(cserde_token){
-            .kind = CSERDE_UINT,
-            .value.uint = 1u}),
-        CSERDE_UNSUPPORTED);
+    {
+      cserde_token bad = uint_value(1u);
+      check_equal(
+          cserde_writer_write(writer, &bad),
+          CSERDE_UNSUPPORTED);
+    }
     (void)data_bind_binary_writer_close(writer, owner, NULL);
   }
 
