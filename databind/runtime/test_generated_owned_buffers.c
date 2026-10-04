@@ -350,10 +350,16 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(source.name);
 
     error = (DataBindError)DATA_BIND_ERROR_INIT;
-    check_equal(
-        NativeXmlOutputFlat_to_xml(
-            codec, &source, &xml, &xml_len, &error),
-        DATA_BIND_OK);
+    {
+      DataBindStatus xml_status =
+          NativeXmlOutputFlat_to_xml(
+              codec, &source, &xml, &xml_len, &error);
+      info("flat XML output status=%d path=%s message=%s",
+           (int)xml_status,
+           error.path[0] != '\0' ? error.path : "<root>",
+           error.message[0] != '\0' ? error.message : "<none>");
+      check_equal(xml_status, DATA_BIND_OK);
+    }
     check_not_null(xml);
     check_true(xml_len != 0u);
     if (xml != NULL) {
