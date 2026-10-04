@@ -265,11 +265,32 @@ spec("generated Plugin generic descriptor graph") {
       check_not_null(response_key);
       check_not_null(response_item);
       if (request_item != NULL && response_item != NULL) {
+        const cmeta_data_desc *managed_name =
+            generic_field_data(request_item, "name");
+        cmeta_data_temp temp = {0};
+
         check_equal(request_item->kind, CMETA_DATA_STRUCT);
         check_equal(response_item->kind, CMETA_DATA_STRUCT);
         check_true(cmeta_data_desc_equal(request_item, response_item));
         check_semantic_data_copy(request_item);
         check_semantic_data_copy(response_item);
+
+        check_not_null(managed_name);
+        if (managed_name != NULL)
+          check_equal(managed_name->kind, CMETA_DATA_STRING);
+        check_true(cmeta_data_value_traits_supported(request_item));
+        check_true(cmeta_data_value_traits_supported(response_item));
+
+        /*
+         * This temporary is opened and destroyed while the Plugin lease is
+         * live, proving that provider-reachable managed lifecycle callbacks
+         * remain callable for the complete dependent-value lifetime.
+         */
+        check_equal(cmeta_data_temp_open(request_item, 4096u, &temp),
+                    CMETA_OK);
+        cmeta_data_temp_close(&temp);
+        check_null(temp.storage);
+        check_null(temp.data);
       }
       if (response_key != NULL)
         check_equal(response_key->kind, CMETA_DATA_STRING);
