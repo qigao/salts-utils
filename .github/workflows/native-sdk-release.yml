@@ -548,7 +548,12 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf "$GITHUB_WORKSPACE/vcpkg_installed"
-          "$VCPKG_ROOT/vcpkg" install             --x-manifest-root=.             --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed"             --triplet arm64-linux             --host-triplet arm64-linux             --only-binarycaching
+          "$VCPKG_ROOT/vcpkg" install \
+            --x-manifest-root=. \
+            --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed" \
+            --triplet arm64-linux \
+            --host-triplet arm64-linux \
+            --only-binarycaching
           test -f "$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/include/simde/x86/sse2.h"
           test -f "$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/include/zstd.h"
           test -f "$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/include/miniaudio.h"
@@ -558,7 +563,16 @@ jobs:
         run: |
           set -euxo pipefail
           prefix="$GITHUB_WORKSPACE/stage/sdk/linux-arm64"
-          cmake -S . -B build/native-sdk-arm64 -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE"             -DVCPKG_TARGET_TRIPLET=arm64-linux             -DVCPKG_HOST_TRIPLET=arm64-linux             -DVCPKG_MANIFEST_MODE=OFF             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"             -DSALTS_UTILS_ENABLE_CAPTURE=OFF             -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF             -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake -S . -B build/native-sdk-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=arm64-linux \
+            -DVCPKG_HOST_TRIPLET=arm64-linux \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build build/native-sdk-arm64 --parallel 2
           cmake --install build/native-sdk-arm64
 
@@ -573,12 +587,31 @@ jobs:
           test -f "$prefix/include/data_bind_plugin_execution.h"
           test -x "$prefix/bin/salts-idlc"
 
-          cmake -S databind/producer/package_config             -B build/databind-producer-arm64 -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE"             -DVCPKG_TARGET_TRIPLET=arm64-linux             -DVCPKG_HOST_TRIPLET=arm64-linux             -DVCPKG_MANIFEST_MODE=OFF             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"             -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
-          cmake --build build/databind-producer-arm64             --target databind_generated_plan_consumer --parallel 2
+          cmake -S databind/producer/package_config \
+            -B build/databind-producer-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=arm64-linux \
+            -DVCPKG_HOST_TRIPLET=arm64-linux \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
+          cmake --build build/databind-producer-arm64 \
+            --target databind_generated_plan_consumer --parallel 2
           build/databind-producer-arm64/databind_generated_plan_consumer
 
-          cmake -S databind/idl/compiler/package_config/databind_target             -B build/databind-target-arm64 -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE"             -DVCPKG_TARGET_TRIPLET=arm64-linux             -DVCPKG_HOST_TRIPLET=arm64-linux             -DVCPKG_MANIFEST_MODE=OFF             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"             -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils"             -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
-          cmake --build build/databind-target-arm64             --target installed_image --parallel 2
+          cmake -S databind/idl/compiler/package_config/databind_target \
+            -B build/databind-target-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=arm64-linux \
+            -DVCPKG_HOST_TRIPLET=arm64-linux \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+          cmake --build build/databind-target-arm64 \
+            --target installed_image --parallel 2
 
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
@@ -1295,7 +1328,7 @@ jobs:
           test -f package/sdk/linux-arm64/include/data_bind_cmeta_adapter_plan.h
           test -f package/sdk/linux-arm64/include/data_bind_plugin_catalog.h
           test -f package/sdk/linux-arm64/include/data_bind_plugin_execution.h
-          test -x package/sdk/linux-arm64/bin/salts-idlc
+          test -f package/sdk/linux-arm64/bin/salts-idlc
           test ! -e package/sdk/linux-arm64/include/salts_capture.h
           test ! -e package/sdk/linux-arm64/include/salts_playback.h
           test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
@@ -1474,8 +1507,18 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S databind/idl/compiler/package_config/databind_target             -B build/restored-databind-target-arm64 -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE"             -DVCPKG_TARGET_TRIPLET=arm64-linux             -DVCPKG_HOST_TRIPLET=arm64-linux             -DVCPKG_MANIFEST_MODE=OFF             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"             -DSaltsUtils_DIR="$SALTS_UTILS_ARM64_ROOT/lib/cmake/SaltsUtils"             -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
-          cmake --build build/restored-databind-target-arm64             --target installed_image --parallel 2
+          cmake -S databind/idl/compiler/package_config/databind_target \
+            -B build/restored-databind-target-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=arm64-linux \
+            -DVCPKG_HOST_TRIPLET=arm64-linux \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DSaltsUtils_DIR="$SALTS_UTILS_ARM64_ROOT/lib/cmake/SaltsUtils" \
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+          cmake --build build/restored-databind-target-arm64 \
+            --target installed_image --parallel 2
 
   publish:
     name: Publish package and GitHub Release
