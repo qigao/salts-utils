@@ -55,7 +55,7 @@ spec("generated nullable DataBind artifact") {
       check_not_null(strstr(text, "\"display_name\":null"));
       check_not_null(strstr(text, "\"score\":7"));
     }
-    tbe_typed_serialized_free(text);
+    data_bind_serialized_free(text);
     text = NULL;
     text_len = 0u;
 
@@ -64,7 +64,7 @@ spec("generated nullable DataBind artifact") {
         DATA_BIND_OK);
     check_not_null(text);
     check(text_len != 0u);
-    tbe_typed_serialized_free(text);
+    data_bind_serialized_free(text);
     text = NULL;
     text_len = 0u;
 
@@ -117,6 +117,6 @@ spec("generated nullable DataBind artifact") {
     check_not_null(text);
     if (text != NULL)
       check_not_null(strstr(text, "\"score\":null"));
-    tbe_typed_serialized_free(text);
+    data_bind_serialized_free(text);
   }
 }
