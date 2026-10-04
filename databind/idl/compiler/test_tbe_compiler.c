@@ -2824,7 +2824,7 @@ spec("tbe_compiler") {
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(XmlBytes,") == NULL);
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT(NullableFlat)");
-        check_contains(source, "DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML_OUTPUT(Sample)");
+        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT(Sample)");
         check_contains(source, "data_bind_xml_writer_open_root(");
         check_contains(source, "_message_to_xml(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(NullableFlat)");
@@ -2834,7 +2834,7 @@ spec("tbe_compiler") {
         check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(NullableFlat)") == NULL);
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(NullableFlat,") == NULL);
-        check_contains(source, "DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML(Sample)");
+        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML(Sample)");
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(Sample,") == NULL);
         check(strstr(
@@ -2863,7 +2863,7 @@ spec("tbe_compiler") {
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(NullableFlat,") == NULL);
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(CsvDefault,") == NULL);
-        check_contains(source, "DATABIND_DEFINE_DESCRIPTOR_MESSAGE_CSV(Sample)");
+        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_CSV(Sample)");
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_CSV(NullableFlat)");
         check_contains(source, "data_bind_builtin_format_reader_open_csv_row(");
         check_contains(source, "data_bind_format_plan_compile(");
