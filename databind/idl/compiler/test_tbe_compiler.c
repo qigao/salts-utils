@@ -2771,6 +2771,7 @@ spec("tbe_compiler") {
       }
       if (source != NULL) {
         check_contains(source, "#include \"tbe_typed.h\"");
+        check_contains(source, "static TbeTypedType Point_TYPED_TYPE");
         check(strstr(source, "TbeTypedDescriptor") == NULL);
         check(strstr(source, "TBE_TYPED_DESCRIPTOR_INIT") == NULL);
         check(strstr(source, "_typed_descriptor(void)") == NULL);
@@ -2893,7 +2894,9 @@ spec("tbe_compiler") {
       const char *header_path = "test_tbe_compiler_canonical_only.h";
       const char *source_path = "test_tbe_compiler_canonical_only.c";
       const char *schema =
-          "schema CanonicalOnly; message Value { uint32 id; }";
+          "schema CanonicalOnly; composite Point { int32 x; }"
+          "group Level { uint64 price; }"
+          "message Value { uint32 id; }";
       size_t source_size = 0u;
       char *source = NULL;
       tbe_compiler_options_t options = {
@@ -2913,7 +2916,11 @@ spec("tbe_compiler") {
       check_not_null(source);
       if (source != NULL) {
         check(strstr(source, "#include \"tbe_typed.h\"") == NULL);
+        check(strstr(source, "static TbeTypedType Point_TYPED_TYPE") == NULL);
+        check(strstr(source, "static TbeTypedType Level_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType Value_TYPED_TYPE") == NULL);
+        check_contains(source, "Point_cmeta_data(");
+        check_contains(source, "Level_cmeta_data(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(Value)");
       }
       free(source);
