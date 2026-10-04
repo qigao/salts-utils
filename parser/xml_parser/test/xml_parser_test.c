@@ -359,6 +359,14 @@ suite("bounded XML parser facade") {
         check_equal(diagnostic.status, SALTS_XML_ALLOCATION_FAILED);
     }
 
+    it("rejects stray top-level closing tags without parser spin") {
+        static const char exact_voice_fuzz_mutation[] =
+            "</xml xmlns=\"http://www.w3.org/2001vvxml\" version=\"2.1\">"
+            "<form id=\"main\"><block><exit/></block>";
+        check_malformed_releases_everything("</root>");
+        check_malformed_releases_everything(exact_voice_fuzz_mutation);
+    }
+
     it("releases lexer error-token storage for malformed input") {
         check_malformed_releases_everything("<root a='unterminated></root>");
         check_malformed_releases_everything("<root><child a=\"unterminated></root>");
