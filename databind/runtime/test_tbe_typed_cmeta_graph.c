@@ -830,7 +830,7 @@ spec("generated native CMeta graph") {
     check_not_null(encoded);
     if (encoded)
       check_not_null(strstr(encoded, "\"digest\":\"0123456789abcdef\""));
-    check_equal(FixedValues_to_bin(&destination, &wire, &wire_len, &error),
+    check_equal(FixedValues_to_bin(codec, &destination, &wire, &wire_len, &error),
                 DATA_BIND_OK);
     check_not_null(wire);
     if (wire) {
