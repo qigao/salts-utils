@@ -14,3 +14,11 @@ message OwnedState {
     nullable string note;
     optional nullable string tri_value;
 }
+
+[id(3)]
+message OwnedBytesState {
+    uint32 count;
+    optional bytes payload;
+    nullable bytes note;
+    optional nullable bytes tri_value;
+}

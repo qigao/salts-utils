@@ -71,6 +71,40 @@ spec("optional local lifecycle uses canonical CMeta") {
     check_null(value.label);
   }
 
+  it("initializes and releases owned byte buffers with local state overlays") {
+    OwnedBytesState_t value;
+    const cmeta_data_desc *data = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    memset(&value, 0xa5, sizeof(value));
+    check_equal(OwnedBytesState_cmeta_data(&data, &error), DATA_BIND_OK);
+    check_not_null(data);
+    if (data != NULL) {
+      check_equal(cmeta_data_value_init_zero(data, &value), CMETA_OK);
+      check_equal(cmeta_data_value_restore_zero(data, &value), CMETA_OK);
+    }
+    OwnedBytesState_init(&value);
+    check_equal(stl_byte_buffer_size(&value.payload), (size_t)0u);
+    check_equal(stl_byte_buffer_size(&value.note), (size_t)0u);
+    check_equal(stl_byte_buffer_size(&value.tri_value), (size_t)0u);
+    check_equal(value.count, 0u);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+
+    check_equal(stl_byte_buffer_resize(&value.payload, 16u), STL_OK);
+    check_equal(stl_byte_buffer_resize(&value.note, 17u), STL_OK);
+    check_equal(stl_byte_buffer_resize(&value.tri_value, 18u), STL_OK);
+    value.count = 19u;
+    value._presence[0] = 0xffu;
+    value._nulls[0] = 0xffu;
+    OwnedBytesState_clear(&value);
+    check_equal(stl_byte_buffer_size(&value.payload), (size_t)0u);
+    check_equal(stl_byte_buffer_size(&value.note), (size_t)0u);
+    check_equal(stl_byte_buffer_size(&value.tri_value), (size_t)0u);
+    check_equal(value.count, 0u);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+  }
+
   it("keeps unsupported JSON conversion closed") {
     static const char input[] =
         "{\"nullable_value\":null,\"tri_value\":9}";

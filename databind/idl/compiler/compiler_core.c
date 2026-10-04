@@ -2492,18 +2492,20 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
           tbe_compiler_string_value(field, "cmeta_native_requirement");
       const char *native_data =
           tbe_compiler_string_value(field, "native_data_symbol");
-      const int owned_string =
-          type != NULL && strcmp(type, "string") == 0 &&
-          requirement != NULL &&
+      const int owned_storage =
+          type != NULL && requirement != NULL && native_data != NULL &&
           (strcmp(requirement, "owned_lifecycle") == 0 ||
            strcmp(requirement, "overlay_presence") == 0 ||
            strcmp(requirement, "overlay_null") == 0 ||
            strcmp(requirement, "overlay_presence_null") == 0) &&
-          native_data != NULL && strcmp(native_data, "salts_tstr_cmeta_data") == 0;
+          ((strcmp(type, "string") == 0 &&
+            strcmp(native_data, "salts_tstr_cmeta_data") == 0) ||
+           (strcmp(type, "bytes") == 0 &&
+            strcmp(native_data, "stl_byte_buffer_cmeta_data") == 0));
       if (type == NULL ||
           tbe_compiler_has_child(field, "is_collection") ||
           tbe_compiler_has_child(field, "is_group_field") ||
-          (tbe_compiler_scalar_projection(type) == NULL && !owned_string)) {
+          (tbe_compiler_scalar_projection(type) == NULL && !owned_storage)) {
         supported = 0;
         break;
       }
