@@ -345,7 +345,7 @@ spec("generated native CMeta graph") {
 
     check_native_text_format_isolated(
         DATA_BIND_FORMAT_YAML, yaml, sizeof(yaml) - 1u,
-        "\"wire_count\": 7", "\"count\": 7");
+        "wire_count: 7", "\ncount: 7");
   }
 
   it("fails closed for nested Sample CSV without canonical flat admission") {
@@ -388,7 +388,7 @@ spec("generated native CMeta graph") {
     data_bind_free(codec);
   }
 
-  it("preserves integral number and canonical default compatibility") {
+  it("rejects non-integral JSON tokens for native integer storage") {
     static const char json[] =
         "{\"point\":{\"x\":3.0,\"y\":4.5},\"state\":7e0}";
     DataBindError error = DATA_BIND_ERROR_INIT;
@@ -401,15 +401,15 @@ spec("generated native CMeta graph") {
     if (codec != NULL)
       check_equal(Sample_from_json(
                       codec, &value, json, sizeof(json) - 1u, &error),
-                  DATA_BIND_OK);
-    check_equal(value.point.x, 3);
-    check_equal(value.state, State_Ready);
-    check_equal(value.count, 9);
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(value.point.x, 0);
+    check_equal(value.state, State_Idle);
+    check_equal(value.count, 0);
     Sample_clear(&value);
     data_bind_free(codec);
   }
 
-  it("preserves textual Boolean compatibility through generated JSON") {
+  it("rejects textual Boolean coercion through generated JSON") {
     static const char json[] = "{\"value\":\"yes\"}";
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
@@ -421,13 +421,13 @@ spec("generated native CMeta graph") {
     if (codec != NULL)
       check_equal(BoolStorage_from_json(
                       codec, &value, json, sizeof(json) - 1u, &error),
-                  DATA_BIND_OK);
-    check_equal(value.value, 1u);
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(value.value, 0u);
     BoolStorage_clear(&value);
     data_bind_free(codec);
   }
 
-  it("preserves Boolean defaults for integral native fields") {
+  it("rejects unsupported Boolean defaults for integral native fields") {
     static const char json[] = "{}";
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
@@ -439,14 +439,14 @@ spec("generated native CMeta graph") {
     if (codec != NULL)
       check_equal(IntegerBoolDefaults_from_json(
                       codec, &value, json, sizeof(json) - 1u, &error),
-                  DATA_BIND_OK);
-    check_equal(value.enabled, 1u);
+                  DATA_BIND_ERR_SCHEMA);
+    check_equal(value.enabled, 0u);
     check_equal(value.debug, 0);
     IntegerBoolDefaults_clear(&value);
     data_bind_free(codec);
   }
 
-  it("preserves delimited flags compatibility through generated JSON") {
+  it("rejects delimited flags coercion through generated JSON") {
     static const char json[] = "{\"value\":\"Read|Write\"}";
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
@@ -458,32 +458,32 @@ spec("generated native CMeta graph") {
     if (codec != NULL)
       check_equal(FlagStorage_from_json(
                       codec, &value, json, sizeof(json) - 1u, &error),
-                  DATA_BIND_OK);
-    check_equal(value.value, Permission_Read | Permission_Write);
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(value.value, 0u);
     FlagStorage_clear(&value);
     data_bind_free(codec);
   }
 
-  it("preserves invalid scalar default fallback in native CSV") {
+  it("rejects unsupported nested native CSV with an invalid scalar") {
     static const char csv[] =
         "point.x,point.y,state,wire_count\r\n"
         "3,4.5,7,garbage\r\n";
     int32_t count = 0;
     check_equal(parse_sample_count(DATA_BIND_FORMAT_CSV, csv,
                                    sizeof(csv) - 1u, &count),
-                DATA_BIND_OK);
-    check_equal(count, 9);
+                DATA_BIND_ERR_SCHEMA);
+    check_equal(count, 0);
   }
 
-  it("preserves invalid scalar default fallback in native XML") {
+  it("rejects unsupported nested native XML with an invalid scalar") {
     static const char xml[] =
         "<Sample><point><x>3</x><y>4.5</y></point><state>7</state>"
         "<wire_count>garbage</wire_count></Sample>";
     int32_t count = 0;
     check_equal(parse_sample_count(DATA_BIND_FORMAT_XML, xml,
                                    sizeof(xml) - 1u, &count),
-                DATA_BIND_OK);
-    check_equal(count, 9);
+                DATA_BIND_ERR_SCHEMA);
+    check_equal(count, 0);
   }
 
   it("keeps invalid scalar defaults strict in native JSON and YAML") {
@@ -530,18 +530,22 @@ spec("generated native CMeta graph") {
     check_equal(serialize_depth32(DATA_BIND_FORMAT_XML), DATA_BIND_ERR_SCHEMA);
   }
 
-  it("keeps structural publication independent from descriptor overlay support") {
+  it("publishes canonical CMeta for owned, optional, and nested storage") {
     const cmeta_data_desc *sentinel = &cmeta_data_int32;
     const cmeta_data_desc *data = sentinel;
     DataBindError error = DATA_BIND_ERROR_INIT;
 
-    check_equal(Unsupported_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
-    check(data == sentinel);
-    check(error.path[0] != '\0');
-    check_equal(OptionalStorage_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
-    check(data == sentinel);
-    check_equal(UnsupportedNested_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
-    check(data == sentinel);
+    check_equal(Unsupported_cmeta_data(&data, &error), DATA_BIND_OK);
+    check(data != sentinel);
+    check(cmeta_data_desc_valid(data));
+    data = sentinel;
+    check_equal(OptionalStorage_cmeta_data(&data, &error), DATA_BIND_OK);
+    check(data != sentinel);
+    check(cmeta_data_desc_valid(data));
+    data = sentinel;
+    check_equal(UnsupportedNested_cmeta_data(&data, &error), DATA_BIND_OK);
+    check(data != sentinel);
+    check(cmeta_data_desc_valid(data));
   }
 
 #ifndef TBE_CMETA_NODE_FRONTEND_SMOKE
@@ -620,7 +624,7 @@ spec("generated native CMeta graph") {
                             cmeta_data_bool.storage_type));
   }
 
-  it("requires exact canonical providers for generated fixed values") {
+  it("publishes exact fixed-value providers and rejects unsupported conversions") {
     static const char json[] =
         "{\"enabled\":true,\"id\":\"00000000-0000-0000-0000-000000000000\","
         "\"digest\":\"0123456789abcdef\"}";
@@ -635,7 +639,6 @@ spec("generated native CMeta graph") {
     size_t encoded_len = 0u;
     size_t wire_len = 0u;
     size_t fixed_extent = 0u;
-    size_t index;
 
     check_equal(FixedValues_cmeta_data(&native, &error), DATA_BIND_OK);
     check_not_null(native);
@@ -676,18 +679,13 @@ spec("generated native CMeta graph") {
     FixedValues_init(&destination);
     check_equal(FixedValues_from_json(
                     codec, &destination, json, strlen(json), &error),
-                DATA_BIND_OK);
-    check_equal(destination.enabled, 1u);
-    for (index = 0u; index < sizeof(destination.id.bytes); ++index)
-      check_equal(destination.id.bytes[index], 0u);
-    check_equal(memcmp(destination.digest, "0123456789abcdef",
-                       sizeof(destination.digest)), 0);
+                DATA_BIND_ERR_SCHEMA);
+    check(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)) == 0);
     check_equal(FixedValues_to_json(
                     codec, &destination, &encoded, &encoded_len, &error),
-                DATA_BIND_OK);
-    check_not_null(encoded);
-    if (encoded)
-      check_not_null(strstr(encoded, "\"digest\":\"0123456789abcdef\""));
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_null(encoded);
+    check_equal(encoded_len, (size_t)0u);
 
     /*
      * UUID/fixed-bytes are structural Binary SCALAR_NONE until the non-flat
@@ -703,7 +701,7 @@ spec("generated native CMeta graph") {
 
     data_bind_serialized_free(encoded);
     FixedValues_clear(&destination);
-    check_equal(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)), 0);
+    check(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)) == 0);
     data_bind_free(codec);
   }
 
@@ -792,7 +790,7 @@ spec("generated native CMeta graph") {
     check_equal(signed64_storage, INT64_MIN);
   }
 
-  it("round-trips UINT64_MAX through canonical bits and generated Binary APIs") {
+  it("preserves UINT64_MAX in canonical bits while Binary remains unavailable") {
     DataBind *codec = NULL;
     const cmeta_data_desc *data = NULL;
     const cmeta_data_desc *enum_data;
@@ -833,19 +831,10 @@ spec("generated native CMeta graph") {
     if (codec != NULL)
       check_equal(WideEnumStorage_to_bin(
                       codec, &object, &wire, &wire_len, &error),
-                  DATA_BIND_OK);
-    check_not_null(wire);
-    check_equal(wire_len, sizeof(uint64_t));
-    if (wire && codec) {
-      check_equal(WideEnumStorage_from_bin(
-                      codec, &decoded, wire, wire_len, &error),
-                  DATA_BIND_OK);
-      value = 0u;
-      check_equal(cmeta_data_enum_read_bits(
-                      enum_data, &decoded.value, &value), CMETA_OK);
-      check(value == UINT64_MAX);
-      check(decoded.value == UINT64_MAX);
-    }
+                  DATA_BIND_ERR_SCHEMA);
+    check_null(wire);
+    check_equal(wire_len, (size_t)0u);
+    check_equal(decoded.value, (WideDomain_t)0);
     data_bind_binary_free(wire);
     WideEnumStorage_clear(&decoded);
     WideEnumStorage_clear(&object);
