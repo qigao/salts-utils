@@ -53,6 +53,22 @@ static void check_retained_limit_releases(const char *source,
     check_equal(cxml_test_outstanding_allocations(), allocations_before);
 }
 
+static void check_malformed_releases_everything(const char *source) {
+    const size_t allocations_before = cxml_test_outstanding_allocations();
+    salts_xml_document document = {0};
+    salts_xml_diagnostic diagnostic = {0};
+    const salts_xml_status status =
+        salts_xml_parse(
+            &document, source, strlen(source), NULL, &diagnostic);
+
+    check(status != SALTS_XML_OK, "malformed source unexpectedly parsed: %s",
+          source);
+    check_null(document.impl);
+    check_equal(diagnostic.status, status);
+    check(cxml_test_outstanding_allocations() == allocations_before,
+          "malformed parse leaked cxml storage: %s", source);
+}
+
 static void check_allocation_failures_release_everything(const char *source) {
     enum { MAX_ALLOCATION_FAILURE_POINTS = 512 };
     size_t failure_point;
@@ -103,6 +119,16 @@ suite("bounded XML parser facade") {
         cxml_test_clear_allocation_failure();
         check_null(document.impl);
         check_equal(diagnostic.status, SALTS_XML_ALLOCATION_FAILED);
+    }
+
+    it("releases lexer error-token storage for malformed input") {
+        check_malformed_releases_everything("<root a='unterminated></root>");
+        check_malformed_releases_everything("<root><child a=\"unterminated></root>");
+        check_malformed_releases_everything("<root><child @='x'/></root>");
+        check_malformed_releases_everything("<root><child a='x' @/></root>");
+        check_malformed_releases_everything("<root><child \\ /></root>");
+        check_malformed_releases_everything("<root><child a='x'></root>");
+        check_malformed_releases_everything("<root>&bogus;</root>");
     }
 
     it("releases the partial DOM at every cxml allocation failure point") {
