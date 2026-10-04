@@ -2762,6 +2762,12 @@ spec("tbe_compiler") {
         check_contains(header, "Sample_cmeta_data(");
         check_contains(header, "FlagStorage_cmeta_data(");
         check_contains(header, "WideEnumStorage_cmeta_data(");
+        check_contains(
+            header,
+            "LoginMessage_to_bin(DataBind *codec, const LoginMessage_t *object");
+        check_contains(
+            header,
+            "LoginMessage_to_bin_into(DataBind *codec, const LoginMessage_t *object");
       }
       if (source != NULL) {
         check(strstr(source, "tbe_typed_descriptor_init(") == NULL);
@@ -2771,16 +2777,20 @@ spec("tbe_compiler") {
         check_contains(source, "tbe_typed_descriptor_parse(codec");
         check_contains(source, "tbe_typed_descriptor_serialize_binary");
         check_contains(
-            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY_INPUT(LoginMessage,");
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(LoginMessage,");
         check_contains(
-            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY_INPUT(FlagStorage,");
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(FlagStorage,");
         check_contains(
-            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY_INPUT(WideEnumStorage,");
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(WideEnumStorage,");
         check(strstr(
-            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY_INPUT(Sample,") == NULL);
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(Sample,") == NULL);
         check_contains(source, "LoginMessage_binary_LoginMessage_databind_binary_provider(void)");
         check_contains(source, "FlagStorage_binary_FlagStorage_databind_binary_provider(void)");
         check_contains(source, "WideEnumStorage_binary_WideEnumStorage_databind_binary_provider(void)");
+        check_contains(source, "data_bind_binary_writer_open(");
+        check_contains(
+            source,
+            "DATA_BIND_FORMAT_PROVIDER_WITH_SELECTION_AND_WRITER_INIT(");
         check(strstr(source, "Sample_binary_Sample_databind_binary_provider(void)") == NULL);
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(Sample,");
