@@ -23,7 +23,7 @@ spec("generated typed descriptor compatibility") {
     source.header.timestamp = UINT64_C(0x0123456789abcdef);
     source.load = 73u;
     if (codec != NULL) {
-      status = Heartbeat_to_bin_into(&source, wire, sizeof(wire), &length, &error);
+      status = Heartbeat_to_bin_into(codec, &source, wire, sizeof(wire), &length, &error);
       check_equal(status, DATA_BIND_OK);
       if (status == DATA_BIND_OK) {
         check_equal(Heartbeat_from_bin(codec, &decoded, wire, length, &error), DATA_BIND_OK);
@@ -56,7 +56,7 @@ spec("generated typed descriptor compatibility") {
     source.username = tstr_dup("descriptor-boundary");
     check_not_null(source.username);
     if (codec != NULL && source.username != NULL) {
-      status = LoginMessage_to_bin_into(&source, wire, sizeof(wire), &length, &error);
+      status = LoginMessage_to_bin_into(codec, &source, wire, sizeof(wire), &length, &error);
       check_equal(status, DATA_BIND_OK);
       if (status == DATA_BIND_OK) {
         check_equal(LoginMessage_from_bin(codec, &decoded, wire, length, &error), DATA_BIND_OK);
