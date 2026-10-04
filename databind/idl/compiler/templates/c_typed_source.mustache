@@ -1736,13 +1736,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
             out, out_len, error); \
     }
 
-#define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML_OUTPUT(name) \
-    DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
-        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
-        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
-            "Canonical XML native output is unavailable for this shape"); \
-    }
-
 #define DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT(name) \
     DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
@@ -1765,13 +1758,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
             object, sizeof(*object), data, len, error); \
     }
 
-#define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_CSV(name) \
-    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
-        (void)codec; (void)object; (void)data; (void)len; (void)row; \
-        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
-            "Canonical CSV native input is unavailable for this shape"); \
-    }
-
 #define DATABIND_DEFINE_RAW_MESSAGE_CSV(name) \
     DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
         (void)codec; (void)object; (void)data; (void)len; (void)row; \
@@ -1783,13 +1769,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
         (void)codec; (void)object; (void)data; (void)len; (void)row; \
         return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
-    }
-
-#define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML(name) \
-    DataBindStatus name##_from_xml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
-        (void)codec; (void)object; (void)data; (void)len; \
-        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
-            "Canonical XML native input is unavailable for this shape"); \
     }
 
 #define DATABIND_DEFINE_RAW_MESSAGE_XML(name) \
@@ -1845,14 +1824,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
             object, sizeof(*object), NULL, output, output_capacity, out_len, error); \
     }
 
-#define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_REMAINDER(name) \
-    DATABIND_DEFINE_UNAVAILABLE_BINARY(name) \
-    DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
-        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
-        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
-            "Canonical CSV native output is unavailable for this shape"); \
-    }
-
 #define DATABIND_DEFINE_RAW_MESSAGE_YAML(name) \
     DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
@@ -1905,24 +1876,20 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 {{#cmeta_native_xml_flat_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 {{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_XML({{name}})
-{{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML({{name}})
-{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}DATABIND_DEFINE_RAW_MESSAGE_XML({{name}})
-{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}
+{{/native_cstl_storage}}{{^native_cstl_storage}}DATABIND_DEFINE_RAW_MESSAGE_XML({{name}})
+{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}
 {{#cmeta_native_csv_flat_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_CSV({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 {{/cmeta_native_csv_flat_supported}}{{^cmeta_native_csv_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_CSV({{name}})
-{{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_DESCRIPTOR_MESSAGE_CSV({{name}})
-{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
-{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_csv_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER({{name}})
+{{/native_cstl_storage}}{{^native_cstl_storage}}DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
+{{/native_cstl_storage}}{{/cmeta_native_csv_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#binary_reader_supported}}DATABIND_DEFINE_UNAVAILABLE_MESSAGE_CSV_OUTPUT({{name}})
 DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
-{{/binary_reader_supported}}{{^binary_reader_supported}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_DESCRIPTOR_MESSAGE_REMAINDER({{name}})
-{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
-{{/typed_cmeta_runtime_supported}}{{/binary_reader_supported}}{{/native_cstl_storage}}
+{{/binary_reader_supported}}{{^binary_reader_supported}}DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
+{{/binary_reader_supported}}{{/native_cstl_storage}}
 {{#cmeta_native_xml_output_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 {{/cmeta_native_xml_output_supported}}{{^cmeta_native_xml_output_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_XML_OUTPUT({{name}})
-{{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML_OUTPUT({{name}})
-{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
-{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_xml_output_supported}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#cmeta_native_xml_flat_supported}}{{#cmeta_local_overlay_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
+{{/native_cstl_storage}}{{^native_cstl_storage}}DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
+{{/native_cstl_storage}}{{/cmeta_native_xml_output_supported}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#cmeta_native_xml_flat_supported}}{{#cmeta_local_overlay_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
 {{/cmeta_local_overlay_lifecycle}}{{^cmeta_local_overlay_lifecycle}}TBE_TYPED_DEFINE_RAW_LIFECYCLE({{name}})
 {{/cmeta_local_overlay_lifecycle}}
 DATABIND_DEFINE_RAW_MESSAGE_TEXT({{name}})
