@@ -359,6 +359,38 @@ suite("bounded XML parser facade") {
         check_equal(diagnostic.status, SALTS_XML_ALLOCATION_FAILED);
     }
 
+    it("fails fast when a closing tag appears at document root") {
+        static const char exact_voice_mutation[] =
+            "</xml xmlns=\"http://www.w3.org/2001vvxml\" version=\"2.1\">"
+            "<form id=\"main\"><block><exit/></block>";
+        static const char simple_root_close[] = "</root>";
+        const char *const cases[] = {
+            simple_root_close,
+            exact_voice_mutation
+        };
+        size_t index;
+
+        for (index = 0u;
+             index < sizeof(cases) / sizeof(cases[0]);
+             ++index) {
+            salts_xml_document document = {0};
+            salts_xml_diagnostic diagnostic = {0};
+            check_equal(
+                salts_xml_parse(
+                    &document,
+                    cases[index], strlen(cases[index]),
+                    NULL, &diagnostic),
+                SALTS_XML_MALFORMED);
+            check_null(document.impl);
+            check_equal(
+                diagnostic.status,
+                SALTS_XML_MALFORMED);
+            check_contains(
+                diagnostic.message,
+                "Closing tag");
+        }
+    }
+
     it("releases lexer error-token storage for malformed input") {
         check_malformed_releases_everything("<root a='unterminated></root>");
         check_malformed_releases_everything("<root><child a=\"unterminated></root>");

@@ -1484,8 +1484,26 @@ static void x__dispatch_token(_cxml_parser *cxparser) {
         case CXML_TOKEN_CDATA:
             x__cdata_sect(cxparser);
             break;
-        case CXML_TOKEN_F_SLASH:  // x__wrap_elem()
+        case CXML_TOKEN_F_SLASH: {  // x__wrap_elem()
+            /*
+             * A closing-tag slash is only a valid dispatcher stop while an
+             * element is active; x__elem() will hand it to x__wrap_elem().
+             *
+             * At document/root scope, returning without consuming the slash
+             * leaves current_tok unchanged while prev_tok remains '<'. The
+             * document loop would therefore make no forward progress forever
+             * on inputs beginning with a closing tag such as "</root>".
+             */
+            void *parent = _cxml_stack__get(&cxparser->_cx_stack);
+            if (parent == NULL ||
+                _cxml_node_type(parent) == CXML_ROOT_NODE) {
+                cxparser->err_msg =
+                    "CXML Parse Error: Closing tag found outside root element.";
+                _cxml_p__handle_error(
+                    cxparser, &cxparser->current_tok);
+            }
             break;
+        }
         case CXML_TOKEN_ERROR:
             parse__error(cxparser, "%.*s\n", cxparser->current_tok.length, cxparser->current_tok.start)
         case CXML_TOKEN_G_THAN:
