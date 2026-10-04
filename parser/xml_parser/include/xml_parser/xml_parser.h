@@ -191,6 +191,14 @@ void salts_xml_node_list_destroy(salts_xml_node_list *list);
 
 salts_xml_string_view salts_xml_node_display_name(salts_xml_node node);
 salts_xml_string_view salts_xml_node_text_view(salts_xml_node node);
+/**
+ * Return non-zero when the text selected by salts_xml_node_text_view() came
+ * from ordinary XML text containing an entity/character reference.
+ *
+ * CDATA returns zero even when its literal bytes contain '&...;'. This lets
+ * adapters decode logical XML text without guessing private parser node flags.
+ */
+int salts_xml_node_text_has_entity_reference(salts_xml_node node);
 char *salts_xml_node_serialize(salts_xml_node node, size_t *out_size);
 
 #ifdef __cplusplus

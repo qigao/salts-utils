@@ -536,6 +536,30 @@ suite("bounded XML parser facade") {
         check_contains(diagnostic.message, "Closing tag");
     }
 
+    it("distinguishes entity-bearing text from literal CDATA bytes") {
+        static const char xml[] =
+            "<r><x>a&amp;b</x><![CDATA[c&amp;d]]></r>";
+        salts_xml_document document = {0};
+        salts_xml_diagnostic diagnostic = {0};
+        salts_xml_node root;
+        salts_xml_node element;
+        salts_xml_node cdata;
+
+        check_equal(salts_xml_parse(&document, xml, sizeof(xml) - 1u,
+                                    NULL, &diagnostic), SALTS_XML_OK);
+        root = salts_xml_document_root(&document);
+        check_equal(salts_xml_node_child_count(root), (size_t)2u);
+        element = salts_xml_node_child_at(root, 0u);
+        cdata = salts_xml_node_child_at(root, 1u);
+        check_equal(salts_xml_node_type(element), SALTS_XML_ELEMENT);
+        check_equal(salts_xml_node_type(cdata), SALTS_XML_TEXT);
+        check_view(salts_xml_node_text_view(element), "a&amp;b");
+        check_true(salts_xml_node_text_has_entity_reference(element));
+        check_view(salts_xml_node_text_view(cdata), "c&amp;d");
+        check_false(salts_xml_node_text_has_entity_reference(cdata));
+        salts_xml_document_destroy(&document);
+    }
+
     it("retains multiline comment CDATA and PI token locations") {
         static const char xml[] =
             "<r>\r\n"

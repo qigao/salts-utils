@@ -36,6 +36,8 @@ typedef struct data_bind_xml_reader {
   int selected_array;
   int array_started;
   int array_finished;
+  unsigned char *decoded;
+  size_t decoded_capacity;
   data_bind_xml_frame frames[];
 } data_bind_xml_reader;
 
@@ -128,6 +130,144 @@ static void xml_emit_slice(cserde_token *out, salts_xml_string_view view) {
   out->value.slice.lifetime = CSERDE_VIEW_STABLE;
 }
 
+static int xml_entity_scalar_valid(uint32_t value) {
+  return value == UINT32_C(0x09) || value == UINT32_C(0x0a) ||
+         value == UINT32_C(0x0d) ||
+         (value >= UINT32_C(0x20) && value <= UINT32_C(0xd7ff)) ||
+         (value >= UINT32_C(0xe000) && value <= UINT32_C(0xfffd)) ||
+         (value >= UINT32_C(0x10000) && value <= UINT32_C(0x10ffff));
+}
+
+static size_t xml_utf8_write(uint32_t value, unsigned char *out) {
+  if (value <= UINT32_C(0x7f)) {
+    out[0] = (unsigned char)value;
+    return 1u;
+  }
+  if (value <= UINT32_C(0x7ff)) {
+    out[0] = (unsigned char)(UINT32_C(0xc0) | (value >> 6));
+    out[1] = (unsigned char)(UINT32_C(0x80) | (value & UINT32_C(0x3f)));
+    return 2u;
+  }
+  if (value <= UINT32_C(0xffff)) {
+    out[0] = (unsigned char)(UINT32_C(0xe0) | (value >> 12));
+    out[1] = (unsigned char)(UINT32_C(0x80) |
+                             ((value >> 6) & UINT32_C(0x3f)));
+    out[2] = (unsigned char)(UINT32_C(0x80) | (value & UINT32_C(0x3f)));
+    return 3u;
+  }
+  out[0] = (unsigned char)(UINT32_C(0xf0) | (value >> 18));
+  out[1] = (unsigned char)(UINT32_C(0x80) |
+                           ((value >> 12) & UINT32_C(0x3f)));
+  out[2] = (unsigned char)(UINT32_C(0x80) |
+                           ((value >> 6) & UINT32_C(0x3f)));
+  out[3] = (unsigned char)(UINT32_C(0x80) | (value & UINT32_C(0x3f)));
+  return 4u;
+}
+
+static int xml_entity_value(
+    const char *text, size_t size, uint32_t *out) {
+  size_t index;
+  uint32_t value = 0u;
+  unsigned base = 10u;
+
+  if (text == NULL || out == NULL || size == 0u) return 0;
+  if (size == 2u && memcmp(text, "lt", 2u) == 0) {
+    *out = (uint32_t)'<';
+    return 1;
+  }
+  if (size == 2u && memcmp(text, "gt", 2u) == 0) {
+    *out = (uint32_t)'>';
+    return 1;
+  }
+  if (size == 3u && memcmp(text, "amp", 3u) == 0) {
+    *out = (uint32_t)'&';
+    return 1;
+  }
+  if (size == 4u && memcmp(text, "quot", 4u) == 0) {
+    *out = (uint32_t)'"';
+    return 1;
+  }
+  if (size == 4u && memcmp(text, "apos", 4u) == 0) {
+    *out = (uint32_t)'\'';
+    return 1;
+  }
+  if (text[0] != '#' || size == 1u) return 0;
+
+  index = 1u;
+  if (index < size && (text[index] == 'x' || text[index] == 'X')) {
+    base = 16u;
+    ++index;
+  }
+  if (index == size) return 0;
+
+  for (; index < size; ++index) {
+    unsigned digit;
+    unsigned char ch = (unsigned char)text[index];
+    if (ch >= '0' && ch <= '9')
+      digit = (unsigned)(ch - '0');
+    else if (base == 16u && ch >= 'a' && ch <= 'f')
+      digit = 10u + (unsigned)(ch - 'a');
+    else if (base == 16u && ch >= 'A' && ch <= 'F')
+      digit = 10u + (unsigned)(ch - 'A');
+    else
+      return 0;
+    if (digit >= base ||
+        value > (UINT32_C(0x10ffff) - digit) / base)
+      return 0;
+    value = value * base + digit;
+  }
+  if (!xml_entity_scalar_valid(value)) return 0;
+  *out = value;
+  return 1;
+}
+
+static cserde_status xml_emit_logical_slice(
+    data_bind_xml_reader *context,
+    cserde_token *out,
+    salts_xml_string_view view,
+    int decode_entities) {
+  size_t input = 0u;
+  size_t output = 0u;
+
+  if (context == NULL || out == NULL ||
+      (view.size != 0u && view.data == NULL))
+    return CSERDE_INVALID_ARGUMENT;
+  if (!decode_entities || view.size == 0u ||
+      memchr(view.data, '&', view.size) == NULL) {
+    xml_emit_slice(out, view);
+    return CSERDE_OK;
+  }
+  if (view.size == SIZE_MAX || context->decoded == NULL ||
+      context->decoded_capacity < view.size + 1u)
+    return CSERDE_SOURCE_ERROR;
+
+  while (input < view.size) {
+    uint32_t value;
+    size_t end;
+    if (view.data[input] != '&') {
+      context->decoded[output++] = (unsigned char)view.data[input++];
+      continue;
+    }
+
+    end = input + 1u;
+    while (end < view.size && view.data[end] != ';') ++end;
+    if (end == view.size ||
+        !xml_entity_value(
+            view.data + input + 1u, end - input - 1u, &value))
+      return CSERDE_SOURCE_ERROR;
+    output += xml_utf8_write(value, context->decoded + output);
+    input = end + 1u;
+  }
+
+  context->decoded[output] = 0u;
+  memset(out, 0, sizeof(*out));
+  out->kind = CSERDE_STRING;
+  out->value.slice.data = context->decoded;
+  out->value.slice.size = output;
+  out->value.slice.lifetime = CSERDE_VIEW_TRANSIENT;
+  return CSERDE_OK;
+}
+
 static int xml_view_equal(salts_xml_string_view left,
                           salts_xml_string_view right) {
   return left.size == right.size &&
@@ -145,6 +285,18 @@ static int xml_node_has_element_child(salts_xml_node node) {
       return 1;
   }
   return 0;
+}
+
+static salts_xml_node xml_node_first_text_child(salts_xml_node node) {
+  salts_xml_node empty = {NULL};
+  size_t count = salts_xml_node_child_count(node);
+  size_t index;
+  for (index = 0u; index < count; ++index) {
+    salts_xml_node child = salts_xml_node_child_at(node, index);
+    if (salts_xml_node_type(child) == SALTS_XML_TEXT)
+      return child;
+  }
+  return empty;
 }
 
 static int xml_attribute_shadowed_by_child(
@@ -202,18 +354,27 @@ static cserde_status xml_emit_node(
   size_t attribute_count;
   int has_element_child;
 
-  if (kind == SALTS_XML_ATTRIBUTE || kind == SALTS_XML_TEXT) {
-    xml_emit_slice(out, salts_xml_node_text_view(node));
-    return CSERDE_OK;
-  }
+  if (kind == SALTS_XML_ATTRIBUTE)
+    return xml_emit_logical_slice(
+        context, out, salts_xml_node_text_view(node), 1);
+  if (kind == SALTS_XML_TEXT)
+    return xml_emit_logical_slice(
+        context, out, salts_xml_node_text_view(node),
+        salts_xml_node_text_has_entity_reference(node));
   if (kind != SALTS_XML_ELEMENT) return CSERDE_UNSUPPORTED;
 
   attribute_count = salts_xml_node_attribute_count(node);
   has_element_child = xml_node_has_element_child(node);
 
   if (!has_element_child && attribute_count == 0u) {
-    xml_emit_slice(out, salts_xml_node_text_view(node));
-    return CSERDE_OK;
+    salts_xml_node text = xml_node_first_text_child(node);
+    if (salts_xml_node_type(text) == SALTS_XML_TEXT)
+      return xml_emit_logical_slice(
+          context, out, salts_xml_node_text_view(text),
+          salts_xml_node_text_has_entity_reference(text));
+    return xml_emit_logical_slice(
+        context, out, salts_xml_node_text_view(node),
+        salts_xml_node_text_has_entity_reference(node));
   }
 
   if (context->depth >= context->max_depth)
@@ -293,11 +454,12 @@ static cserde_status xml_provider_next(void *opaque, cserde_token *out) {
       frame->phase = DATA_BIND_XML_END;
       continue;
 
-    case DATA_BIND_XML_ATTRIBUTE_VALUE:
-      xml_emit_slice(
-          out, salts_xml_attribute_value(frame->pending_attribute));
+    case DATA_BIND_XML_ATTRIBUTE_VALUE: {
+      cserde_status status = xml_emit_logical_slice(
+          context, out, salts_xml_attribute_value(frame->pending_attribute), 1);
       frame->phase = DATA_BIND_XML_ATTRIBUTE_KEY;
-      return CSERDE_OK;
+      return status;
+    }
 
     case DATA_BIND_XML_END:
       --context->depth;
@@ -341,6 +503,23 @@ static data_bind_xml_reader *xml_context_create(
     return NULL;
   }
 
+  if (len != 0u && memchr(data, '&', len) != NULL) {
+    if (len == SIZE_MAX) {
+      free(context);
+      xml_provider_error(error, DATA_BIND_ERR_LIMIT,
+                         "XML logical text scratch size overflow");
+      return NULL;
+    }
+    context->decoded = (unsigned char *)malloc(len + 1u);
+    if (context->decoded == NULL) {
+      free(context);
+      xml_provider_error(error, DATA_BIND_ERR_OOM,
+                         "Unable to allocate XML logical text scratch");
+      return NULL;
+    }
+    context->decoded_capacity = len + 1u;
+  }
+
   if (max_depth != 0u && max_depth < limits.max_depth)
     limits.max_depth = max_depth;
 
@@ -356,6 +535,7 @@ static data_bind_xml_reader *xml_context_create(
         diagnostic.message[0] != '\0'
             ? diagnostic.message
             : "XML parse failed");
+    free(context->decoded);
     free(context);
     return NULL;
   }
@@ -363,6 +543,7 @@ static data_bind_xml_reader *xml_context_create(
   context->root = salts_xml_document_root(&context->document);
   if (salts_xml_node_type(context->root) != SALTS_XML_ELEMENT) {
     salts_xml_document_destroy(&context->document);
+    free(context->decoded);
     free(context);
     xml_provider_error(error, DATA_BIND_ERR_PARSE,
                        "XML document has no root element");
@@ -381,6 +562,7 @@ static DataBindStatus xml_publish_context(
       CSERDE_OK) {
     salts_xml_node_list_destroy(&context->selected);
     salts_xml_document_destroy(&context->document);
+    free(context->decoded);
     free(context);
     return xml_provider_error(error, DATA_BIND_ERR_RUNTIME,
                               "Unable to initialize XML CSerde reader");
@@ -468,6 +650,7 @@ static DataBindStatus xml_provider_open_selected(
     DataBindStatus status = xml_query_failure(query_diagnostic);
     salts_xml_node_list_destroy(&context->selected);
     salts_xml_document_destroy(&context->document);
+    free(context->decoded);
     free(context);
     return xml_provider_error(
         error, status,
@@ -480,7 +663,8 @@ static DataBindStatus xml_provider_open_selected(
     if (salts_xml_node_list_size(&context->selected) == 0u) {
       salts_xml_node_list_destroy(&context->selected);
       salts_xml_document_destroy(&context->document);
-      free(context);
+      free(context->decoded);
+    free(context);
       return xml_provider_error(error, DATA_BIND_ERR_TYPE_MISMATCH,
                                 "XPath selected no value");
     }
@@ -500,6 +684,7 @@ static void xml_provider_close(cserde_reader *reader, void *opaque) {
   if (context != NULL) {
     salts_xml_node_list_destroy(&context->selected);
     salts_xml_document_destroy(&context->document);
+    free(context->decoded);
     free(context);
   }
 }

@@ -328,6 +328,91 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     data_bind_free(codec);
   }
 
+  it("routes flat generated Message XML output through canonical writer") {
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    NativeXmlOutputFlat_t source = {0};
+    NativeXmlOutputFlat_t roundtrip = {0};
+    NativeXmlFlat_t nullable = {0};
+    char *xml = NULL;
+    size_t xml_len = 0u;
+
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    NativeXmlOutputFlat_init(&source);
+    NativeXmlOutputFlat_init(&roundtrip);
+    NativeXmlFlat_init(&nullable);
+
+    source.id = UINT32_C(11);
+    source.name = tstr_dup("a&b");
+    check_not_null(source.name);
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    {
+      DataBindStatus xml_status =
+          NativeXmlOutputFlat_to_xml(
+              codec, &source, &xml, &xml_len, &error);
+      info("flat XML output status=%d path=%s message=%s",
+           (int)xml_status,
+           error.path[0] != '\0' ? error.path : "<root>",
+           error.message[0] != '\0' ? error.message : "<none>");
+      check_equal(xml_status, DATA_BIND_OK);
+    }
+    check_not_null(xml);
+    check_true(xml_len != 0u);
+    if (xml != NULL) {
+      check(xml[xml_len] == '\0');
+      check_not_null(strstr(xml, "<NativeXmlOutputFlat>"));
+      check_not_null(strstr(xml, "<wireId>11</wireId>"));
+      check_null(strstr(xml, "<id>11</id>"));
+      check_not_null(strstr(xml, "<name>a&amp;b</name>"));
+
+      info("flat XML output bytes=%s", xml);
+      error = (DataBindError)DATA_BIND_ERROR_INIT;
+      {
+        DataBindStatus roundtrip_status =
+            NativeXmlOutputFlat_from_xml(
+                codec, &roundtrip, xml, xml_len, &error);
+        info("flat XML roundtrip status=%d path=%s message=%s",
+             (int)roundtrip_status,
+             error.path[0] != '\0' ? error.path : "<root>",
+             error.message[0] != '\0' ? error.message : "<none>");
+        check_equal(roundtrip_status, DATA_BIND_OK);
+      }
+      check_equal(roundtrip.id, UINT32_C(11));
+      check_not_null(roundtrip.name);
+      if (roundtrip.name != NULL) {
+        check_equal(tstr_len(roundtrip.name), (size_t)3u);
+        check(memcmp(roundtrip.name, "a&b", 3u) == 0);
+      }
+    }
+
+    /* XML cannot preserve explicit NULL, so nullable contracts stay historical
+     * and fail closed instead of silently collapsing NULL state. */
+    nullable.id = UINT32_C(9);
+    nullable.name = tstr_dup("nullable");
+    check_not_null(nullable.name);
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    {
+      char *rejected = NULL;
+      size_t rejected_len = 0u;
+      check_equal(
+          NativeXmlFlat_to_xml(
+              codec, &nullable, &rejected, &rejected_len, &error),
+          DATA_BIND_ERR_SCHEMA);
+      check_null(rejected);
+      check_equal(rejected_len, (size_t)0u);
+    }
+
+    tbe_typed_serialized_free(xml);
+    NativeXmlFlat_clear(&nullable);
+    NativeXmlOutputFlat_clear(&roundtrip);
+    NativeXmlOutputFlat_clear(&source);
+    data_bind_free(codec);
+  }
+
   it("routes exact flat generated CSV rows through canonical provider") {
     static const char csv[] =
         "id,name\n"

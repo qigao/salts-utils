@@ -151,6 +151,24 @@ DATA_BIND_API DataBindStatus data_bind_format_plan_compile(
     DataBindFormatPlan **out_plan,
     DataBindError *error);
 
+/*
+ * Compile the reader side of one format representation.
+ *
+ * Shape and field-name admission are identical to data_bind_format_plan_compile,
+ * but this form does not require the source format to preserve every logical
+ * output state. In particular, XML/CSV readers may bind nullable contracts when
+ * the concrete input supplies only ABSENT/VALUE; an explicit NULL token is
+ * still governed by MessagePlan and the provider's actual token semantics.
+ *
+ * Use the full compile entry point for egress/publication admission.
+ */
+DATA_BIND_API DataBindStatus data_bind_format_plan_compile_reader(
+    DataBind *codec,
+    const char *type_name,
+    DataBindFormat format,
+    DataBindFormatPlan **out_plan,
+    DataBindError *error);
+
 DATA_BIND_API void data_bind_format_plan_free(DataBindFormatPlan *plan);
 
 DATA_BIND_API int data_bind_format_plan_info(

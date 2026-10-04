@@ -54,6 +54,32 @@ static cserde_status xml_writer_status(salts_xml_status status) {
   }
 }
 
+static int xml_writer_name_valid_bytes(
+    const unsigned char *data, size_t size) {
+  size_t index;
+  unsigned char ch;
+  if (data == NULL || size == 0u) return 0;
+  ch = data[0];
+  if (!((ch >= 'A' && ch <= 'Z') ||
+        (ch >= 'a' && ch <= 'z') || ch == '_'))
+    return 0;
+  for (index = 1u; index < size; ++index) {
+    ch = data[index];
+    if (!((ch >= 'A' && ch <= 'Z') ||
+          (ch >= 'a' && ch <= 'z') ||
+          (ch >= '0' && ch <= '9') ||
+          ch == '_' || ch == '-' || ch == '.'))
+      return 0;
+  }
+  return 1;
+}
+
+static int xml_writer_name_valid(const char *name) {
+  return name != NULL &&
+         xml_writer_name_valid_bytes(
+             (const unsigned char *)name, strlen(name));
+}
+
 static cserde_status xml_writer_copy_slice(
     const cserde_token *token, char **out) {
   char *copy;
@@ -146,7 +172,10 @@ static cserde_status xml_root_writer_write(
       owner->complete = 1;
       return CSERDE_OK;
     }
-    if (token->kind != CSERDE_STRING) return CSERDE_UNSUPPORTED;
+    if (token->kind != CSERDE_STRING ||
+        !xml_writer_name_valid_bytes(
+            token->value.slice.data, token->value.slice.size))
+      return CSERDE_UNSUPPORTED;
     return xml_writer_copy_slice(token, &owner->pending_key);
   }
 
@@ -236,10 +265,10 @@ DataBindStatus data_bind_xml_writer_open_root(
   memset(out_writer, 0, sizeof(*out_writer));
   out_writer->size = out_size;
 
-  if (root_name == NULL || root_name[0] == '\0' || write == NULL)
+  if (!xml_writer_name_valid(root_name) || write == NULL)
     return xml_writer_error(
         error, DATA_BIND_ERR_INVALID_ARG,
-        "XML writer requires an explicit root name and byte sink");
+        "XML writer requires a valid namespace-free root name and byte sink");
   if (max_depth < 1u)
     return xml_writer_error(
         error, DATA_BIND_ERR_LIMIT,

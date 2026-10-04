@@ -911,6 +911,30 @@ salts_xml_string_view salts_xml_node_text_view(salts_xml_node node) {
     }
 }
 
+int salts_xml_node_text_has_entity_reference(salts_xml_node node) {
+    const cxml_text_node *text = NULL;
+    if (node.impl == NULL) return 0;
+    switch (_cxml_node_type(node.impl)) {
+        case CXML_ELEM_NODE: {
+            const cxml_elem_node *element = (const cxml_elem_node *)node.impl;
+            if (element->has_text &&
+                !cxml_list_is_empty((cxml_list *)&element->children)) {
+                const void *first =
+                    cxml_list_get((cxml_list *)&element->children, 0);
+                if (first != NULL && _cxml_node_type(first) == CXML_TEXT_NODE)
+                    text = (const cxml_text_node *)first;
+            }
+            break;
+        }
+        case CXML_TEXT_NODE:
+            text = (const cxml_text_node *)node.impl;
+            break;
+        default:
+            break;
+    }
+    return text != NULL && text->has_entity && !text->is_cdata;
+}
+
 char *salts_xml_node_serialize(salts_xml_node node, size_t *out_size) {
     char *serialized;
     if (out_size != NULL) *out_size = 0u;

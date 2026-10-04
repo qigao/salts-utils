@@ -484,6 +484,33 @@ spec("DataBind FormatPlan and TransportPlan") {
         DATA_BIND_ERR_SCHEMA);
     check_null(plan);
 
+    /* Reader admission preserves the format's actual token states without
+     * requiring it to publish every logical output state. XML/CSV may read a
+     * nullable contract when the concrete source supplies ABSENT/VALUE only. */
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_format_plan_compile_reader(
+            codec, "Request", DATA_BIND_FORMAT_XML, &plan, &error),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan != NULL) {
+      DataBindFormatPlanInfo reader_info = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      check(data_bind_format_plan_info(plan, &reader_info));
+      check_true(reader_info.has_nullable);
+      check((reader_info.value_states & DATA_BIND_FORMAT_STATE_NULL) == 0u);
+      data_bind_format_plan_free(plan);
+      plan = NULL;
+    }
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_format_plan_compile_reader(
+            codec, "Request", DATA_BIND_FORMAT_CSV, &plan, &error),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    data_bind_format_plan_free(plan);
+    plan = NULL;
+
     check_equal(
         data_bind_format_plan_compile(
             codec, "Request", DATA_BIND_FORMAT_YAML, &plan, &error),
