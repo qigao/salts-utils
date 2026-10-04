@@ -55,7 +55,7 @@ spec("generated nullable DataBind artifact") {
       check_not_null(strstr(text, "\"display_name\":null"));
       check_not_null(strstr(text, "\"score\":7"));
     }
-    tbe_typed_serialized_free(text);
+    data_bind_serialized_free(text);
     text = NULL;
     text_len = 0u;
 
@@ -64,11 +64,11 @@ spec("generated nullable DataBind artifact") {
         DATA_BIND_OK);
     check_not_null(text);
     check(text_len != 0u);
-    tbe_typed_serialized_free(text);
+    data_bind_serialized_free(text);
     text = NULL;
     text_len = 0u;
 
-    check_equal(User_to_bin(&user, &wire, &wire_len, &error), DATA_BIND_OK);
+    check_equal(User_to_bin(codec, &user, &wire, &wire_len, &error), DATA_BIND_OK);
     check_not_null(wire);
     check(wire_len != 0u);
     if (wire != NULL) {
@@ -77,7 +77,7 @@ spec("generated nullable DataBind artifact") {
           DATA_BIND_OK);
       check_nullable_user(&decoded);
     }
-    tbe_typed_serialized_free(wire);
+    data_bind_binary_free(wire);
     wire = NULL;
 
     error = (DataBindError)DATA_BIND_ERROR_INIT;
@@ -117,6 +117,6 @@ spec("generated nullable DataBind artifact") {
     check_not_null(text);
     if (text != NULL)
       check_not_null(strstr(text, "\"score\":null"));
-    tbe_typed_serialized_free(text);
+    data_bind_serialized_free(text);
   }
 }

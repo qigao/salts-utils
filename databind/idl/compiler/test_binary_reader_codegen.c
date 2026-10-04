@@ -115,7 +115,10 @@ spec("DataBind compiler Binary reader codegen") {
           "data_bind_binary_reader_open(");
       check_contains(
           text,
-          "DATA_BIND_FORMAT_PROVIDER_INIT(");
+          "data_bind_binary_writer_open(");
+      check_contains(
+          text,
+          "DATA_BIND_FORMAT_PROVIDER_WITH_SELECTION_AND_WRITER_INIT(");
     }
 
     free(text);

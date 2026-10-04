@@ -174,6 +174,7 @@ int databind_compiler_binary_reader_emit(
           "#ifndef DATABIND_GENERATED_%s_READER_INCLUDED\n"
           "#define DATABIND_GENERATED_%s_READER_INCLUDED\n\n"
           "#include <data_bind_binary_reader.h>\n"
+          "#include <data_bind_binary_writer.h>\n"
           "#include <data_bind_format_provider.h>\n\n",
           symbol, symbol) < 0)
     goto cleanup;
@@ -274,9 +275,22 @@ int databind_compiler_binary_reader_emit(
           "static void %s_close(cserde_reader *reader, void *owner) {\n"
           "  data_bind_binary_reader_close(reader, owner);\n"
           "}\n"
+          "static DataBindStatus %s_writer_open(\n"
+          "    DataBindWriteFn write, void *write_user, size_t max_depth,\n"
+          "    cserde_writer **out_writer, void **out_owner,\n"
+          "    DataBindError *error) {\n"
+          "  return data_bind_binary_writer_open(\n"
+          "      &%s_plan, write, write_user, max_depth,\n"
+          "      out_writer, out_owner, error);\n"
+          "}\n"
+          "static DataBindStatus %s_writer_close(\n"
+          "    cserde_writer *writer, void *owner, DataBindError *error) {\n"
+          "  return data_bind_binary_writer_close(writer, owner, error);\n"
+          "}\n"
           "static const DataBindFormatProvider %s_provider =\n"
-          "    DATA_BIND_FORMAT_PROVIDER_INIT(\n"
-          "        DATA_BIND_FORMAT_BINARY, %s_open, %s_close);\n\n"
+          "    DATA_BIND_FORMAT_PROVIDER_WITH_SELECTION_AND_WRITER_INIT(\n"
+          "        DATA_BIND_FORMAT_BINARY, %s_open, %s_close, NULL,\n"
+          "        %s_writer_open, %s_writer_close);\n\n"
           "static inline const DataBindBinaryLayoutPlan *\n"
           "%s_databind_binary_layout_plan(void) {\n"
           "  return &%s_plan;\n"
@@ -288,7 +302,11 @@ int databind_compiler_binary_reader_emit(
           "#endif /* DATABIND_GENERATED_%s_READER_INCLUDED */\n",
           symbol, symbol,
           symbol,
-          symbol, symbol, symbol,
+          symbol, symbol,
+          symbol,
+          symbol,
+          symbol, symbol,
+          symbol, symbol,
           symbol, symbol,
           symbol, symbol,
           symbol) < 0)

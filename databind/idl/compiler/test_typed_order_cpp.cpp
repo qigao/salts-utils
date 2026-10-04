@@ -48,7 +48,7 @@ spec("generated typed Order C++ owner") {
       check_equal(order.to_json(codec, &serialized, &serialized_len, &error), DATA_BIND_OK);
       check_not_null(serialized);
       check_greater(serialized_len, 0);
-      check_equal(order.to_bin(&wire, &wire_len, &error), DATA_BIND_OK);
+      check_equal(order.to_bin(codec, &wire, &wire_len, &error), DATA_BIND_OK);
       check_not_null(wire);
       check_greater(wire_len, 0);
       if (wire != nullptr) {
@@ -59,8 +59,8 @@ spec("generated typed Order C++ owner") {
         check_equal(decoded->routing_hint, 12u);
         check_equal(decoded->client_tag, "cpp");
       }
-      tbe_typed_serialized_free(serialized);
-      tbe_typed_serialized_free(wire);
+      data_bind_serialized_free(serialized);
+      data_bind_binary_free(wire);
     }
     data_bind_free(codec);
   }

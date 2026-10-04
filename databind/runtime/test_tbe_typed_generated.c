@@ -7,7 +7,7 @@
 enum { GENERATED_WIRE_CAPACITY = 128 };
 
 spec("generated typed descriptor compatibility") {
-  it("round trips compiled generated nested fixed descriptors") {
+  it("fails closed for generated nested Binary layouts without canonical admission") {
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     Heartbeat_t source = {0};
@@ -23,22 +23,16 @@ spec("generated typed descriptor compatibility") {
     source.header.timestamp = UINT64_C(0x0123456789abcdef);
     source.load = 73u;
     if (codec != NULL) {
-      status = Heartbeat_to_bin_into(&source, wire, sizeof(wire), &length, &error);
-      check_equal(status, DATA_BIND_OK);
-      if (status == DATA_BIND_OK) {
-        check_equal(Heartbeat_from_bin(codec, &decoded, wire, length, &error), DATA_BIND_OK);
-        check_equal(decoded.header.type, source.header.type);
-        check_equal(decoded.header.seq_num, source.header.seq_num);
-        check_equal(decoded.header.timestamp, source.header.timestamp);
-        check_equal(decoded.load, source.load);
-      }
+      status = Heartbeat_to_bin_into(codec, &source, wire, sizeof(wire), &length, &error);
+      check_equal(status, DATA_BIND_ERR_SCHEMA);
+      check_equal(length, (size_t)0u);
     }
     Heartbeat_clear(&decoded);
     Heartbeat_clear(&source);
     data_bind_free(codec);
   }
 
-  it("round trips compiled generated fixed bytes and an owning string tail") {
+  it("fails closed for generated mixed fixed-bytes and nested Binary layouts") {
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     LoginMessage_t source = {0};
@@ -56,18 +50,9 @@ spec("generated typed descriptor compatibility") {
     source.username = tstr_dup("descriptor-boundary");
     check_not_null(source.username);
     if (codec != NULL && source.username != NULL) {
-      status = LoginMessage_to_bin_into(&source, wire, sizeof(wire), &length, &error);
-      check_equal(status, DATA_BIND_OK);
-      if (status == DATA_BIND_OK) {
-        check_equal(LoginMessage_from_bin(codec, &decoded, wire, length, &error), DATA_BIND_OK);
-        check_equal(decoded.header.type, source.header.type);
-        check_equal(decoded.header.seq_num, source.header.seq_num);
-        check_equal(decoded.header.timestamp, source.header.timestamp);
-        check_equal(memcmp(decoded.pass_hash, source.pass_hash, sizeof(source.pass_hash)), 0);
-        check_not_null(decoded.username);
-        if (decoded.username != NULL)
-          check_equal(strcmp(decoded.username, source.username), 0);
-      }
+      status = LoginMessage_to_bin_into(codec, &source, wire, sizeof(wire), &length, &error);
+      check_equal(status, DATA_BIND_ERR_SCHEMA);
+      check_equal(length, (size_t)0u);
     }
     LoginMessage_clear(&decoded);
     LoginMessage_clear(&source);

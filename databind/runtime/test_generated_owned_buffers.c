@@ -219,7 +219,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(
         NativeHeaderPolicy_to_bin(
-            &from_json, &legacy_binary, &legacy_binary_len, &error),
+            codec, &from_json, &legacy_binary, &legacy_binary_len, &error),
         DATA_BIND_ERR_SCHEMA);
     check_null(legacy_binary);
     check_equal(legacy_binary_len, (size_t)0u);
