@@ -1601,7 +1601,8 @@ static DataBindStatus message_decode_native_impl(
       format != DATA_BIND_FORMAT_JSON &&
       format != DATA_BIND_FORMAT_YAML &&
       format != DATA_BIND_FORMAT_CSV &&
-      format != DATA_BIND_FORMAT_XML)
+      format != DATA_BIND_FORMAT_XML &&
+      format != DATA_BIND_FORMAT_BINARY)
     return message_fail(
         diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
         "Unsupported native MessagePlan input format");

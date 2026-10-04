@@ -1,4 +1,5 @@
 #include "cmeta_graph_generated.h"
+#include "tbe_typed.h"
 #include "tinytest.h"
 
 #include <salts_cmeta_data.h>

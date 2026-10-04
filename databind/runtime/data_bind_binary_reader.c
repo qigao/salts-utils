@@ -125,7 +125,6 @@ DataBindStatus data_bind_binary_layout_plan_validate(
       plan->size < sizeof(*plan) ||
       plan->abi_version != DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION ||
       plan->type_name == NULL || plan->type_name[0] == '\0' ||
-      plan->fixed_block_size == 0u ||
       (plan->field_count != 0u && plan->fields == NULL))
     return binary_fail(
         error, DATA_BIND_ERR_INVALID_ARG, NULL,
@@ -218,6 +217,10 @@ DataBindStatus data_bind_binary_layout_plan_validate(
     }
   }
 
+  if (plan->fixed_block_size == 0u && !saw_var_data)
+    return binary_fail(
+        error, DATA_BIND_ERR_INVALID_ARG, plan->type_name,
+        "Binary reader plan has no fixed block or VAR_DATA tail");
   return DATA_BIND_OK;
 }
 

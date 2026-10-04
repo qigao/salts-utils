@@ -626,6 +626,28 @@ set_tests_properties(test_tbe_typed_nullable_binary PROPERTIES
 # This fixture executes salts_idlc during the build. Do not run a target-
 # platform executable on the build host when cross-compiling (e.g. Android).
 if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
+  set(BINARY_TAIL_ONLY_DIR "${CMAKE_CURRENT_BINARY_DIR}/binary_tail_only_generated")
+  add_custom_command(
+    OUTPUT "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.h"
+           "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.c"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_TAIL_ONLY_DIR}"
+    COMMAND $<TARGET_FILE:salts_idlc>
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_tail_only.schema"
+            --lang c
+            --output "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.h"
+            --source-output "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.c"
+    DEPENDS salts_idlc "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_tail_only.schema"
+    VERBATIM)
+  cmake_add_test(test_binary_tail_only
+    SOURCES test_binary_tail_only.c
+            "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.c"
+            "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.h"
+    LIBS ${DATA_BIND_TEST_LIBS}
+    INCLUDES "${BINARY_TAIL_ONLY_DIR}"
+    FOLDER "databind/runtime/tests")
+  set_tests_properties(test_binary_tail_only PROPERTIES
+    LABELS "databind;binary;generated")
+
   set(TBE_SAFETY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/descriptor_safety_generated")
   set(TBE_SAFETY_GENERATED_HEADER "${TBE_SAFETY_GENERATED_DIR}/tbe30_generated.h")
   set(TBE_SAFETY_GENERATED_SOURCE "${TBE_SAFETY_GENERATED_DIR}/tbe30_generated.c")
