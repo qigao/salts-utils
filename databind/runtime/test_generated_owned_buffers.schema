@@ -27,6 +27,11 @@ message NativeXmlFlat {
     string name;
 }
 
+message NativeCsvFlat {
+    uint32 id;
+    string name;
+}
+
 message NativeHeaderNestedOnly {
     uint32 id;
     list<NativeHeader> headers;

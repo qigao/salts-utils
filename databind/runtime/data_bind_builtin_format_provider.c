@@ -22,3 +22,14 @@ data_bind_builtin_format_provider(DataBindFormat format) {
     return NULL;
   }
 }
+
+DATA_BIND_API DataBindStatus data_bind_builtin_format_reader_open_csv_row(
+    const char *data,
+    size_t len,
+    size_t row,
+    size_t max_depth,
+    DataBindFormatReader *out_reader,
+    DataBindError *error) {
+  return data_bind_csv_format_reader_open_row(
+      data, len, row, max_depth, out_reader, error);
+}

@@ -1366,7 +1366,7 @@ spec("DataBind canonical Service BindingPlan") {
     data_bind_free(codec);
   }
 
-  it("coerces XML text scalars only through format-aware native decode") {
+  it("coerces CSV and XML text scalars only through format-aware native decode") {
     DataBind *codec = create_state_codec();
     DataBindMessagePlan *plan = NULL;
     DataBindMessagePlanDiagnostic diagnostic =
@@ -1432,7 +1432,7 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(strict_value.presence, (uint8_t)0u);
     check_equal(strict_value.nulls, (uint8_t)0u);
 
-    strict_value.required_value = UINT32_C(77);
+    strict_value = (StateRequest){0};
     diagnostic =
         (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
     check_true(message_reader_init(
@@ -1442,8 +1442,13 @@ spec("DataBind canonical Service BindingPlan") {
         data_bind_message_plan_decode_native_format(
             plan, &options, DATA_BIND_FORMAT_CSV, &reader,
             &strict_value, sizeof(strict_value), &diagnostic),
-        DATA_BIND_ERR_INVALID_ARG);
-    check_equal(strict_value.required_value, UINT32_C(77));
+        DATA_BIND_OK);
+    check_equal(strict_value.required_value, UINT32_C(9));
+    check_equal(strict_value.optional_value, UINT32_C(0));
+    check_equal(strict_value.nullable_value, UINT32_C(41));
+    check_equal(strict_value.defaulted_value, UINT32_C(7));
+    check_equal(strict_value.presence, (uint8_t)(1u << 1));
+    check_equal(strict_value.nulls, (uint8_t)0u);
 
     data_bind_message_plan_free(plan);
     data_bind_free(codec);

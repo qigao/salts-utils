@@ -171,10 +171,12 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native(
  * Decode one native message using explicit text-format token semantics.
  *
  * JSON/YAML retain the strict canonical token rules of
- * data_bind_message_plan_decode_native(). XML additionally admits textual leaf
- * scalar coercion through each field's canonical CMeta descriptor:
+ * data_bind_message_plan_decode_native(). CSV and XML additionally admit
+ * textual leaf scalar coercion through each field's canonical CMeta descriptor:
  * BOOL/SINT/UINT/FLOAT text becomes the corresponding CSerde scalar token
  * before native decode. String/bytes/enum/container semantics are unchanged.
+ * CSV row selection, empty-cell omission and header-name canonicalization are
+ * provider/FormatPlan concerns and are not performed by this API.
  *
  * No provider selection or parsing occurs here; the caller supplies the exact
  * CSerde reader for the declared format.
