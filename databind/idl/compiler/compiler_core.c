@@ -2111,8 +2111,17 @@ static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
 
     tbe_compiler_remove_children(record, "cmeta_native_xml_flat_supported");
 
+    /*
+     * Flat XML publication composes two authorities:
+     *   - CMeta owns the reflected physical fields;
+     *   - DataBind MessagePlan ownss presence/null overlay state.
+     *
+     * Do not require whole-record cmeta_lifecycle_supported here: optional
+     * and nullable overlay bytes are intentionally not CMeta fields. The
+     * generated helper preflights physical move support at runtime and copies
+     * overlay state through the exact native binding.
+     */
     if (!tbe_compiler_has_child(record, "cmeta_graph_supported") ||
-        !tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
         tbe_compiler_string_value(
             record, "cmeta_native_descriptor_depth") == NULL ||
         tbe_compiler_string_value(
