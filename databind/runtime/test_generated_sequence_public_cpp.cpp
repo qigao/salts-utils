@@ -55,6 +55,7 @@ int main() {
     const cmeta_declared_type *declared =
         field != nullptr ? field->declared_type : nullptr;
     if (declared == nullptr || !cmeta_declared_type_valid(declared) ||
+        cmeta_declared_type_constructible(declared) ||
         declared->constructor == nullptr ||
         declared->constructor->stable_id == nullptr ||
         std::strcmp(declared->constructor->stable_id,
@@ -75,6 +76,7 @@ int main() {
     const cmeta_declared_type *declared =
         field != nullptr ? field->declared_type : nullptr;
     if (declared == nullptr || !cmeta_declared_type_valid(declared) ||
+        cmeta_declared_type_constructible(declared) ||
         declared->constructor == nullptr ||
         declared->constructor->stable_id == nullptr ||
         std::strcmp(declared->constructor->stable_id,
