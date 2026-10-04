@@ -27,3 +27,9 @@ message OwnedBytesState {
 message MapState {
     optional map<string,uint32> attrs;
 }
+
+[id(5)]
+message FixedBytesState {
+    optional bytes(16) payload;
+    nullable bytes(8) note;
+}
