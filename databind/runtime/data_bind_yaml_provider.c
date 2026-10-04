@@ -5,9 +5,11 @@
 #include <json_cserde_reader.h>
 #include <json_parser.h>
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct data_bind_yaml_owner {
   cyaml_doc_t *document;
@@ -308,12 +310,311 @@ static void yaml_provider_close(cserde_reader *reader, void *opaque) {
   }
 }
 
+
+typedef struct data_bind_yaml_writer_frame {
+  cserde_token_kind begin_kind;
+  cyaml_node_t *node;
+  int expect_key;
+} data_bind_yaml_writer_frame;
+
+typedef struct data_bind_yaml_writer_owner {
+  cserde_writer writer;
+  DataBindWriteFn write;
+  void *write_user;
+  cyaml_doc_t *document;
+  data_bind_yaml_writer_frame *frames;
+  size_t max_depth;
+  size_t depth;
+  char *pending_key;
+  int root_written;
+} data_bind_yaml_writer_owner;
+
+static cserde_status yaml_writer_attach(
+    data_bind_yaml_writer_owner *owner,
+    cyaml_node_t *node) {
+  data_bind_yaml_writer_frame *frame;
+  if (owner == NULL || node == NULL) return CSERDE_INVALID_ARGUMENT;
+
+  if (owner->depth == 0u) {
+    if (owner->root_written) return CSERDE_UNSUPPORTED;
+    cyaml_set_root(owner->document, node);
+    owner->root_written = 1;
+    return CSERDE_OK;
+  }
+
+  frame = &owner->frames[owner->depth - 1u];
+  if (frame->begin_kind == CSERDE_ARRAY_BEGIN)
+    return cyaml_seq_push(frame->node, node)
+               ? CSERDE_OK
+               : CSERDE_CALLBACK_ERROR;
+
+  if (frame->begin_kind != CSERDE_MAP_BEGIN ||
+      frame->expect_key || owner->pending_key == NULL)
+    return CSERDE_UNSUPPORTED;
+
+  if (!cyaml_map_set(
+          owner->document, frame->node, owner->pending_key, node))
+    return CSERDE_CALLBACK_ERROR;
+  free(owner->pending_key);
+  owner->pending_key = NULL;
+  frame->expect_key = 1;
+  return CSERDE_OK;
+}
+
+static cyaml_node_t *yaml_writer_scalar(
+    data_bind_yaml_writer_owner *owner,
+    const cserde_token *token) {
+  if (owner == NULL || token == NULL) return NULL;
+  switch (token->kind) {
+  case CSERDE_NULL:
+    return cyaml_new_null(owner->document);
+  case CSERDE_BOOL:
+    return cyaml_new_bool(owner->document, token->value.boolean);
+  case CSERDE_SINT:
+    return cyaml_new_int(owner->document, token->value.sint);
+  case CSERDE_UINT:
+    return cyaml_new_uint(owner->document, token->value.uint);
+  case CSERDE_FLOAT:
+    return isfinite(token->value.floating)
+               ? cyaml_new_float(owner->document, token->value.floating)
+               : NULL;
+  case CSERDE_STRING:
+    if (token->value.slice.size != 0u &&
+        token->value.slice.data == NULL)
+      return NULL;
+    return cyaml_new_str(
+        owner->document,
+        token->value.slice.size != 0u
+            ? (const char *)token->value.slice.data
+            : "",
+        token->value.slice.size);
+  default:
+    return NULL;
+  }
+}
+
+static cserde_status yaml_writer_map_key(
+    data_bind_yaml_writer_owner *owner,
+    data_bind_yaml_writer_frame *frame,
+    const cserde_token *token) {
+  char *key;
+  if (owner == NULL || frame == NULL || token == NULL ||
+      token->kind != CSERDE_STRING || !frame->expect_key ||
+      owner->pending_key != NULL ||
+      (token->value.slice.size != 0u &&
+       token->value.slice.data == NULL))
+    return CSERDE_UNSUPPORTED;
+  if (token->value.slice.size == SIZE_MAX)
+    return CSERDE_LIMIT_EXCEEDED;
+  key = (char *)malloc(token->value.slice.size + 1u);
+  if (key == NULL) return CSERDE_CALLBACK_ERROR;
+  if (token->value.slice.size != 0u)
+    memcpy(key, token->value.slice.data, token->value.slice.size);
+  key[token->value.slice.size] = '\0';
+  owner->pending_key = key;
+  frame->expect_key = 0;
+  return CSERDE_OK;
+}
+
+static cserde_status yaml_cserde_write(
+    void *opaque,
+    const cserde_token *token) {
+  data_bind_yaml_writer_owner *owner =
+      (data_bind_yaml_writer_owner *)opaque;
+  data_bind_yaml_writer_frame *frame;
+  cyaml_node_t *node;
+  cserde_status status;
+
+  if (owner == NULL || token == NULL) return CSERDE_INVALID_ARGUMENT;
+
+  if (owner->depth != 0u) {
+    frame = &owner->frames[owner->depth - 1u];
+    if (frame->begin_kind == CSERDE_MAP_BEGIN &&
+        frame->expect_key && token->kind != CSERDE_MAP_END)
+      return yaml_writer_map_key(owner, frame, token);
+  }
+
+  if (token->kind == CSERDE_ARRAY_END ||
+      token->kind == CSERDE_MAP_END) {
+    if (owner->depth == 0u) return CSERDE_UNSUPPORTED;
+    frame = &owner->frames[owner->depth - 1u];
+    if ((token->kind == CSERDE_ARRAY_END &&
+         frame->begin_kind != CSERDE_ARRAY_BEGIN) ||
+        (token->kind == CSERDE_MAP_END &&
+         (frame->begin_kind != CSERDE_MAP_BEGIN ||
+          !frame->expect_key || owner->pending_key != NULL)))
+      return CSERDE_UNSUPPORTED;
+    --owner->depth;
+    return CSERDE_OK;
+  }
+
+  if (token->kind == CSERDE_ARRAY_BEGIN ||
+      token->kind == CSERDE_MAP_BEGIN) {
+    if (owner->depth >= owner->max_depth)
+      return CSERDE_LIMIT_EXCEEDED;
+    node = token->kind == CSERDE_ARRAY_BEGIN
+               ? cyaml_new_seq(owner->document)
+               : cyaml_new_map(owner->document);
+    if (node == NULL) return CSERDE_CALLBACK_ERROR;
+    status = yaml_writer_attach(owner, node);
+    if (status != CSERDE_OK) return status;
+    frame = &owner->frames[owner->depth++];
+    frame->begin_kind = token->kind;
+    frame->node = node;
+    frame->expect_key = token->kind == CSERDE_MAP_BEGIN;
+    return CSERDE_OK;
+  }
+
+  if (token->kind == CSERDE_BYTES)
+    return CSERDE_UNSUPPORTED;
+
+  node = yaml_writer_scalar(owner, token);
+  if (node == NULL) return CSERDE_UNSUPPORTED;
+  return yaml_writer_attach(owner, node);
+}
+
+static cserde_status yaml_cserde_finish(void *opaque) {
+  data_bind_yaml_writer_owner *owner =
+      (data_bind_yaml_writer_owner *)opaque;
+  char *output;
+  size_t output_len = 0u;
+  int write_status;
+
+  if (owner == NULL || owner->write == NULL ||
+      owner->document == NULL || !owner->root_written ||
+      owner->depth != 0u || owner->pending_key != NULL)
+    return CSERDE_UNSUPPORTED;
+
+  output = cyaml_emit(owner->document, NULL, &output_len);
+  if (output == NULL) return CSERDE_CALLBACK_ERROR;
+  write_status = owner->write(output, output_len, owner->write_user);
+  free(output);
+  return write_status == 0 ? CSERDE_OK : CSERDE_SINK_ERROR;
+}
+
+static const cserde_writer_ops YAML_WRITER_OPS = {
+    sizeof(cserde_writer_ops),
+    CSERDE_WRITER_OPS_ABI_VERSION,
+    yaml_cserde_write,
+    yaml_cserde_finish};
+
+static DataBindStatus yaml_provider_writer_status(
+    cserde_status status,
+    DataBindError *error) {
+  switch (status) {
+  case CSERDE_OK:
+    return yaml_provider_error(error, DATA_BIND_OK, "");
+  case CSERDE_LIMIT_EXCEEDED:
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_LIMIT,
+        "YAML writer exceeded its configured depth");
+  case CSERDE_UNSUPPORTED:
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_TYPE_MISMATCH,
+        "Canonical CSerde token stream is not representable as YAML");
+  case CSERDE_SINK_ERROR:
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_IO,
+        "YAML writer byte sink rejected output");
+  case CSERDE_CALLBACK_ERROR:
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_OOM,
+        "YAML writer could not build or emit the document");
+  default:
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_RUNTIME,
+        "YAML CSerde writer failed");
+  }
+}
+
+static DataBindStatus yaml_provider_writer_open(
+    DataBindWriteFn write,
+    void *write_user,
+    size_t max_depth,
+    cserde_writer **out_writer,
+    void **out_owner,
+    DataBindError *error) {
+  data_bind_yaml_writer_owner *owner;
+
+  if (write == NULL || out_writer == NULL || out_owner == NULL)
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_INVALID_ARG,
+        "Invalid YAML writer request");
+  *out_writer = NULL;
+  *out_owner = NULL;
+
+  if (max_depth > SIZE_MAX / sizeof(*owner->frames))
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_LIMIT,
+        "YAML writer depth is too large");
+
+  owner = (data_bind_yaml_writer_owner *)calloc(1u, sizeof(*owner));
+  if (owner == NULL)
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_OOM,
+        "Unable to allocate YAML writer lease");
+  owner->write = write;
+  owner->write_user = write_user;
+  owner->max_depth = max_depth;
+  owner->document = cyaml_doc_new();
+  if (owner->document == NULL) {
+    free(owner);
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_OOM,
+        "Unable to allocate YAML writer document");
+  }
+  if (max_depth != 0u) {
+    owner->frames = (data_bind_yaml_writer_frame *)calloc(
+        max_depth, sizeof(*owner->frames));
+    if (owner->frames == NULL) {
+      cyaml_free(owner->document);
+      free(owner);
+      return yaml_provider_error(
+          error, DATA_BIND_ERR_OOM,
+          "Unable to allocate YAML writer depth stack");
+    }
+  }
+  if (cserde_writer_init(
+          &owner->writer, &YAML_WRITER_OPS, owner) != CSERDE_OK) {
+    free(owner->frames);
+    cyaml_free(owner->document);
+    free(owner);
+    return yaml_provider_error(
+        error, DATA_BIND_ERR_RUNTIME,
+        "Unable to initialize YAML CSerde writer");
+  }
+
+  *out_writer = &owner->writer;
+  *out_owner = owner;
+  return yaml_provider_error(error, DATA_BIND_OK, "");
+}
+
+static DataBindStatus yaml_provider_writer_close(
+    cserde_writer *writer,
+    void *opaque,
+    DataBindError *error) {
+  data_bind_yaml_writer_owner *owner =
+      (data_bind_yaml_writer_owner *)opaque;
+  cserde_status status =
+      writer != NULL ? cserde_writer_finish(writer)
+                     : CSERDE_INVALID_ARGUMENT;
+  if (owner != NULL) {
+    free(owner->pending_key);
+    free(owner->frames);
+    cyaml_free(owner->document);
+    free(owner);
+  }
+  return yaml_provider_writer_status(status, error);
+}
+
 static const DataBindFormatProvider YAML_PROVIDER =
-    DATA_BIND_FORMAT_PROVIDER_WITH_SELECTION_INIT(
+    DATA_BIND_FORMAT_PROVIDER_WITH_SELECTION_AND_WRITER_INIT(
         DATA_BIND_FORMAT_YAML,
         yaml_provider_open,
         yaml_provider_close,
-        yaml_provider_open_selected);
+        yaml_provider_open_selected,
+        yaml_provider_writer_open,
+        yaml_provider_writer_close);
 
 const DataBindFormatProvider *data_bind_yaml_format_provider(void) {
   return &YAML_PROVIDER;
