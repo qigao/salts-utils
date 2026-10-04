@@ -513,7 +513,7 @@ static void check_database_language_empty_conflicting_output_fails_fast(
 
 spec("tbe_compiler") {
   describe("nullable state generator IR") {
-    it("renders independent presence and null overlays") {
+    it("renders independent presence and null metadata in wire C") {
       const char *schema =
           "schema State [version(1)];"
           "message User {"
@@ -522,9 +522,6 @@ spec("tbe_compiler") {
           "  optional nullable uint32 tri_value;"
           "}";
       char *output = render_c_template(schema);
-      const char *presence;
-      const char *nulls;
-      const char *value;
 
       check_not_null(output);
       if (!output) return;
@@ -538,19 +535,9 @@ spec("tbe_compiler") {
       check_contains(output, "User_OPTIONAL_tri_value = 1");
       check_contains(output, "User_NULLABLE_nullable_value = 0");
       check_contains(output, "User_NULLABLE_tri_value = 1");
-      check_contains(output, "uint8_t _presence[1];");
-      check_contains(output, "uint8_t _nulls[1];");
-
-      presence = strstr(output, "uint8_t _presence[1];");
-      nulls = strstr(output, "uint8_t _nulls[1];");
-      value = strstr(output, "uint32_t optional_value;");
-      check_not_null(presence);
-      check_not_null(nulls);
-      check_not_null(value);
-      if (presence && nulls && value) {
-        check(presence < nulls);
-        check(nulls < value);
-      }
+      check(strstr(output, "uint8_t _presence[") == NULL);
+      check(strstr(output, "uint8_t _nulls[") == NULL);
+      check_contains(output, "uint32_t optional_value;");
 
       free(output);
     }
@@ -2704,8 +2691,9 @@ spec("tbe_compiler") {
       check_not_null(source);
       if (header != NULL) check_contains(header, "uint32_t order_id;");
       if (source != NULL) {
-        check_contains(source, ".name = \"id\"");
+        check_contains(source, "{sizeof(DataBindBinaryFieldPlan), \"id\",");
         check_contains(source, "offsetof(Order_t, order_id)");
+        check(strstr(source, "TbeTypedType Order_TYPED_TYPE") == NULL);
       }
 
       free(header);
@@ -3130,7 +3118,7 @@ spec("tbe_compiler") {
       check_contains(output, "#define Color_Red ((Color_t)UINT64_C(0))");
       check_contains(output, "#define Color_Green ((Color_t)UINT64_C(5))");
       check_contains(output, "#define Color_Blue ((Color_t)UINT64_C(6))");
-      check_contains(output, "bytes payload;");
+      check_contains(output, "stl_byte_buffer payload;");
       check_contains(output, "uint8_t digest[16];");
       check_contains(output, "typedef struct Blob_builder_s {");
       check_contains(output, "static inline bool Blob_builder_bind");
