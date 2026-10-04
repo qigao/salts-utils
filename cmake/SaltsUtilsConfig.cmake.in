@@ -16,10 +16,6 @@ if(NOT IS_DIRECTORY "${SALTS_ROOT_PATH}")
 endif()
 
 include(CMakeFindDependencyMacro)
-find_package(OpenSSL CONFIG QUIET)
-if(NOT TARGET OpenSSL::Crypto)
-  find_dependency(OpenSSL REQUIRED)
-endif()
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
 find_dependency(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
