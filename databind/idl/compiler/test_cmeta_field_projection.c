@@ -510,12 +510,42 @@ suite("compiler_cmeta_field_projection") {
                 EXPECTED[i].requirement == EXPECT_OVERLAY_NULL ||
                 EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE_NULL) {
                 check_not_null(field_projection_child(
-                    record, "cmeta_scalar_overlay_lifecycle"));
+                    record, "cmeta_local_overlay_lifecycle"));
                 check_null(field_projection_child(record,
                                                   "cmeta_lifecycle_supported"));
             }
         }
 
+        node_free(root);
+    }
+
+    it("uses CMeta for local optional string lifecycle without container admission") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "OptionalText");
+        field = field_projection_add_field(record, "OptionalText", "value", "string");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+
+        annotate_language_types_from_tree(root);
+
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "overlay_presence");
+        check_equal(field_projection_text(field, "native_data_symbol"),
+                    "salts_tstr_cmeta_data");
+        check_not_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(record,
+                                              "cmeta_local_overlay_lifecycle"));
+        check_not_null(field_projection_child(record, "no_legacy_typed_table"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
         node_free(root);
     }
 
@@ -1067,13 +1097,13 @@ suite("compiler_cmeta_field_projection") {
             "cmeta_graph_supported"));
         check_null(field_projection_child(
             field_projection_record(root, "messages", "Sample"),
-            "cmeta_canonical_message"));
+            "no_legacy_typed_table"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "BoolStorage"),
-            "cmeta_canonical_message"));
-        check_null(field_projection_child(
+            "no_legacy_typed_table"));
+        check_not_null(field_projection_child(
             field_projection_record(root, "messages", "OptionalStorage"),
-            "cmeta_canonical_message"));
+            "no_legacy_typed_table"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "FlagStorage"),
             "cmeta_graph_supported"));

@@ -6,3 +6,11 @@ message ScalarState {
     nullable uint32 nullable_value;
     optional nullable uint32 tri_value;
 }
+
+[id(2)]
+message OwnedState {
+    uint32 count;
+    optional string label;
+    nullable string note;
+    optional nullable string tri_value;
+}

@@ -2317,19 +2317,20 @@ static int tbe_compiler_typed_type_referenced(Node *root, const char *name) {
   return 0;
 }
 
-static void tbe_compiler_annotate_canonical_messages(Node *root) {
+static void tbe_compiler_annotate_messages_without_legacy_tables(Node *root) {
   Node *messages = tbe_compiler_find_child(root, "messages");
   size_t i;
   if (messages == NULL || messages->type != NODE_LIST) return;
   for (i = 0u; i < messages->data.list.count; ++i) {
     Node *record = messages->data.list.items[i];
     const char *name = tbe_compiler_string_value(record, "name");
-    tbe_compiler_remove_children(record, "cmeta_canonical_message");
+    tbe_compiler_remove_children(record, "no_legacy_typed_table");
     if (name != NULL &&
         tbe_compiler_has_child(record, "cmeta_graph_supported") &&
-        tbe_compiler_has_child(record, "cmeta_lifecycle_supported") &&
+        (tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
+         tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle")) &&
         !tbe_compiler_typed_type_referenced(root, name))
-      (void)tbe_compiler_set_string(record, "cmeta_canonical_message", "1");
+      (void)tbe_compiler_set_string(record, "no_legacy_typed_table", "1");
   }
 }
 
@@ -2376,7 +2377,7 @@ static void tbe_compiler_annotate_legacy_typed_requirement(Node *root) {
   if (messages != NULL && messages->type == NODE_LIST) {
     for (i = 0u; i < messages->data.list.count; ++i)
       if (!tbe_compiler_has_child(messages->data.list.items[i],
-                                  "cmeta_canonical_message"))
+                                  "no_legacy_typed_table"))
         goto required;
   }
   return;
@@ -2466,7 +2467,7 @@ static void tbe_compiler_annotate_csv_flat_messages(Node *root) {
   }
 }
 
-static void tbe_compiler_annotate_scalar_overlay_lifecycle(Node *root) {
+static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
   Node *messages = tbe_compiler_find_child(root, "messages");
   size_t i;
   if (messages == NULL || messages->type != NODE_LIST) return;
@@ -2478,7 +2479,7 @@ static void tbe_compiler_annotate_scalar_overlay_lifecycle(Node *root) {
     int has_state = 0;
     int supported = 1;
 
-    tbe_compiler_remove_children(record, "cmeta_scalar_overlay_lifecycle");
+    tbe_compiler_remove_children(record, "cmeta_local_overlay_lifecycle");
     if (!tbe_compiler_has_child(record, "cmeta_graph_supported") ||
         tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
         fields == NULL || fields->type != NODE_LIST)
@@ -2487,10 +2488,22 @@ static void tbe_compiler_annotate_scalar_overlay_lifecycle(Node *root) {
     for (j = 0u; j < fields->data.list.count; ++j) {
       Node *field = fields->data.list.items[j];
       const char *type = tbe_compiler_string_value(field, "type");
+      const char *requirement =
+          tbe_compiler_string_value(field, "cmeta_native_requirement");
+      const char *native_data =
+          tbe_compiler_string_value(field, "native_data_symbol");
+      const int owned_string =
+          type != NULL && strcmp(type, "string") == 0 &&
+          requirement != NULL &&
+          (strcmp(requirement, "owned_lifecycle") == 0 ||
+           strcmp(requirement, "overlay_presence") == 0 ||
+           strcmp(requirement, "overlay_null") == 0 ||
+           strcmp(requirement, "overlay_presence_null") == 0) &&
+          native_data != NULL && strcmp(native_data, "salts_tstr_cmeta_data") == 0;
       if (type == NULL ||
           tbe_compiler_has_child(field, "is_collection") ||
           tbe_compiler_has_child(field, "is_group_field") ||
-          tbe_compiler_scalar_projection(type) == NULL) {
+          (tbe_compiler_scalar_projection(type) == NULL && !owned_string)) {
         supported = 0;
         break;
       }
@@ -2503,7 +2516,7 @@ static void tbe_compiler_annotate_scalar_overlay_lifecycle(Node *root) {
      * separate overlay protocol before the record can enter a container. */
     if (supported && has_state)
       (void)tbe_compiler_set_string(
-          record, "cmeta_scalar_overlay_lifecycle", "1");
+          record, "cmeta_local_overlay_lifecycle", "1");
   }
 }
 
@@ -2522,8 +2535,8 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_cmeta_declared_generics(root);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
-  tbe_compiler_annotate_scalar_overlay_lifecycle(root);
-  tbe_compiler_annotate_canonical_messages(root);
+  tbe_compiler_annotate_local_overlay_lifecycle(root);
+  tbe_compiler_annotate_messages_without_legacy_tables(root);
   tbe_compiler_annotate_canonical_records(root);
   tbe_compiler_annotate_legacy_typed_requirement(root);
   tbe_compiler_annotate_xml_flat_messages(root);

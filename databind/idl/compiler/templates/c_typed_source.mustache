@@ -33,8 +33,8 @@ DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBin
 
 {{#composites}}{{^cmeta_canonical_record}}static TbeTypedType {{name}}_TYPED_TYPE;
 {{/cmeta_canonical_record}}{{/composites}}{{#groups}}{{^cmeta_canonical_record}}static TbeTypedType {{name}}_TYPED_TYPE;
-{{/cmeta_canonical_record}}{{/groups}}{{#messages}}{{^cmeta_canonical_message}}static TbeTypedType {{name}}_TYPED_TYPE;
-{{/cmeta_canonical_message}}{{/messages}}
+{{/cmeta_canonical_record}}{{/groups}}{{#messages}}{{^no_legacy_typed_table}}static TbeTypedType {{name}}_TYPED_TYPE;
+{{/no_legacy_typed_table}}{{/messages}}
 
 {{#composites}}{{^cmeta_canonical_record}}
 static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
@@ -115,7 +115,7 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
 };
 {{/cmeta_canonical_record}}{{/groups}}
 
-{{#messages}}{{^cmeta_canonical_message}}
+{{#messages}}{{^no_legacy_typed_table}}
 static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
 {{#fields}}
     { .name = "{{name}}", .kind = {{typed_kind}},
@@ -149,7 +149,7 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
     .null_offset = {{#has_nullable_fields}}offsetof({{name}}_t, _nulls){{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}},
     .null_size = {{#has_nullable_fields}}{{null_bitmap_bytes}}{{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}}
 };
-{{/cmeta_canonical_message}}{{/messages}}
+{{/no_legacy_typed_table}}{{/messages}}
 
 {{#messages}}
 {{#has_optional_fields}}
@@ -1666,7 +1666,7 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     TBE_TYPED_DEFINE_RAW_LIFECYCLE(name) \
     TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)
 
-#define DATABIND_DEFINE_SCALAR_OVERLAY_RAW_RECORD(name) \
+#define DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(name) \
     DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(name) \
     TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)
 
@@ -1921,9 +1921,9 @@ DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY({{name}}, {{cmeta_native_descriptor_dep
 {{/cmeta_native_xml_output_supported}}{{^cmeta_native_xml_output_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_XML_OUTPUT({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML_OUTPUT({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
-{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_xml_output_supported}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#cmeta_native_xml_flat_supported}}{{#cmeta_scalar_overlay_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
-{{/cmeta_scalar_overlay_lifecycle}}{{^cmeta_scalar_overlay_lifecycle}}TBE_TYPED_DEFINE_RAW_LIFECYCLE({{name}})
-{{/cmeta_scalar_overlay_lifecycle}}
+{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_xml_output_supported}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#cmeta_native_xml_flat_supported}}{{#cmeta_local_overlay_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
+{{/cmeta_local_overlay_lifecycle}}{{^cmeta_local_overlay_lifecycle}}TBE_TYPED_DEFINE_RAW_LIFECYCLE({{name}})
+{{/cmeta_local_overlay_lifecycle}}
 DATABIND_DEFINE_RAW_MESSAGE_TEXT({{name}})
 DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
@@ -1932,9 +1932,9 @@ DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
 DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
 {{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
-{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_scalar_overlay_lifecycle}}DATABIND_DEFINE_SCALAR_OVERLAY_RAW_RECORD({{name}})
-{{/cmeta_scalar_overlay_lifecycle}}{{^cmeta_scalar_overlay_lifecycle}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
-{{/cmeta_scalar_overlay_lifecycle}}
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_local_overlay_lifecycle}}DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD({{name}})
+{{/cmeta_local_overlay_lifecycle}}{{^cmeta_local_overlay_lifecycle}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
+{{/cmeta_local_overlay_lifecycle}}
 {{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}{{/cmeta_lifecycle_supported}}{{/cmeta_graph_supported}}{{^cmeta_graph_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
