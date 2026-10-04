@@ -2731,6 +2731,7 @@ spec("tbe_compiler") {
           "message LoginMessage { string user; }"
           "message NullableFlat { uint32 id; nullable uint32 score; string name; }"
           "message XmlOutputFlat { [name(wireId), alias(id)] uint32 id; string name; }"
+          "message XmlBytes { bytes payload; }"
           "message CsvFlat { uint32 id; string name; }"
           "message CsvDefault { uint32 id default 7; string name; }";
       size_t header_size = 0;
@@ -2799,6 +2800,8 @@ spec("tbe_compiler") {
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(NullableFlat,") == NULL);
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(Sample,") == NULL);
+        check(strstr(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(XmlBytes,") == NULL);
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT(NullableFlat)");
         check_contains(source, "DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML_OUTPUT(Sample)");
         check_contains(source, "data_bind_xml_writer_open_root(");
