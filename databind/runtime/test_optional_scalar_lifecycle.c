@@ -139,6 +139,16 @@ spec("optional local lifecycle uses canonical CMeta") {
     check_equal(value._nulls[0], 0u);
   }
 
+  it("uses CMeta lifecycle for nested canonical messages") {
+    NestedHolder_t value;
+    memset(&value, 0xa5, sizeof(value));
+    NestedHolder_init(&value);
+    check_equal(value.child.id, 0u);
+    value.child.id = 23u;
+    NestedHolder_clear(&value);
+    check_equal(value.child.id, 0u);
+  }
+
   it("keeps unsupported JSON conversion closed") {
     static const char input[] =
         "{\"nullable_value\":null,\"tri_value\":9}";

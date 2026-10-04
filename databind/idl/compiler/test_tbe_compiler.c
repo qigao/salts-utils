@@ -2770,8 +2770,8 @@ spec("tbe_compiler") {
             "LoginMessage_to_bin_into(DataBind *codec, const LoginMessage_t *object");
       }
       if (source != NULL) {
-        check_contains(source, "#include \"tbe_typed.h\"");
-        check_contains(source, "static TbeTypedType Point_TYPED_TYPE");
+        check(strstr(source, "#include \"tbe_typed.h\"") == NULL);
+        check(strstr(source, "static TbeTypedType Point_TYPED_TYPE") == NULL);
         check(strstr(source, "TbeTypedDescriptor") == NULL);
         check(strstr(source, "TBE_TYPED_DESCRIPTOR_INIT") == NULL);
         check(strstr(source, "_typed_descriptor(void)") == NULL);
@@ -2901,7 +2901,9 @@ spec("tbe_compiler") {
           "message OwnedState { optional string label; }"
           "message OwnedBytesState { optional bytes payload; }"
           "message MapState { optional map<string,uint32> attrs; }"
-          "message FixedBytesState { optional bytes(16) payload; }";
+          "message FixedBytesState { optional bytes(16) payload; }"
+          "message NestedValue { uint32 id; }"
+          "message NestedHolder { NestedValue child; }";
       size_t source_size = 0u;
       char *source = NULL;
       tbe_compiler_options_t options = {
@@ -2928,6 +2930,8 @@ spec("tbe_compiler") {
         check(strstr(source, "static TbeTypedType OwnedBytesState_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType MapState_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType FixedBytesState_TYPED_TYPE") == NULL);
+        check(strstr(source, "static TbeTypedType NestedValue_TYPED_TYPE") == NULL);
+        check(strstr(source, "static TbeTypedType NestedHolder_TYPED_TYPE") == NULL);
         check_contains(source, "Point_cmeta_data(");
         check_contains(source, "Level_cmeta_data(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(Value)");
@@ -2949,7 +2953,8 @@ spec("tbe_compiler") {
       const char *source_path = "test_tbe_compiler_nested_legacy.c";
       const char *schema =
           "schema Nested;"
-          "message Inner { uint32 x; }"
+          "message Leaf { uint32 x; }"
+          "message Inner { Leaf child; }"
           "message Outer { Inner child; optional uint32 other; }"
           "message Standalone { uint32 x; }";
       tbe_compiler_options_t options = {
@@ -2970,6 +2975,8 @@ spec("tbe_compiler") {
       check_not_null(source);
       if (source != NULL) {
         check_contains(source, "static TbeTypedType Inner_TYPED_TYPE;");
+        check_contains(source, "static TbeTypedType Leaf_TYPED_TYPE;");
+        check_contains(source, ".object_type = &Leaf_TYPED_TYPE");
         check_contains(source, ".object_type = &Inner_TYPED_TYPE");
         check_contains(source, "static TbeTypedType Outer_TYPED_TYPE;");
         check(strstr(source, "Standalone_TYPED_TYPE") == NULL);
