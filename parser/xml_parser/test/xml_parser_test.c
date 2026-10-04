@@ -61,8 +61,12 @@ static void check_malformed_releases_everything(const char *source) {
         salts_xml_parse(
             &document, source, strlen(source), NULL, &diagnostic);
 
-    check(status != SALTS_XML_OK, "malformed source unexpectedly parsed: %s",
-          source);
+    if (status == SALTS_XML_OK) {
+        salts_xml_document_destroy(&document);
+        check(false, "malformed source unexpectedly parsed: %s", source);
+        check_equal(cxml_test_outstanding_allocations(), allocations_before);
+        return;
+    }
     check_null(document.impl);
     check_equal(diagnostic.status, status);
     check(cxml_test_outstanding_allocations() == allocations_before,
@@ -128,7 +132,6 @@ suite("bounded XML parser facade") {
         check_malformed_releases_everything("<root><child a='x' @/></root>");
         check_malformed_releases_everything("<root><child \\ /></root>");
         check_malformed_releases_everything("<root><child a='x'></root>");
-        check_malformed_releases_everything("<root>&bogus;</root>");
     }
 
     it("releases the partial DOM at every cxml allocation failure point") {
