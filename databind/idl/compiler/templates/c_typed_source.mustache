@@ -852,6 +852,19 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         status = data_bind_builtin_format_reader_open_csv_row(
             data, len, csv_row, descriptor_depth, &reader, error);
         if (status != DATA_BIND_OK) goto cleanup;
+    } else {
+        if (provider->format == DATA_BIND_FORMAT_JSON ||
+            provider->format == DATA_BIND_FORMAT_YAML) {
+            status = data_bind_format_plan_compile(
+                codec, type_name, provider->format, &format_plan, error);
+            if (status != DATA_BIND_OK) goto cleanup;
+        }
+        status = data_bind_format_reader_open(
+            provider, data, len, descriptor_depth, &reader, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+    }
+
+    if (format_plan != NULL) {
         status = data_bind_format_canonical_reader_init(
             format_plan, reader.reader, &canonical, error);
         if (status != DATA_BIND_OK) goto cleanup;
@@ -859,13 +872,10 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         if (decode_reader == NULL) {
             status = {{schema.schema_name}}_schema_codec_error(
                 error, DATA_BIND_ERR_RUNTIME, type_name,
-                "Generated CSV canonical reader is unavailable");
+                "Generated canonical format reader is unavailable");
             goto cleanup;
         }
     } else {
-        status = data_bind_format_reader_open(
-            provider, data, len, descriptor_depth, &reader, error);
-        if (status != DATA_BIND_OK) goto cleanup;
         decode_reader = reader.reader;
     }
 
