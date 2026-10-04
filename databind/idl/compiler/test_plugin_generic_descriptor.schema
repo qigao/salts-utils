@@ -6,6 +6,7 @@ component GenericProcessor {
 
 message GenericItem {
     uint32 id;
+    string name;
 }
 
 message GenericRequest {
