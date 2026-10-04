@@ -1656,7 +1656,7 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     } \
     TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)
 
-#define TBE_TYPED_DEFINE_RAW_LIFECYCLE(name) \
+{{#legacy_typed_required}}#define TBE_TYPED_DEFINE_RAW_LIFECYCLE(name) \
     void name##_init(name##_t *object) { \
         if (object) (void)tbe_typed_init(&name##_TYPED_TYPE, object, NULL); \
     } \
@@ -1665,6 +1665,7 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 #define TBE_TYPED_DEFINE_RAW_RECORD(name) \
     TBE_TYPED_DEFINE_RAW_LIFECYCLE(name) \
     TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)
+{{/legacy_typed_required}}
 
 #define DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(name) \
     DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(name) \
