@@ -82,6 +82,13 @@ struct DataBindFormatProvider {
 DATA_BIND_API const DataBindFormatProvider *
 data_bind_builtin_format_provider(DataBindFormat format);
 
+typedef struct DataBindFormatReader {
+  size_t size;
+  const DataBindFormatProvider *provider;
+  cserde_reader *reader;
+  void *owner;
+} DataBindFormatReader;
+
 /**
  * Open one exact zero-based CSV data row through the built-in CSV adapter.
  *
@@ -97,13 +104,6 @@ DATA_BIND_API DataBindStatus data_bind_builtin_format_reader_open_csv_row(
     size_t max_depth,
     DataBindFormatReader *out_reader,
     DataBindError *error);
-
-typedef struct DataBindFormatReader {
-  size_t size;
-  const DataBindFormatProvider *provider;
-  cserde_reader *reader;
-  void *owner;
-} DataBindFormatReader;
 
 typedef struct DataBindFormatWriter {
   size_t size;
