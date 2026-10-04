@@ -1609,13 +1609,19 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 
 #define DATABIND_DEFINE_RAW_MESSAGE_TEXT(name) \
     DataBindStatus name##_from_json(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
-        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_JSON, data, len, 0, object, error); \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical JSON native binding is unavailable for this shape"); \
     } \
     DataBindStatus name##_from_yaml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
-        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_YAML, data, len, 0, object, error); \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical YAML native binding is unavailable for this shape"); \
     } \
     DataBindStatus name##_to_json(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
-        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_JSON, out, out_len, error); \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical JSON native output is unavailable for this shape"); \
     }
 
 #define DATABIND_DEFINE_CSTL_MESSAGE_XML(name) \
@@ -1644,7 +1650,9 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 
 #define DATABIND_DEFINE_RAW_MESSAGE_YAML(name) \
     DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
-        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_YAML, out, out_len, error); \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical YAML native output is unavailable for this shape"); \
     }
 
 #define DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(name) \
