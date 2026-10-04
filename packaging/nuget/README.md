@@ -16,6 +16,11 @@ The re2c host generator is a build-time tool and is not a runtime dependency of 
 Each directory is a normal CMake install prefix containing
 `lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake`.
 
+The Linux arm64 profile is the focused native-SDK/DataBind profile used for
+arm64 qualification. It intentionally excludes the optional capture feature;
+missing capture headers/libraries fail fast rather than falling back to a
+source-built `libyuv` dependency.
+
 Consumers restore `SaltsUtils.Native` and `Salts.Native` explicitly,
 then set `SALTS_ROOT` to the matching Salts SDK and point CMake at the matching
 SaltsUtils SDK:
