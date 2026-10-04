@@ -2899,7 +2899,8 @@ spec("tbe_compiler") {
           "group Level { uint64 price; }"
           "message Value { uint32 id; }"
           "message OwnedState { optional string label; }"
-          "message OwnedBytesState { optional bytes payload; }";
+          "message OwnedBytesState { optional bytes payload; }"
+          "message MapState { optional map<string,uint32> attrs; }";
       size_t source_size = 0u;
       char *source = NULL;
       tbe_compiler_options_t options = {
@@ -2924,11 +2925,13 @@ spec("tbe_compiler") {
         check(strstr(source, "static TbeTypedType Value_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType OwnedState_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType OwnedBytesState_TYPED_TYPE") == NULL);
+        check(strstr(source, "static TbeTypedType MapState_TYPED_TYPE") == NULL);
         check_contains(source, "Point_cmeta_data(");
         check_contains(source, "Level_cmeta_data(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(Value)");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(OwnedState)");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(OwnedBytesState)");
+        check_contains(source, "DATABIND_DEFINE_CANONICAL_CSTL_RECORD(MapState)");
       }
       free(source);
       cleanup_test_file(schema_path);

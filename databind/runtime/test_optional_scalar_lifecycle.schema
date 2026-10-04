@@ -22,3 +22,8 @@ message OwnedBytesState {
     nullable bytes note;
     optional nullable bytes tri_value;
 }
+
+[id(4)]
+message MapState {
+    optional map<string,uint32> attrs;
+}
