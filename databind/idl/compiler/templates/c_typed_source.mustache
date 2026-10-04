@@ -765,6 +765,7 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     const DataBindFormatProvider *provider,
     size_t descriptor_depth,
     size_t descriptor_nodes,
+    size_t csv_row,
     void *destination,
     size_t object_size,
     const char *data,
@@ -776,6 +777,10 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     DataBindMessagePlanDiagnostic diagnostic =
         DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
     DataBindFormatReader reader = DATA_BIND_FORMAT_READER_INIT;
+    DataBindFormatPlan *format_plan = NULL;
+    DataBindFormatCanonicalReader canonical =
+        DATA_BIND_FORMAT_CANONICAL_READER_INIT;
+    cserde_reader *decode_reader = NULL;
     {{schema.schema_name}}_message_workspace_t workspace = {0};
     DataBindStatus status;
     DataBindStatus close_status;
@@ -841,13 +846,33 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         &workspace, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
-    status = data_bind_format_reader_open(
-        provider, data, len, descriptor_depth, &reader, error);
-    if (status != DATA_BIND_OK) goto cleanup;
+    if (provider->format == DATA_BIND_FORMAT_CSV) {
+        status = data_bind_format_plan_compile(
+            codec, type_name, DATA_BIND_FORMAT_CSV, &format_plan, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+        status = data_bind_csv_format_reader_open_row(
+            data, len, csv_row, descriptor_depth, &reader, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+        status = data_bind_format_canonical_reader_init(
+            format_plan, reader.reader, &canonical, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+        decode_reader = data_bind_format_canonical_reader_reader(&canonical);
+        if (decode_reader == NULL) {
+            status = {{schema.schema_name}}_schema_codec_error(
+                error, DATA_BIND_ERR_RUNTIME, type_name,
+                "Generated CSV canonical reader is unavailable");
+            goto cleanup;
+        }
+    } else {
+        status = data_bind_format_reader_open(
+            provider, data, len, descriptor_depth, &reader, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+        decode_reader = reader.reader;
+    }
 
     temporary_started = 1;
     status = data_bind_message_plan_decode_native_format(
-        plan, &workspace.options, provider->format, reader.reader,
+        plan, &workspace.options, provider->format, decode_reader,
         temporary, object_size, &diagnostic);
     close_status = data_bind_format_reader_close(&reader);
     if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
@@ -927,6 +952,7 @@ cleanup:
         memset(temporary, 0, object_size);
     }
     free(temporary_allocation);
+    data_bind_format_plan_free(format_plan);
     {{schema.schema_name}}_message_workspace_close(&workspace);
     data_bind_message_plan_free(plan);
     return status;
