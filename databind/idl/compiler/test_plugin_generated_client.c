@@ -153,6 +153,18 @@ spec("generated DataBind Plugin client") {
     check_false(
         databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
 
+    check_equal(salts_plugin_registry_get_lifecycle(
+                    &registry, ref, &info),
+                SALTS_PLUGIN_OK);
+    check_equal(info.active_leases, (size_t)0u);
+
+    native_status = 123;
+    check_equal(
+        databind_5_Image_5_Codec_6_Decode_plugin_client_call(
+            &client, &decode_request, &decode_response, &native_status),
+        SALTS_PLUGIN_INVALID_STATE);
+    check_equal(native_status, 123);
+
     check_equal(salts_plugin_registry_poll_quiescent(
                     &registry, ref, &quiescent),
                 SALTS_PLUGIN_OK);
