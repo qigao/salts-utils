@@ -4,12 +4,17 @@ component GenericProcessor {
     service GenericService;
 }
 
+message GenericItem {
+    uint32 id;
+    string name;
+}
+
 message GenericRequest {
-    list<int32> values;
+    list<GenericItem> values;
 }
 
 message GenericResponse {
-    set<int32> values;
+    map<string,GenericItem> values;
 }
 
 service GenericService {

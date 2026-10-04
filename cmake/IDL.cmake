@@ -592,6 +592,7 @@ function(salts_idl_target)
     add_library("${DB_TARGET}_plugin_client" STATIC
       "${_plugin_client_source}"
       "${_plugin_client_header}"
+      "${_native_source}"
       "${_native_header}")
     add_dependencies("${DB_TARGET}_plugin_client"
       "${DB_TARGET}_idl_codegen")
