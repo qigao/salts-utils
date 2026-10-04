@@ -2777,6 +2777,8 @@ spec("tbe_compiler") {
         check_contains(source, "tbe_typed_descriptor_parse(codec");
         check_contains(source, "tbe_typed_descriptor_serialize_binary");
         check_contains(
+            source, "DATABIND_DEFINE_UNAVAILABLE_MESSAGE_CSV_OUTPUT(LoginMessage)");
+        check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(LoginMessage,");
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(FlagStorage,");
