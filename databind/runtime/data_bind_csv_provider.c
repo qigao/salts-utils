@@ -26,6 +26,8 @@ typedef struct data_bind_csv_reader {
   size_t row_count;
   size_t column;
   size_t column_count;
+  int row_only;
+  int omit_empty_cells;
   data_bind_csv_stage stage;
 } data_bind_csv_reader;
 
@@ -148,6 +150,18 @@ static cserde_status csv_provider_next(void *opaque, cserde_token *out) {
       return CSERDE_OK;
 
     case DATA_BIND_CSV_FIELD_KEY:
+      if (context->omit_empty_cells) {
+        size_t row = csv_current_row(context);
+        const char *cell = csv_get(context->document, row, context->column);
+        if (cell == NULL) return CSERDE_INVALID_TOKEN;
+        if (csv_get_len(context->document, row, context->column) == 0u) {
+          ++context->column;
+          context->stage = context->column < context->column_count
+                               ? DATA_BIND_CSV_FIELD_KEY
+                               : DATA_BIND_CSV_ROW_END;
+          continue;
+        }
+      }
       csv_emit_string(out, csv_header_get_v(context->document, context->column));
       context->stage = DATA_BIND_CSV_FIELD_VALUE;
       return CSERDE_OK;
@@ -165,9 +179,12 @@ static cserde_status csv_provider_next(void *opaque, cserde_token *out) {
     case DATA_BIND_CSV_ROW_END:
       out->kind = CSERDE_MAP_END;
       ++context->row_position;
-      context->stage = context->row_position < context->row_count
-                           ? DATA_BIND_CSV_ROW_BEGIN
-                           : DATA_BIND_CSV_ARRAY_END;
+      if (context->row_only)
+        context->stage = DATA_BIND_CSV_DONE;
+      else
+        context->stage = context->row_position < context->row_count
+                             ? DATA_BIND_CSV_ROW_BEGIN
+                             : DATA_BIND_CSV_ARRAY_END;
       return CSERDE_OK;
 
     case DATA_BIND_CSV_ARRAY_END:
@@ -190,6 +207,8 @@ static DataBindStatus csv_reader_create(
     csv_doc_t *document,
     size_t *rows,
     size_t row_count,
+    int row_only,
+    int omit_empty_cells,
     cserde_reader **out_reader,
     void **out_owner,
     DataBindError *error) {
@@ -207,7 +226,11 @@ static DataBindStatus csv_reader_create(
   context->rows = rows;
   context->row_count = row_count;
   context->column_count = csv_column_count(document);
-  context->stage = DATA_BIND_CSV_ARRAY_BEGIN;
+  context->row_only = row_only != 0;
+  context->omit_empty_cells = omit_empty_cells != 0;
+  context->stage = context->row_only
+                       ? DATA_BIND_CSV_ROW_BEGIN
+                       : DATA_BIND_CSV_ARRAY_BEGIN;
 
   if (cserde_reader_init(&context->reader, &CSV_READER_OPS, context) !=
       CSERDE_OK) {
@@ -268,7 +291,7 @@ static DataBindStatus csv_provider_open(
   if (document == NULL) return DATA_BIND_ERR_PARSE;
 
   return csv_reader_create(
-      document, NULL, csv_row_count(document),
+      document, NULL, csv_row_count(document), 0, 0,
       out_reader, out_owner, error);
 }
 
@@ -396,7 +419,7 @@ static DataBindStatus csv_provider_open_selected(
   csv_free(filter_document);
 
   return csv_reader_create(
-      document, rows, selected_count,
+      document, rows, selected_count, 0, 0,
       out_reader, out_owner, error);
 }
 
@@ -419,4 +442,81 @@ static const DataBindFormatProvider CSV_PROVIDER =
 
 const DataBindFormatProvider *data_bind_csv_format_provider(void) {
   return &CSV_PROVIDER;
+}
+
+DataBindStatus data_bind_csv_format_reader_open_row(
+    const char *data,
+    size_t len,
+    size_t row,
+    size_t max_depth,
+    DataBindFormatReader *out_reader,
+    DataBindError *error) {
+  csv_doc_t *document = NULL;
+  size_t *rows = NULL;
+  cserde_reader *reader = NULL;
+  void *owner = NULL;
+  size_t out_size;
+  size_t column;
+  DataBindStatus status;
+
+  if (out_reader == NULL || out_reader->size < sizeof(*out_reader))
+    return csv_provider_error(
+        error, DATA_BIND_ERR_INVALID_ARG,
+        "Invalid CSV row reader output");
+  out_size = out_reader->size;
+  memset(out_reader, 0, sizeof(*out_reader));
+  out_reader->size = out_size;
+
+  if (data == NULL && len != 0u)
+    return csv_provider_error(
+        error, DATA_BIND_ERR_INVALID_ARG,
+        "CSV input is NULL with non-zero length");
+  if (max_depth < 1u)
+    return csv_provider_error(
+        error, DATA_BIND_ERR_LIMIT,
+        "CSV row reader requires max_depth >= 1");
+
+  document = csv_parse_binding_document(data, len, error);
+  if (document == NULL) return DATA_BIND_ERR_PARSE;
+  if (row >= csv_row_count(document)) {
+    csv_free(document);
+    return csv_provider_error(
+        error, DATA_BIND_ERR_TYPE_MISMATCH,
+        "CSV row is out of range");
+  }
+
+  for (column = 0u; column < csv_column_count(document); ++column) {
+    if (csv_get(document, row, column) == NULL) {
+      csv_free(document);
+      return csv_provider_error(
+          error, DATA_BIND_ERR_TYPE_MISMATCH,
+          "CSV row does not match its header");
+    }
+  }
+
+  rows = (size_t *)malloc(sizeof(*rows));
+  if (rows == NULL) {
+    csv_free(document);
+    return csv_provider_error(
+        error, DATA_BIND_ERR_OOM,
+        "Unable to allocate CSV row selection state");
+  }
+  rows[0] = row;
+
+  status = csv_reader_create(
+      document, rows, 1u, 1, 1, &reader, &owner, error);
+  if (status != DATA_BIND_OK) return status;
+
+  if (reader == NULL || reader->ops == NULL ||
+      reader->state != CSERDE_READER_READY) {
+    csv_provider_close(reader, owner);
+    return csv_provider_error(
+        error, DATA_BIND_ERR_RUNTIME,
+        "CSV row provider returned an invalid CSerde reader");
+  }
+
+  out_reader->provider = &CSV_PROVIDER;
+  out_reader->reader = reader;
+  out_reader->owner = owner;
+  return csv_provider_error(error, DATA_BIND_OK, "");
 }
