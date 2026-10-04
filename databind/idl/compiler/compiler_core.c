@@ -10,6 +10,7 @@
 #include "idl.h"
 #include "idl_contract_internal.h"
 #include "binary_contract_overlay.h"
+#include "binary_reader_codegen.h"
 #include "schema_cmeta.h"
 #include <salts_cmeta_data.h>
 #include <salts_cmeta_fixed_width.h>
@@ -2160,6 +2161,55 @@ static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
   }
 }
 
+static void tbe_compiler_annotate_binary_reader_messages(
+    Node *root, const IdlContract *contract,
+    const databind_binary_format_plan *binary_format) {
+  Node *messages;
+  size_t i;
+  if (root == NULL || contract == NULL || binary_format == NULL) return;
+  messages = tbe_compiler_find_child(root, "messages");
+  if (messages == NULL || messages->type != NODE_LIST) return;
+  for (i = 0u; i < messages->data.list.count; ++i) {
+    Node *record = messages->data.list.items[i];
+    const char *name = tbe_compiler_string_value(record, "name");
+    tbe_compiler_remove_children(record, "binary_reader_supported");
+    if (name != NULL &&
+        databind_compiler_binary_reader_admit(
+            contract, binary_format, name) == 0)
+      (void)tbe_compiler_set_string(
+          record, "binary_reader_supported", "1");
+  }
+}
+
+static int tbe_compiler_append_binary_readers(
+    const char *path, Node *root, const IdlContract *contract,
+    const databind_binary_format_plan *binary_format) {
+  Node *messages;
+  FILE *file;
+  size_t i;
+  if (path == NULL || root == NULL || contract == NULL ||
+      binary_format == NULL)
+    return -1;
+  messages = tbe_compiler_find_child(root, "messages");
+  if (messages == NULL || messages->type != NODE_LIST) return 0;
+  file = fopen(path, "ab");
+  if (file == NULL) return -1;
+  for (i = 0u; i < messages->data.list.count; ++i) {
+    Node *record = messages->data.list.items[i];
+    const char *name = tbe_compiler_string_value(record, "name");
+    if (name == NULL ||
+        !tbe_compiler_has_child(record, "binary_reader_supported"))
+      continue;
+    if (fputc('\n', file) == EOF ||
+        databind_compiler_binary_reader_emit(
+            file, contract, binary_format, name, name) != 0) {
+      fclose(file);
+      return -1;
+    }
+  }
+  return fclose(file) == 0 ? 0 : -1;
+}
+
 static void tbe_compiler_annotate_csv_flat_messages(Node *root) {
   Node *messages;
   size_t i;
@@ -2874,7 +2924,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
    * renderers may add output-only annotations. No new semantic fact may be
    * introduced through this Node tree.
    */
-  if (options->projection_count != 0u) {
+  if (options->projection_count != 0u || options->source_output_path != NULL) {
     tbe_error_t format_error;
     projection_root = tbe_compiler_clone_canonical_node(root);
     if (projection_root == NULL) {
@@ -2953,6 +3003,8 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       status = 1;
       goto cleanup;
     }
+    tbe_compiler_annotate_binary_reader_messages(
+        root, contract, &binary_format);
   }
 
   if (options->guest_output_path) {
@@ -3007,6 +3059,12 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     status = resolved_template != NULL
                  ? tbe_compiler_render_file(root, resolved_template, options->source_output_path)
                  : 1;
+    if (status == 0 &&
+        tbe_compiler_append_binary_readers(
+            options->source_output_path, root, contract, &binary_format) != 0) {
+      fprintf(stderr, "Failed to append generated Binary reader providers\n");
+      status = 1;
+    }
   }
 
   if (status == 0 && options->guest_output_path) {
