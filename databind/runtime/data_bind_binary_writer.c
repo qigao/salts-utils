@@ -3,7 +3,7 @@
 #include "data_bind_binary_wire.h"
 
 #include <limits.h>
-#include <math.h>
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +27,8 @@ typedef struct DataBindBinaryWriterOwner {
   size_t current_field;
   DataBindBinaryWriterStage stage;
   int committed;
+  int finish_attempted;
+  cserde_status finish_status;
 } DataBindBinaryWriterOwner;
 
 static void binary_writer_error_clear(DataBindError *error) {
@@ -288,7 +290,8 @@ static int binary_writer_fixed_value(
   case CSERDE_FLOAT:
     if (field->scalar_bits == 32u) {
       const float value = (float)token->value.floating;
-      if (isfinite(token->value.floating) && !isfinite((double)value))
+      if (token->value.floating > (double)FLT_MAX ||
+          token->value.floating < -(double)FLT_MAX)
         return 0;
       data_bind_binary_wire_write_f32(
           destination, owner->plan->wire_big_endian, value);
@@ -405,14 +408,21 @@ static cserde_status binary_writer_write(
 static cserde_status binary_writer_finish(void *opaque) {
   DataBindBinaryWriterOwner *owner =
       (DataBindBinaryWriterOwner *)opaque;
-  if (owner == NULL || owner->write == NULL ||
-      owner->stage != DATA_BIND_BINARY_WRITER_DONE)
-    return CSERDE_INVALID_STATE;
-  if (owner->committed) return CSERDE_OK;
-  if (owner->write(owner->buffer, owner->length, owner->write_user) != 0)
-    return CSERDE_SINK_ERROR;
+  if (owner == NULL) return CSERDE_INVALID_STATE;
+  if (owner->finish_attempted) return owner->finish_status;
+  owner->finish_attempted = 1;
+  if (owner->write == NULL ||
+      owner->stage != DATA_BIND_BINARY_WRITER_DONE) {
+    owner->finish_status = CSERDE_INVALID_STATE;
+    return owner->finish_status;
+  }
+  if (owner->write(owner->buffer, owner->length, owner->write_user) != 0) {
+    owner->finish_status = CSERDE_SINK_ERROR;
+    return owner->finish_status;
+  }
   owner->committed = 1;
-  return CSERDE_OK;
+  owner->finish_status = CSERDE_OK;
+  return owner->finish_status;
 }
 
 static const cserde_writer_ops BINARY_WRITER_OPS = {
@@ -525,8 +535,10 @@ DataBindStatus data_bind_binary_writer_close(
   const DataBindBinaryLayoutPlan *plan =
       owner != NULL ? owner->plan : NULL;
   cserde_status status =
-      writer != NULL ? cserde_writer_finish(writer)
-                     : CSERDE_INVALID_ARGUMENT;
+      owner != NULL && owner->finish_attempted
+          ? owner->finish_status
+          : (writer != NULL ? cserde_writer_finish(writer)
+                            : CSERDE_INVALID_ARGUMENT);
   DataBindStatus result =
       binary_writer_status(status, plan, error);
   if (owner != NULL) {
