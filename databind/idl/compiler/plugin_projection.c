@@ -458,6 +458,10 @@ static int plugin_write_client_header(
           file) == EOF ||
       fprintf(
           file,
+          "/* Owning generated Plugin client. One live client owns one Plugin lease.\n"
+          " * Cached *_export pointers and their FunctionDesc/FunctionAbi/callable\n"
+          " * views are borrowed from that lease. They expire when close succeeds;\n"
+          " * callers must not retain or dereference those views after close. */\n"
           "typedef struct %s {\n"
           "  salts_plugin_registry *registry;\n"
           "  salts_plugin_lease lease;\n",
