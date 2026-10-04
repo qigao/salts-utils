@@ -32,8 +32,8 @@ DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBin
 
 {{#composites}}static TbeTypedType {{name}}_TYPED_TYPE;
 {{/composites}}{{#groups}}static TbeTypedType {{name}}_TYPED_TYPE;
-{{/groups}}{{#messages}}static TbeTypedType {{name}}_TYPED_TYPE;
-{{/messages}}
+{{/groups}}{{#messages}}{{^cmeta_canonical_message}}static TbeTypedType {{name}}_TYPED_TYPE;
+{{/cmeta_canonical_message}}{{/messages}}
 
 {{#composites}}
 static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
@@ -114,7 +114,7 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
 };
 {{/groups}}
 
-{{#messages}}
+{{#messages}}{{^cmeta_canonical_message}}
 static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
 {{#fields}}
     { .name = "{{name}}", .kind = {{typed_kind}},
@@ -148,7 +148,7 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
     .null_offset = {{#has_nullable_fields}}offsetof({{name}}_t, _nulls){{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}},
     .null_size = {{#has_nullable_fields}}{{null_bitmap_bytes}}{{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}}
 };
-{{/messages}}
+{{/cmeta_canonical_message}}{{/messages}}
 
 {{#messages}}
 {{#has_optional_fields}}
@@ -254,7 +254,7 @@ CMETA_DEFINE_FIXED_BYTES({{native_fixed_bytes_name}}, {{native_c_type}},
 static const cmeta_type_identity {{native_enum_symbol}}Id =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{enum_name}}_t");
 static const cmeta_type_desc {{native_enum_symbol}}Type = {
-    "{{enum_name}}_t", sizeof({{enum_name}}_t), TBE_TYPED_ALIGNOF({{enum_name}}_t),
+    "{{enum_name}}_t", sizeof({{enum_name}}_t), _Alignof({{enum_name}}_t),
     CMETA_T_INTEGER, NULL, NULL, &{{native_enum_symbol}}Id
 };
 {{#native_enum_supported}}
@@ -341,7 +341,7 @@ CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
 static const cmeta_type_identity {{name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
 {{#cmeta_graph_supported}}TBE_GENERATED_API {{/cmeta_graph_supported}}{{^cmeta_graph_supported}}static {{/cmeta_graph_supported}}const cmeta_type_desc {{name}}_CMETA_TYPE = {
-    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t),
     CMETA_T_OBJECT, NULL,
     {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
     &{{name}}_CMETA_ID
@@ -365,12 +365,12 @@ static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
 {{#fields}}
     { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
       sizeof((({{owner_name}}_t *)0)->{{c_name}}),
-      {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
+      {{#native_c_type}}_Alignof({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
       {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}}{{/native_external}},
       {{#native_declared_type_symbol}}&{{native_declared_type_symbol}}{{/native_declared_type_symbol}}{{^native_declared_type_symbol}}NULL{{/native_declared_type_symbol}} },
 {{/fields}}};
 static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
-    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t),
     {{name}}_CMETA_LAYOUT_FIELDS,
     sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0])
 };
@@ -437,7 +437,7 @@ CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
 static const cmeta_type_identity {{name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
 {{#cmeta_graph_supported}}TBE_GENERATED_API {{/cmeta_graph_supported}}{{^cmeta_graph_supported}}static {{/cmeta_graph_supported}}const cmeta_type_desc {{name}}_CMETA_TYPE = {
-    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t),
     CMETA_T_OBJECT, NULL,
     {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
     &{{name}}_CMETA_ID
@@ -461,12 +461,12 @@ static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
 {{#fields}}
     { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
       sizeof((({{owner_name}}_t *)0)->{{c_name}}),
-      {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
+      {{#native_c_type}}_Alignof({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
       {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}}{{/native_external}},
       {{#native_declared_type_symbol}}&{{native_declared_type_symbol}}{{/native_declared_type_symbol}}{{^native_declared_type_symbol}}NULL{{/native_declared_type_symbol}} },
 {{/fields}}};
 static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
-    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t),
     {{name}}_CMETA_LAYOUT_FIELDS,
     sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0])
 };
@@ -533,7 +533,7 @@ CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
 static const cmeta_type_identity {{name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
 {{#cmeta_graph_supported}}TBE_GENERATED_API {{/cmeta_graph_supported}}{{^cmeta_graph_supported}}static {{/cmeta_graph_supported}}const cmeta_type_desc {{name}}_CMETA_TYPE = {
-    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t),
     CMETA_T_OBJECT, NULL,
     {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
     &{{name}}_CMETA_ID
@@ -557,12 +557,12 @@ static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
 {{#fields}}
     { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
       sizeof((({{owner_name}}_t *)0)->{{c_name}}),
-      {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
+      {{#native_c_type}}_Alignof({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
       {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}}{{/native_external}},
       {{#native_declared_type_symbol}}&{{native_declared_type_symbol}}{{/native_declared_type_symbol}}{{^native_declared_type_symbol}}NULL{{/native_declared_type_symbol}} },
 {{/fields}}};
 static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
-    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t),
     {{name}}_CMETA_LAYOUT_FIELDS,
     sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0])
 };

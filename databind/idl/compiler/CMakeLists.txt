@@ -1155,7 +1155,8 @@ cmake_add_test(test_tbe_compiler
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/idl/compiler")
 target_include_directories(test_tbe_compiler
-  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src
+          ${DATABIND_SOURCE_ROOT}/formats/binary/include)
 
 cmake_add_test(test_tbe_compiler_schema_boundary
   SOURCES test_schema_boundary.c compiler_core.c binary_layout_ir.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c

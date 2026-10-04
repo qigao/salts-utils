@@ -2276,6 +2276,63 @@ static void tbe_compiler_annotate_binary_reader_messages(
   }
 }
 
+static int tbe_compiler_typed_ref_matches(const char *reference,
+                                          const char *name) {
+  size_t name_len;
+  if (reference == NULL || name == NULL || reference[0] != '&') return 0;
+  name_len = strlen(name);
+  return strncmp(reference + 1, name, name_len) == 0 &&
+         strcmp(reference + 1 + name_len, "_TYPED_TYPE") == 0;
+}
+
+static int tbe_compiler_typed_type_referenced(Node *root, const char *name) {
+  /* Generation-time scan: O(record fields) per message, with no retained state. */
+  static const char *const sections[] = {"composites", "groups", "messages"};
+  size_t section_index;
+  for (section_index = 0u;
+       section_index < sizeof(sections) / sizeof(sections[0]);
+       ++section_index) {
+    Node *records = tbe_compiler_find_child(root, sections[section_index]);
+    size_t record_index;
+    if (records == NULL || records->type != NODE_LIST) continue;
+    for (record_index = 0u; record_index < records->data.list.count;
+         ++record_index) {
+      Node *fields = tbe_compiler_find_child(records->data.list.items[record_index],
+                                             "fields");
+      size_t field_index;
+      if (fields == NULL || fields->type != NODE_LIST) continue;
+      for (field_index = 0u; field_index < fields->data.list.count;
+           ++field_index) {
+        Node *field = fields->data.list.items[field_index];
+        if (tbe_compiler_typed_ref_matches(
+                tbe_compiler_string_value(field, "typed_object_descriptor"), name) ||
+            tbe_compiler_typed_ref_matches(
+                tbe_compiler_string_value(field, "typed_map_value_descriptor"), name) ||
+            tbe_compiler_typed_ref_matches(
+                tbe_compiler_string_value(field, "typed_nested_overlay"), name))
+          return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+static void tbe_compiler_annotate_canonical_messages(Node *root) {
+  Node *messages = tbe_compiler_find_child(root, "messages");
+  size_t i;
+  if (messages == NULL || messages->type != NODE_LIST) return;
+  for (i = 0u; i < messages->data.list.count; ++i) {
+    Node *record = messages->data.list.items[i];
+    const char *name = tbe_compiler_string_value(record, "name");
+    tbe_compiler_remove_children(record, "cmeta_canonical_message");
+    if (name != NULL &&
+        tbe_compiler_has_child(record, "cmeta_graph_supported") &&
+        tbe_compiler_has_child(record, "cmeta_lifecycle_supported") &&
+        !tbe_compiler_typed_type_referenced(root, name))
+      (void)tbe_compiler_set_string(record, "cmeta_canonical_message", "1");
+  }
+}
+
 static int tbe_compiler_append_binary_readers(
     const char *path, Node *root, const IdlContract *contract,
     const databind_binary_format_plan *binary_format) {
@@ -2372,6 +2429,7 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_cmeta_declared_generics(root);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
+  tbe_compiler_annotate_canonical_messages(root);
   tbe_compiler_annotate_xml_flat_messages(root);
   tbe_compiler_annotate_csv_flat_messages(root);
 }
