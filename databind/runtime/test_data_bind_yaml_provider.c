@@ -228,6 +228,54 @@ int main(void) {
       return 59;
     if (cserde_writer_write(writer.writer, &token_out) != CSERDE_UNSUPPORTED)
       return 60;
+    if (data_bind_format_writer_close(&writer, &error) !=
+        DATA_BIND_ERR_TYPE_MISMATCH)
+      return 61;
+  }
+
+  {
+    DataBindFormatWriter writer = DATA_BIND_FORMAT_WRITER_INIT;
+    YamlOutput output = {{0}, 0u, 0, 0u};
+    cserde_token token_out = {.kind = CSERDE_MAP_BEGIN};
+    cserde_token key = yaml_key("id");
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_format_writer_open(
+            data_bind_yaml_format_provider(),
+            yaml_output_write, &output, 2u, &writer, &error) != DATA_BIND_OK)
+      return 62;
+    if (cserde_writer_write(writer.writer, &token_out) != CSERDE_OK) return 63;
+    if (cserde_writer_write(writer.writer, &key) != CSERDE_OK) return 64;
+    token_out = (cserde_token){.kind = CSERDE_UINT, .value.uint = UINT64_C(1)};
+    if (cserde_writer_write(writer.writer, &token_out) != CSERDE_OK) return 65;
+    if (cserde_writer_write(writer.writer, &key) != CSERDE_OK) return 66;
+    token_out = (cserde_token){.kind = CSERDE_UINT, .value.uint = UINT64_C(2)};
+    if (cserde_writer_write(writer.writer, &token_out) != CSERDE_UNSUPPORTED)
+      return 67;
+    if (data_bind_format_writer_close(&writer, &error) !=
+        DATA_BIND_ERR_TYPE_MISMATCH)
+      return 68;
+  }
+
+  {
+    DataBindFormatWriter writer = DATA_BIND_FORMAT_WRITER_INIT;
+    YamlOutput output = {{0}, 0u, 0, 0u};
+    static const unsigned char key_bytes[] = {'a', 0, 'b'};
+    cserde_token token_out = {.kind = CSERDE_MAP_BEGIN};
+    cserde_token key = {
+        .kind = CSERDE_STRING,
+        .value.slice = {
+            key_bytes, sizeof(key_bytes), CSERDE_VIEW_STABLE}};
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_format_writer_open(
+            data_bind_yaml_format_provider(),
+            yaml_output_write, &output, 2u, &writer, &error) != DATA_BIND_OK)
+      return 69;
+    if (cserde_writer_write(writer.writer, &token_out) != CSERDE_OK) return 70;
+    if (cserde_writer_write(writer.writer, &key) != CSERDE_UNSUPPORTED)
+      return 71;
+    if (data_bind_format_writer_close(&writer, &error) !=
+        DATA_BIND_ERR_TYPE_MISMATCH)
+      return 72;
   }
 
   return 0;
