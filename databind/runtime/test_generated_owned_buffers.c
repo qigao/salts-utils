@@ -189,7 +189,8 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_true(encoded_len != 0u);
     if (encoded != NULL) {
       check(encoded[encoded_len] == '\0');
-      check_not_null(strstr(encoded, "\"id\":7"));
+      check_not_null(strstr(encoded, "\"policyId\":7"));
+      check_null(strstr(encoded, "\"id\":"));
       check_not_null(strstr(encoded, "\"headers\":["));
       check_equal(
           NativeHeaderPolicy_from_json(
