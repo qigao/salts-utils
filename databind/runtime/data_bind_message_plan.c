@@ -191,20 +191,6 @@ static const DataBindNativeStateBinding *message_state_binding(
   return NULL;
 }
 
-static int message_data_semantically_equal(
-    const cmeta_data_desc *left,
-    const cmeta_data_desc *right) {
-  if (left == right) return left != NULL && cmeta_data_desc_valid(left);
-  if (!cmeta_data_desc_valid(left) || !cmeta_data_desc_valid(right) ||
-      left->kind != right->kind ||
-      left->storage_type == NULL || right->storage_type == NULL ||
-      !cmeta_type_equal(left->storage_type, right->storage_type))
-    return 0;
-  if (left->stable_id != NULL && right->stable_id != NULL)
-    return strcmp(left->stable_id, right->stable_id) == 0;
-  return 1;
-}
-
 static DataBindMessageFieldPlan *message_field(
     DataBindMessagePlan *plan,
     const char *name) {
@@ -489,7 +475,7 @@ static int message_schema_field_matches_native(
         codec, type_name, field_index, &schema_data, &error);
 
   if (schema_data != NULL)
-    return message_data_semantically_equal(schema_data, native_data);
+    return cmeta_data_desc_equal(schema_data, native_data);
 
   return message_logical_buffer_matches_native(schema_field, native_data);
 }
