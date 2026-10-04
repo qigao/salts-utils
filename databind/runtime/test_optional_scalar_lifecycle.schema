@@ -1,5 +1,7 @@
 schema ScalarLifecycle [id(2), version(1), byte_order(little)];
 
+enum State <uint8> { Idle = 0; Active = 7; }
+
 [id(1)]
 message ScalarState {
     optional int32 optional_value;
@@ -53,4 +55,11 @@ message OwnedChild {
 message NestedOwnedState {
     optional OwnedChild child;
     nullable uint32 note;
+}
+
+[id(10)]
+message EnumState {
+    optional State optional_value;
+    nullable State nullable_value;
+    optional nullable State tri_value;
 }
