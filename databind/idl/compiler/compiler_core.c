@@ -2333,6 +2333,30 @@ static void tbe_compiler_annotate_canonical_messages(Node *root) {
   }
 }
 
+static void tbe_compiler_annotate_legacy_typed_requirement(Node *root) {
+  static const char *const sections[] = {"composites", "groups"};
+  Node *messages = tbe_compiler_find_child(root, "messages");
+  size_t i;
+
+  tbe_compiler_remove_children(root, "legacy_typed_required");
+  for (i = 0u; i < sizeof(sections) / sizeof(sections[0]); ++i) {
+    Node *records = tbe_compiler_find_child(root, sections[i]);
+    if (records != NULL && records->type == NODE_LIST &&
+        records->data.list.count != 0u)
+      goto required;
+  }
+  if (messages != NULL && messages->type == NODE_LIST) {
+    for (i = 0u; i < messages->data.list.count; ++i)
+      if (!tbe_compiler_has_child(messages->data.list.items[i],
+                                  "cmeta_canonical_message"))
+        goto required;
+  }
+  return;
+
+required:
+  (void)tbe_compiler_set_string(root, "legacy_typed_required", "1");
+}
+
 static int tbe_compiler_append_binary_readers(
     const char *path, Node *root, const IdlContract *contract,
     const databind_binary_format_plan *binary_format) {
@@ -2472,6 +2496,7 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_cmeta_support(root, 0);
   tbe_compiler_annotate_scalar_overlay_lifecycle(root);
   tbe_compiler_annotate_canonical_messages(root);
+  tbe_compiler_annotate_legacy_typed_requirement(root);
   tbe_compiler_annotate_xml_flat_messages(root);
   tbe_compiler_annotate_csv_flat_messages(root);
 }

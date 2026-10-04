@@ -11,7 +11,8 @@
 #include "data_bind_native.h"
 #include "data_bind_xml_writer.h"
 #include "data_bind_projection_plan.h"
-#include "tbe_typed.h"
+{{#legacy_typed_required}}#include "tbe_typed.h"
+{{/legacy_typed_required}}
 
 {{#messages}}{{#binary_reader_supported}}
 static inline const DataBindFormatProvider *{{name}}_binary_{{name}}_databind_binary_provider(void);

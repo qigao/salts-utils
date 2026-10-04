@@ -2770,6 +2770,7 @@ spec("tbe_compiler") {
             "LoginMessage_to_bin_into(DataBind *codec, const LoginMessage_t *object");
       }
       if (source != NULL) {
+        check_contains(source, "#include \"tbe_typed.h\"");
         check(strstr(source, "TbeTypedDescriptor") == NULL);
         check(strstr(source, "TBE_TYPED_DESCRIPTOR_INIT") == NULL);
         check(strstr(source, "_typed_descriptor(void)") == NULL);
@@ -2881,6 +2882,40 @@ spec("tbe_compiler") {
       }
 
       free(header);
+      free(source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+    }
+
+    it("omits the legacy typed header for canonical-only generated C") {
+      const char *schema_path = "test_tbe_compiler_canonical_only.tbe";
+      const char *header_path = "test_tbe_compiler_canonical_only.h";
+      const char *source_path = "test_tbe_compiler_canonical_only.c";
+      const char *schema =
+          "schema CanonicalOnly; message Value { uint32 id; }";
+      size_t source_size = 0u;
+      char *source = NULL;
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .template_path = NULL,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      source = tt_read_file(source_path, &source_size);
+      check_not_null(source);
+      if (source != NULL) {
+        check(strstr(source, "#include \"tbe_typed.h\"") == NULL);
+        check(strstr(source, "static TbeTypedType Value_TYPED_TYPE") == NULL);
+        check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(Value)");
+      }
       free(source);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
