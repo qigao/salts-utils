@@ -4,11 +4,12 @@
 #include <limits.h>
 #include <string.h>
 
+#include "crypto_internal.h"
+
 #include <libecc/curves/curves.h>
 #include <libecc/external_deps/rand.h>
 #include <libecc/sig/eddsa.h>
 #include <libecc/sig/sig_algs.h>
-#include <openssl/mem.h>
 
 static const uint8_t salts_crypto_empty_message = 0U;
 
@@ -65,9 +66,9 @@ int salts_crypto_ed448_public_key(const uint8_t private_key[SALTS_CRYPTO_ED448_P
     status = SALTS_CRYPTO_ECRYPTO;
   }
 
-  OPENSSL_cleanse(&key_pair, sizeof(key_pair));
-  OPENSSL_cleanse(&params, sizeof(params));
-  if (status != SALTS_CRYPTO_OK) OPENSSL_cleanse(public_key, SALTS_CRYPTO_ED448_PUBLIC_KEY_SIZE);
+  salts_crypto_secure_zero(&key_pair, sizeof(key_pair));
+  salts_crypto_secure_zero(&params, sizeof(params));
+  if (status != SALTS_CRYPTO_OK) salts_crypto_secure_zero(public_key, SALTS_CRYPTO_ED448_PUBLIC_KEY_SIZE);
   return status;
 }
 
@@ -83,8 +84,8 @@ int salts_crypto_ed448_keygen(uint8_t private_key[SALTS_CRYPTO_ED448_PRIVATE_KEY
   status = salts_crypto_random(private_key, SALTS_CRYPTO_ED448_PRIVATE_KEY_SIZE);
   if (status == SALTS_CRYPTO_OK) status = salts_crypto_ed448_public_key(private_key, public_key);
   if (status != SALTS_CRYPTO_OK) {
-    OPENSSL_cleanse(private_key, SALTS_CRYPTO_ED448_PRIVATE_KEY_SIZE);
-    OPENSSL_cleanse(public_key, SALTS_CRYPTO_ED448_PUBLIC_KEY_SIZE);
+    salts_crypto_secure_zero(private_key, SALTS_CRYPTO_ED448_PRIVATE_KEY_SIZE);
+    salts_crypto_secure_zero(public_key, SALTS_CRYPTO_ED448_PUBLIC_KEY_SIZE);
   }
   return status;
 }
@@ -117,9 +118,9 @@ int salts_crypto_ed448_sign(const uint8_t private_key[SALTS_CRYPTO_ED448_PRIVATE
     status = SALTS_CRYPTO_ECRYPTO;
   }
 
-  OPENSSL_cleanse(&key_pair, sizeof(key_pair));
-  OPENSSL_cleanse(&params, sizeof(params));
-  if (status != SALTS_CRYPTO_OK) OPENSSL_cleanse(signature, SALTS_CRYPTO_ED448_SIGNATURE_SIZE);
+  salts_crypto_secure_zero(&key_pair, sizeof(key_pair));
+  salts_crypto_secure_zero(&params, sizeof(params));
+  if (status != SALTS_CRYPTO_OK) salts_crypto_secure_zero(signature, SALTS_CRYPTO_ED448_SIGNATURE_SIZE);
   return status;
 }
 
@@ -150,7 +151,7 @@ int salts_crypto_ed448_verify(const uint8_t public_key[SALTS_CRYPTO_ED448_PUBLIC
     status = SALTS_CRYPTO_EVERIFY;
   }
 
-  OPENSSL_cleanse(&imported_public_key, sizeof(imported_public_key));
-  OPENSSL_cleanse(&params, sizeof(params));
+  salts_crypto_secure_zero(&imported_public_key, sizeof(imported_public_key));
+  salts_crypto_secure_zero(&params, sizeof(params));
   return status;
 }
