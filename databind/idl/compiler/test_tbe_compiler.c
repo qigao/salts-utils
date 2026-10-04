@@ -2929,6 +2929,9 @@ spec("tbe_compiler") {
         check(strstr(source, "static TbeTypedType NestedOwnedState_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType EnumState_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType UuidState_TYPED_TYPE") == NULL);
+        check(strstr(source, "#define TBE_TYPED_DEFINE_RAW_LIFECYCLE") == NULL);
+        check(strstr(source, "tbe_typed_init(") == NULL);
+        check(strstr(source, "tbe_typed_clear(") == NULL);
         check_contains(source, "Point_cmeta_data(");
         check_contains(source, "Level_cmeta_data(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(Value)");
@@ -2979,6 +2982,7 @@ spec("tbe_compiler") {
         check_contains(source, ".object_type = &Leaf_TYPED_TYPE");
         check_contains(source, ".object_type = &Inner_TYPED_TYPE");
         check_contains(source, "static TbeTypedType Outer_TYPED_TYPE;");
+        check_contains(source, "#define TBE_TYPED_DEFINE_RAW_LIFECYCLE(name)");
         check(strstr(source, "Standalone_TYPED_TYPE") == NULL);
       }
       free(source);
