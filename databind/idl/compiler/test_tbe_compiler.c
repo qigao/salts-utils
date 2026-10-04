@@ -2756,16 +2756,12 @@ spec("tbe_compiler") {
       check_not_null(header);
       check_not_null(source);
       if (header != NULL) {
-        check_contains(header,
-                       "const TbeTypedDescriptor *Sample_typed_descriptor(void)");
-        check_contains(header,
-                       "const TbeTypedDescriptor *FlagStorage_typed_descriptor(void)");
-        check_contains(header,
-                       "const TbeTypedDescriptor *WideEnumStorage_typed_descriptor(void)");
-        check(strstr(header,
-                     "const TbeTypedDescriptor *LoginMessage_typed_descriptor(void)") == NULL);
-        check(strstr(header,
-                     "const TbeTypedDescriptor *NullableFlat_typed_descriptor(void)") == NULL);
+        check(strstr(header, "tbe_typed.h") == NULL);
+        check(strstr(header, "TbeTypedDescriptor") == NULL);
+        check(strstr(header, "_typed_descriptor(void)") == NULL);
+        check_contains(header, "Sample_cmeta_data(");
+        check_contains(header, "FlagStorage_cmeta_data(");
+        check_contains(header, "WideEnumStorage_cmeta_data(");
       }
       if (source != NULL) {
         check(strstr(source, "tbe_typed_descriptor_init(") == NULL);
