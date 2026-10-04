@@ -263,6 +263,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     NativeXmlFlat_init(&unchanged);
     NativeHeaderPolicy_init(&collection);
 
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
     {
       DataBindStatus xml_status =
           NativeXmlFlat_from_xml(
