@@ -60,6 +60,7 @@ int main(void) {
     const cmeta_data_struct_shape *shape;
     const cmeta_data_desc *value_data;
     EnumSymbolStorage_t object = {0};
+    DataBind *codec = NULL;
     const EnumSymbols_t items[] = {
         EnumSymbols_CMETA_DOMAIN, EnumSymbols_CMETA_ENUM_OPS,
         EnumSymbols_CMETA_BITS_OPS, EnumSymbols_CMETA_DATA, EnumSymbols_CMETA_TYPE,
@@ -72,6 +73,8 @@ int main(void) {
     if (!shape || shape->field_count != 1u || !shape->fields || !shape->fields[0].value)
       return 31;
     value_data = shape->fields[0].value;
+    if (Graph_codec_create(&codec, &error) != DATA_BIND_OK || codec == NULL)
+      return 32;
     for (i = 0u; i < sizeof(items) / sizeof(items[0]); ++i) {
       uint64_t bits = 0u;
       uint8_t wire[2] = {0};
@@ -80,11 +83,12 @@ int main(void) {
           cmeta_data_enum_assign_bits(value_data, &object.value, items[i]) != CMETA_OK ||
           cmeta_data_enum_read_bits(value_data, &object.value, &bits) != CMETA_OK ||
           bits != i + 1u || object.value != items[i] ||
-          EnumSymbolStorage_to_bin_into(&object, wire, sizeof(wire), &wire_len,
+          EnumSymbolStorage_to_bin_into(codec, &object, wire, sizeof(wire), &wire_len,
                                         &error) != DATA_BIND_OK ||
           wire_len != 2u || wire[0] != i + 1u || wire[1] != 0u)
-        return 32;
+        { data_bind_free(codec); return 32; }
     }
+    data_bind_free(codec);
   }
   if (Unsupported_cmeta_data(&data, &error) != DATA_BIND_ERR_SCHEMA) {
     fputs("unsupported public graph request did not fail\n", stderr);
