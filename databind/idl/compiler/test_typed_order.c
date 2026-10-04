@@ -146,7 +146,7 @@ spec("generated typed Order") {
       check_null(strstr(encoded, "\"routing_hint\""));
       check_null(strstr(encoded, "\"client_tag\""));
     }
-    data_bind_binary_free(encoded);
+    data_bind_serialized_free(encoded);
   }
 
   it("should bound optional presence helpers by field and bitmap size") {
@@ -197,7 +197,7 @@ spec("generated typed Order") {
     check_equal(decoded.client_tag, "edge-a");
 
     data_bind_binary_free(wire);
-    data_bind_binary_free(encoded);
+    data_bind_serialized_free(encoded);
     Order_clear(&decoded);
     Order_clear(&present);
   }
@@ -276,7 +276,7 @@ spec("generated typed Order") {
       check_status_ok(status, &error);
       check_not_null(encoded);
       if (status == DATA_BIND_OK) check_order(&decoded);
-      data_bind_binary_free(encoded);
+      data_bind_serialized_free(encoded);
       Order_clear(&decoded);
     }
   }
@@ -297,10 +297,10 @@ spec("generated typed Order") {
     check_status_ok(Order_to_xml(codec, &order, &xml_output, &output_len, &error), &error);
     check_contains(xml_output, "<orderId>42</orderId>");
 
-    tbe_typed_serialized_free(json_output);
-    tbe_typed_serialized_free(yaml_output);
-    tbe_typed_serialized_free(csv_output);
-    tbe_typed_serialized_free(xml_output);
+    data_bind_serialized_free(json_output);
+    data_bind_serialized_free(yaml_output);
+    data_bind_serialized_free(csv_output);
+    data_bind_serialized_free(xml_output);
   }
 
   it("should expose a schema-specific host codec for runtime providers") {
