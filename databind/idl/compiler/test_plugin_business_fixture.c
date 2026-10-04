@@ -15,3 +15,10 @@ int databind_5_Image_5_Codec_6_Encode(
   response->bytes = request->pixels / 4u;
   return 0;
 }
+
+int databind_5_Image_5_Codec_7_Qualify(
+    const GenericRequest_t *request,
+    GenericResponse_t *response) {
+  if (request == NULL || response == NULL) return -1;
+  return 0;
+}
