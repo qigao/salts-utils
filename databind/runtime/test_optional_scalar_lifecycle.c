@@ -199,6 +199,44 @@ spec("optional local lifecycle uses canonical CMeta") {
     check_equal(value.child.id, 0u);
   }
 
+  it("decodes a nested message through the canonical MessagePlan") {
+    static const char json[] = "{\"child\":{\"id\":23}}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    NestedHolder_t value;
+
+    NestedHolder_init(&value);
+    check_equal(ScalarLifecycle_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec != NULL) {
+      check_equal(NestedHolder_from_json(
+                      codec, &value, json, sizeof(json) - 1u, &error),
+                  DATA_BIND_OK);
+      check_equal(value.child.id, 23u);
+    }
+    NestedHolder_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("decodes a nested composite through the canonical MessagePlan") {
+    static const char json[] = "{\"child\":{\"id\":29}}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    CompositeHolder_t value;
+
+    CompositeHolder_init(&value);
+    check_equal(ScalarLifecycle_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec != NULL) {
+      check_equal(CompositeHolder_from_json(
+                      codec, &value, json, sizeof(json) - 1u, &error),
+                  DATA_BIND_OK);
+      check_equal(value.child.id, 29u);
+    }
+    CompositeHolder_clear(&value);
+    data_bind_free(codec);
+  }
+
   it("releases owned child storage through local CMeta overlay lifecycle") {
     NestedOwnedState_t value;
     memset(&value, 0xa5, sizeof(value));

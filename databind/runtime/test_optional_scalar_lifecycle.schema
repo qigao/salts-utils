@@ -70,3 +70,12 @@ message UuidState {
     nullable uuid nullable_value;
     optional nullable uuid tri_value;
 }
+
+composite LocalPoint {
+    uint32 id;
+}
+
+[id(12)]
+message CompositeHolder {
+    LocalPoint child;
+}
