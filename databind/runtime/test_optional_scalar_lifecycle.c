@@ -149,6 +149,26 @@ spec("optional local lifecycle uses canonical CMeta") {
     check_equal(value.child.id, 0u);
   }
 
+  it("releases owned child storage through local CMeta overlay lifecycle") {
+    NestedOwnedState_t value;
+    memset(&value, 0xa5, sizeof(value));
+    NestedOwnedState_init(&value);
+    check_null(value.child.label);
+    check_equal(value.note, 0u);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+    value.child.label = tstr_dup("nested-owned");
+    check_not_null(value.child.label);
+    value.note = 23u;
+    value._presence[0] = 0xffu;
+    value._nulls[0] = 0xffu;
+    NestedOwnedState_clear(&value);
+    check_null(value.child.label);
+    check_equal(value.note, 0u);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+  }
+
   it("keeps unsupported JSON conversion closed") {
     static const char input[] =
         "{\"nullable_value\":null,\"tri_value\":9}";

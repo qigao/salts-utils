@@ -2551,6 +2551,11 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
           tbe_compiler_string_value(field, "cmeta_native_requirement");
       const char *native_data =
           tbe_compiler_string_value(field, "native_data_symbol");
+      Node *nested_record =
+          type != NULL ? tbe_compiler_find_any_record(root, type) : NULL;
+      const int nested_lifecycle =
+          nested_record != NULL &&
+          tbe_compiler_has_child(nested_record, "cmeta_lifecycle_supported");
       const int fixed_bytes =
           type != NULL && strcmp(type, "bytes") == 0 &&
           tbe_compiler_has_child(field, "is_fixed_size") &&
@@ -2571,7 +2576,7 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
           tbe_compiler_has_child(field, "is_collection") ||
           tbe_compiler_has_child(field, "is_group_field") ||
           (tbe_compiler_scalar_projection(type) == NULL && !owned_storage &&
-           !fixed_bytes)) {
+           !fixed_bytes && !nested_lifecycle)) {
         supported = 0;
         break;
       }

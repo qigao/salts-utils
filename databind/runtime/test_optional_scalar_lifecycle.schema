@@ -43,3 +43,14 @@ message NestedValue {
 message NestedHolder {
     NestedValue child;
 }
+
+[id(8)]
+message OwnedChild {
+    string label;
+}
+
+[id(9)]
+message NestedOwnedState {
+    optional OwnedChild child;
+    nullable uint32 note;
+}

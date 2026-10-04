@@ -2891,7 +2891,9 @@ spec("tbe_compiler") {
           "message MapState { optional map<string,uint32> attrs; }"
           "message FixedBytesState { optional bytes(16) payload; }"
           "message NestedValue { uint32 id; }"
-          "message NestedHolder { NestedValue child; }";
+          "message NestedHolder { NestedValue child; }"
+          "message OwnedChild { string label; }"
+          "message NestedOwnedState { optional OwnedChild child; }";
       size_t source_size = 0u;
       char *source = NULL;
       tbe_compiler_options_t options = {
@@ -2920,6 +2922,8 @@ spec("tbe_compiler") {
         check(strstr(source, "static TbeTypedType FixedBytesState_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType NestedValue_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType NestedHolder_TYPED_TYPE") == NULL);
+        check(strstr(source, "static TbeTypedType OwnedChild_TYPED_TYPE") == NULL);
+        check(strstr(source, "static TbeTypedType NestedOwnedState_TYPED_TYPE") == NULL);
         check_contains(source, "Point_cmeta_data(");
         check_contains(source, "Level_cmeta_data(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(Value)");
@@ -2927,6 +2931,7 @@ spec("tbe_compiler") {
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(OwnedBytesState)");
         check_contains(source, "DATABIND_DEFINE_CANONICAL_CSTL_RECORD(MapState)");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(FixedBytesState)");
+        check_contains(source, "DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(NestedOwnedState)");
       }
       free(source);
       cleanup_test_file(schema_path);
@@ -2942,7 +2947,7 @@ spec("tbe_compiler") {
       const char *schema =
           "schema Nested;"
           "message Leaf { uint32 x; }"
-          "message Inner { Leaf child; }"
+          "message Inner { Leaf child; optional uint32 state; }"
           "message Outer { Inner child; optional uint32 other; }"
           "message Standalone { uint32 x; }";
       tbe_compiler_options_t options = {
