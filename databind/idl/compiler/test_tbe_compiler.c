@@ -2774,8 +2774,10 @@ spec("tbe_compiler") {
         check(strstr(source, "tbe_typed_descriptor_clear(") == NULL);
         check_contains(source, "cmeta_data_value_init_zero(&name##_CMETA_DATA");
         check_contains(source, "cmeta_data_value_restore_zero(&name##_CMETA_DATA");
-        check_contains(source, "tbe_typed_descriptor_parse(codec");
-        check_contains(source, "tbe_typed_descriptor_serialize_binary");
+        check(strstr(source, "tbe_typed_descriptor_parse(codec") == NULL);
+        check(strstr(source, "tbe_typed_descriptor_serialize_binary") == NULL);
+        check(strstr(source, "tbe_typed_parse_ex(codec") == NULL);
+        check(strstr(source, "tbe_typed_serialize_binary") == NULL);
         check_contains(
             source, "DATABIND_DEFINE_UNAVAILABLE_MESSAGE_CSV_OUTPUT(LoginMessage)");
         check_contains(
@@ -2845,7 +2847,7 @@ spec("tbe_compiler") {
             source, "DATABIND_DEFINE_RAW_MESSAGE_XML(LoginMessage)") == NULL);
         check(strstr(source, "DATABIND_DEFINE_CMETA_RAW_RECORD(LoginMessage)") == NULL);
         check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(LoginMessage)") == NULL);
-        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(LoginMessage)");
+        check(strstr(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(LoginMessage)") == NULL);
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON)");
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML)");
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_XML)");
