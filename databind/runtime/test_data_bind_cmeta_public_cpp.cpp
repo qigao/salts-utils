@@ -7,6 +7,7 @@
 #include "data_bind_method_plan.h"
 #include "data_bind_projection_plan.h"
 #include "data_bind_validation_plan.h"
+#include "data_bind_xml_writer.h"
 #include "test_data_bind_cmeta_public.c"
 
 static_assert(std::is_standard_layout_v<DataBindSchemaConstraint>);
@@ -99,3 +100,4 @@ static_assert(std::is_standard_layout_v<DataBindFormatWriter>);
 static_assert(std::is_standard_layout_v<DataBindFormatPlanInfo>);
 static_assert(std::is_standard_layout_v<DataBindFormatCanonicalWriter>);
 static_assert(std::is_standard_layout_v<DataBindTransportPlanInfo>);
+static_assert(std::is_standard_layout_v<DataBindXmlWriter>);
