@@ -855,7 +855,8 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         if (status != DATA_BIND_OK) goto cleanup;
     } else {
         if (provider->format == DATA_BIND_FORMAT_JSON ||
-            provider->format == DATA_BIND_FORMAT_YAML) {
+            provider->format == DATA_BIND_FORMAT_YAML ||
+            provider->format == DATA_BIND_FORMAT_XML) {
             status = data_bind_format_plan_compile(
                 codec, type_name, provider->format, &format_plan, error);
             if (status != DATA_BIND_OK) goto cleanup;
