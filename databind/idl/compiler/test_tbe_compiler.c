@@ -2730,6 +2730,7 @@ spec("tbe_compiler") {
           "message WideEnumStorage { WideDomain value; }"
           "message LoginMessage { string user; }"
           "message NullableFlat { uint32 id; nullable uint32 score; string name; }"
+          "message XmlOutputFlat { [name(wireId), alias(id)] uint32 id; string name; }"
           "message CsvFlat { uint32 id; string name; }"
           "message CsvDefault { uint32 id default 7; string name; }";
       size_t header_size = 0;
@@ -2784,6 +2785,24 @@ spec("tbe_compiler") {
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(WideEnumStorage,");
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(NullableFlat,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(XmlOutputFlat,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(LoginMessage,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(FlagStorage,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(WideEnumStorage,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(XmlOutputFlat,");
+        check(strstr(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(NullableFlat,") == NULL);
+        check(strstr(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(Sample,") == NULL);
+        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT(NullableFlat)");
+        check_contains(source, "DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML_OUTPUT(Sample)");
+        check_contains(source, "data_bind_xml_writer_open_root(");
+        check_contains(source, "_message_to_xml(");
         check_contains(source, "TBE_TYPED_DEFINE_RAW_LIFECYCLE(NullableFlat)");
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_TEXT(NullableFlat)");
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(NullableFlat)");
