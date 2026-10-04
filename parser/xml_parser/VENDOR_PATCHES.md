@@ -1,5 +1,26 @@
 # XML parser maintenance notes
 
+## Lexer error-token ownership on parser recovery
+
+The vendored lexer builds malformed lexical tokens with a temporary allocated
+diagnostic buffer. The DOM parser handles those tokens through `setjmp` /
+`longjmp`; before this patch, the local lexer token was never adopted by the
+parser and its buffer became unreachable when the error handler jumped back to
+the parse boundary.
+
+The local token record now carries a private `owns_start` bit. Lexer-created
+error buffers and stream-owned volatile token buffers mark that ownership
+explicitly. The parser error handler copies an owned error token into the
+parser diagnostic, releases the token buffer, then performs the existing
+longjmp. Normal borrowed source tokens are unchanged.
+
+This was found by TurboSCXML's deterministic VoiceXML fuzz smoke in sanitizer
+run `37181219319`: normal CTests passed, then malformed base VoiceXML
+mutations produced an LSan report of 342 bytes in 8 allocations rooted at
+`_cxml_callocate_r`. Parser-level regressions now assert that malformed
+lexical inputs leave `cxml_test_outstanding_allocations()` at the exact
+pre-parse baseline. No sanitizer suppression is used.
+
 ## XPath parser-error recovery and cleanup
 
 The upstream XPath parser treated malformed expressions as a process-fatal condition: its recursive-descent error path printed the expression to stderr, released partially built state, and called `exit(EXIT_FAILURE)`. Embeddable library code cannot terminate its host for invalid input.
