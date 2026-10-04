@@ -617,6 +617,7 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(record, "native_cstl_storage"));
         check_not_null(field_projection_child(record, "cmeta_graph_supported"));
         check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(record, "no_legacy_typed_table"));
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         node_free(root);
     }

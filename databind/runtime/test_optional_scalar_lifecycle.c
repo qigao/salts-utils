@@ -105,6 +105,17 @@ spec("optional local lifecycle uses canonical CMeta") {
     check_equal(value._nulls[0], 0u);
   }
 
+  it("uses canonical CSTL lifecycle for an optional map") {
+    MapState_t value;
+    memset(&value, 0xa5, sizeof(value));
+    MapState_init(&value);
+    check_equal(MapState_attrs_map_t_size(&value.attrs), (size_t)0u);
+    check_equal(value._presence[0], 0u);
+    MapState_clear(&value);
+    check_equal(MapState_attrs_map_t_size(&value.attrs), (size_t)0u);
+    check_equal(value._presence[0], 0u);
+  }
+
   it("keeps unsupported JSON conversion closed") {
     static const char input[] =
         "{\"nullable_value\":null,\"tri_value\":9}";

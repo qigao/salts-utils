@@ -2328,7 +2328,8 @@ static void tbe_compiler_annotate_messages_without_legacy_tables(Node *root) {
     if (name != NULL &&
         tbe_compiler_has_child(record, "cmeta_graph_supported") &&
         (tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
-         tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle")) &&
+         tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle") ||
+         tbe_compiler_has_child(record, "native_cstl_storage")) &&
         !tbe_compiler_typed_type_referenced(root, name))
       (void)tbe_compiler_set_string(record, "no_legacy_typed_table", "1");
   }
