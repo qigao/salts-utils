@@ -229,17 +229,6 @@ suite("compiler_cmeta_field_projection") {
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
                             "cmeta_data_int32");
-                check_equal(field_projection_text(
-                                field, "native_declared_type_symbol"),
-                            "Shape_value_CMETA_DECLARED_TYPE");
-                check_equal(field_projection_text(
-                                field, "native_generic_constructor_ref"),
-                            "&stl_vec_generic_desc");
-                check_equal(field_projection_text(field, "native_generic_arity"),
-                            "1");
-                check_equal(field_projection_text(
-                                field, "native_generic_arg0_type_ref"),
-                            "&cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_type_ref"),
                             "&cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_ref"),
@@ -292,7 +281,7 @@ suite("compiler_cmeta_field_projection") {
                             "Shape_value_CMETA_DECLARED_TYPE");
                 check_equal(field_projection_text(
                                 field, "native_generic_constructor_ref"),
-                            "&stl_set_generic_desc");
+                            "&stl_vec_generic_desc");
                 check_equal(field_projection_text(field, "native_generic_arity"),
                             "1");
                 check_equal(field_projection_text(
@@ -311,6 +300,17 @@ suite("compiler_cmeta_field_projection") {
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
                             "cmeta_data_int32");
+                check_equal(field_projection_text(
+                                field, "native_declared_type_symbol"),
+                            "Shape_value_CMETA_DECLARED_TYPE");
+                check_equal(field_projection_text(
+                                field, "native_generic_constructor_ref"),
+                            "&stl_set_generic_desc");
+                check_equal(field_projection_text(field, "native_generic_arity"),
+                            "1");
+                check_equal(field_projection_text(
+                                field, "native_generic_arg0_type_ref"),
+                            "&cmeta_type_int32");
             }
             node_free(root);
         }
