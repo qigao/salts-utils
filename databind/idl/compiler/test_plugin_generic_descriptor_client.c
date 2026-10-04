@@ -110,17 +110,21 @@ static void check_generic_descriptor_copy(
       generic_field_declared(provider_data, field_name);
   const cmeta_type_identity *provider_args[2] = {NULL, NULL};
   const cmeta_type_identity *peer_args[2] = {NULL, NULL};
+  cmeta_type_identity peer_arg_copies[2];
   cmeta_generic_desc provider_constructor_copy;
   cmeta_generic_desc peer_constructor_copy;
   cmeta_type_identity provider_identity;
   cmeta_type_identity peer_identity;
   char provider_id[256];
   char peer_id[256];
+  char peer_arg_ids[2][256];
+  size_t index;
 
   check_not_null(declared);
   if (declared == NULL || !cmeta_declared_type_valid(declared) ||
       declared->constructor == NULL ||
-      declared->constructor->stable_id == NULL)
+      declared->constructor->stable_id == NULL ||
+      declared->arity == 0u || declared->arity > 2u)
     return;
 
   check(strlen(declared->constructor->stable_id) < sizeof(provider_id));
@@ -140,14 +144,59 @@ static void check_generic_descriptor_copy(
   check_true(declared->constructor != &provider_constructor_copy);
   check_true(declared->constructor != &peer_constructor_copy);
 
-  check_true(generic_application_identity(
-      declared, &provider_constructor_copy,
-      &provider_identity, provider_args, 2u));
-  check_true(generic_application_identity(
-      declared, &peer_constructor_copy,
-      &peer_identity, peer_args, 2u));
+  for (index = 0u; index < declared->arity; ++index) {
+    const cmeta_type_desc *argument =
+        cmeta_declared_type_argument(declared, index);
+    const cmeta_type_identity *identity =
+        cmeta_type_identity_of(argument);
+
+    check_not_null(argument);
+    check_not_null(identity);
+    if (argument == NULL || identity == NULL ||
+        identity->form != CMETA_TYPE_ATOM ||
+        identity->stable_atom_id == NULL ||
+        strlen(identity->stable_atom_id) >= sizeof(peer_arg_ids[index]))
+      return;
+
+    provider_args[index] = identity;
+    snprintf(peer_arg_ids[index], sizeof(peer_arg_ids[index]), "%s",
+             identity->stable_atom_id);
+    peer_arg_copies[index] = *identity;
+    peer_arg_copies[index].stable_atom_id = peer_arg_ids[index];
+    peer_args[index] = &peer_arg_copies[index];
+
+    check_true(provider_args[index] != peer_args[index]);
+    check_true(cmeta_type_identity_equal(
+        provider_args[index], peer_args[index]));
+  }
+
+  provider_identity = (cmeta_type_identity){
+      CMETA_TYPE_APPLY, NULL, &provider_constructor_copy, NULL,
+      provider_args, declared->arity};
+  peer_identity = (cmeta_type_identity){
+      CMETA_TYPE_APPLY, NULL, &peer_constructor_copy, NULL,
+      peer_args, declared->arity};
+
+  check_true(cmeta_type_identity_valid(&provider_identity));
+  check_true(cmeta_type_identity_valid(&peer_identity));
   check_true(cmeta_type_identity_equal(
       &provider_identity, &peer_identity));
+}
+
+static const cmeta_data_desc *generic_field_data(
+    const cmeta_data_desc *data, const char *field_name) {
+  const cmeta_data_struct_shape *shape;
+  size_t index;
+
+  if (data == NULL || field_name == NULL ||
+      data->kind != CMETA_DATA_STRUCT || data->shape == NULL)
+    return NULL;
+  shape = (const cmeta_data_struct_shape *)data->shape;
+  for (index = 0u; index < shape->field_count; ++index)
+    if (shape->fields[index].name != NULL &&
+        strcmp(shape->fields[index].name, field_name) == 0)
+      return shape->fields[index].value;
+  return NULL;
 }
 
 spec("generated Plugin generic descriptor graph") {
@@ -190,6 +239,41 @@ spec("generated Plugin generic descriptor graph") {
     check_semantic_data_copy(operation->response.data);
     check_generic_descriptor_copy(operation->request.data, "values");
     check_generic_descriptor_copy(operation->response.data, "values");
+
+    {
+      const cmeta_data_desc *request_values =
+          generic_field_data(operation->request.data, "values");
+      const cmeta_data_desc *response_values =
+          generic_field_data(operation->response.data, "values");
+      const cmeta_data_desc *request_item;
+      const cmeta_data_desc *response_key;
+      const cmeta_data_desc *response_item;
+
+      check_not_null(request_values);
+      check_not_null(response_values);
+      request_item = request_values != NULL
+          ? cmeta_data_collection_element_data(request_values)
+          : NULL;
+      response_key = response_values != NULL
+          ? cmeta_data_map_key_data(response_values)
+          : NULL;
+      response_item = response_values != NULL
+          ? cmeta_data_map_value_data(response_values)
+          : NULL;
+
+      check_not_null(request_item);
+      check_not_null(response_key);
+      check_not_null(response_item);
+      if (request_item != NULL && response_item != NULL) {
+        check_equal(request_item->kind, CMETA_DATA_STRUCT);
+        check_equal(response_item->kind, CMETA_DATA_STRUCT);
+        check_true(cmeta_data_desc_equal(request_item, response_item));
+        check_semantic_data_copy(request_item);
+        check_semantic_data_copy(response_item);
+      }
+      if (response_key != NULL)
+        check_equal(response_key->kind, CMETA_DATA_STRING);
+    }
 
     {
       const cmeta_declared_type *request_declared =
