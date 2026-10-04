@@ -506,6 +506,14 @@ suite("compiler_cmeta_field_projection") {
                 EXPECTED[i].requirement == EXPECT_SET_PROVIDER)
                 check_not_null(field_projection_child(record,
                                                        "cmeta_lifecycle_supported"));
+            if (EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE ||
+                EXPECTED[i].requirement == EXPECT_OVERLAY_NULL ||
+                EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE_NULL) {
+                check_not_null(field_projection_child(
+                    record, "cmeta_scalar_overlay_lifecycle"));
+                check_null(field_projection_child(record,
+                                                  "cmeta_lifecycle_supported"));
+            }
         }
 
         node_free(root);

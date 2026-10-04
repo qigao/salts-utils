@@ -1,0 +1,8 @@
+schema ScalarLifecycle [id(2), version(1), byte_order(little)];
+
+[id(1)]
+message ScalarState {
+    optional int32 optional_value;
+    nullable uint32 nullable_value;
+    optional nullable uint32 tri_value;
+}
