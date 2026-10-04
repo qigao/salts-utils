@@ -1546,13 +1546,16 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 
 #define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML_OUTPUT(name) \
     DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
-        {{schema.schema_name}}_CMETA_INIT_ALL(); \
-        return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_XML, out, out_len, error); \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical XML native output is unavailable for this shape"); \
     }
 
 #define DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT(name) \
     DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
-        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_XML, out, out_len, error); \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical XML native output is unavailable for this shape"); \
     }
 
 #define DATABIND_DEFINE_CSTL_MESSAGE_XML_OUTPUT(name) \
@@ -1572,13 +1575,16 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 
 #define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_CSV(name) \
     DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
-        {{schema.schema_name}}_CMETA_INIT_ALL(); \
-        return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
+        (void)codec; (void)object; (void)data; (void)len; (void)row; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical CSV native input is unavailable for this shape"); \
     }
 
 #define DATABIND_DEFINE_RAW_MESSAGE_CSV(name) \
     DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
-        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
+        (void)codec; (void)object; (void)data; (void)len; (void)row; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical CSV native input is unavailable for this shape"); \
     }
 
 #define DATABIND_DEFINE_CSTL_MESSAGE_CSV(name) \
@@ -1589,13 +1595,16 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 
 #define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML(name) \
     DataBindStatus name##_from_xml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
-        {{schema.schema_name}}_CMETA_INIT_ALL(); \
-        return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_XML, data, len, 0, object, error); \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical XML native input is unavailable for this shape"); \
     }
 
 #define DATABIND_DEFINE_RAW_MESSAGE_XML(name) \
     DataBindStatus name##_from_xml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
-        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_XML, data, len, 0, object, error); \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_ERR_SCHEMA, #name, \
+            "Canonical XML native input is unavailable for this shape"); \
     }
 
 #define DATABIND_DEFINE_RAW_MESSAGE_TEXT(name) \
@@ -1834,7 +1843,7 @@ static DataBindStatus {{schema.schema_name}}_binary_to_text(
 }
 
 static void {{schema.schema_name}}_schema_codec_free_output(void *output) {
-    tbe_typed_serialized_free(output);
+    free(output);
 }
 
 static const tbe_schema_codec_v1_t {{schema.schema_name}}_SCHEMA_CODEC = {
