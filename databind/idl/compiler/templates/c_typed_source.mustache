@@ -854,9 +854,12 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
             data, len, csv_row, descriptor_depth, &reader, error);
         if (status != DATA_BIND_OK) goto cleanup;
     } else {
-        if (provider->format == DATA_BIND_FORMAT_JSON ||
-            provider->format == DATA_BIND_FORMAT_YAML ||
-            provider->format == DATA_BIND_FORMAT_XML) {
+        if (provider->format == DATA_BIND_FORMAT_XML) {
+            status = data_bind_format_plan_compile_reader(
+                codec, type_name, DATA_BIND_FORMAT_XML, &format_plan, error);
+            if (status != DATA_BIND_OK) goto cleanup;
+        } else if (provider->format == DATA_BIND_FORMAT_JSON ||
+                   provider->format == DATA_BIND_FORMAT_YAML) {
             status = data_bind_format_plan_compile(
                 codec, type_name, provider->format, &format_plan, error);
             if (status != DATA_BIND_OK) goto cleanup;
