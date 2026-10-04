@@ -202,20 +202,46 @@ spec("generated typed Order") {
     Order_clear(&present);
   }
 
-  it("should round-trip the binary wire format") {
+  it("should round-trip identical allocated and bounded Binary wire") {
     uint8_t *encoded = NULL;
     size_t encoded_len = 0;
+    uint8_t bounded[TEST_GUEST_WIRE_CAPACITY] = {0};
+    size_t bounded_len = 0;
     Order_t decoded;
     Order_init(&decoded);
-    check_equal(Order_to_bin(codec, &order, &encoded, &encoded_len, &error), DATA_BIND_OK);
+    check_equal(
+        Order_to_bin(codec, &order, &encoded, &encoded_len, &error),
+        DATA_BIND_OK);
     check_not_null(encoded);
     check_greater(encoded_len, 0);
+    check_equal(
+        Order_to_bin_into(
+            codec, &order, bounded, sizeof(bounded), &bounded_len, &error),
+        DATA_BIND_OK);
+    check_equal(bounded_len, encoded_len);
+    if (encoded != NULL && bounded_len == encoded_len)
+      check(memcmp(bounded, encoded, encoded_len) == 0);
     if (encoded != NULL) {
-      check_status_ok(Order_from_bin(codec, &decoded, encoded, encoded_len, &error), &error);
+      check_status_ok(
+          Order_from_bin(codec, &decoded, encoded, encoded_len, &error),
+          &error);
       check_order(&decoded);
     }
     data_bind_binary_free(encoded);
     Order_clear(&decoded);
+  }
+
+  it("should leave a bounded Binary destination unchanged on capacity failure") {
+    uint8_t output[1] = {0xa5u};
+    const uint8_t before[1] = {0xa5u};
+    size_t output_len = 99u;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        Order_to_bin_into(
+            codec, &order, output, sizeof(output), &output_len, &error),
+        DATA_BIND_ERR_LIMIT);
+    check_equal(output_len, (size_t)0u);
+    check(memcmp(output, before, sizeof(output)) == 0);
   }
 
   it("should preserve the owning struct when direct binary decoding fails") {
