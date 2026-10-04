@@ -473,9 +473,18 @@ static cserde_status yaml_cserde_write(
 
   if (token->kind == CSERDE_BYTES)
     return CSERDE_UNSUPPORTED;
+  if (token->kind == CSERDE_FLOAT &&
+      !isfinite(token->value.floating))
+    return CSERDE_UNSUPPORTED;
+  if (token->kind == CSERDE_STRING &&
+      token->value.slice.size != 0u &&
+      token->value.slice.data == NULL)
+    return CSERDE_UNSUPPORTED;
+  if (token->kind < CSERDE_NULL || token->kind > CSERDE_STRING)
+    return CSERDE_UNSUPPORTED;
 
   node = yaml_writer_scalar(owner, token);
-  if (node == NULL) return CSERDE_UNSUPPORTED;
+  if (node == NULL) return CSERDE_CALLBACK_ERROR;
   return yaml_writer_attach(owner, node);
 }
 
