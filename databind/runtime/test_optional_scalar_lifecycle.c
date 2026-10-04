@@ -116,6 +116,29 @@ spec("optional local lifecycle uses canonical CMeta") {
     check_equal(value._presence[0], 0u);
   }
 
+  it("initializes fixed byte arrays and their state overlays") {
+    FixedBytesState_t value;
+    memset(&value, 0xa5, sizeof(value));
+    FixedBytesState_init(&value);
+    for (size_t i = 0u; i < sizeof(value.payload); ++i)
+      check_equal(value.payload[i], (uint8_t)0u);
+    for (size_t i = 0u; i < sizeof(value.note); ++i)
+      check_equal(value.note[i], (uint8_t)0u);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+    memset(value.payload, 0x5a, sizeof(value.payload));
+    memset(value.note, 0x5a, sizeof(value.note));
+    value._presence[0] = 0xffu;
+    value._nulls[0] = 0xffu;
+    FixedBytesState_clear(&value);
+    for (size_t i = 0u; i < sizeof(value.payload); ++i)
+      check_equal(value.payload[i], (uint8_t)0u);
+    for (size_t i = 0u; i < sizeof(value.note); ++i)
+      check_equal(value.note[i], (uint8_t)0u);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+  }
+
   it("keeps unsupported JSON conversion closed") {
     static const char input[] =
         "{\"nullable_value\":null,\"tri_value\":9}";
