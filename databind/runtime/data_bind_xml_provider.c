@@ -287,6 +287,18 @@ static int xml_node_has_element_child(salts_xml_node node) {
   return 0;
 }
 
+static salts_xml_node xml_node_first_text_child(salts_xml_node node) {
+  salts_xml_node empty = {NULL};
+  size_t count = salts_xml_node_child_count(node);
+  size_t index;
+  for (index = 0u; index < count; ++index) {
+    salts_xml_node child = salts_xml_node_child_at(node, index);
+    if (salts_xml_node_type(child) == SALTS_XML_TEXT)
+      return child;
+  }
+  return empty;
+}
+
 static int xml_attribute_shadowed_by_child(
     salts_xml_node node,
     salts_xml_attribute attribute) {
@@ -354,10 +366,16 @@ static cserde_status xml_emit_node(
   attribute_count = salts_xml_node_attribute_count(node);
   has_element_child = xml_node_has_element_child(node);
 
-  if (!has_element_child && attribute_count == 0u)
+  if (!has_element_child && attribute_count == 0u) {
+    salts_xml_node text = xml_node_first_text_child(node);
+    if (salts_xml_node_type(text) == SALTS_XML_TEXT)
+      return xml_emit_logical_slice(
+          context, out, salts_xml_node_text_view(text),
+          salts_xml_node_text_has_entity_reference(text));
     return xml_emit_logical_slice(
         context, out, salts_xml_node_text_view(node),
         salts_xml_node_text_has_entity_reference(node));
+  }
 
   if (context->depth >= context->max_depth)
     return CSERDE_LIMIT_EXCEEDED;
