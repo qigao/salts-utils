@@ -507,6 +507,131 @@ jobs:
           if-no-files-found: error
           compression-level: 9
 
+  linux_arm64:
+    name: Linux arm64 SDK
+    needs: metadata
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Prepare native arm64 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "aarch64"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build pkg-config
+          test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
+          case "${VCPKG_BINARY_SOURCES:-}" in
+            *nugetconfig*) ;;
+            *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
+          esac
+          test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
+
+      - name: Restore latest published Salts SDK and host re2c
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-native-sdk.sh linux-arm64 linux-arm64
+
+      - name: Restore arm64-linux dependencies cache-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$GITHUB_WORKSPACE/vcpkg_installed"
+          "$VCPKG_ROOT/vcpkg" install \
+            --x-manifest-root=. \
+            --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed" \
+            --triplet arm64-linux \
+            --host-triplet arm64-linux \
+            --only-binarycaching
+          test -f "$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/include/simde/x86/sse2.h"
+          test -f "$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/include/zstd.h"
+          test -f "$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/include/miniaudio.h"
+
+      - name: Configure, build and install SaltsUtils
+        shell: bash
+        run: |
+          set -euxo pipefail
+          prefix="$GITHUB_WORKSPACE/stage/sdk/linux-arm64"
+          cmake -S . -B build/native-sdk-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=arm64-linux \
+            -DVCPKG_HOST_TRIPLET=arm64-linux \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake --build build/native-sdk-arm64 --parallel 2
+          cmake --install build/native-sdk-arm64
+
+          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$prefix/lib/cmake/SaltsUtils/IDL.cmake"
+          test -f "$prefix/include/data_bind_binding_plan.h"
+          test -f "$prefix/include/data_bind_projection_plan.h"
+          test -f "$prefix/include/data_bind_native.h"
+          test -f "$prefix/include/data_bind_native_binding.h"
+          test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
+          test -f "$prefix/include/data_bind_plugin_catalog.h"
+          test -f "$prefix/include/data_bind_plugin_execution.h"
+          test -x "$prefix/bin/salts-idlc"
+
+          cmake -S databind/producer/package_config \
+            -B build/databind-producer-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=arm64-linux \
+            -DVCPKG_HOST_TRIPLET=arm64-linux \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
+          cmake --build build/databind-producer-arm64 \
+            --target databind_generated_plan_consumer --parallel 2
+          build/databind-producer-arm64/databind_generated_plan_consumer
+
+          cmake -S databind/idl/compiler/package_config/databind_target \
+            -B build/databind-target-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=arm64-linux \
+            -DVCPKG_HOST_TRIPLET=arm64-linux \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+          export LD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/lib:${LD_LIBRARY_PATH:-}"
+          cmake --build build/databind-target-arm64 \
+            --target installed_image --parallel 2
+
+          cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
+          version=${{ needs.metadata.outputs.version }}
+          commit=$GITHUB_SHA
+          os=linux
+          arch=arm64
+          rid=linux-arm64
+          triplet=arm64-linux
+          profile=release
+          capture=off
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: salts-utils-sdk-linux-arm64
+          path: stage/sdk
+          if-no-files-found: error
+          compression-level: 9
+
   macos:
     name: macOS SDK
     needs: metadata
@@ -1176,7 +1301,7 @@ jobs:
 
   pack:
     name: Pack SaltsUtils.Native
-    needs: [metadata, linux, macos, windows, android, ios]
+    needs: [metadata, linux, linux_arm64, macos, windows, android, ios]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -1195,6 +1320,17 @@ jobs:
           test -f package/sdk/linux-x64/include/data_bind_cmeta_adapter_plan.h
           test -f package/sdk/linux-x64/include/salts_capture.h
           test -f package/sdk/linux-x64/include/salts_playback.h
+          test -f package/sdk/linux-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
+          test -f package/sdk/linux-arm64/lib/cmake/SaltsUtils/IDL.cmake
+          test -f package/sdk/linux-arm64/include/data_bind_binding_plan.h
+          test -f package/sdk/linux-arm64/include/data_bind_projection_plan.h
+          test -f package/sdk/linux-arm64/include/data_bind_native.h
+          test -f package/sdk/linux-arm64/include/data_bind_native_binding.h
+          test -f package/sdk/linux-arm64/include/data_bind_cmeta_adapter_plan.h
+          test -f package/sdk/linux-arm64/include/data_bind_plugin_catalog.h
+          test -f package/sdk/linux-arm64/include/data_bind_plugin_execution.h
+          test -f package/sdk/linux-arm64/bin/salts-idlc
+          test ! -e package/sdk/linux-arm64/include/salts_capture.h
           test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
           test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/IDL.cmake
           test -f package/sdk/windows-x64/include/data_bind_binding_plan.h
@@ -1217,7 +1353,7 @@ jobs:
             test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
             test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
           done
-          test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 6
+          test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
@@ -1257,6 +1393,20 @@ jobs:
           grep -Fx "sdk/linux-x64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/include/data_bind_projection_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/include/data_bind_native_binding.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-arm64/include/data_bind_plugin_execution.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          if grep -Fxq "sdk/linux-arm64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
+            echo "Linux arm64 focused profile must not claim unwarmed capture support" >&2
+            exit 1
+          fi
           grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
@@ -1300,10 +1450,103 @@ jobs:
           path: dist/*.nupkg
           if-no-files-found: error
 
+  qualify_linux_arm64:
+    name: Qualify restored Linux arm64 package
+    needs: [metadata, pack]
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Prepare restored-package toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "aarch64"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build pkg-config
+
+      - name: Restore latest published Salts SDK
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-native-sdk.sh linux-arm64 linux-arm64
+
+      - name: Restore arm64-linux consumer dependencies cache-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$GITHUB_WORKSPACE/vcpkg_installed"
+          "$VCPKG_ROOT/vcpkg" install             --x-manifest-root=.             --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed"             --triplet arm64-linux             --host-triplet arm64-linux             --only-binarycaching
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: salts-utils-native-nuget
+          path: dist
+
+      - name: Restore packed Linux arm64 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.metadata.outputs.version }}"
+          nupkg="$GITHUB_WORKSPACE/dist/SaltsUtils.Native.$version.nupkg"
+          packages="$RUNNER_TEMP/salts-utils-arm64-packages"
+          project="$RUNNER_TEMP/salts-utils-arm64-restore.csproj"
+          config="$RUNNER_TEMP/salts-utils-arm64-nuget.config"
+          test -f "$nupkg"
+          rm -rf "$packages"
+          cat > "$project" <<EOF
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+            <ItemGroup>
+              <PackageReference Include="SaltsUtils.Native" Version="$version" />
+            </ItemGroup>
+          </Project>
+          EOF
+          cat > "$config" <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="local" value="$GITHUB_WORKSPACE/dist" />
+            </packageSources>
+          </configuration>
+          EOF
+          dotnet restore "$project" --configfile "$config" --packages "$packages" \
+            --no-cache --force-evaluate
+          prefix="$packages/saltsutils.native/$version/sdk/linux-arm64"
+          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$prefix/lib/cmake/SaltsUtils/IDL.cmake"
+          test -x "$prefix/bin/salts-idlc"
+          echo "SALTS_UTILS_ARM64_ROOT=$prefix" >> "$GITHUB_ENV"
+
+      - name: Build installed salts_idl_target consumer
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S databind/idl/compiler/package_config/databind_target \
+            -B build/restored-databind-target-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=arm64-linux \
+            -DVCPKG_HOST_TRIPLET=arm64-linux \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DSaltsUtils_DIR="$SALTS_UTILS_ARM64_ROOT/lib/cmake/SaltsUtils" \
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+          export LD_LIBRARY_PATH="$SALTS_UTILS_ARM64_ROOT/lib:$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/lib:${LD_LIBRARY_PATH:-}"
+          cmake --build build/restored-databind-target-arm64 \
+            --target installed_image --parallel 2
+
   publish:
     name: Publish package and GitHub Release
     if: github.event_name == 'push' && github.ref_type == 'tag'
-    needs: [metadata, pack]
+    needs: [metadata, pack, qualify_linux_arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -8,6 +8,7 @@ The re2c host generator is a build-time tool and is not a runtime dependency of 
 ## Layout
 
 - `sdk/linux-x64/`
+- `sdk/linux-arm64/`
 - `sdk/windows-x64/`
 - `sdk/macos-x64/` or `sdk/macos-arm64/`
 - `sdk/android-arm64-v8a/`
@@ -15,11 +16,21 @@ The re2c host generator is a build-time tool and is not a runtime dependency of 
 Each directory is a normal CMake install prefix containing
 `lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake`.
 
+The Linux arm64 profile is the focused native-SDK/DataBind profile used for
+arm64 qualification. It intentionally excludes the optional capture feature;
+missing capture headers/libraries fail fast rather than falling back to a
+source-built `libyuv` dependency.
+
 Consumers restore `SaltsUtils.Native` and `Salts.Native` explicitly,
 then set `SALTS_ROOT` to the matching Salts SDK and point CMake at the matching
 SaltsUtils SDK:
 
     export SALTS_ROOT=<nuget>/salts.native/<resolved>/sdk/linux-x64
     export SALTS_UTILS_ROOT=<nuget>/saltsutils.native/<resolved>/sdk/linux-x64
+
+Use the matching RID on Linux arm64:
+
+    export SALTS_ROOT=<nuget>/salts.native/<resolved>/sdk/linux-arm64
+    export SALTS_UTILS_ROOT=<nuget>/saltsutils.native/<resolved>/sdk/linux-arm64
 
     find_package(SaltsUtils CONFIG REQUIRED PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
