@@ -5,7 +5,7 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <PackageId>SaltsUtils.Native</PackageId>
-    <PackageVersion Condition="'$(PackageVersion)' == ''">4.1.17</PackageVersion>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">4.1.18</PackageVersion>
     <Authors>qigao</Authors>
     <Description>Prebuilt SaltsUtils C/C++ SDK install trees for native consumers.</Description>
     <PackageTags>salts-utils;native;c;cpp;cmake;android;ios</PackageTags>
