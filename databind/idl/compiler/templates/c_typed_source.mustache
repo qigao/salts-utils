@@ -874,6 +874,15 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     status = data_bind_message_plan_decode_native_format(
         plan, &workspace.options, provider->format, decode_reader,
         temporary, object_size, &diagnostic);
+    /*
+     * Historical generated CSV treats an empty required cell as a row/type
+     * mismatch after omitting that cell from the logical object. MessagePlan's
+     * generic missing-required status is TYPE_NOT_FOUND, so preserve the CSV
+     * public contract only at this generated format boundary.
+     */
+    if (provider->format == DATA_BIND_FORMAT_CSV &&
+        status == DATA_BIND_ERR_TYPE_NOT_FOUND)
+        status = DATA_BIND_ERR_TYPE_MISMATCH;
     close_status = data_bind_format_reader_close(&reader);
     if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
         status = {{schema.schema_name}}_schema_codec_error(
