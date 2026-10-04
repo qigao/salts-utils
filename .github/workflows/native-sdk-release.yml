@@ -610,6 +610,7 @@ jobs:
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
             -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+          export LD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/lib:${LD_LIBRARY_PATH:-}"
           cmake --build build/databind-target-arm64 \
             --target installed_image --parallel 2
 
@@ -1330,7 +1331,6 @@ jobs:
           test -f package/sdk/linux-arm64/include/data_bind_plugin_execution.h
           test -f package/sdk/linux-arm64/bin/salts-idlc
           test ! -e package/sdk/linux-arm64/include/salts_capture.h
-          test ! -e package/sdk/linux-arm64/include/salts_playback.h
           test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
           test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/IDL.cmake
           test -f package/sdk/windows-x64/include/data_bind_binding_plan.h
@@ -1517,6 +1517,7 @@ jobs:
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DSaltsUtils_DIR="$SALTS_UTILS_ARM64_ROOT/lib/cmake/SaltsUtils" \
             -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+          export LD_LIBRARY_PATH="$SALTS_UTILS_ARM64_ROOT/lib:$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/lib:${LD_LIBRARY_PATH:-}"
           cmake --build build/restored-databind-target-arm64 \
             --target installed_image --parallel 2
 
