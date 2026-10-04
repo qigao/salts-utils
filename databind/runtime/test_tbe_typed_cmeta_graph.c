@@ -7,6 +7,16 @@
 #include <stddef.h>
 #include <string.h>
 
+/* Internal migration seam; not part of the generated public API. */
+extern const TbeTypedDescriptor *Sample_typed_descriptor(void);
+extern const TbeTypedDescriptor *Depth32_typed_descriptor(void);
+extern const TbeTypedDescriptor *BoolStorage_typed_descriptor(void);
+extern const TbeTypedDescriptor *IntegerBoolDefaults_typed_descriptor(void);
+extern const TbeTypedDescriptor *FlagStorage_typed_descriptor(void);
+extern const TbeTypedDescriptor *FixedValues_typed_descriptor(void);
+extern const TbeTypedDescriptor *WideEnumStorage_typed_descriptor(void);
+extern const TbeTypedDescriptor *Signed8Storage_typed_descriptor(void);
+
 static unsigned reject_fixed_copy_hits;
 
 static void check_native_text_format_isolated(
