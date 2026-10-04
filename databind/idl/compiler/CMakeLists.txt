@@ -1050,6 +1050,7 @@ cmake_add_test(test_databind_plugin_projection_rejection
     Salts::Core
   DEFS
     PLUGIN_UNSUPPORTED_OWNED_TYPED_ERROR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_unsupported_owned_typed_error.schema"
+    PLUGIN_TYPED_ERROR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_typed_error.schema"
     PLUGIN_MULTI_SERVICE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_multi_service.schema"
     PLUGIN_COMPONENT_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
