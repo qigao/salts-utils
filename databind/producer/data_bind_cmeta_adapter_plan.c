@@ -158,7 +158,12 @@ static DataBindCMetaAdapterPlanStatus producer_validate(
     }
 
     for (j = 0u; j < function->param_count; ++j) {
-      if (!producer_carrier(function->params[j].type, false, &carrier)) {
+      const cmeta_param_desc *param = cmeta_function_param(function, j);
+      if (param == NULL) {
+        if (out_error_index != NULL) *out_error_index = i;
+        return DATA_BIND_CMETA_ADAPTER_PLAN_INVALID_DESCRIPTOR;
+      }
+      if (!producer_carrier(param->type, false, &carrier)) {
         if (out_error_index != NULL) *out_error_index = i;
         return DATA_BIND_CMETA_ADAPTER_PLAN_UNSUPPORTED_TYPE;
       }
@@ -242,15 +247,16 @@ static bool producer_emit_param_array(
 
   for (i = 0u; i < function->param_count; ++i) {
     adapter_carrier carrier;
+    const cmeta_param_desc *param = cmeta_function_param(function, i);
     const char *suffix;
-    if (!producer_carrier(function->params[i].type, false, &carrier))
+    if (param == NULL || !producer_carrier(param->type, false, &carrier))
       return false;
     suffix = producer_carrier_suffix(carrier);
     if (suffix == NULL ||
         !producer_literal(write, context, "  {") ||
-        !producer_c_string(write, context, function->params[i].name) ||
+        !producer_c_string(write, context, param->name) ||
         !producer_literal(write, context, ", ") ||
-        !producer_size(write, context, (size_t)function->params[i].flags) ||
+        !producer_size(write, context, (size_t)param->flags) ||
         !producer_literal(write, context, "u, ") ||
         !producer_symbol(write, context, prefix, suffix) ||
         !producer_literal(write, context, "},\n"))
