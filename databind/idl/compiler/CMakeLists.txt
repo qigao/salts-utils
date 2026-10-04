@@ -919,6 +919,35 @@ add_dependencies(test_databind_plugin_generated_dso
   databind_plugin_generated_fixture_plugin)
 
 salts_idl_target(
+  TARGET databind_plugin_generic_descriptor_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_generic_descriptor.schema"
+  COMPONENT "GenericPlugin.GenericProcessor"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "generic_plugin"
+  ARTIFACTS PLUGIN
+  SOURCES test_plugin_generic_descriptor_business.c)
+
+cmake_add_test(test_databind_plugin_generic_descriptor_client
+  SOURCES test_plugin_generic_descriptor_client.c
+  LIBS
+    databind_plugin_generic_descriptor_fixture_plugin_client
+    Salts::TinyTest
+  DEFS
+    GENERATED_GENERIC_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generic_descriptor_fixture_plugin>"
+  INCLUDES
+    "${databind_plugin_generic_descriptor_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_plugin_generic_descriptor_client
+  databind_plugin_generic_descriptor_fixture_plugin
+  databind_plugin_generic_descriptor_fixture_plugin_client)
+set_target_properties(test_databind_plugin_generic_descriptor_client PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_plugin_generic_descriptor_client PROPERTIES
+  LABELS "databind;compiler;plugin;generic;lease")
+
+salts_idl_target(
   TARGET databind_plugin_typed_error_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_typed_error.schema"
   COMPONENT "ErrorPlugin.StorePlugin"

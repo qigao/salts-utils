@@ -469,9 +469,25 @@ spec("DataBind Plugin projection semantic rejection") {
     check_equal(salts_fs_read_file(client_source_output, &generated), 0);
     check_not_null(generated.base);
     check_not_null(strstr(
+        generated.base, "databind_18_MultiServicePlugin_5_First_4_Read_operation"));
+    check_not_null(strstr(
         generated.base, "databind_18_MultiServicePlugin_5_First_4_Read_export"));
     check_not_null(strstr(
+        generated.base, "databind_18_MultiServicePlugin_6_Second_5_Write_operation"));
+    check_not_null(strstr(
         generated.base, "databind_18_MultiServicePlugin_6_Second_5_Write_export"));
+    check_not_null(strstr(
+        generated.base, "DATA_BIND_PLUGIN_CATALOG_EXPORT_ID"));
+    check_not_null(strstr(
+        generated.base, "data_bind_plugin_catalog_operation_at("));
+    {
+      const char *call = strstr(
+          generated.base,
+          "databind_18_MultiServicePlugin_5_First_4_Read_plugin_client_call(");
+      check_not_null(call);
+      if (call != NULL)
+        check_null(strstr(call, "data_bind_plugin_catalog_"));
+    }
     salts_fs_buf_free(&generated);
 
     (void)salts_fs_unlink(source_output);

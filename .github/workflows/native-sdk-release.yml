@@ -217,6 +217,7 @@ jobs:
                      test_databind_native_service_public_artifact \
                      test_databind_native_service_public_artifact_cpp \
                      test_databind_message_native_artifact \
+                     test_databind_plugin_generic_descriptor_client \
                      test_databind_plugin_projection_rejection \
             --parallel 2
 
@@ -225,7 +226,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_databind_binary_reader_codegen|test_databind_binary_layout_ir|test_databind_binary_var_data_transport|test_databind_opaque_transport|test_databind_opaque_service|test_databind_method_plan_binary_admission|test_databind_flowmq_plan_projection|test_data_bind_service_native_error|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_cmeta_public_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp|test_tbe_compiler_cmeta_fields|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_service_native_lowering|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact|test_databind_plugin_projection_rejection|test_tbe_cmeta_cli_gates)$' \
+            -R '^(test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_databind_binary_reader_codegen|test_databind_binary_layout_ir|test_databind_binary_var_data_transport|test_databind_opaque_transport|test_databind_opaque_service|test_databind_method_plan_binary_admission|test_databind_flowmq_plan_projection|test_data_bind_service_native_error|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_cmeta_public_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp|test_tbe_compiler_cmeta_fields|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_service_native_lowering|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact|test_databind_plugin_projection_rejection|test_databind_plugin_generic_descriptor_client|test_tbe_cmeta_cli_gates)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
@@ -249,13 +250,14 @@ jobs:
                      test_data_bind_yaml_provider test_data_bind_xml_provider \
                      test_data_bind_service_native_error \
                      test_databind_message_native_artifact \
+                     test_databind_plugin_generic_descriptor_client \
                      test_databind_generated_owned_buffers \
                      test_databind_generated_sequence_public_cpp \
             --parallel 2
           ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
           UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
           ctest --test-dir build/binding-plan-sanitize --no-tests=error \
-            -R '^(test_data_bind_binary_reader|test_data_bind_opaque_plan|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_service_native_error|test_databind_message_native_artifact|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp)$' \
+            -R '^(test_data_bind_binary_reader|test_data_bind_opaque_plan|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_service_native_error|test_databind_message_native_artifact|test_databind_plugin_generic_descriptor_client|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
@@ -713,6 +715,20 @@ jobs:
           cmake --build build\native-sdk --parallel
           if errorlevel 1 exit /b 1
           cmake --install build\native-sdk
+          if errorlevel 1 exit /b 1
+
+      - name: Qualify generic Plugin descriptor graph
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          if errorlevel 1 exit /b 1
+          set "PATH=%GITHUB_WORKSPACE%\build\plugin-generic-test\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\%QIGAO_VCPKG_WINDOWS_TRIPLET%\bin;%PATH%"
+          cmake -S . -B build\plugin-generic-test -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build build\plugin-generic-test --target test_databind_plugin_generic_descriptor_client --parallel 2
+          if errorlevel 1 exit /b 1
+          ctest --test-dir build\plugin-generic-test -R "^test_databind_plugin_generic_descriptor_client$" --no-tests=error --output-on-failure
           if errorlevel 1 exit /b 1
 
       - name: Verify installed DataBind and salts_idl_target consumers
