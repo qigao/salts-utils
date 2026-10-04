@@ -1885,11 +1885,11 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
         return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
     } \
     DataBindStatus name##_to_bin(DataBind *codec, const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
-        (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
         return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
     } \
     DataBindStatus name##_to_bin_into(DataBind *codec, const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
-        (void)object; (void)output; (void)output_capacity; if (out_len != NULL) *out_len = 0u; \
+        (void)codec; (void)object; (void)output; (void)output_capacity; if (out_len != NULL) *out_len = 0u; \
         return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
     } \
     DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
