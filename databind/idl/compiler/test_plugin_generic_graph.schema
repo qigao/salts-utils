@@ -1,0 +1,21 @@
+schema GenericGraph [version(1)];
+
+component GenericProcessor {
+    service GenericService;
+}
+
+message GenericItem {
+    uint32 id;
+}
+
+message GenericRequest {
+    list<GenericItem> items;
+}
+
+message GenericResponse {
+    map<string,GenericItem> by_name;
+}
+
+service GenericService {
+    Qualify: GenericRequest -> GenericResponse;
+}
