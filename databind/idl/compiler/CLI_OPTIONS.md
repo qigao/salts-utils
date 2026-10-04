@@ -385,7 +385,7 @@ clang --target=wasm32-unknown-unknown -DDATA_BIND_BINARY_WASM_GUEST=1 -O2 -nostd
 ```
 
 Initialize an object before its first use, clear it when finished, and release serialized
-buffers with `tbe_typed_serialized_free`:
+buffers with `data_bind_serialized_free`:
 
 ```c
 #include "order.h"
@@ -407,7 +407,7 @@ if (Orders_codec_create(&codec, &error) == DATA_BIND_OK &&
     Order_to_json(codec, &order, &json, &json_len, &error) == DATA_BIND_OK) {
     result = 0;
 }
-tbe_typed_serialized_free(json);
+data_bind_serialized_free(json);
 Order_clear(&order);
 data_bind_free(codec);
 return result;
