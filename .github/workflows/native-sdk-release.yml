@@ -1493,14 +1493,37 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          nupkg="dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg"
+          version="${{ needs.metadata.outputs.version }}"
+          nupkg="$GITHUB_WORKSPACE/dist/SaltsUtils.Native.$version.nupkg"
+          packages="$RUNNER_TEMP/salts-utils-arm64-packages"
+          project="$RUNNER_TEMP/salts-utils-arm64-restore.csproj"
+          config="$RUNNER_TEMP/salts-utils-arm64-nuget.config"
           test -f "$nupkg"
-          rm -rf restored
-          unzip -q "$nupkg" -d restored
-          prefix="$GITHUB_WORKSPACE/restored/sdk/linux-arm64"
+          rm -rf "$packages"
+          cat > "$project" <<EOF
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+            <ItemGroup>
+              <PackageReference Include="SaltsUtils.Native" Version="$version" />
+            </ItemGroup>
+          </Project>
+          EOF
+          cat > "$config" <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="local" value="$GITHUB_WORKSPACE/dist" />
+            </packageSources>
+          </configuration>
+          EOF
+          dotnet restore "$project" --configfile "$config" --packages "$packages" \
+            --no-cache --force-evaluate
+          prefix="$packages/saltsutils.native/$version/sdk/linux-arm64"
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$prefix/lib/cmake/SaltsUtils/IDL.cmake"
           test -x "$prefix/bin/salts-idlc"
+          "$prefix/bin/salts-idlc" --help >/dev/null
           echo "SALTS_UTILS_ARM64_ROOT=$prefix" >> "$GITHUB_ENV"
 
       - name: Build installed salts_idl_target consumer
