@@ -252,7 +252,7 @@ if (Order_from_json(codec, &order, input, input_len, &error) != DATA_BIND_OK) re
 printf("%llu\n", (unsigned long long)order.order_id);
 
 if (Order_to_json(codec, &order, &json, &json_len, &error) != DATA_BIND_OK) return 1;
-tbe_typed_serialized_free(json);
+data_bind_serialized_free(json);
 Order_clear(&order);
 data_bind_free(codec);
 ```
