@@ -5,6 +5,7 @@
 #include "tinytest.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 static salts_xml_location expected_location(const char *input,
@@ -73,6 +74,191 @@ static void check_malformed_releases_everything(const char *source) {
           "malformed parse leaked cxml storage: %s", source);
 }
 
+
+static uint32_t fuzz_regression_next(uint32_t *state) {
+    uint32_t x = *state;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    *state = x != 0u ? x : UINT32_C(0x6d2b79f5);
+    return *state;
+}
+
+static size_t fuzz_regression_mutate(
+    unsigned char *work,
+    size_t size,
+    size_t max_bytes,
+    uint32_t seed,
+    size_t iteration) {
+    static const unsigned char replacements[] = {
+        '<', '>', '&', '"', '\'', '/', '=', ' ', '\n', 0u, 0xffu};
+    uint32_t state =
+        seed ^ (uint32_t)(iteration * UINT32_C(0x9e3779b9));
+    size_t position;
+    size_t count;
+
+    if (iteration == 0u) return size;
+    if (size == 0u && max_bytes != 0u) {
+        work[0] = '<';
+        return 1u;
+    }
+
+    switch (fuzz_regression_next(&state) % 8u) {
+    case 0u:
+        position = (size_t)(
+            fuzz_regression_next(&state) % (uint32_t)size);
+        work[position] ^= (unsigned char)(
+            1u << (fuzz_regression_next(&state) & 7u));
+        break;
+    case 1u:
+        position = (size_t)(
+            fuzz_regression_next(&state) % (uint32_t)size);
+        work[position] =
+            replacements[
+                fuzz_regression_next(&state) %
+                (sizeof(replacements) / sizeof(replacements[0]))];
+        break;
+    case 2u:
+        size = (size_t)(
+            fuzz_regression_next(&state) %
+            (uint32_t)(size + 1u));
+        break;
+    case 3u:
+        if (size < max_bytes) {
+            position = (size_t)(
+                fuzz_regression_next(&state) %
+                (uint32_t)(size + 1u));
+            memmove(
+                work + position + 1u,
+                work + position,
+                size - position);
+            work[position] =
+                replacements[
+                    fuzz_regression_next(&state) %
+                    (sizeof(replacements) /
+                     sizeof(replacements[0]))];
+            ++size;
+        }
+        break;
+    case 4u:
+        if (size != 0u) {
+            position = (size_t)(
+                fuzz_regression_next(&state) %
+                (uint32_t)size);
+            memmove(
+                work + position,
+                work + position + 1u,
+                size - position - 1u);
+            --size;
+        }
+        break;
+    case 5u:
+        if (size != 0u && size < max_bytes) {
+            position = (size_t)(
+                fuzz_regression_next(&state) %
+                (uint32_t)size);
+            count = 1u + (size_t)(
+                fuzz_regression_next(&state) % 16u);
+            if (count > size - position)
+                count = size - position;
+            if (count > max_bytes - size)
+                count = max_bytes - size;
+            if (count != 0u) {
+                memmove(
+                    work + position + count,
+                    work + position,
+                    size - position);
+                memcpy(
+                    work + position,
+                    work + position + count,
+                    count);
+                size += count;
+            }
+        }
+        break;
+    case 6u:
+        if (size != 0u) {
+            position = (size_t)(
+                fuzz_regression_next(&state) %
+                (uint32_t)size);
+            count = 1u + (size_t)(
+                fuzz_regression_next(&state) % 8u);
+            if (count > size - position)
+                count = size - position;
+            memset(
+                work + position,
+                (fuzz_regression_next(&state) & 1u) != 0u
+                    ? 0xff : ' ',
+                count);
+        }
+        break;
+    case 7u:
+        if (size > 1u) {
+            const size_t a = (size_t)(
+                fuzz_regression_next(&state) %
+                (uint32_t)size);
+            const size_t b = (size_t)(
+                fuzz_regression_next(&state) %
+                (uint32_t)size);
+            const unsigned char tmp = work[a];
+            work[a] = work[b];
+            work[b] = tmp;
+        }
+        break;
+    }
+    return size;
+}
+
+static void check_fuzz_mutations_release_everything(
+    const char *name,
+    const char *source,
+    size_t seed_index) {
+    enum {
+        MAX_BYTES = 4096,
+        ITERATIONS = 16
+    };
+    const size_t source_size = strlen(source);
+    unsigned char work[MAX_BYTES];
+    size_t iteration;
+
+    check(source_size <= (size_t)MAX_BYTES,
+          "fuzz regression seed too large: %s", name);
+    if (source_size > (size_t)MAX_BYTES) return;
+
+    for (iteration = 0u;
+         iteration < (size_t)ITERATIONS;
+         ++iteration) {
+        const size_t allocations_before =
+            cxml_test_outstanding_allocations();
+        salts_xml_document document = {0};
+        salts_xml_diagnostic diagnostic = {0};
+        size_t size;
+        salts_xml_status status;
+
+        memcpy(work, source, source_size);
+        size = fuzz_regression_mutate(
+            work, source_size, MAX_BYTES,
+            UINT32_C(0x811c9dc5) ^
+                (uint32_t)(
+                    seed_index * UINT32_C(0x01000193)),
+            iteration);
+        status = salts_xml_parse(
+            &document, (const char *)work, size,
+            NULL, &diagnostic);
+        if (status == SALTS_XML_OK)
+            salts_xml_document_destroy(&document);
+        else
+            check_null(document.impl);
+
+        check(
+            cxml_test_outstanding_allocations() ==
+                allocations_before,
+            "fuzz mutation leaked cxml storage: "
+            "seed=%s iteration=%zu size=%zu status=%d",
+            name, iteration, size, (int)status);
+    }
+}
+
 static void check_allocation_failures_release_everything(const char *source) {
     enum { MAX_ALLOCATION_FAILURE_POINTS = 512 };
     size_t failure_point;
@@ -111,6 +297,54 @@ static void check_allocation_failures_release_everything(const char *source) {
 }
 
 suite("bounded XML parser facade") {
+    it("releases every deterministic VoiceXML fuzz mutation") {
+        static const struct {
+            const char *name;
+            const char *source;
+        } seeds[] = {
+            {
+                "minimal-valid",
+                "<vxml xmlns=\"http://www.w3.org/2001/vxml\" "
+                "version=\"2.1\"><form id=\"main\"><block>"
+                "<exit/></block></form></vxml>\n"
+            },
+            {
+                "navigation-submit",
+                "<vxml xmlns=\"http://www.w3.org/2001/vxml\" "
+                "version=\"2.1\"><form><block>"
+                "<submit next=\"next.vxml\" method=\"post\"/>"
+                "</block></form></vxml>\n"
+            },
+            {
+                "utf8-entities",
+                "<vxml xmlns=\"http://www.w3.org/2001/vxml\" "
+                "version=\"2.1\"><form id=\"caf\xc3\xa9\">"
+                "<block><exit/></block></form></vxml>\n"
+            },
+            {
+                "malformed-entity",
+                "<vxml xmlns=\"http://www.w3.org/2001/vxml\" "
+                "version=\"2.1\"><form><block id=\"&bogus;\">"
+                "<exit/></block></form></vxml>\n"
+            },
+            {
+                "wrong-namespace",
+                "<vxml xmlns=\"urn:not-voicexml\" version=\"2.1\">"
+                "<form><block><exit/></block></form></vxml>\n"
+            }
+        };
+        size_t index;
+
+        for (index = 0u;
+             index < sizeof(seeds) / sizeof(seeds[0]);
+             ++index)
+            check_fuzz_mutations_release_everything(
+                seeds[index].name,
+                seeds[index].source,
+                index);
+    }
+
+
     it("maps private cxml allocation failure without terminating the process") {
         static const char source[] = "<root><child/></root>";
         salts_xml_document document = {0};
