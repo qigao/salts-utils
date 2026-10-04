@@ -1,6 +1,7 @@
 #include <type_traits>
 
 #include "data_bind_binding_plan.h"
+#include "data_bind_csv_provider.h"
 #include "data_bind_format_provider.h"
 #include "data_bind_message_plan.h"
 #include "data_bind_native_binding.h"
@@ -49,6 +50,13 @@ using MessageNativeEncode = DataBindStatus (*)(
     size_t,
     cserde_writer *,
     DataBindMessagePlanDiagnostic *);
+using CsvRowReaderOpen = DataBindStatus (*)(
+    const char *,
+    size_t,
+    size_t,
+    size_t,
+    DataBindFormatReader *,
+    DataBindError *);
 using MessageNativeDecodeFormat = DataBindStatus (*)(
     const DataBindMessagePlan *,
     const DataBindNativeOptions *,
@@ -71,6 +79,9 @@ static_assert(std::is_same_v<
 static_assert(std::is_same_v<
               decltype(&data_bind_message_plan_encode_native),
               MessageNativeEncode>);
+static_assert(std::is_same_v<
+              decltype(&data_bind_csv_format_reader_open_row),
+              CsvRowReaderOpen>);
 static_assert(std::is_same_v<
               decltype(&data_bind_message_plan_decode_native_format),
               MessageNativeDecodeFormat>);
