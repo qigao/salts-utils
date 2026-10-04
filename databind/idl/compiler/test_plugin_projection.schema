@@ -24,18 +24,6 @@ message EncodeResponse {
     uint32 bytes;
 }
 
-message GenericItem {
-    uint32 id;
-}
-
-message GenericRequest {
-    list<GenericItem> items;
-}
-
-message GenericResponse {
-    map<string,GenericItem> by_name;
-}
-
 message AdminRequest {
     optional uint32 secret;
 }
@@ -51,7 +39,6 @@ message AdminError {
 service Codec {
     Decode: DecodeRequest -> DecodeResponse;
     Encode: EncodeRequest -> EncodeResponse;
-    Qualify: GenericRequest -> GenericResponse;
 }
 
 service Admin {
