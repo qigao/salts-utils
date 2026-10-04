@@ -172,23 +172,23 @@ static int xml_entity_value(
 
   if (text == NULL || out == NULL || size == 0u) return 0;
   if (size == 2u && memcmp(text, "lt", 2u) == 0) {
-    *out = UINT32_C('<');
+    *out = (uint32_t)'<';
     return 1;
   }
   if (size == 2u && memcmp(text, "gt", 2u) == 0) {
-    *out = UINT32_C('>');
+    *out = (uint32_t)'>';
     return 1;
   }
   if (size == 3u && memcmp(text, "amp", 3u) == 0) {
-    *out = UINT32_C('&');
+    *out = (uint32_t)'&';
     return 1;
   }
   if (size == 4u && memcmp(text, "quot", 4u) == 0) {
-    *out = UINT32_C('"');
+    *out = (uint32_t)'"';
     return 1;
   }
   if (size == 4u && memcmp(text, "apos", 4u) == 0) {
-    *out = UINT32_C('\'');
+    *out = (uint32_t)'\'';
     return 1;
   }
   if (text[0] != '#' || size == 1u) return 0;
@@ -224,18 +224,20 @@ static int xml_entity_value(
 static cserde_status xml_emit_logical_slice(
     data_bind_xml_reader *context,
     cserde_token *out,
-    salts_xml_string_view view) {
+    salts_xml_string_view view,
+    int decode_entities) {
   size_t input = 0u;
   size_t output = 0u;
 
   if (context == NULL || out == NULL ||
       (view.size != 0u && view.data == NULL))
     return CSERDE_INVALID_ARGUMENT;
-  if (view.size == 0u || memchr(view.data, '&', view.size) == NULL) {
+  if (!decode_entities || view.size == 0u ||
+      memchr(view.data, '&', view.size) == NULL) {
     xml_emit_slice(out, view);
     return CSERDE_OK;
   }
-  if (context->decoded == NULL ||
+  if (view.size == SIZE_MAX || context->decoded == NULL ||
       context->decoded_capacity < view.size + 1u)
     return CSERDE_SOURCE_ERROR;
 
@@ -340,9 +342,13 @@ static cserde_status xml_emit_node(
   size_t attribute_count;
   int has_element_child;
 
-  if (kind == SALTS_XML_ATTRIBUTE || kind == SALTS_XML_TEXT)
+  if (kind == SALTS_XML_ATTRIBUTE)
     return xml_emit_logical_slice(
-        context, out, salts_xml_node_text_view(node));
+        context, out, salts_xml_node_text_view(node), 1);
+  if (kind == SALTS_XML_TEXT)
+    return xml_emit_logical_slice(
+        context, out, salts_xml_node_text_view(node),
+        salts_xml_node_text_has_entity_reference(node));
   if (kind != SALTS_XML_ELEMENT) return CSERDE_UNSUPPORTED;
 
   attribute_count = salts_xml_node_attribute_count(node);
@@ -350,7 +356,8 @@ static cserde_status xml_emit_node(
 
   if (!has_element_child && attribute_count == 0u)
     return xml_emit_logical_slice(
-        context, out, salts_xml_node_text_view(node));
+        context, out, salts_xml_node_text_view(node),
+        salts_xml_node_text_has_entity_reference(node));
 
   if (context->depth >= context->max_depth)
     return CSERDE_LIMIT_EXCEEDED;
@@ -431,7 +438,7 @@ static cserde_status xml_provider_next(void *opaque, cserde_token *out) {
 
     case DATA_BIND_XML_ATTRIBUTE_VALUE: {
       cserde_status status = xml_emit_logical_slice(
-          context, out, salts_xml_attribute_value(frame->pending_attribute));
+          context, out, salts_xml_attribute_value(frame->pending_attribute), 1);
       frame->phase = DATA_BIND_XML_ATTRIBUTE_KEY;
       return status;
     }
@@ -480,16 +487,14 @@ static data_bind_xml_reader *xml_context_create(
 
   if (len != 0u && memchr(data, '&', len) != NULL) {
     if (len == SIZE_MAX) {
-      free(context->decoded);
-    free(context);
+      free(context);
       xml_provider_error(error, DATA_BIND_ERR_LIMIT,
                          "XML logical text scratch size overflow");
       return NULL;
     }
     context->decoded = (unsigned char *)malloc(len + 1u);
     if (context->decoded == NULL) {
-      free(context->decoded);
-    free(context);
+      free(context);
       xml_provider_error(error, DATA_BIND_ERR_OOM,
                          "Unable to allocate XML logical text scratch");
       return NULL;
