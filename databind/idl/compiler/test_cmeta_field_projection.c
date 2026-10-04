@@ -600,6 +600,7 @@ suite("compiler_cmeta_field_projection") {
             return;
         }
         check_equal(map_add(field, create_node_string("is_map", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_collection", "1")), 0);
         check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
         check_equal(map_add(field, create_node_string("key_type", "string")), 0);
         check_equal(map_add(field, create_node_string("value_type", "int32")), 0);

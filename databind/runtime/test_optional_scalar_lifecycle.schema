@@ -33,3 +33,13 @@ message FixedBytesState {
     optional bytes(16) payload;
     nullable bytes(8) note;
 }
+
+[id(6)]
+message NestedValue {
+    uint32 id;
+}
+
+[id(7)]
+message NestedHolder {
+    NestedValue child;
+}

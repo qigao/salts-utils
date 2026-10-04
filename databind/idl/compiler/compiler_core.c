@@ -2286,7 +2286,7 @@ static int tbe_compiler_typed_ref_matches(const char *reference,
 }
 
 static int tbe_compiler_typed_type_referenced(Node *root, const char *name) {
-  /* Generation-time scan: O(record fields) per message, with no retained state. */
+  /* Scan all fields for references from tables that remain live. */
   static const char *const sections[] = {"composites", "groups", "messages"};
   size_t section_index;
   for (section_index = 0u;
@@ -2297,9 +2297,12 @@ static int tbe_compiler_typed_type_referenced(Node *root, const char *name) {
     if (records == NULL || records->type != NODE_LIST) continue;
     for (record_index = 0u; record_index < records->data.list.count;
          ++record_index) {
-      Node *fields = tbe_compiler_find_child(records->data.list.items[record_index],
-                                             "fields");
+      Node *record = records->data.list.items[record_index];
+      Node *fields;
       size_t field_index;
+      if (!tbe_compiler_has_child(record, "legacy_typed_table_required"))
+        continue;
+      fields = tbe_compiler_find_child(record, "fields");
       if (fields == NULL || fields->type != NODE_LIST) continue;
       for (field_index = 0u; field_index < fields->data.list.count;
            ++field_index) {
@@ -2317,6 +2320,65 @@ static int tbe_compiler_typed_type_referenced(Node *root, const char *name) {
   return 0;
 }
 
+static int tbe_compiler_needs_legacy_table(Node *record,
+                                           int is_message) {
+  if (is_message &&
+      tbe_compiler_has_child(record, "cmeta_graph_supported") &&
+      !tbe_compiler_has_child(record, "cmeta_lifecycle_supported") &&
+      tbe_compiler_has_child(record, "cmeta_native_xml_flat_supported"))
+    return !tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle");
+  return !tbe_compiler_has_child(record, "native_cstl_storage") &&
+         !tbe_compiler_has_child(record, "typed_cmeta_runtime_supported") &&
+         !tbe_compiler_has_child(record, "cmeta_lifecycle_supported") &&
+         !(is_message &&
+           tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle"));
+}
+
+static void tbe_compiler_annotate_live_legacy_tables(Node *root) {
+  static const char *const sections[] = {"composites", "groups", "messages"};
+  size_t section_index;
+  int changed;
+
+  for (section_index = 0u;
+       section_index < sizeof(sections) / sizeof(sections[0]);
+       ++section_index) {
+    Node *records = tbe_compiler_find_child(root, sections[section_index]);
+    size_t record_index;
+    if (records == NULL || records->type != NODE_LIST) continue;
+    for (record_index = 0u; record_index < records->data.list.count;
+         ++record_index) {
+      Node *record = records->data.list.items[record_index];
+      tbe_compiler_remove_children(record, "legacy_typed_table_required");
+      if (tbe_compiler_needs_legacy_table(
+              record, strcmp(sections[section_index], "messages") == 0))
+        (void)tbe_compiler_set_string(record, "legacy_typed_table_required", "1");
+    }
+  }
+
+  /* Monotone reachability: at most R passes over R names and F field refs,
+   * O(R^2 F) time and no heap state beyond the existing projection tree. */
+  do {
+    changed = 0;
+    for (section_index = 0u;
+         section_index < sizeof(sections) / sizeof(sections[0]);
+         ++section_index) {
+      Node *records = tbe_compiler_find_child(root, sections[section_index]);
+      size_t record_index;
+      if (records == NULL || records->type != NODE_LIST) continue;
+      for (record_index = 0u; record_index < records->data.list.count;
+           ++record_index) {
+        Node *record = records->data.list.items[record_index];
+        const char *name = tbe_compiler_string_value(record, "name");
+        if (name != NULL &&
+            !tbe_compiler_has_child(record, "legacy_typed_table_required") &&
+            tbe_compiler_typed_type_referenced(root, name) &&
+            tbe_compiler_set_string(record, "legacy_typed_table_required", "1") == 0)
+          changed = 1;
+      }
+    }
+  } while (changed);
+}
+
 static void tbe_compiler_annotate_messages_without_legacy_tables(Node *root) {
   Node *messages = tbe_compiler_find_child(root, "messages");
   size_t i;
@@ -2326,11 +2388,7 @@ static void tbe_compiler_annotate_messages_without_legacy_tables(Node *root) {
     const char *name = tbe_compiler_string_value(record, "name");
     tbe_compiler_remove_children(record, "no_legacy_typed_table");
     if (name != NULL &&
-        tbe_compiler_has_child(record, "cmeta_graph_supported") &&
-        (tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
-         tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle") ||
-         tbe_compiler_has_child(record, "native_cstl_storage")) &&
-        !tbe_compiler_typed_type_referenced(root, name))
+        !tbe_compiler_has_child(record, "legacy_typed_table_required"))
       (void)tbe_compiler_set_string(record, "no_legacy_typed_table", "1");
   }
 }
@@ -2353,7 +2411,7 @@ static void tbe_compiler_annotate_canonical_records(Node *root) {
           (tbe_compiler_has_child(record, "native_cstl_storage") ||
            tbe_compiler_has_child(record, "typed_cmeta_runtime_supported") ||
            tbe_compiler_has_child(record, "cmeta_lifecycle_supported")) &&
-          !tbe_compiler_typed_type_referenced(root, name))
+          !tbe_compiler_has_child(record, "legacy_typed_table_required"))
         (void)tbe_compiler_set_string(record, "cmeta_canonical_record", "1");
     }
   }
@@ -2546,11 +2604,12 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
   tbe_compiler_annotate_local_overlay_lifecycle(root);
+  tbe_compiler_annotate_xml_flat_messages(root);
+  tbe_compiler_annotate_csv_flat_messages(root);
+  tbe_compiler_annotate_live_legacy_tables(root);
   tbe_compiler_annotate_messages_without_legacy_tables(root);
   tbe_compiler_annotate_canonical_records(root);
   tbe_compiler_annotate_legacy_typed_requirement(root);
-  tbe_compiler_annotate_xml_flat_messages(root);
-  tbe_compiler_annotate_csv_flat_messages(root);
 }
 
 static const char *tbe_compiler_path_basename(const char *path) {
