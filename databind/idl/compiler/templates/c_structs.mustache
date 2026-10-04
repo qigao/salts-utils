@@ -2226,7 +2226,7 @@ template <typename Record,
           DataBindStatus (*FromCsv)(DataBind *, Record *, const char *, size_t, size_t,
                                     DataBindError *),
           DataBindStatus (*FromXml)(DataBind *, Record *, const char *, size_t, DataBindError *),
-          DataBindStatus (*ToBin)(const Record *, uint8_t **, size_t *, DataBindError *),
+          DataBindStatus (*ToBin)(DataBind *, const Record *, uint8_t **, size_t *, DataBindError *),
           DataBindStatus (*ToJson)(DataBind *, const Record *, char **, size_t *, DataBindError *),
           DataBindStatus (*ToYaml)(DataBind *, const Record *, char **, size_t *, DataBindError *),
           DataBindStatus (*ToCsv)(DataBind *, const Record *, char **, size_t *, DataBindError *),
@@ -2265,8 +2265,9 @@ public:
                             DataBindError *error) noexcept {
         return FromXml(codec, &value_, data, len, error);
     }
-    DataBindStatus to_bin(uint8_t **out, size_t *out_len, DataBindError *error) const noexcept {
-        return ToBin(&value_, out, out_len, error);
+    DataBindStatus to_bin(DataBind *codec, uint8_t **out, size_t *out_len,
+                          DataBindError *error) const noexcept {
+        return ToBin(codec, &value_, out, out_len, error);
     }
     DataBindStatus to_json(DataBind *codec, char **out, size_t *out_len,
                            DataBindError *error) const noexcept {
