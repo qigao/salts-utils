@@ -2,6 +2,7 @@
 #include <data_bind.h>
 #include <data_bind_format_provider.h>
 #include <data_bind_projection_plan.h>
+#include <data_bind_xml_writer.h>
 #include <salts_uuid.h>
 #include <data_bind_binary_wire.h>
 
@@ -31,6 +32,15 @@ int main(void) {
       data_bind_builtin_format_provider(DATA_BIND_FORMAT_CSV);
   const DataBindFormatProvider *xml_provider =
       data_bind_builtin_format_provider(DATA_BIND_FORMAT_XML);
+  DataBindStatus (*xml_writer_open)(
+      const char *, DataBindWriteFn, void *, size_t,
+      DataBindXmlWriter *, DataBindError *) =
+      data_bind_xml_writer_open_root;
+  cserde_writer *(*xml_writer_get)(DataBindXmlWriter *) =
+      data_bind_xml_writer_writer;
+  DataBindStatus (*xml_writer_close)(
+      DataBindXmlWriter *, DataBindError *) =
+      data_bind_xml_writer_close;
   int ok = 0;
 
   data_bind_binary_wire_write_u32(storage, 0, 42u);
@@ -59,6 +69,10 @@ int main(void) {
        csv_provider->format == DATA_BIND_FORMAT_CSV &&
        xml_provider != NULL &&
        xml_provider->format == DATA_BIND_FORMAT_XML &&
+       xml_writer_open != NULL &&
+       xml_writer_get != NULL &&
+       xml_writer_close != NULL &&
+       sizeof(DataBindXmlWriter) >= sizeof(size_t) + 2u * sizeof(void *) &&
        data_bind_builtin_format_provider(DATA_BIND_FORMAT_BINARY) == NULL &&
        data_bind_builtin_format_provider(DATA_BIND_FORMAT_NONE) == NULL;
 
