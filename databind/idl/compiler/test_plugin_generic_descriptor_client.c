@@ -17,6 +17,9 @@
 typedef databind_plugin_client_13_GenericPlugin_16_GenericProcessor
     GenericProcessorPluginClient;
 
+enum { GENERIC_TEST_MAX_BYTES = 4096, GENERIC_TEST_MAX_ITEMS = 2, GENERIC_TEST_ITEM_ID = 7 };
+static const unsigned char GENERIC_TEST_NAME[] = "lease-owned-record";
+
 static const cmeta_declared_type *generic_field_declared(
     const cmeta_data_desc *data, const char *field_name) {
   const cmeta_data_struct_shape *shape;
@@ -199,6 +202,105 @@ static const cmeta_data_desc *generic_field_data(
   return NULL;
 }
 
+static void check_managed_item_lifecycle(const cmeta_data_desc *data) {
+  const cmeta_data_desc *name_data = generic_field_data(data, "name");
+  cmeta_data_temp source = {0};
+  GenericItem_t copy_item = {0};
+  GenericItem_t moved_item = {0};
+  GenericItem_t *source_item;
+  tstr source_name;
+  const cmeta_type_traits *traits = data->storage_type->traits;
+
+  check_not_null(name_data);
+  check_not_null(traits);
+  check_not_null(traits->copy_construct);
+  check_not_null(traits->move_construct);
+  check_not_null(traits->destroy);
+  check_true(cmeta_type_equal(data->storage_type, &GenericItem_CMETA_TYPE));
+  check_equal(cmeta_data_temp_open(data, GENERIC_TEST_MAX_BYTES, &source), CMETA_OK);
+  source_item = (GenericItem_t *)source.storage;
+  source_item->id = GENERIC_TEST_ITEM_ID;
+  check_equal(cmeta_data_buffer_assign(name_data, &source_item->name, GENERIC_TEST_NAME,
+                                       sizeof(GENERIC_TEST_NAME) - 1u, GENERIC_TEST_MAX_BYTES),
+              CMETA_OK);
+
+  source_name = source_item->name;
+  check_true(traits->copy_construct(&copy_item, source.storage));
+  check_equal(copy_item.id, source_item->id);
+  check_equal(copy_item.name, (const char *)GENERIC_TEST_NAME);
+  check_true(copy_item.name != source_name);
+  traits->move_construct(&moved_item, source.storage);
+  check_equal(moved_item.id, GENERIC_TEST_ITEM_ID);
+  check_equal(moved_item.name, (const char *)GENERIC_TEST_NAME);
+  check_true(moved_item.name == source_name);
+  check_equal(source_item->id, (uint32_t)0u);
+  check_null(source_item->name);
+
+  /* Destroy owned payloads through the live provider before releasing its lease. */
+  traits->destroy(&moved_item);
+  traits->destroy(&copy_item);
+  check_null(moved_item.name);
+  check_null(copy_item.name);
+  cmeta_data_temp_close(&source);
+  check_null(source.storage);
+  check_null(source.data);
+}
+
+static void check_managed_call(GenericProcessorPluginClient *client,
+                               const DataBindPluginOperationBinding *operation) {
+  const cmeta_data_desc *input_data = generic_field_data(operation->request.data, "values");
+  const cmeta_data_desc *output_data = generic_field_data(operation->response.data, "values");
+  const cmeta_data_desc *item_data = cmeta_data_collection_element_data(input_data);
+  const cmeta_data_desc *name_data = generic_field_data(item_data, "name");
+  cmeta_data_temp item = {0};
+  GenericRequest_t request = {0};
+  GenericResponse_t response = {0};
+  cmeta_collector collector = {0};
+  cmeta_data_map_borrow_cursor cursor = {0};
+  const void *key = NULL;
+  const void *value = NULL;
+  size_t count = 0u;
+  int native_status = -1;
+
+  check_equal(cmeta_data_value_init_zero(operation->request.data, &request), CMETA_OK);
+  check_equal(cmeta_data_value_init_zero(operation->response.data, &response), CMETA_OK);
+  check_equal(cmeta_data_temp_open(item_data, GENERIC_TEST_MAX_BYTES, &item), CMETA_OK);
+  ((GenericItem_t *)item.storage)->id = GENERIC_TEST_ITEM_ID;
+  check_equal(cmeta_data_buffer_assign(name_data, &((GenericItem_t *)item.storage)->name,
+                                       GENERIC_TEST_NAME, sizeof(GENERIC_TEST_NAME) - 1u,
+                                       GENERIC_TEST_MAX_BYTES),
+              CMETA_OK);
+  check_equal(cmeta_data_collection_collector(input_data, &request.values, GENERIC_TEST_MAX_ITEMS,
+                                              &collector),
+              CMETA_OK);
+  check_equal(cmeta_collector_begin(&collector), CMETA_OK);
+  check_equal(cmeta_data_collection_accept(input_data, &collector, item_data, item.storage),
+              CMETA_OK);
+  check_equal(cmeta_collector_finish(&collector), CMETA_OK);
+  cmeta_data_temp_close(&item);
+
+  check_equal(databind_13_GenericPlugin_14_GenericService_7_Inspect_plugin_client_call(
+                  client, &request, &response, &native_status),
+              SALTS_PLUGIN_OK);
+  check_equal(native_status, 0);
+  check_equal(cmeta_data_map_borrow_begin(output_data, &response.values, &cursor), CMETA_OK);
+  check_equal(cmeta_data_map_borrow_size(&cursor, &count), CMETA_OK);
+  check_equal(count, (size_t)1u);
+  check_equal(cmeta_data_map_borrow_next(&cursor, &key, &value), CMETA_GEN_VALUE);
+  check_not_null(key);
+  check_not_null(value);
+  check_equal(*(const tstr *)key, (const char *)GENERIC_TEST_NAME);
+  check_equal(((const GenericItem_t *)value)->id, GENERIC_TEST_ITEM_ID);
+  check_equal(((const GenericItem_t *)value)->name, (const char *)GENERIC_TEST_NAME);
+  check_true(((const GenericItem_t *)value)->name != *(const tstr *)key);
+  check_true(((const GenericItem_t *)value)->name !=
+             GenericRequest_values_vec_t_at_const(&request.values, 0u)->name);
+  check_equal(cmeta_data_map_borrow_next(&cursor, &key, &value), CMETA_GEN_DONE);
+
+  check_equal(cmeta_data_value_restore_zero(operation->request.data, &request), CMETA_OK);
+  check_equal(cmeta_data_value_restore_zero(operation->response.data, &response), CMETA_OK);
+}
+
 spec("generated Plugin generic descriptor graph") {
   it("keeps provider generic metadata valid under the client lease") {
     salts_plugin_registry registry = {0};
@@ -235,6 +337,18 @@ spec("generated Plugin generic descriptor graph") {
     check_not_null(operation->request.data);
     check_not_null(operation->response.data);
 
+    {
+      const cmeta_data_desc *host_request = NULL;
+      const cmeta_data_desc *host_response = NULL;
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      check_equal(GenericRequest_cmeta_data(&host_request, &error), DATA_BIND_OK);
+      check_equal(GenericResponse_cmeta_data(&host_response, &error), DATA_BIND_OK);
+      check_true(host_request != operation->request.data);
+      check_true(host_response != operation->response.data);
+      check_true(cmeta_data_desc_equal(host_request, operation->request.data));
+      check_true(cmeta_data_desc_equal(host_response, operation->response.data));
+    }
+
     check_semantic_data_copy(operation->request.data);
     check_semantic_data_copy(operation->response.data);
     check_generic_descriptor_copy(operation->request.data, "values");
@@ -267,11 +381,12 @@ spec("generated Plugin generic descriptor graph") {
       if (request_item != NULL && response_item != NULL) {
         const cmeta_data_desc *managed_name =
             generic_field_data(request_item, "name");
-        cmeta_data_temp temp = {0};
 
         check_equal(request_item->kind, CMETA_DATA_STRUCT);
         check_equal(response_item->kind, CMETA_DATA_STRUCT);
         check_true(cmeta_data_desc_equal(request_item, response_item));
+        check_true(request_item != &GenericItem_CMETA_DATA);
+        check_true(cmeta_data_desc_equal(request_item, &GenericItem_CMETA_DATA));
         check_semantic_data_copy(request_item);
         check_semantic_data_copy(response_item);
 
@@ -281,16 +396,7 @@ spec("generated Plugin generic descriptor graph") {
         check_true(cmeta_data_value_traits_supported(request_item));
         check_true(cmeta_data_value_traits_supported(response_item));
 
-        /*
-         * This temporary is opened and destroyed while the Plugin lease is
-         * live, proving that provider-reachable managed lifecycle callbacks
-         * remain callable for the complete dependent-value lifetime.
-         */
-        check_equal(cmeta_data_temp_open(request_item, 4096u, &temp),
-                    CMETA_OK);
-        cmeta_data_temp_close(&temp);
-        check_null(temp.storage);
-        check_null(temp.data);
+        check_managed_item_lifecycle(request_item);
       }
       if (response_key != NULL)
         check_equal(response_key->kind, CMETA_DATA_STRING);
@@ -322,6 +428,7 @@ spec("generated Plugin generic descriptor graph") {
       }
     }
 
+    check_managed_call(&client, operation);
     check_equal(salts_plugin_registry_get_lifecycle(
                     &registry, ref, &info),
                 SALTS_PLUGIN_OK);
@@ -349,6 +456,7 @@ spec("generated Plugin generic descriptor graph") {
     check_null(
         client.databind_13_GenericPlugin_14_GenericService_7_Inspect_export);
 
+    native_status = 123;
     check_equal(
         databind_13_GenericPlugin_14_GenericService_7_Inspect_plugin_client_call(
             &client, &request, &response, &native_status),

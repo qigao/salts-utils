@@ -1,7 +1,8 @@
 #include <salts/plugin.h>
 
-FunctionDecl(value, int, plugin_client_mismatch_function,
-    (int, value, CMETA_PARAM_IN));
+FunctionDeclAsAbi(value, int, &cmeta_type_int, CMETA_ABI_SCALAR,
+    plugin_client_mismatch_function,
+    (int, value, CMETA_PARAM_IN, &cmeta_type_int, CMETA_ABI_SCALAR));
 
 int plugin_client_mismatch_function(int value) {
     return value;

@@ -87,15 +87,15 @@ static inline int data_bind_plugin_operation_binding_valid(
 static inline int data_bind_plugin_operation_native_binding(
     const DataBindPluginOperationBinding *binding,
     DataBindServiceNativeBinding *out) {
-  DataBindServiceNativeBinding value;
-  if (out == NULL) return 0;
-  *out = (DataBindServiceNativeBinding)
+  DataBindServiceNativeBinding value =
       DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);
+  if (out == NULL) return 0;
+  *out = value;
   if (!data_bind_plugin_operation_binding_valid(binding)) return 0;
 
-  value = (DataBindServiceNativeBinding)
-      DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
-          binding->function, &binding->request, &binding->response);
+  value.function = binding->function;
+  value.request = &binding->request;
+  value.response = &binding->response;
   value.errors = binding->errors;
   value.error_count = binding->error_count;
   value.error_param_index = binding->error_param_index;
