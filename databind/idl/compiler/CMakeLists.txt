@@ -507,6 +507,70 @@ salts_idl_target(
   ARTIFACTS PLUGIN
   SOURCES test_plugin_business_fixture.c)
 
+set(DATABIND_PLUGIN_GENERIC_TEST_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/databind_plugin_generic_graph.databind")
+file(MAKE_DIRECTORY "${DATABIND_PLUGIN_GENERIC_TEST_GENERATED_DIR}")
+set(DATABIND_PLUGIN_GENERIC_TEST_BINDING_H
+    "${DATABIND_PLUGIN_GENERIC_TEST_GENERATED_DIR}/generic_graph_binding_native.h")
+set(DATABIND_PLUGIN_GENERIC_TEST_BINDING_C
+    "${DATABIND_PLUGIN_GENERIC_TEST_GENERATED_DIR}/generic_graph_binding_native.c")
+
+salts_idl_target(
+  TARGET databind_plugin_generic_graph_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_generic_graph.schema"
+  COMPONENT "GenericGraph.GenericProcessor"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "generic_graph"
+  ARTIFACTS PLUGIN
+  SOURCES test_plugin_generic_graph_business_fixture.c)
+
+add_custom_command(
+  OUTPUT
+    "${DATABIND_PLUGIN_GENERIC_TEST_BINDING_H}"
+    "${DATABIND_PLUGIN_GENERIC_TEST_BINDING_C}"
+  COMMAND
+    $<TARGET_FILE:salts_idlc>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_generic_graph.schema"
+      --lang c
+      --output "${DATABIND_PLUGIN_GENERIC_TEST_BINDING_H}"
+      --source-output "${DATABIND_PLUGIN_GENERIC_TEST_BINDING_C}"
+  DEPENDS
+    salts_idlc
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_generic_graph.schema"
+  VERBATIM
+  COMMENT "Generating host-side generic Plugin reflection fixture")
+
+add_custom_target(databind_plugin_generic_graph_host_binding
+  DEPENDS
+    "${DATABIND_PLUGIN_GENERIC_TEST_BINDING_H}"
+    "${DATABIND_PLUGIN_GENERIC_TEST_BINDING_C}")
+
+set_source_files_properties(
+  "${DATABIND_PLUGIN_GENERIC_TEST_BINDING_C}"
+  PROPERTIES GENERATED TRUE)
+
+cmake_add_test(test_databind_plugin_generic_graph
+  SOURCES
+    test_plugin_generic_graph.c
+    "${DATABIND_PLUGIN_GENERIC_TEST_BINDING_C}"
+  LIBS
+    Salts::DataBindPlugin
+    Salts::TinyTest
+  DEFS
+    GENERATED_DATABIND_GENERIC_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generic_graph_fixture_plugin>"
+  INCLUDES
+    "${DATABIND_PLUGIN_GENERIC_TEST_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_plugin_generic_graph
+  databind_plugin_generic_graph_fixture_plugin
+  databind_plugin_generic_graph_host_binding)
+set_target_properties(test_databind_plugin_generic_graph PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_plugin_generic_graph PROPERTIES
+  LABELS "databind;compiler;plugin;cmeta;generic;lease")
+
 
 salts_idl_target(
   TARGET databind_method_plan_public_fixture
