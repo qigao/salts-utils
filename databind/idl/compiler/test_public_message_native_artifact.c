@@ -77,6 +77,67 @@ size_t databind_message_native_artifact_c_overlay_attrs_raw_offset(void) {
   return offsetof(OverlayContainers_attrs_map_t, raw);
 }
 
+
+static void check_generated_generic_application(
+    const void *object,
+    const cmeta_generic_desc *expected_constructor,
+    const cmeta_type_desc *const *expected_arguments,
+    size_t expected_arity) {
+  const cmeta_generic_desc *constructor =
+      cmeta_container_type_constructor(object);
+  const cmeta_type_identity *actual_arguments[2] = {NULL, NULL};
+  const cmeta_type_identity *expected_identities[2] = {NULL, NULL};
+  cmeta_generic_desc copied_constructor;
+  cmeta_type_identity actual_application;
+  cmeta_type_identity expected_application;
+  size_t index;
+
+  check_not_null(constructor);
+  check_true(cmeta_container_type_application_valid(object));
+  check_equal(cmeta_container_type_arity(object), expected_arity);
+  if (constructor == NULL || expected_constructor == NULL ||
+      expected_arguments == NULL || expected_arity > 2u)
+    return;
+
+  check_not_null(constructor->stable_id);
+  check_not_null(expected_constructor->stable_id);
+  if (constructor->stable_id == NULL || expected_constructor->stable_id == NULL)
+    return;
+  check(strcmp(constructor->stable_id, expected_constructor->stable_id) == 0);
+
+  for (index = 0u; index < expected_arity; ++index) {
+    const cmeta_type_desc *actual =
+        cmeta_container_type_argument(object, index);
+    check_not_null(actual);
+    check_true(cmeta_type_equal(actual, expected_arguments[index]));
+    actual_arguments[index] = cmeta_type_identity_of(actual);
+    expected_identities[index] =
+        cmeta_type_identity_of(expected_arguments[index]);
+    check_not_null(actual_arguments[index]);
+    check_not_null(expected_identities[index]);
+    if (actual_arguments[index] == NULL || expected_identities[index] == NULL)
+      return;
+  }
+  check_null(cmeta_container_type_argument(object, expected_arity));
+
+  /*
+   * Prove semantic generic identity without relying on constructor descriptor
+   * address identity.  The copied descriptor is a different object with the
+   * same canonical stable identity.
+   */
+  copied_constructor = *expected_constructor;
+  actual_application = (cmeta_type_identity){
+      CMETA_TYPE_APPLY, NULL, constructor, NULL,
+      actual_arguments, expected_arity};
+  expected_application = (cmeta_type_identity){
+      CMETA_TYPE_APPLY, NULL, &copied_constructor, NULL,
+      expected_identities, expected_arity};
+  check_true(cmeta_type_identity_valid(&actual_application));
+  check_true(cmeta_type_identity_valid(&expected_application));
+  check_true(cmeta_type_identity_equal(
+      &actual_application, &expected_application));
+}
+
 spec("DataBind public Message native artifact") {
   it("publishes exact optional and nullable overlays") {
     const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
@@ -285,6 +346,18 @@ spec("DataBind public Message native artifact") {
     check_not_null(label);
     check_equal(Event_counters_map_t_init(&counters, 4u), STL_OK);
     check_equal(Event_aliases_map_t_init(&aliases, 4u), STL_OK);
+    {
+      const cmeta_type_desc *counter_arguments[] = {
+          SALTS_TSTR_CMETA_TYPE_REF, &cmeta_type_uint32};
+      const cmeta_type_desc *alias_arguments[] = {
+          SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_TYPE_REF};
+      check_generated_generic_application(
+          &counters, &stl_map_generic_desc,
+          counter_arguments, 2u);
+      check_generated_generic_application(
+          &aliases, &stl_map_generic_desc,
+          alias_arguments, 2u);
+    }
     if (alpha != NULL && beta != NULL) {
       /* Insert reverse lexical order; canonical Map iteration is key-sorted. */
       check_equal(Event_counters_map_t_put(
@@ -360,6 +433,11 @@ spec("DataBind public Message native artifact") {
     check_true(cmeta_data_desc_equal(tag_element, SALTS_TSTR_CMETA_DATA_REF));
 
     check_equal(Event_ids_set_t_init(&ids, 4u), STL_OK);
+    {
+      const cmeta_type_desc *id_arguments[] = {&cmeta_type_uint32};
+      check_generated_generic_application(
+          &ids, &stl_set_generic_desc, id_arguments, 1u);
+    }
     check_equal(Event_ids_set_t_add(&ids, UINT32_C(7)), STL_OK);
     check_true(Event_ids_set_t_contains(&ids, UINT32_C(7)));
     check_equal(Event_ids_set_t_size(&ids), (size_t)1u);
@@ -367,6 +445,12 @@ spec("DataBind public Message native artifact") {
     check_not_null(source);
     if (source != NULL) {
       check_equal(Event_tags_set_t_init(&tags, 4u), STL_OK);
+      {
+        const cmeta_type_desc *tag_arguments[] = {
+            SALTS_TSTR_CMETA_TYPE_REF};
+        check_generated_generic_application(
+            &tags, &stl_set_generic_desc, tag_arguments, 1u);
+      }
       check_equal(Event_tags_set_t_add(&tags, source), STL_OK);
       check_true(Event_tags_set_t_contains(&tags, source));
       check_equal(Event_tags_set_t_size(&tags), (size_t)1u);
@@ -413,12 +497,23 @@ spec("DataBind public Message native artifact") {
     check_true(cmeta_data_desc_equal(value_element, &cmeta_data_uint32));
     check_true(cmeta_data_desc_equal(label_element, SALTS_TSTR_CMETA_DATA_REF));
     check_equal(Event_values_vec_t_init(&values, 4u), STL_OK);
+    {
+      const cmeta_type_desc *value_arguments[] = {&cmeta_type_uint32};
+      check_generated_generic_application(
+          &values, &stl_vec_generic_desc, value_arguments, 1u);
+    }
     check_equal(Event_values_vec_t_push(&values, UINT32_C(7)), STL_OK);
     check_equal(Event_values_vec_t_size(&values), (size_t)1u);
 
     check_not_null(source);
     if (source != NULL) {
       check_equal(Event_labels_vec_t_init(&labels, 4u), STL_OK);
+      {
+        const cmeta_type_desc *label_arguments[] = {
+            SALTS_TSTR_CMETA_TYPE_REF};
+        check_generated_generic_application(
+            &labels, &stl_vec_generic_desc, label_arguments, 1u);
+      }
       check_equal(Event_labels_vec_t_push(&labels, source), STL_OK);
       check_equal(Event_labels_vec_t_size(&labels), (size_t)1u);
       check_not_null(*Event_labels_vec_t_at_const(&labels, 0u));
