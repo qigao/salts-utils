@@ -10,8 +10,6 @@
 /* Residual composite-only migration seam; removed with non-flat provider work. */
 extern const TbeTypedDescriptor *Depth32_typed_descriptor(void);
 
-static unsigned reject_fixed_copy_hits;
-
 static DataBindStatus sample_parse_generated(
     DataBind *codec, DataBindFormat format,
     Sample_t *value, const char *input, size_t input_len,
@@ -116,13 +114,6 @@ static void check_native_text_format_isolated(
   check(!has_canonical_output);
 }
 
-static cmeta_status reject_fixed_copy(void *destination, const void *source) {
-  (void)source;
-  ++reject_fixed_copy_hits;
-  if (destination != NULL) ((uint8_t *)destination)[0] = 0xffu;
-  return CMETA_CALLBACK_ERROR;
-}
-
 static size_t append_test_text(char *buffer, size_t capacity, size_t used,
                                const char *text) {
   size_t length = strlen(text);
@@ -203,7 +194,7 @@ static DataBindStatus serialize_depth32(DataBindFormat format) {
   } else if (status == DATA_BIND_OK) {
     status = DATA_BIND_ERR_RUNTIME;
   }
-  tbe_typed_serialized_free(serialized);
+  data_bind_serialized_free(serialized);
   data_bind_free(codec);
   return status;
 }
