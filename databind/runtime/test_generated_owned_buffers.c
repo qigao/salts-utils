@@ -245,8 +245,8 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
           (size_t)2u);
     }
 
-    tbe_typed_serialized_free(encoded_yaml);
-    tbe_typed_serialized_free(encoded);
+    data_bind_serialized_free(encoded_yaml);
+    data_bind_serialized_free(encoded);
     NativeHeaderPolicy_clear(&unchanged);
     NativeHeaderPolicy_clear(&yaml_roundtrip);
     NativeHeaderPolicy_clear(&roundtrip);
@@ -406,7 +406,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
       check_equal(rejected_len, (size_t)0u);
     }
 
-    tbe_typed_serialized_free(xml);
+    data_bind_serialized_free(xml);
     NativeXmlFlat_clear(&nullable);
     NativeXmlOutputFlat_clear(&roundtrip);
     NativeXmlOutputFlat_clear(&source);

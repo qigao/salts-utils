@@ -131,6 +131,8 @@ cmake_add_test(test_databind_openapi_projection
   SOURCES
     test_openapi_projection.c
     compiler_core.c
+    binary_layout_ir.c
+    binary_reader_codegen.c
     projection.c
     openapi_projection.c
     database_schema.c
@@ -167,6 +169,7 @@ add_executable(databind_method_plan_projection_fixture_gen
   binary_layout_ir.c
   opaque_plan_codegen.c
   compiler_core.c
+  binary_reader_codegen.c
   database_schema.c
   mustache_helpers.c)
 target_link_libraries(databind_method_plan_projection_fixture_gen
@@ -230,6 +233,8 @@ cmake_add_test(test_databind_projection_registry
     test_projection_registry.c
     projection.c
     compiler_core.c
+    binary_layout_ir.c
+    binary_reader_codegen.c
     database_schema.c
     mustache_helpers.c
   LIBS
@@ -319,6 +324,8 @@ cmake_add_test(test_databind_message_native
   SOURCES
     test_message_native.c
     compiler_core.c
+    binary_layout_ir.c
+    binary_reader_codegen.c
     projection.c
     database_schema.c
     mustache_helpers.c
@@ -388,6 +395,8 @@ cmake_add_executable(databind_service_native_codegen_fixture_tool
   SOURCES
     test_service_native_codegen_tool.c
     compiler_core.c
+    binary_layout_ir.c
+    binary_reader_codegen.c
     projection.c
     service_native.c
     database_schema.c
@@ -1037,6 +1046,8 @@ cmake_add_test(test_databind_plugin_projection_rejection
   SOURCES
     test_plugin_projection_rejection.c
     compiler_core.c
+    binary_layout_ir.c
+    binary_reader_codegen.c
     projection.c
     service_native.c
     plugin_projection.c
@@ -1063,6 +1074,8 @@ cmake_add_test(test_databind_wasm_projection
   SOURCES
     test_wasm_projection.c
     compiler_core.c
+    binary_layout_ir.c
+    binary_reader_codegen.c
     projection.c
     service_native.c
     wasm_projection.c
@@ -1099,7 +1112,7 @@ set_tests_properties(test_database_schema_contract PROPERTIES
   LABELS "databind;compiler;database;idl-contract")
 
 cmake_add_test(test_tbe_compiler
-  SOURCES test_tbe_compiler.c compiler_core.c projection.c database_schema.c mustache_helpers.c
+  SOURCES test_tbe_compiler.c compiler_core.c binary_layout_ir.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
@@ -1116,14 +1129,14 @@ target_include_directories(test_tbe_compiler
   PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 
 cmake_add_test(test_tbe_compiler_schema_boundary
-  SOURCES test_schema_boundary.c compiler_core.c projection.c database_schema.c mustache_helpers.c
+  SOURCES test_schema_boundary.c compiler_core.c binary_layout_ir.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/idl/compiler")
 target_include_directories(test_tbe_compiler_schema_boundary
   PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 cmake_add_test(test_tbe_compiler_cmeta_fields
-  SOURCES test_cmeta_field_projection.c compiler_core.c projection.c database_schema.c mustache_helpers.c
+  SOURCES test_cmeta_field_projection.c compiler_core.c binary_layout_ir.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/idl/compiler")
 target_include_directories(test_tbe_compiler_cmeta_fields
@@ -1136,6 +1149,7 @@ cmake_add_test(test_databind_method_plan_binary_admission
     binary_layout_ir.c
     opaque_plan_codegen.c
     compiler_core.c
+    binary_reader_codegen.c
     database_schema.c
     mustache_helpers.c
   LIBS
@@ -1190,6 +1204,7 @@ cmake_add_test(test_databind_binary_layout_ir
     test_binary_layout_ir.c
     binary_layout_ir.c
     compiler_core.c
+    binary_reader_codegen.c
     projection.c
     database_schema.c
     mustache_helpers.c

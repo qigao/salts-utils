@@ -2770,6 +2770,10 @@ spec("tbe_compiler") {
         check_contains(source, "cmeta_data_value_restore_zero(&name##_CMETA_DATA");
         check_contains(source, "tbe_typed_descriptor_parse(codec");
         check_contains(source, "tbe_typed_descriptor_serialize_binary");
+        check_contains(source, "LoginMessage_databind_binary_provider(void)");
+        check_contains(source, "FlagStorage_databind_binary_provider(void)");
+        check_contains(source, "WideEnumStorage_databind_binary_provider(void)");
+        check(strstr(source, "Sample_databind_binary_provider(void)") == NULL);
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(Sample,");
         check_contains(
