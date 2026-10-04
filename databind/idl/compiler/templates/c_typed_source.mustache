@@ -1150,7 +1150,11 @@ static DataBindStatus {{schema.schema_name}}_message_to_binary(
             error, status, type_name, &diagnostic);
     }
 
-    close_status = data_bind_format_writer_close(&writer, error);
+    close_status = data_bind_format_writer_close(
+        &writer,
+        (status == DATA_BIND_OK || finish_status != CSERDE_OK)
+            ? error
+            : NULL);
     if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
         status = close_status;
     else if (status == DATA_BIND_ERR_RUNTIME &&
