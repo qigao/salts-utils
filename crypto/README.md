@@ -1,7 +1,7 @@
 # Salts Crypto
 
-`Salts::Crypto` provides the narrow cryptographic surface that Salts consumers
-need but the configured BoringSSL build does not implement. The current API is
+`Salts::Crypto` provides the narrow cryptographic surface owned by SaltsUtils
+without exposing a third-party provider through its public API or package boundary. The current API is
 RFC 8032 pure Ed448 key generation, public-key derivation, signing, and
 verification. It uses the operating-system CSPRNG through `Salts::Platform` and
 keeps all libecc types private.
