@@ -11,6 +11,7 @@
 #include "data_bind_native.h"
 #include "data_bind_xml_writer.h"
 #include "data_bind_projection_plan.h"
+#include "tbe_typed.h"
 
 static const char {{schema.schema_name}}_SCHEMA_TEXT[] = "{{schema_c_literal}}";
 static void {{schema.schema_name}}_CMETA_INIT_ALL(void);
@@ -384,9 +385,12 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
 
+/* Internal migration seam for historical runtime tests only.
+ * Not declared by generated public headers; removed by #488/#489. */
 const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
     return &{{name}}_TYPED_DESCRIPTOR;
 }
+
 {{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
@@ -462,9 +466,12 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
 
+/* Internal migration seam for historical runtime tests only.
+ * Not declared by generated public headers; removed by #488/#489. */
 const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
     return &{{name}}_TYPED_DESCRIPTOR;
 }
+
 {{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
@@ -540,9 +547,12 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
 
+/* Internal migration seam for historical runtime tests only.
+ * Not declared by generated public headers; removed by #488/#489. */
 const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
     return &{{name}}_TYPED_DESCRIPTOR;
 }
+
 {{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {

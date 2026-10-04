@@ -5,6 +5,13 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Internal migration seam; not part of the generated public API. */
+extern const TbeTypedDescriptor *EnumSymbolStorage_typed_descriptor(void);
+extern const TbeTypedDescriptor *FlagStorage_typed_descriptor(void);
+extern const TbeTypedDescriptor *WideEnumStorage_typed_descriptor(void);
+extern const TbeTypedDescriptor *FixedValues_typed_descriptor(void);
+extern const TbeTypedDescriptor *Sample_typed_descriptor(void);
+
 /* Public-only, release-build-safe checks: no private validator or generated
  * implementation include may make this consumer link accidentally. */
 int main(void) {
