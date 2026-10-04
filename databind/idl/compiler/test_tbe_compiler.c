@@ -2770,6 +2770,9 @@ spec("tbe_compiler") {
             "LoginMessage_to_bin_into(DataBind *codec, const LoginMessage_t *object");
       }
       if (source != NULL) {
+        check(strstr(source, "TbeTypedDescriptor") == NULL);
+        check(strstr(source, "TBE_TYPED_DESCRIPTOR_INIT") == NULL);
+        check(strstr(source, "_typed_descriptor(void)") == NULL);
         check(strstr(source, "tbe_typed_descriptor_init(") == NULL);
         check(strstr(source, "tbe_typed_descriptor_clear(") == NULL);
         check_contains(source, "cmeta_data_value_init_zero(&name##_CMETA_DATA");
