@@ -146,7 +146,7 @@ spec("generated typed Order") {
       check_null(strstr(encoded, "\"routing_hint\""));
       check_null(strstr(encoded, "\"client_tag\""));
     }
-    tbe_typed_serialized_free(encoded);
+    data_bind_binary_free(encoded);
   }
 
   it("should bound optional presence helpers by field and bitmap size") {
@@ -190,14 +190,14 @@ spec("generated typed Order") {
     check_status_ok(Order_to_json(codec, &present, &encoded, &encoded_len, &error), &error);
     check_contains(encoded, "\"routing_hint\":9");
     check_contains(encoded, "\"client_tag\":\"edge-a\"");
-    check_status_ok(Order_to_bin(&present, &wire, &wire_len, &error), &error);
+    check_status_ok(Order_to_bin(codec, &present, &wire, &wire_len, &error), &error);
     check_status_ok(Order_from_bin(codec, &decoded, wire, wire_len, &error), &error);
     check_equal(decoded._presence[0], present._presence[0]);
     check_equal(decoded.routing_hint, 9u);
     check_equal(decoded.client_tag, "edge-a");
 
-    tbe_typed_serialized_free(wire);
-    tbe_typed_serialized_free(encoded);
+    data_bind_binary_free(wire);
+    data_bind_binary_free(encoded);
     Order_clear(&decoded);
     Order_clear(&present);
   }
@@ -207,21 +207,21 @@ spec("generated typed Order") {
     size_t encoded_len = 0;
     Order_t decoded;
     Order_init(&decoded);
-    check_equal(Order_to_bin(&order, &encoded, &encoded_len, &error), DATA_BIND_OK);
+    check_equal(Order_to_bin(codec, &order, &encoded, &encoded_len, &error), DATA_BIND_OK);
     check_not_null(encoded);
     check_greater(encoded_len, 0);
     if (encoded != NULL) {
       check_status_ok(Order_from_bin(codec, &decoded, encoded, encoded_len, &error), &error);
       check_order(&decoded);
     }
-    tbe_typed_serialized_free(encoded);
+    data_bind_binary_free(encoded);
     Order_clear(&decoded);
   }
 
   it("should preserve the owning struct when direct binary decoding fails") {
     uint8_t *encoded = NULL;
     size_t encoded_len = 0;
-    check_status_ok(Order_to_bin(&order, &encoded, &encoded_len, &error), &error);
+    check_status_ok(Order_to_bin(codec, &order, &encoded, &encoded_len, &error), &error);
     check_not_null(encoded);
     check_greater(encoded_len, 1);
     if (encoded != NULL && encoded_len > 1) {
@@ -229,7 +229,7 @@ spec("generated typed Order") {
                    DATA_BIND_ERR_PARSE);
       check_order(&order);
     }
-    tbe_typed_serialized_free(encoded);
+    data_bind_binary_free(encoded);
   }
 
   it("should reject a generated descriptor used with a different schema") {
@@ -276,7 +276,7 @@ spec("generated typed Order") {
       check_status_ok(status, &error);
       check_not_null(encoded);
       if (status == DATA_BIND_OK) check_order(&decoded);
-      tbe_typed_serialized_free(encoded);
+      data_bind_binary_free(encoded);
       Order_clear(&decoded);
     }
   }
@@ -392,12 +392,12 @@ spec("generated typed Order") {
         .binary_to_text = test_guest_binary_to_text,
     };
 
-    check_status_ok(Order_to_bin(&order, &encoded, &encoded_len, &error), &error);
+    check_status_ok(Order_to_bin(codec, &order, &encoded, &encoded_len, &error), &error);
     check_not_null(encoded);
     check(encoded_len <= TEST_GUEST_WIRE_CAPACITY);
     check(encoded_len <= UINT32_MAX);
     if (encoded == NULL || encoded_len > TEST_GUEST_WIRE_CAPACITY || encoded_len > UINT32_MAX) {
-      tbe_typed_serialized_free(encoded);
+      data_bind_binary_free(encoded);
     } else {
       context.wire = encoded;
       context.wire_size = (uint32_t)encoded_len;
@@ -451,7 +451,7 @@ spec("generated typed Order") {
           Order_guest_from_json(&bridge, json, strlen(json), guest_wire, 1, &output_len, &view),
           TEST_BRIDGE_CAPACITY_ERROR);
       check_equal(output_len, encoded_len);
-      tbe_typed_serialized_free(encoded);
+      data_bind_binary_free(encoded);
     }
   }
 }
