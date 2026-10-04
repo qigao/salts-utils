@@ -2171,6 +2171,7 @@ static void tbe_compiler_annotate_csv_flat_messages(Node *root) {
      * fallback are not approximated here.
      */
     if (!tbe_compiler_has_child(record, "cmeta_graph_supported") ||
+        !tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
         tbe_compiler_string_value(
             record, "cmeta_native_descriptor_depth") == NULL ||
         tbe_compiler_string_value(
