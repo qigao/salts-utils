@@ -2868,7 +2868,7 @@ spec("tbe_compiler") {
         check_contains(source, "data_bind_builtin_format_reader_open_csv_row(");
         check_contains(source, "data_bind_format_plan_compile(");
         check_contains(source, "data_bind_format_canonical_reader_init(");
-        check_contains(source, "TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)");
+        check_contains(source, "DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS(name)");
       }
 
       free(header);
@@ -2930,6 +2930,11 @@ spec("tbe_compiler") {
         check(strstr(source, "static TbeTypedType EnumState_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType UuidState_TYPED_TYPE") == NULL);
         check(strstr(source, "#define TBE_TYPED_DEFINE_RAW_LIFECYCLE") == NULL);
+        check(strstr(source, "TBE_TYPED_DEFINE_DESCRIPTOR_RECORD") == NULL);
+        check(strstr(source, "TBE_TYPED_DEFINE_RAW_CONVERSIONS") == NULL);
+        check(strstr(source, "TBE_TYPED_") == NULL);
+        check(strstr(source, "TbeTyped") == NULL);
+        check(strstr(source, "tbe_typed_") == NULL);
         check(strstr(source, "tbe_typed_init(") == NULL);
         check(strstr(source, "tbe_typed_clear(") == NULL);
         check_contains(source, "Point_cmeta_data(");
