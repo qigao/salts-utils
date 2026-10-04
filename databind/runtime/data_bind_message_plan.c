@@ -1614,6 +1614,7 @@ static DataBindStatus message_decode_native_impl(
   if (format_aware &&
       format != DATA_BIND_FORMAT_JSON &&
       format != DATA_BIND_FORMAT_YAML &&
+      format != DATA_BIND_FORMAT_CSV &&
       format != DATA_BIND_FORMAT_XML)
     return message_fail(
         diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
@@ -1718,7 +1719,9 @@ static DataBindStatus message_decode_native_impl(
       message_set_null(base, field, 1);
     } else {
       cserde_token value_token = token;
-      if (format_aware && format == DATA_BIND_FORMAT_XML) {
+      if (format_aware &&
+          (format == DATA_BIND_FORMAT_CSV ||
+           format == DATA_BIND_FORMAT_XML)) {
         status = message_xml_text_coerce(
             field, native_options, bitmap_bytes,
             &token, &value_token, diagnostic);
