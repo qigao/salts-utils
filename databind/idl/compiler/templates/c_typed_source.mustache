@@ -14,7 +14,7 @@
 #include "tbe_typed.h"
 
 {{#messages}}{{#binary_reader_supported}}
-static inline const DataBindFormatProvider *{{name}}_databind_binary_provider(void);
+static inline const DataBindFormatProvider *{{name}}_binary_{{name}}_databind_binary_provider(void);
 {{/binary_reader_supported}}{{/messages}}
 
 static const char {{schema.schema_name}}_SCHEMA_TEXT[] = "{{schema_c_literal}}";
@@ -1663,7 +1663,7 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return {{schema.schema_name}}_message_from_text( \
             codec, #name, name##__databind_message_native_binding, \
-            name##_databind_binary_provider(), (size_t)(depth_), (size_t)(nodes_), 0u, \
+            name##_binary_##name##_databind_binary_provider(), (size_t)(depth_), (size_t)(nodes_), 0u, \
             object, sizeof(*object), (const char *)data, len, error); \
     }
 
