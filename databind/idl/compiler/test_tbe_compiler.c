@@ -2789,6 +2789,12 @@ spec("tbe_compiler") {
         check_contains(source, "LoginMessage_binary_LoginMessage_databind_binary_provider(void)");
         check_contains(source, "FlagStorage_binary_FlagStorage_databind_binary_provider(void)");
         check_contains(source, "WideEnumStorage_binary_WideEnumStorage_databind_binary_provider(void)");
+        check(strstr(source, "Sample_TYPED_DESCRIPTOR") == NULL);
+        check(strstr(source, "Sample_typed_descriptor(void)") == NULL);
+        check(strstr(source, "FlagStorage_TYPED_DESCRIPTOR") == NULL);
+        check(strstr(source, "FlagStorage_typed_descriptor(void)") == NULL);
+        check(strstr(source, "WideEnumStorage_TYPED_DESCRIPTOR") == NULL);
+        check(strstr(source, "WideEnumStorage_typed_descriptor(void)") == NULL);
         check_contains(source, "data_bind_binary_writer_open(");
         check_contains(
             source,
