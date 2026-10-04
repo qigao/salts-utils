@@ -59,7 +59,7 @@ spec("generated typed Order C++ owner") {
         check_equal(decoded->routing_hint, 12u);
         check_equal(decoded->client_tag, "cpp");
       }
-      tbe_typed_serialized_free(serialized);
+      data_bind_serialized_free(serialized);
       data_bind_binary_free(wire);
     }
     data_bind_free(codec);
