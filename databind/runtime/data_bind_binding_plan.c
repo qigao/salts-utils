@@ -430,11 +430,12 @@ static size_t plan_find_param_by_name(
     const cmeta_function_desc *function, const char *name) {
   size_t i;
   if (function == NULL || name == NULL) return SIZE_MAX;
-  for (i = 0u; i < function->param_count; ++i)
-    if (!plan_param_is_receiver(&function->params[i]) &&
-        function->params[i].name != NULL &&
-        strcmp(function->params[i].name, name) == 0)
+  for (i = 0u; i < function->param_count; ++i) {
+    const cmeta_param_desc *param = cmeta_function_param(function, i);
+    if (param != NULL && !plan_param_is_receiver(param) &&
+        param->name != NULL && strcmp(param->name, name) == 0)
       return i;
+  }
   return SIZE_MAX;
 }
 
@@ -450,7 +451,7 @@ static size_t plan_find_root_param(
   if (function == NULL || type == NULL) return SIZE_MAX;
 
   for (i = 0u; i < function->param_count; ++i) {
-    const cmeta_param_desc *param = &function->params[i];
+    const cmeta_param_desc *param = cmeta_function_param(function, i);
     const cmeta_type_desc *value_type;
     int param_indirect = 0;
 
@@ -636,7 +637,7 @@ static DataBindStatus plan_compile_ingress(
 
     if (root_param != SIZE_MAX) {
       param_index = root_param;
-      param = &native->function->params[param_index];
+      param = cmeta_function_param(native->function, param_index);
       indirect = root_indirect;
       param_used[param_index] = 1u;
       plan->param_ingress[param_index] = 1u;
@@ -657,7 +658,7 @@ static DataBindStatus plan_compile_ingress(
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field.name, NULL,
             "No reflected IN parameter binds request field '%s'", field.name);
-      param = &native->function->params[param_index];
+      param = cmeta_function_param(native->function, param_index);
       if (!plan_param_type_matches_data(param, native_field->value,
                                         CMETA_PARAM_IN, &indirect))
         return plan_diag_fail(
@@ -838,7 +839,7 @@ static DataBindStatus plan_compile_egress(
 
     if (root_param != SIZE_MAX) {
       param_index = root_param;
-      param = &native->function->params[param_index];
+      param = cmeta_function_param(native->function, param_index);
       indirect = root_indirect;
       param_used[param_index] = 1u;
       plan->param_egress[param_index] = 1u;
@@ -860,7 +861,7 @@ static DataBindStatus plan_compile_egress(
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field.name, NULL,
             "No reflected OUT parameter binds response field '%s'", field.name);
-      param = &native->function->params[param_index];
+      param = cmeta_function_param(native->function, param_index);
       if (!plan_param_type_matches_data(param, native_field->value,
                                         CMETA_PARAM_OUT, &indirect))
         return plan_diag_fail(
@@ -971,7 +972,8 @@ static DataBindStatus plan_compile_errors(
         diagnostic, DATA_BIND_ERR_SCHEMA, NULL, NULL,
         "Typed-error Service native envelope metadata is incomplete");
 
-  param = &native->function->params[native->error_param_index];
+  param = cmeta_function_param(
+      native->function, native->error_param_index);
   if ((param->flags & CMETA_PARAM_DIRECTION_MASK) != CMETA_PARAM_OUT ||
       (param->flags & CMETA_PARAM_BORROWED) == 0 ||
       param->type == NULL || param->type->kind != CMETA_T_POINTER ||
@@ -1232,9 +1234,12 @@ DataBindStatus data_bind_binding_plan_compile_service(
    * Preserve its ABI index in the call frame, but never let request/response
    * name or root-type matching claim it as a DataBind field.
    */
-  for (i = 0u; i < native->function->param_count; ++i)
-    if (plan_param_is_receiver(&native->function->params[i]))
+  for (i = 0u; i < native->function->param_count; ++i) {
+    const cmeta_param_desc *param =
+        cmeta_function_param(native->function, i);
+    if (plan_param_is_receiver(param))
       param_used[i] = 1u;
+  }
 
   status = plan_compile_ingress(codec, &operation, projection, native,
                                 plan, param_used, diagnostic);
@@ -1251,12 +1256,14 @@ DataBindStatus data_bind_binding_plan_compile_service(
 
   for (i = 0u; i < native->function->param_count; ++i) {
     if (!param_used[i]) {
+      const cmeta_param_desc *param =
+          cmeta_function_param(native->function, i);
       status = plan_diag_fail(
           diagnostic, DATA_BIND_ERR_SCHEMA, NULL,
-          native->function->params[i].name,
+          param != NULL ? param->name : NULL,
           "Reflected function parameter '%s' is not owned by the Service "
           "contract; context injection is not admitted by this compiler slice",
-          native->function->params[i].name);
+          param != NULL && param->name != NULL ? param->name : "<invalid>");
       goto fail;
     }
   }
