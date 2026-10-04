@@ -577,12 +577,12 @@ typedef struct {{schema.schema_name}}_message_workspace_s {
     void *allocation;
 } {{schema.schema_name}}_message_workspace_t;
 
-typedef struct {{schema.schema_name}}_json_output_s {
+typedef struct {{schema.schema_name}}_text_output_s {
     char *data;
     size_t length;
     size_t capacity;
     DataBindStatus status;
-} {{schema.schema_name}}_json_output_t;
+} {{schema.schema_name}}_text_output_t;
 
 static DataBindStatus {{schema.schema_name}}_message_diag_error(
     DataBindError *error, DataBindStatus status, const char *type_name,
@@ -976,10 +976,10 @@ cleanup:
     return status;
 }
 
-static int {{schema.schema_name}}_json_output_write(
+static int {{schema.schema_name}}_text_output_write(
     const void *data, size_t len, void *user) {
-    {{schema.schema_name}}_json_output_t *output =
-        ({{schema.schema_name}}_json_output_t *)user;
+    {{schema.schema_name}}_text_output_t *output =
+        ({{schema.schema_name}}_text_output_t *)user;
     size_t required;
     size_t capacity;
     char *resized;
@@ -1015,10 +1015,11 @@ static int {{schema.schema_name}}_json_output_write(
     return 0;
 }
 
-static DataBindStatus {{schema.schema_name}}_message_to_json(
+static DataBindStatus {{schema.schema_name}}_message_to_text(
     DataBind *codec,
     const char *type_name,
     DataBindNativeTypeBindingResolverFn resolve,
+    DataBindFormat format,
     size_t descriptor_depth,
     size_t descriptor_nodes,
     const void *object,
@@ -1036,17 +1037,26 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
     DataBindFormatCanonicalWriter canonical_writer =
         DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
     {{schema.schema_name}}_message_workspace_t workspace = {0};
-    {{schema.schema_name}}_json_output_t output = {0};
+    {{schema.schema_name}}_text_output_t output = {0};
+    const DataBindFormatProvider *provider = NULL;
     DataBindStatus status;
     DataBindStatus close_status;
 
     if (out != NULL) *out = NULL;
     if (out_len != NULL) *out_len = 0u;
     if (codec == NULL || type_name == NULL || resolve == NULL ||
-        object == NULL || object_size == 0u || out == NULL || out_len == NULL)
+        object == NULL || object_size == 0u || out == NULL || out_len == NULL ||
+        (format != DATA_BIND_FORMAT_JSON &&
+         format != DATA_BIND_FORMAT_YAML))
         return {{schema.schema_name}}_schema_codec_error(
             error, DATA_BIND_ERR_INVALID_ARG, type_name,
-            "Invalid generated native-to-JSON arguments");
+            "Invalid generated native-to-text arguments");
+
+    provider = data_bind_builtin_format_provider(format);
+    if (provider == NULL || provider->format != format)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_SCHEMA, type_name,
+            "Generated text output provider is unavailable");
 
     status = resolve(&binding, error);
     if (status != DATA_BIND_OK) return status;
@@ -1063,7 +1073,7 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
             error, status, type_name, &diagnostic);
 
     status = data_bind_format_plan_compile(
-        codec, type_name, DATA_BIND_FORMAT_JSON, &format_plan, error);
+        codec, type_name, format, &format_plan, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
     status = {{schema.schema_name}}_message_workspace_open(
@@ -1072,8 +1082,7 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
     if (status != DATA_BIND_OK) goto cleanup;
 
     status = data_bind_format_writer_open(
-        data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON),
-        {{schema.schema_name}}_json_output_write, &output,
+        provider, {{schema.schema_name}}_text_output_write, &output,
         descriptor_depth, &writer, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
@@ -1091,7 +1100,7 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
                     &canonical_writer)) != CSERDE_OK)
             status = {{schema.schema_name}}_schema_codec_error(
                 error, DATA_BIND_ERR_RUNTIME, type_name,
-                "Generated canonical JSON writer did not finish one record");
+                "Generated canonical text writer did not finish one record");
     } else {
         (void){{schema.schema_name}}_message_diag_error(
             error, status, type_name, &diagnostic);
@@ -1104,7 +1113,7 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
     if (output.status != DATA_BIND_OK)
         status = {{schema.schema_name}}_schema_codec_error(
             error, output.status, type_name,
-            "Generated JSON output buffer failed");
+            "Generated text output buffer failed");
     if (status != DATA_BIND_OK) goto cleanup;
 
     if (output.data == NULL) {
@@ -1112,7 +1121,7 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
         if (output.data == NULL) {
             status = {{schema.schema_name}}_schema_codec_error(
                 error, DATA_BIND_ERR_OOM, type_name,
-                "Unable to allocate generated JSON output");
+                "Unable to allocate generated text output");
             goto cleanup;
         }
         output.data[0] = '\0';
@@ -1371,10 +1380,17 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     } \
     DataBindStatus name##_to_json(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
-        return {{schema.schema_name}}_message_to_json( \
+        return {{schema.schema_name}}_message_to_text( \
             codec, #name, name##__databind_message_native_binding, \
-            (size_t)(depth_), (size_t)(nodes_), object, sizeof(*object), \
-            out, out_len, error); \
+            DATA_BIND_FORMAT_JSON, (size_t)(depth_), (size_t)(nodes_), \
+            object, sizeof(*object), out, out_len, error); \
+    } \
+    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return {{schema.schema_name}}_message_to_text( \
+            codec, #name, name##__databind_message_native_binding, \
+            DATA_BIND_FORMAT_YAML, (size_t)(depth_), (size_t)(nodes_), \
+            object, sizeof(*object), out, out_len, error); \
     }
 
 #define DATABIND_DEFINE_CANONICAL_MESSAGE_XML(name, depth_, nodes_) \
@@ -1453,10 +1469,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize_binary_into(&name##_TYPED_DESCRIPTOR, object, output, output_capacity, out_len, error); \
     } \
-    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
-        {{schema.schema_name}}_CMETA_INIT_ALL(); \
-        return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_YAML, out, out_len, error); \
-    } \
     DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_CSV, out, out_len, error); \
@@ -1464,6 +1476,11 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_XML, out, out_len, error); \
+    }
+
+#define DATABIND_DEFINE_RAW_MESSAGE_YAML(name) \
+    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_YAML, out, out_len, error); \
     }
 
 #define DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(name) \
@@ -1475,9 +1492,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     } \
     DataBindStatus name##_to_bin_into(const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
         return tbe_typed_serialize_binary_into(&name##_TYPED_TYPE, object, output, output_capacity, out_len, error); \
-    } \
-    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
-        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_YAML, out, out_len, error); \
     } \
     DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_CSV, out, out_len, error); \
@@ -1497,10 +1511,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     } \
     DataBindStatus name##_to_bin_into(const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
         (void)object; (void)output; (void)output_capacity; if (out_len != NULL) *out_len = 0u; \
-        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
-    } \
-    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
-        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
         return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
     } \
     DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
@@ -1538,6 +1548,7 @@ DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth
 DATABIND_DEFINE_RAW_MESSAGE_TEXT({{name}})
 DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
+DATABIND_DEFINE_RAW_MESSAGE_YAML({{name}})
 DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
 {{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
