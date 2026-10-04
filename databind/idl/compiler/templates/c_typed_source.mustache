@@ -852,6 +852,19 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         status = data_bind_builtin_format_reader_open_csv_row(
             data, len, csv_row, descriptor_depth, &reader, error);
         if (status != DATA_BIND_OK) goto cleanup;
+    } else {
+        if (provider->format == DATA_BIND_FORMAT_JSON ||
+            provider->format == DATA_BIND_FORMAT_YAML) {
+            status = data_bind_format_plan_compile(
+                codec, type_name, provider->format, &format_plan, error);
+            if (status != DATA_BIND_OK) goto cleanup;
+        }
+        status = data_bind_format_reader_open(
+            provider, data, len, descriptor_depth, &reader, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+    }
+
+    if (format_plan != NULL) {
         status = data_bind_format_canonical_reader_init(
             format_plan, reader.reader, &canonical, error);
         if (status != DATA_BIND_OK) goto cleanup;
@@ -859,13 +872,10 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         if (decode_reader == NULL) {
             status = {{schema.schema_name}}_schema_codec_error(
                 error, DATA_BIND_ERR_RUNTIME, type_name,
-                "Generated CSV canonical reader is unavailable");
+                "Generated canonical format reader is unavailable");
             goto cleanup;
         }
     } else {
-        status = data_bind_format_reader_open(
-            provider, data, len, descriptor_depth, &reader, error);
-        if (status != DATA_BIND_OK) goto cleanup;
         decode_reader = reader.reader;
     }
 
@@ -1021,7 +1031,10 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
     DataBindMessagePlan *plan = NULL;
     DataBindMessagePlanDiagnostic diagnostic =
         DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindFormatPlan *format_plan = NULL;
     DataBindFormatWriter writer = DATA_BIND_FORMAT_WRITER_INIT;
+    DataBindFormatCanonicalWriter canonical_writer =
+        DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
     {{schema.schema_name}}_message_workspace_t workspace = {0};
     {{schema.schema_name}}_json_output_t output = {0};
     DataBindStatus status;
@@ -1049,6 +1062,10 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
         return {{schema.schema_name}}_message_diag_error(
             error, status, type_name, &diagnostic);
 
+    status = data_bind_format_plan_compile(
+        codec, type_name, DATA_BIND_FORMAT_JSON, &format_plan, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
     status = {{schema.schema_name}}_message_workspace_open(
         &binding, plan, descriptor_depth, descriptor_nodes, 0,
         &workspace, error);
@@ -1060,15 +1077,29 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
         descriptor_depth, &writer, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
+    status = data_bind_format_canonical_writer_init(
+        format_plan, writer.writer, &canonical_writer, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
     status = data_bind_message_plan_encode_native(
         plan, &workspace.options, object, object_size,
-        writer.writer, &diagnostic);
+        data_bind_format_canonical_writer_writer(&canonical_writer),
+        &diagnostic);
+    if (status == DATA_BIND_OK) {
+        if (cserde_writer_finish(
+                data_bind_format_canonical_writer_writer(
+                    &canonical_writer)) != CSERDE_OK)
+            status = {{schema.schema_name}}_schema_codec_error(
+                error, DATA_BIND_ERR_RUNTIME, type_name,
+                "Generated canonical JSON writer did not finish one record");
+    } else {
+        (void){{schema.schema_name}}_message_diag_error(
+            error, status, type_name, &diagnostic);
+    }
+
     close_status = data_bind_format_writer_close(&writer, error);
     if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
         status = close_status;
-    else if (status != DATA_BIND_OK)
-        (void){{schema.schema_name}}_message_diag_error(
-            error, status, type_name, &diagnostic);
 
     if (output.status != DATA_BIND_OK)
         status = {{schema.schema_name}}_schema_codec_error(
@@ -1096,6 +1127,7 @@ cleanup:
     if (writer.provider != NULL)
         (void)data_bind_format_writer_close(&writer, error);
     free(output.data);
+    data_bind_format_plan_free(format_plan);
     {{schema.schema_name}}_message_workspace_close(&workspace);
     data_bind_message_plan_free(plan);
     return status;
