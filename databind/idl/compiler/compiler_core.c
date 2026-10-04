@@ -2564,6 +2564,13 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
           tbe_compiler_has_child(enum_record, "typed_cmeta_runtime_supported") &&
           native_data != NULL &&
           tbe_compiler_string_value(field, "native_type_symbol") != NULL;
+      const int native_uuid =
+          type != NULL && strcmp(type, "uuid") == 0 &&
+          native_data != NULL &&
+          strcmp(native_data, "salts_uuid_cmeta_data") == 0 &&
+          tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
+          strcmp(tbe_compiler_string_value(field, "native_type_symbol"),
+                 "salts_uuid_cmeta_type") == 0;
       const int fixed_bytes =
           type != NULL && strcmp(type, "bytes") == 0 &&
           tbe_compiler_has_child(field, "is_fixed_size") &&
@@ -2584,7 +2591,8 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
           tbe_compiler_has_child(field, "is_collection") ||
           tbe_compiler_has_child(field, "is_group_field") ||
           (tbe_compiler_scalar_projection(type) == NULL && !owned_storage &&
-           !fixed_bytes && !nested_lifecycle && !native_enum)) {
+           !fixed_bytes && !nested_lifecycle && !native_enum &&
+           !native_uuid)) {
         supported = 0;
         break;
       }

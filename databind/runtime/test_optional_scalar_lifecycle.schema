@@ -63,3 +63,10 @@ message EnumState {
     nullable State nullable_value;
     optional nullable State tri_value;
 }
+
+[id(11)]
+message UuidState {
+    optional uuid optional_value;
+    nullable uuid nullable_value;
+    optional nullable uuid tri_value;
+}

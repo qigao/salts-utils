@@ -2895,7 +2895,8 @@ spec("tbe_compiler") {
           "message OwnedChild { string label; }"
           "message NestedOwnedState { optional OwnedChild child; }"
           "enum State <uint8> { Idle = 0; Active = 7; }"
-          "message EnumState { optional State current; nullable State previous; }";
+          "message EnumState { optional State current; nullable State previous; }"
+          "message UuidState { optional uuid current; nullable uuid previous; }";
       size_t source_size = 0u;
       char *source = NULL;
       tbe_compiler_options_t options = {
@@ -2927,6 +2928,7 @@ spec("tbe_compiler") {
         check(strstr(source, "static TbeTypedType OwnedChild_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType NestedOwnedState_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType EnumState_TYPED_TYPE") == NULL);
+        check(strstr(source, "static TbeTypedType UuidState_TYPED_TYPE") == NULL);
         check_contains(source, "Point_cmeta_data(");
         check_contains(source, "Level_cmeta_data(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(Value)");
@@ -2936,6 +2938,7 @@ spec("tbe_compiler") {
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(FixedBytesState)");
         check_contains(source, "DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(NestedOwnedState)");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(EnumState)");
+        check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(UuidState)");
       }
       free(source);
       cleanup_test_file(schema_path);

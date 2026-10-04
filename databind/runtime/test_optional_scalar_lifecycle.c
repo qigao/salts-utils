@@ -4,6 +4,33 @@
 #include <string.h>
 
 spec("optional local lifecycle uses canonical CMeta") {
+  it("initializes and clears UUID storage and state overlays") {
+    UuidState_t value;
+    memset(&value, 0xa5, sizeof(value));
+    UuidState_init(&value);
+    for (size_t i = 0u; i < sizeof(value.optional_value.bytes); ++i) {
+      check_equal(value.optional_value.bytes[i], (uint8_t)0u);
+      check_equal(value.nullable_value.bytes[i], (uint8_t)0u);
+      check_equal(value.tri_value.bytes[i], (uint8_t)0u);
+    }
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+
+    memset(&value.optional_value, 0x5a, sizeof(value.optional_value));
+    memset(&value.nullable_value, 0x5a, sizeof(value.nullable_value));
+    memset(&value.tri_value, 0x5a, sizeof(value.tri_value));
+    value._presence[0] = 0xffu;
+    value._nulls[0] = 0xffu;
+    UuidState_clear(&value);
+    for (size_t i = 0u; i < sizeof(value.optional_value.bytes); ++i) {
+      check_equal(value.optional_value.bytes[i], (uint8_t)0u);
+      check_equal(value.nullable_value.bytes[i], (uint8_t)0u);
+      check_equal(value.tri_value.bytes[i], (uint8_t)0u);
+    }
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+  }
+
   it("initializes and clears enum storage and state overlays") {
     EnumState_t value;
     memset(&value, 0xa5, sizeof(value));
