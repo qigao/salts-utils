@@ -455,6 +455,17 @@ spec("DataBind Plugin projection semantic rejection") {
                     client_header_output, SALTS_FS_ACCESS_EXISTS),
                 0);
     generated = (salts_fs_buf_t){0};
+    check_equal(salts_fs_read_file(client_header_output, &generated), 0);
+    check_not_null(generated.base);
+    check_not_null(strstr(
+        generated.base, "One live client owns one Plugin lease."));
+    check_not_null(strstr(
+        generated.base, "borrowed from that lease"));
+    check_not_null(strstr(
+        generated.base, "must not retain or dereference those views after close"));
+    salts_fs_buf_free(&generated);
+
+    generated = (salts_fs_buf_t){0};
     check_equal(salts_fs_read_file(client_source_output, &generated), 0);
     check_not_null(generated.base);
     check_not_null(strstr(
