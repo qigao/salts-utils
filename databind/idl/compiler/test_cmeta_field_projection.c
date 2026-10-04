@@ -1097,8 +1097,14 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "OptionalStorage"),
             "cmeta_graph_supported"));
-        check_null(field_projection_child(
+        check_not_null(field_projection_child(
             field_projection_record(root, "messages", "Sample"),
+            "no_legacy_typed_table"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "OptionalNested"),
+            "cmeta_local_overlay_lifecycle"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "OptionalNested"),
             "no_legacy_typed_table"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "BoolStorage"),
