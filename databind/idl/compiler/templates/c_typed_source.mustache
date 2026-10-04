@@ -385,6 +385,12 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
 
+/* Internal migration seam for historical runtime tests only.
+ * Not declared by generated public headers; removed by #488/#489. */
+const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
+    return &{{name}}_TYPED_DESCRIPTOR;
+}
+
 {{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
@@ -460,6 +466,12 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
 
+/* Internal migration seam for historical runtime tests only.
+ * Not declared by generated public headers; removed by #488/#489. */
+const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
+    return &{{name}}_TYPED_DESCRIPTOR;
+}
+
 {{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
@@ -534,6 +546,12 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 {{#typed_cmeta_runtime_supported}}
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
+
+/* Internal migration seam for historical runtime tests only.
+ * Not declared by generated public headers; removed by #488/#489. */
+const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
+    return &{{name}}_TYPED_DESCRIPTOR;
+}
 
 {{/typed_cmeta_runtime_supported}}
 
