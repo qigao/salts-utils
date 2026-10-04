@@ -8,6 +8,7 @@ The re2c host generator is a build-time tool and is not a runtime dependency of 
 ## Layout
 
 - `sdk/linux-x64/`
+- `sdk/linux-arm64/`
 - `sdk/windows-x64/`
 - `sdk/macos-x64/` or `sdk/macos-arm64/`
 - `sdk/android-arm64-v8a/`
@@ -21,5 +22,10 @@ SaltsUtils SDK:
 
     export SALTS_ROOT=<nuget>/salts.native/<resolved>/sdk/linux-x64
     export SALTS_UTILS_ROOT=<nuget>/saltsutils.native/<resolved>/sdk/linux-x64
+
+Use the matching RID on Linux arm64:
+
+    export SALTS_ROOT=<nuget>/salts.native/<resolved>/sdk/linux-arm64
+    export SALTS_UTILS_ROOT=<nuget>/saltsutils.native/<resolved>/sdk/linux-arm64
 
     find_package(SaltsUtils CONFIG REQUIRED PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
