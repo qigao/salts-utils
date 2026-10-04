@@ -16,7 +16,6 @@
 #include "idl.h"
 #include "idl_contract.h"
 #include "binary_contract_overlay.h"
-#include "tbe_typed.h"
 #include "tbe_error.h"
 #include "data_bind_binary_wire.h"
 #include <json_parser.h>
@@ -32,6 +31,7 @@
 #include <salts_thread.h>
 #include <salts_uuid.h>
 #include <cstl.h>
+#include <cstl/typed.h>
 
 #include <ctype.h>
 #include <errno.h>
@@ -11556,7 +11556,31 @@ typedef struct data_bind_csv_cell {
   tstr text;
 } data_bind_csv_cell_t;
 
-TBE_TYPED_VEC_DEFINE(data_bind_csv_cell_vec_t, data_bind_csv_cell_t)
+/* The vector copies string references; this serializer releases them once. */
+static bool data_bind_csv_cell_copy(void *destination, const void *source) {
+  if (destination == NULL || source == NULL) return false;
+  *(data_bind_csv_cell_t *)destination = *(const data_bind_csv_cell_t *)source;
+  return true;
+}
+
+static void data_bind_csv_cell_move(void *destination, void *source) {
+  if (destination == NULL || source == NULL) return;
+  *(data_bind_csv_cell_t *)destination = *(data_bind_csv_cell_t *)source;
+  *(data_bind_csv_cell_t *)source = (data_bind_csv_cell_t){0};
+}
+
+static void data_bind_csv_cell_release_borrow(void *cell) { (void)cell; }
+
+static const cmeta_type_traits DATA_BIND_CSV_CELL_TRAITS = {
+    CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY,
+    NULL, NULL, NULL, data_bind_csv_cell_copy, data_bind_csv_cell_move,
+    data_bind_csv_cell_release_borrow};
+static const cmeta_type_desc DATA_BIND_CSV_CELL_TYPE = {
+    "salts-utils.databind.csv-cell", sizeof(data_bind_csv_cell_t),
+    _Alignof(data_bind_csv_cell_t), CMETA_T_OBJECT, NULL,
+    &DATA_BIND_CSV_CELL_TRAITS, NULL};
+typed(Vec, data_bind_csv_cell_vec_t, data_bind_csv_cell_t,
+      &DATA_BIND_CSV_CELL_TYPE, NULL);
 
 static void data_bind_csv_cells_destroy(data_bind_csv_cell_vec_t *cells) {
   size_t i;
