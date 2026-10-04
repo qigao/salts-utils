@@ -230,35 +230,38 @@ static DataBindStatus parse_sample_count(
 }
 
 spec("generated native CMeta graph") {
-  it("publishes structural metadata and validates the public descriptor") {
+  it("publishes structural CMeta and keeps wire facts in schema overlay") {
     const cmeta_data_desc *data = NULL;
-    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
     DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
 
-    check_not_null(descriptor);
     check_equal(Sample_cmeta_data(&data, &error), DATA_BIND_OK);
     check_not_null(data);
-    check(descriptor != NULL && descriptor->native_data == data);
-    if (data && descriptor) {
+    if (data != NULL) {
       const cmeta_data_struct_shape *shape = data->shape;
-      const cmeta_data_struct_shape *point = shape->fields[0].value->shape;
+      const cmeta_data_struct_shape *point =
+          shape != NULL && shape->field_count > 0u &&
+                  shape->fields[0].value != NULL
+              ? shape->fields[0].value->shape
+              : NULL;
       const cmeta_data_enum_bits_ops *state =
-          cmeta_data_enum_bits_ops_of(shape->fields[1].value);
-      TbeTypedDescriptor descriptor_copy = *descriptor;
-      cmeta_data_desc copy = *data;
-      cmeta_type_desc storage_copy = *data->storage_type;
-      cmeta_type_identity identity_copy = *storage_copy.identity;
+          shape != NULL && shape->field_count > 1u &&
+                  shape->fields[1].value != NULL
+              ? cmeta_data_enum_bits_ops_of(shape->fields[1].value)
+              : NULL;
 
-      storage_copy.identity = &identity_copy;
-      copy.storage_type = &storage_copy;
-      descriptor_copy.native_data = &copy;
       check(cmeta_data_desc_valid(data));
       check_equal(data->kind, CMETA_DATA_STRUCT);
       check_equal(data->storage_type->size, sizeof(Sample_t));
       check_equal(data->storage_type->align, _Alignof(Sample_t));
+      check_not_null(shape);
+      if (shape == NULL) return;
       check_equal(shape->field_count, 3u);
       check_equal(shape->fields[0].offset, offsetof(Sample_t, point));
       check_equal(shape->fields[1].offset, offsetof(Sample_t, state));
+      check_not_null(point);
+      if (point == NULL) return;
       check_equal(point->field_count, 2u);
       check_equal(point->fields[1].offset, offsetof(Point_t, y));
       check(cmeta_type_equal(point->fields[0].value->storage_type,
@@ -266,7 +269,7 @@ spec("generated native CMeta graph") {
       check_equal(shape->fields[1].value->kind, CMETA_DATA_ENUM);
       check_equal(shape->fields[1].value->storage_type->size, sizeof(State_t));
       check_not_null(state);
-      if (!state) return;
+      if (state == NULL) return;
       check_null(shape->fields[1].value->shape);
       check_null(shape->fields[1].value->enum_ops);
       check_equal(state->domain->count, 2u);
@@ -275,39 +278,28 @@ spec("generated native CMeta graph") {
       check_equal(shape->fields[2].name, "count");
       check_null(cmeta_data_struct_find_field(shape, "wire_count"));
       check_null(cmeta_data_struct_find_field(shape, "old_count"));
-      check(cmeta_type_equal(copy.storage_type, data->storage_type));
-      check_equal(tbe_typed_descriptor_validate(&descriptor_copy, &error),
-                  DATA_BIND_OK);
+    }
 
-      storage_copy.size += 1u;
-      check_equal(tbe_typed_descriptor_validate(&descriptor_copy, &error),
-                  DATA_BIND_ERR_SCHEMA);
-      storage_copy = *data->storage_type;
-      {
-        cmeta_data_struct_shape altered = *shape;
-        cmeta_data_field_desc fields[3];
-        memcpy(fields, shape->fields, sizeof(fields));
-        fields[2].value = &cmeta_data_uint32;
-        altered.fields = fields;
-        copy.shape = &altered;
-        check_equal(tbe_typed_descriptor_validate(&descriptor_copy, &error),
-                    DATA_BIND_ERR_SCHEMA);
-      }
-      check(descriptor->overlay->fields[2].flags & TBE_TYPED_FIELD_WIRE_OFFSET);
-      check_equal(descriptor->overlay->fields[2].wire_offset, 14u);
-      check(descriptor->overlay->fields[2].wire_offset != shape->fields[2].offset);
-      check_null(descriptor->overlay->fields[0].object_type);
-      check_not_null(descriptor->overlay->fields[0].nested_overlay);
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec != NULL) {
+      check(data_bind_schema_field_at(codec, "Sample", 2u, &schema_field));
+      check_equal(schema_field.name, "count");
+      check(schema_field.has_default);
+      check_equal(schema_field.default_value, "9");
+      check_equal(schema_field.offset, 14u);
+      check(schema_field.has_cmeta_kind);
+      check_equal(schema_field.cmeta_kind, CMETA_DATA_SINT);
+      data_bind_free(codec);
     }
   }
 
-  it("keeps supported native descriptor JSON paths isolated from dynamic values") {
+  it("keeps generated native JSON isolated from dynamic values") {
     static const char json[] =
         "{\"point\":{\"x\":3,\"y\":4.5},\"state\":7,\"wire_count\":7}";
-    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
-    Sample_t value = {0};
+    Sample_t value;
     char *serialized = NULL;
     size_t serialized_len = 0u;
     size_t allocated_before = 0u;
@@ -315,17 +307,17 @@ spec("generated native CMeta graph") {
     size_t allocated_after = 0u;
     size_t reused_after = 0u;
 
-    check_not_null(descriptor);
     check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
     check_not_null(codec);
+    if (codec == NULL) return;
+    Sample_init(&value);
     data_bind_set_value_pool_enabled(0);
     data_bind_get_value_pool_stats(&allocated_before, &reused_before);
 
-    if (codec != NULL && descriptor != NULL)
-      check_equal(tbe_typed_descriptor_parse(
-                      codec, "Sample", descriptor, DATA_BIND_FORMAT_JSON,
-                      json, sizeof(json) - 1u, 0u, &value, &error),
-                  DATA_BIND_OK);
+    check_equal(
+        Sample_from_json(
+            codec, &value, json, sizeof(json) - 1u, &error),
+        DATA_BIND_OK);
     data_bind_get_value_pool_stats(&allocated_after, &reused_after);
     check_equal(allocated_after, allocated_before);
     check_equal(reused_after, reused_before);
@@ -336,12 +328,10 @@ spec("generated native CMeta graph") {
 
     allocated_before = allocated_after;
     reused_before = reused_after;
-    if (codec != NULL && descriptor != NULL)
-      check_equal(tbe_typed_descriptor_serialize(
-                      codec, "Sample", descriptor, &value,
-                      DATA_BIND_FORMAT_JSON, &serialized, &serialized_len,
-                      &error),
-                  DATA_BIND_OK);
+    check_equal(
+        Sample_to_json(
+            codec, &value, &serialized, &serialized_len, &error),
+        DATA_BIND_OK);
     data_bind_get_value_pool_stats(&allocated_after, &reused_after);
     check_equal(allocated_after, allocated_before);
     check_equal(reused_after, reused_before);
@@ -352,15 +342,13 @@ spec("generated native CMeta graph") {
       check_null(strstr(serialized, "\"count\":7"));
     }
 
-    tbe_typed_serialized_free(serialized);
-    if (descriptor != NULL)
-      check_equal(tbe_typed_descriptor_clear(descriptor, &value, &error),
-                  DATA_BIND_OK);
+    data_bind_serialized_free(serialized);
+    Sample_clear(&value);
     data_bind_free(codec);
     data_bind_set_value_pool_enabled(1);
   }
 
-  it("keeps native descriptor YAML isolated from dynamic values") {
+  it("keeps generated native YAML isolated from dynamic values") {
     static const char yaml[] =
         "\"point\":\n"
         "  \"x\": 3\n"
@@ -373,24 +361,44 @@ spec("generated native CMeta graph") {
         "\"wire_count\": 7", "\"count\": 7");
   }
 
-  it("keeps native descriptor CSV isolated from dynamic values") {
+  it("fails closed for nested Sample CSV without canonical flat admission") {
     static const char csv[] =
         "point.x,point.y,state,wire_count\r\n"
         "3,4.5,7,7\r\n";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value;
 
-    check_native_text_format_isolated(
-        DATA_BIND_FORMAT_CSV, csv, sizeof(csv) - 1u,
-        "point.x,point.y,state,wire_count", "point.x,point.y,state,count");
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+    Sample_init(&value);
+    check_equal(
+        Sample_from_csv(
+            codec, &value, csv, sizeof(csv) - 1u, 0u, &error),
+        DATA_BIND_ERR_SCHEMA);
+    Sample_clear(&value);
+    data_bind_free(codec);
   }
 
-  it("keeps native descriptor XML isolated from dynamic values") {
+  it("fails closed for nested Sample XML without canonical flat admission") {
     static const char xml[] =
         "<Sample><point><x>3</x><y>4.5</y></point><state>7</state>"
         "<wire_count>7</wire_count></Sample>";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value;
 
-    check_native_text_format_isolated(
-        DATA_BIND_FORMAT_XML, xml, sizeof(xml) - 1u,
-        "<wire_count>7</wire_count>", "<count>7</count>");
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+    Sample_init(&value);
+    check_equal(
+        Sample_from_xml(
+            codec, &value, xml, sizeof(xml) - 1u, &error),
+        DATA_BIND_ERR_SCHEMA);
+    Sample_clear(&value);
+    data_bind_free(codec);
   }
 
   it("preserves integral number and typed default compatibility") {
