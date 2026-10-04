@@ -348,9 +348,7 @@ static const tbe_compiler_scalar_projection_t *tbe_compiler_scalar_projection(co
                           sizeof(TBE_COMPILER_SCALAR_PROJECTIONS[0]);
        ++i) {
     const tbe_compiler_scalar_projection_t *projection = &TBE_COMPILER_SCALAR_PROJECTIONS[i];
-    if (data->kind == projection->data->kind &&
-        cmeta_type_identity_equal(data->storage_type->identity,
-                                  projection->data->storage_type->identity))
+    if (cmeta_data_desc_equal(data, projection->data))
       return projection;
   }
   return NULL;
