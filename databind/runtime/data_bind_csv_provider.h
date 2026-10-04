@@ -17,6 +17,28 @@ extern "C" {
  */
 const DataBindFormatProvider *data_bind_csv_format_provider(void);
 
+/**
+ * Open exactly one zero-based CSV data row as a canonical row MAP reader.
+ *
+ * The CSV header is not counted as a data row. Empty cells are omitted from
+ * the MAP so MessagePlan observes them as ABSENT, matching the historical
+ * generated from_csv(row) contract. A row outside the parsed data-row range,
+ * or a ragged row that does not match its header, fails with
+ * DATA_BIND_ERR_TYPE_MISMATCH.
+ *
+ * The returned lease is closed with data_bind_format_reader_close().
+ * This API performs no schema lookup or field-name canonicalization; callers
+ * that need schema aliases should wrap the reader with a compiled FormatPlan
+ * canonical reader.
+ */
+DataBindStatus data_bind_csv_format_reader_open_row(
+    const char *data,
+    size_t len,
+    size_t row,
+    size_t max_depth,
+    DataBindFormatReader *out_reader,
+    DataBindError *error);
+
 #ifdef __cplusplus
 }
 #endif

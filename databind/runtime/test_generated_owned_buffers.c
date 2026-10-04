@@ -310,6 +310,82 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     data_bind_free(codec);
   }
 
+  it("routes exact flat generated CSV rows through canonical provider") {
+    static const char csv[] =
+        "id,name\n"
+        "7,alice\n"
+        "8,bob\n";
+    static const char invalid_csv[] =
+        "id,name\n"
+        "bad,alice\n";
+    static const char empty_required_csv[] =
+        "id,name\n"
+        "8,\n";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    NativeCsvFlat_t value = {0};
+    NativeCsvFlat_t unchanged = {0};
+    tstr preserved_name = NULL;
+
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    NativeCsvFlat_init(&value);
+    NativeCsvFlat_init(&unchanged);
+
+    check_equal(
+        NativeCsvFlat_from_csv(
+            codec, &value, csv, sizeof(csv) - 1u, 1u, &error),
+        DATA_BIND_OK);
+    check_equal(value.id, UINT32_C(8));
+    check_not_null(value.name);
+    if (value.name != NULL) {
+      check_equal(tstr_len(value.name), (size_t)3u);
+      check(memcmp(value.name, "bob", 3u) == 0);
+    }
+
+    unchanged.id = UINT32_C(77);
+    unchanged.name = tstr_dup("keep");
+    check_not_null(unchanged.name);
+    preserved_name = unchanged.name;
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        NativeCsvFlat_from_csv(
+            codec, &unchanged, invalid_csv, sizeof(invalid_csv) - 1u,
+            0u, &error),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(unchanged.id, UINT32_C(77));
+    check_true(unchanged.name == preserved_name);
+    if (unchanged.name != NULL) {
+      check_equal(tstr_len(unchanged.name), (size_t)4u);
+      check(memcmp(unchanged.name, "keep", 4u) == 0);
+    }
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        NativeCsvFlat_from_csv(
+            codec, &unchanged, csv, sizeof(csv) - 1u, 2u, &error),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(unchanged.id, UINT32_C(77));
+    check_true(unchanged.name == preserved_name);
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        NativeCsvFlat_from_csv(
+            codec, &unchanged,
+            empty_required_csv, sizeof(empty_required_csv) - 1u,
+            0u, &error),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(unchanged.id, UINT32_C(77));
+    check_true(unchanged.name == preserved_name);
+
+    NativeCsvFlat_clear(&unchanged);
+    NativeCsvFlat_clear(&value);
+    data_bind_free(codec);
+  }
+
   it("decodes owning record maps through canonical typed CSTL Map metadata") {
     static const char json[] =
         "{\"id\":7,\"headers\":{"

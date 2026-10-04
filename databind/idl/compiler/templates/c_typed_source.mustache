@@ -9,6 +9,7 @@
 #include "data_bind_format_provider.h"
 #include "data_bind_message_plan.h"
 #include "data_bind_native.h"
+#include "data_bind_projection_plan.h"
 
 static const char {{schema.schema_name}}_SCHEMA_TEXT[] = "{{schema_c_literal}}";
 static void {{schema.schema_name}}_CMETA_INIT_ALL(void);
@@ -763,6 +764,7 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     const DataBindFormatProvider *provider,
     size_t descriptor_depth,
     size_t descriptor_nodes,
+    size_t csv_row,
     void *destination,
     size_t object_size,
     const char *data,
@@ -774,6 +776,10 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     DataBindMessagePlanDiagnostic diagnostic =
         DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
     DataBindFormatReader reader = DATA_BIND_FORMAT_READER_INIT;
+    DataBindFormatPlan *format_plan = NULL;
+    DataBindFormatCanonicalReader canonical =
+        DATA_BIND_FORMAT_CANONICAL_READER_INIT;
+    cserde_reader *decode_reader = NULL;
     {{schema.schema_name}}_message_workspace_t workspace = {0};
     DataBindStatus status;
     DataBindStatus close_status;
@@ -839,14 +845,43 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         &workspace, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
-    status = data_bind_format_reader_open(
-        provider, data, len, descriptor_depth, &reader, error);
-    if (status != DATA_BIND_OK) goto cleanup;
+    if (provider->format == DATA_BIND_FORMAT_CSV) {
+        status = data_bind_format_plan_compile(
+            codec, type_name, DATA_BIND_FORMAT_CSV, &format_plan, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+        status = data_bind_builtin_format_reader_open_csv_row(
+            data, len, csv_row, descriptor_depth, &reader, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+        status = data_bind_format_canonical_reader_init(
+            format_plan, reader.reader, &canonical, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+        decode_reader = data_bind_format_canonical_reader_reader(&canonical);
+        if (decode_reader == NULL) {
+            status = {{schema.schema_name}}_schema_codec_error(
+                error, DATA_BIND_ERR_RUNTIME, type_name,
+                "Generated CSV canonical reader is unavailable");
+            goto cleanup;
+        }
+    } else {
+        status = data_bind_format_reader_open(
+            provider, data, len, descriptor_depth, &reader, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+        decode_reader = reader.reader;
+    }
 
     temporary_started = 1;
     status = data_bind_message_plan_decode_native_format(
-        plan, &workspace.options, provider->format, reader.reader,
+        plan, &workspace.options, provider->format, decode_reader,
         temporary, object_size, &diagnostic);
+    /*
+     * Historical generated CSV treats an empty required cell as a row/type
+     * mismatch after omitting that cell from the logical object. MessagePlan's
+     * generic missing-required status is TYPE_NOT_FOUND, so preserve the CSV
+     * public contract only at this generated format boundary.
+     */
+    if (provider->format == DATA_BIND_FORMAT_CSV &&
+        status == DATA_BIND_ERR_TYPE_NOT_FOUND)
+        status = DATA_BIND_ERR_TYPE_MISMATCH;
     close_status = data_bind_format_reader_close(&reader);
     if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
         status = {{schema.schema_name}}_schema_codec_error(
@@ -925,6 +960,7 @@ cleanup:
         memset(temporary, 0, object_size);
     }
     free(temporary_allocation);
+    data_bind_format_plan_free(format_plan);
     {{schema.schema_name}}_message_workspace_close(&workspace);
     data_bind_message_plan_free(plan);
     return status;
@@ -1291,14 +1327,14 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return {{schema.schema_name}}_message_from_text( \
             codec, #name, name##__databind_message_native_binding, \
-            data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON), (size_t)(depth_), (size_t)(nodes_), \
+            data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON), (size_t)(depth_), (size_t)(nodes_), 0u, \
             object, sizeof(*object), data, len, error); \
     } \
     DataBindStatus name##_from_yaml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return {{schema.schema_name}}_message_from_text( \
             codec, #name, name##__databind_message_native_binding, \
-            data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML), (size_t)(depth_), (size_t)(nodes_), \
+            data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML), (size_t)(depth_), (size_t)(nodes_), 0u, \
             object, sizeof(*object), data, len, error); \
     } \
     DataBindStatus name##_to_json(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
@@ -1314,8 +1350,34 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return {{schema.schema_name}}_message_from_text( \
             codec, #name, name##__databind_message_native_binding, \
-            data_bind_builtin_format_provider(DATA_BIND_FORMAT_XML), (size_t)(depth_), (size_t)(nodes_), \
+            data_bind_builtin_format_provider(DATA_BIND_FORMAT_XML), (size_t)(depth_), (size_t)(nodes_), 0u, \
             object, sizeof(*object), data, len, error); \
+    }
+
+#define DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(name, depth_, nodes_) \
+    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return {{schema.schema_name}}_message_from_text( \
+            codec, #name, name##__databind_message_native_binding, \
+            data_bind_builtin_format_provider(DATA_BIND_FORMAT_CSV), (size_t)(depth_), (size_t)(nodes_), row, \
+            object, sizeof(*object), data, len, error); \
+    }
+
+#define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_CSV(name) \
+    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
+    }
+
+#define DATABIND_DEFINE_RAW_MESSAGE_CSV(name) \
+    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
+    }
+
+#define DATABIND_DEFINE_CSTL_MESSAGE_CSV(name) \
+    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        (void)codec; (void)object; (void)data; (void)len; (void)row; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
     }
 
 #define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML(name) \
@@ -1351,10 +1413,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_BINARY, data, len, 0, object, error); \
     } \
-    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
-        {{schema.schema_name}}_CMETA_INIT_ALL(); \
-        return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
-    } \
     DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize_binary(&name##_TYPED_DESCRIPTOR, object, out, out_len, error); \
@@ -1380,9 +1438,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
         return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_BINARY, data, len, 0, object, error); \
     } \
-    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
-        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
-    } \
     DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
         return tbe_typed_serialize_binary(&name##_TYPED_TYPE, object, out, out_len, error); \
     } \
@@ -1402,10 +1457,6 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 #define DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER(name) \
     DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
         (void)codec; (void)object; (void)data; (void)len; \
-        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
-    } \
-    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
-        (void)codec; (void)object; (void)data; (void)len; (void)row; \
         return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
     } \
     DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
@@ -1443,12 +1494,18 @@ DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth
 {{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_XML({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}DATABIND_DEFINE_RAW_MESSAGE_XML({{name}})
-{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER({{name}})
+{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}
+{{#cmeta_native_csv_flat_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_CSV({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
+{{/cmeta_native_csv_flat_supported}}{{^cmeta_native_csv_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_CSV({{name}})
+{{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_DESCRIPTOR_MESSAGE_CSV({{name}})
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
+{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_csv_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_DESCRIPTOR_MESSAGE_REMAINDER({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
 {{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#cmeta_native_xml_flat_supported}}TBE_TYPED_DEFINE_RAW_LIFECYCLE({{name}})
 DATABIND_DEFINE_RAW_MESSAGE_TEXT({{name}})
 DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
+DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
 DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
 {{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})

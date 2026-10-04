@@ -49,6 +49,13 @@ using MessageNativeEncode = DataBindStatus (*)(
     size_t,
     cserde_writer *,
     DataBindMessagePlanDiagnostic *);
+using CsvRowReaderOpen = DataBindStatus (*)(
+    const char *,
+    size_t,
+    size_t,
+    size_t,
+    DataBindFormatReader *,
+    DataBindError *);
 using MessageNativeDecodeFormat = DataBindStatus (*)(
     const DataBindMessagePlan *,
     const DataBindNativeOptions *,
@@ -71,6 +78,9 @@ static_assert(std::is_same_v<
 static_assert(std::is_same_v<
               decltype(&data_bind_message_plan_encode_native),
               MessageNativeEncode>);
+static_assert(std::is_same_v<
+              decltype(&data_bind_builtin_format_reader_open_csv_row),
+              CsvRowReaderOpen>);
 static_assert(std::is_same_v<
               decltype(&data_bind_message_plan_decode_native_format),
               MessageNativeDecodeFormat>);

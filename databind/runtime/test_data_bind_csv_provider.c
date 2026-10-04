@@ -103,5 +103,69 @@ int main(void) {
     return 24;
   if (lease.reader != NULL) return 25;
 
+  {
+    static const char rows_csv[] =
+        "id,name,score\n7,alice,\n8,bob,41\n";
+    lease = (DataBindFormatReader)DATA_BIND_FORMAT_READER_INIT;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_csv_format_reader_open_row(
+            rows_csv, sizeof(rows_csv) - 1u, 1u, 1u,
+            &lease, &error) != DATA_BIND_OK)
+      return 26;
+    if (!next_kind(lease.reader, CSERDE_MAP_BEGIN, &token)) return 27;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "id"))
+      return 28;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "8"))
+      return 29;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "name"))
+      return 30;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "bob"))
+      return 31;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "score"))
+      return 32;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "41"))
+      return 33;
+    if (!next_kind(lease.reader, CSERDE_MAP_END, &token)) return 34;
+    if (cserde_reader_next(lease.reader, &token) != CSERDE_DONE) return 35;
+    if (data_bind_format_reader_close(&lease) != DATA_BIND_OK) return 36;
+
+    lease = (DataBindFormatReader)DATA_BIND_FORMAT_READER_INIT;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_csv_format_reader_open_row(
+            rows_csv, sizeof(rows_csv) - 1u, 0u, 1u,
+            &lease, &error) != DATA_BIND_OK)
+      return 37;
+    if (!next_kind(lease.reader, CSERDE_MAP_BEGIN, &token)) return 38;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "id"))
+      return 39;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "7"))
+      return 40;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "name"))
+      return 41;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "alice"))
+      return 42;
+    if (!next_kind(lease.reader, CSERDE_MAP_END, &token)) return 43;
+    if (data_bind_format_reader_close(&lease) != DATA_BIND_OK) return 44;
+
+    lease = (DataBindFormatReader)DATA_BIND_FORMAT_READER_INIT;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_csv_format_reader_open_row(
+            rows_csv, sizeof(rows_csv) - 1u, 2u, 1u,
+            &lease, &error) != DATA_BIND_ERR_TYPE_MISMATCH)
+      return 45;
+    if (lease.reader != NULL || error.code != DATA_BIND_ERR_TYPE_MISMATCH)
+      return 46;
+  }
+
   return 0;
 }
