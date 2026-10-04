@@ -1617,7 +1617,7 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_CSV, out, out_len, error); \
-    } \
+    }
 
 #define DATABIND_DEFINE_RAW_MESSAGE_YAML(name) \
     DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
@@ -1636,7 +1636,7 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     } \
     DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_CSV, out, out_len, error); \
-    } \
+    }
 
 #define DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER(name) \
     DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
@@ -1654,7 +1654,7 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
         return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
-    } \
+    }
 
 {{#composites}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
