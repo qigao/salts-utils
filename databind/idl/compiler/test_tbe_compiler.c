@@ -2778,10 +2778,10 @@ spec("tbe_compiler") {
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY_INPUT(WideEnumStorage,");
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY_INPUT(Sample,") == NULL);
-        check_contains(source, "LoginMessage_databind_binary_provider(void)");
-        check_contains(source, "FlagStorage_databind_binary_provider(void)");
-        check_contains(source, "WideEnumStorage_databind_binary_provider(void)");
-        check(strstr(source, "Sample_databind_binary_provider(void)") == NULL);
+        check_contains(source, "LoginMessage_binary_LoginMessage_databind_binary_provider(void)");
+        check_contains(source, "FlagStorage_binary_FlagStorage_databind_binary_provider(void)");
+        check_contains(source, "WideEnumStorage_binary_WideEnumStorage_databind_binary_provider(void)");
+        check(strstr(source, "Sample_binary_Sample_databind_binary_provider(void)") == NULL);
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(Sample,");
         check_contains(
