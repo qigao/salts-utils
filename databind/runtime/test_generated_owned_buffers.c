@@ -550,6 +550,32 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
       tstr_free(lookup);
       return;
     }
+    {
+      const cmeta_field_desc *field =
+          cmeta_struct_find_field(shape->layout, "headers");
+      const cmeta_declared_type *declared =
+          field != NULL ? field->declared_type : NULL;
+      check_not_null(field);
+      check_not_null(declared);
+      check_true(cmeta_declared_type_valid(declared));
+      if (declared != NULL && cmeta_declared_type_valid(declared)) {
+        check_not_null(declared->constructor);
+        if (declared->constructor != NULL) {
+          check_not_null(declared->constructor->stable_id);
+          if (declared->constructor->stable_id != NULL)
+            check(strcmp(declared->constructor->stable_id,
+                         stl_map_generic_desc.stable_id) == 0);
+        }
+        check_equal(declared->arity, (size_t)2u);
+        check_true(cmeta_type_equal(
+            cmeta_declared_type_argument(declared, 0u),
+            SALTS_TSTR_CMETA_TYPE_REF));
+        check_true(cmeta_type_equal(
+            cmeta_declared_type_argument(declared, 1u),
+            &NativeHeader_CMETA_TYPE));
+        check_null(cmeta_declared_type_argument(declared, 2u));
+      }
+    }
     map_data = shape->fields[1].value;
     check_not_null(map_data);
     if (map_data == NULL) {
@@ -570,26 +596,6 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(provider_key);
     check_equal(
         cmeta_data_value_init_zero(map_data, &provider_probe), CMETA_OK);
-    check_true(cmeta_container_type_application_valid(&provider_probe));
-    {
-      const cmeta_generic_desc *constructor =
-          cmeta_container_type_constructor(&provider_probe);
-      check_not_null(constructor);
-      if (constructor != NULL) {
-        check_not_null(constructor->stable_id);
-        if (constructor->stable_id != NULL)
-          check(strcmp(constructor->stable_id,
-                       stl_map_generic_desc.stable_id) == 0);
-      }
-    }
-    check_equal(cmeta_container_type_arity(&provider_probe), (size_t)2u);
-    check_true(cmeta_type_equal(
-        cmeta_container_type_argument(&provider_probe, 0u),
-        SALTS_TSTR_CMETA_TYPE_REF));
-    check_true(cmeta_type_equal(
-        cmeta_container_type_argument(&provider_probe, 1u),
-        &NativeHeader_CMETA_TYPE));
-    check_null(cmeta_container_type_argument(&provider_probe, 2u));
     check_equal(
         cmeta_data_value_init_zero(value_data, &provider_value), CMETA_OK);
     provider_value.name = tstr_dup("x-tag");
@@ -844,6 +850,29 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(policy_shape);
     if (policy_shape == NULL) return;
     check_equal(policy_shape->field_count, (size_t)2u);
+    {
+      const cmeta_field_desc *field =
+          cmeta_struct_find_field(policy_shape->layout, "headers");
+      const cmeta_declared_type *declared =
+          field != NULL ? field->declared_type : NULL;
+      check_not_null(field);
+      check_not_null(declared);
+      check_true(cmeta_declared_type_valid(declared));
+      if (declared != NULL && cmeta_declared_type_valid(declared)) {
+        check_not_null(declared->constructor);
+        if (declared->constructor != NULL) {
+          check_not_null(declared->constructor->stable_id);
+          if (declared->constructor->stable_id != NULL)
+            check(strcmp(declared->constructor->stable_id,
+                         stl_vec_generic_desc.stable_id) == 0);
+        }
+        check_equal(declared->arity, (size_t)1u);
+        check_true(cmeta_type_equal(
+            cmeta_declared_type_argument(declared, 0u),
+            &NativeHeader_CMETA_TYPE));
+        check_null(cmeta_declared_type_argument(declared, 1u));
+      }
+    }
     sequence_data = policy_shape->fields[1].value;
     check_not_null(sequence_data);
     if (sequence_data == NULL) return;
@@ -861,23 +890,6 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
 
     check_equal(
         NativeHeaderPolicy_headers_vec_t_init(&manual_headers, 4u), STL_OK);
-    check_true(cmeta_container_type_application_valid(&manual_headers));
-    {
-      const cmeta_generic_desc *constructor =
-          cmeta_container_type_constructor(&manual_headers);
-      check_not_null(constructor);
-      if (constructor != NULL) {
-        check_not_null(constructor->stable_id);
-        if (constructor->stable_id != NULL)
-          check(strcmp(constructor->stable_id,
-                       stl_vec_generic_desc.stable_id) == 0);
-      }
-    }
-    check_equal(cmeta_container_type_arity(&manual_headers), (size_t)1u);
-    check_true(cmeta_type_equal(
-        cmeta_container_type_argument(&manual_headers, 0u),
-        &NativeHeader_CMETA_TYPE));
-    check_null(cmeta_container_type_argument(&manual_headers, 1u));
     check_not_null(manual_headers.cmeta.descriptor);
     check_not_null(manual_headers.raw.element_type);
     if (manual_headers.raw.element_type != NULL)
