@@ -2935,10 +2935,14 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     tbe_error_init(&format_error);
     if (!databind_binary_format_plan_build(
             contract, projection_root, &binary_format, &format_error)) {
-      fprintf(stderr, "Failed to compile TBE format plan: %s\n",
-              format_error.message);
-      status = 1;
-      goto cleanup;
+      if (options->projection_count != 0u) {
+        fprintf(stderr, "Failed to compile TBE format plan: %s\n",
+                format_error.message);
+        status = 1;
+        goto cleanup;
+      }
+      databind_binary_format_plan_destroy(&binary_format);
+      memset(&binary_format, 0, sizeof(binary_format));
     }
   }
 
