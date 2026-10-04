@@ -2276,6 +2276,19 @@ static void tbe_compiler_annotate_binary_reader_messages(
   }
 }
 
+static void tbe_compiler_annotate_canonical_messages(Node *root) {
+  Node *messages = tbe_compiler_find_child(root, "messages");
+  size_t i;
+  if (messages == NULL || messages->type != NODE_LIST) return;
+  for (i = 0u; i < messages->data.list.count; ++i) {
+    Node *record = messages->data.list.items[i];
+    tbe_compiler_remove_children(record, "cmeta_canonical_message");
+    if (tbe_compiler_has_child(record, "cmeta_graph_supported") &&
+        tbe_compiler_has_child(record, "cmeta_lifecycle_supported"))
+      (void)tbe_compiler_set_string(record, "cmeta_canonical_message", "1");
+  }
+}
+
 static int tbe_compiler_append_binary_readers(
     const char *path, Node *root, const IdlContract *contract,
     const databind_binary_format_plan *binary_format) {
@@ -2372,6 +2385,7 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_cmeta_declared_generics(root);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
+  tbe_compiler_annotate_canonical_messages(root);
   tbe_compiler_annotate_xml_flat_messages(root);
   tbe_compiler_annotate_csv_flat_messages(root);
 }

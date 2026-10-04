@@ -32,8 +32,8 @@ DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBin
 
 {{#composites}}static TbeTypedType {{name}}_TYPED_TYPE;
 {{/composites}}{{#groups}}static TbeTypedType {{name}}_TYPED_TYPE;
-{{/groups}}{{#messages}}static TbeTypedType {{name}}_TYPED_TYPE;
-{{/messages}}
+{{/groups}}{{#messages}}{{^cmeta_canonical_message}}static TbeTypedType {{name}}_TYPED_TYPE;
+{{/cmeta_canonical_message}}{{/messages}}
 
 {{#composites}}
 static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
@@ -114,7 +114,7 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
 };
 {{/groups}}
 
-{{#messages}}
+{{#messages}}{{^cmeta_canonical_message}}
 static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
 {{#fields}}
     { .name = "{{name}}", .kind = {{typed_kind}},
@@ -148,7 +148,7 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
     .null_offset = {{#has_nullable_fields}}offsetof({{name}}_t, _nulls){{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}},
     .null_size = {{#has_nullable_fields}}{{null_bitmap_bytes}}{{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}}
 };
-{{/messages}}
+{{/cmeta_canonical_message}}{{/messages}}
 
 {{#messages}}
 {{#has_optional_fields}}

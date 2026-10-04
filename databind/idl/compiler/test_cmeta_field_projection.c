@@ -1053,6 +1053,12 @@ suite("compiler_cmeta_field_projection") {
             field_projection_record(root, "messages", "OptionalStorage"),
             "cmeta_graph_supported"));
         check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "Sample"),
+            "cmeta_canonical_message"));
+        check_null(field_projection_child(
+            field_projection_record(root, "messages", "OptionalStorage"),
+            "cmeta_canonical_message"));
+        check_not_null(field_projection_child(
             field_projection_record(root, "messages", "FlagStorage"),
             "cmeta_graph_supported"));
         check_not_null(field_projection_child(
