@@ -79,6 +79,13 @@ int main(void) {
     free(component);
     return 12;
   }
+  if (execution.function !=
+          databind_11_WasmRuntime_4_Calc_3_Add__databind_function() ||
+      execution.function->result_flags != CMETA_RESULT_VALUE) {
+    databind_wasm_execution_wasm_host_destroy(&host);
+    free(component);
+    return 13;
+  }
 
   request.left = 3u;
   request.right = 4u;
