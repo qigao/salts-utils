@@ -570,6 +570,26 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(provider_key);
     check_equal(
         cmeta_data_value_init_zero(map_data, &provider_probe), CMETA_OK);
+    check_true(cmeta_container_type_application_valid(&provider_probe));
+    {
+      const cmeta_generic_desc *constructor =
+          cmeta_container_type_constructor(&provider_probe);
+      check_not_null(constructor);
+      if (constructor != NULL) {
+        check_not_null(constructor->stable_id);
+        if (constructor->stable_id != NULL)
+          check(strcmp(constructor->stable_id,
+                       stl_map_generic_desc.stable_id) == 0);
+      }
+    }
+    check_equal(cmeta_container_type_arity(&provider_probe), (size_t)2u);
+    check_true(cmeta_type_equal(
+        cmeta_container_type_argument(&provider_probe, 0u),
+        SALTS_TSTR_CMETA_TYPE_REF));
+    check_true(cmeta_type_equal(
+        cmeta_container_type_argument(&provider_probe, 1u),
+        &NativeHeader_CMETA_TYPE));
+    check_null(cmeta_container_type_argument(&provider_probe, 2u));
     check_equal(
         cmeta_data_value_init_zero(value_data, &provider_value), CMETA_OK);
     provider_value.name = tstr_dup("x-tag");
@@ -841,6 +861,23 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
 
     check_equal(
         NativeHeaderPolicy_headers_vec_t_init(&manual_headers, 4u), STL_OK);
+    check_true(cmeta_container_type_application_valid(&manual_headers));
+    {
+      const cmeta_generic_desc *constructor =
+          cmeta_container_type_constructor(&manual_headers);
+      check_not_null(constructor);
+      if (constructor != NULL) {
+        check_not_null(constructor->stable_id);
+        if (constructor->stable_id != NULL)
+          check(strcmp(constructor->stable_id,
+                       stl_vec_generic_desc.stable_id) == 0);
+      }
+    }
+    check_equal(cmeta_container_type_arity(&manual_headers), (size_t)1u);
+    check_true(cmeta_type_equal(
+        cmeta_container_type_argument(&manual_headers, 0u),
+        &NativeHeader_CMETA_TYPE));
+    check_null(cmeta_container_type_argument(&manual_headers, 1u));
     check_not_null(manual_headers.cmeta.descriptor);
     check_not_null(manual_headers.raw.element_type);
     if (manual_headers.raw.element_type != NULL)
