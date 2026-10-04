@@ -1,6 +1,10 @@
 schema ScalarLifecycle [id(2), version(1), byte_order(little)];
 
 enum State <uint8> { Idle = 0; Active = 7; }
+enum SignedState <int8> { Negative = -1; Zero = 0; }
+flags Permissions <uint8> { Read = 1; Write = 2; }
+enum WideState <uint64> { Maximum = 18446744073709551615; }
+enum DefaultState { Zero; One; Two = 0x2; }
 
 [id(1)]
 message ScalarState {
@@ -78,4 +82,29 @@ composite LocalPoint {
 [id(12)]
 message CompositeHolder {
     LocalPoint child;
+}
+
+[id(13)]
+message EnumHolder {
+    State value;
+}
+
+[id(14)]
+message SignedEnumHolder {
+    SignedState value;
+}
+
+[id(15)]
+message FlagsHolder {
+    Permissions value;
+}
+
+[id(16)]
+message WideEnumHolder {
+    WideState value;
+}
+
+[id(17)]
+message DefaultEnumHolder {
+    DefaultState value;
 }

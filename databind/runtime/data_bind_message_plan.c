@@ -4,6 +4,7 @@
 #include "data_bind_native_internal.h"
 #include "data_bind_validation_plan.h"
 #include "data_bind_validation_plan_internal.h"
+#include "schema_cmeta.h"
 
 #include <cmeta/type_traits.h>
 
@@ -445,6 +446,89 @@ static int message_logical_record_map_matches_native(
       codec, schema_field->value_type, value, depth + 1u);
 }
 
+static int message_enum_item_bits(
+    const char *text, cmeta_data_kind kind, uint8_t width,
+    uint64_t *out_bits) {
+  uint64_t mask = width == sizeof(uint64_t) * CHAR_BIT
+                      ? UINT64_MAX : (UINT64_C(1) << width) - 1u;
+  char *end = NULL;
+
+  if (text == NULL || out_bits == NULL) return 0;
+  errno = 0;
+  if (kind == CMETA_DATA_SINT) {
+    int64_t value = strtoll(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0' ||
+        (width < sizeof(uint64_t) * CHAR_BIT &&
+         (value < -(INT64_C(1) << (width - 1u)) ||
+          value >= (INT64_C(1) << (width - 1u)))))
+      return 0;
+    *out_bits = (uint64_t)value & mask;
+    return 1;
+  }
+  if (kind == CMETA_DATA_UINT && text[0] != '-') {
+    uint64_t value = strtoull(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0' || value > mask)
+      return 0;
+    *out_bits = value;
+    return 1;
+  }
+  return 0;
+}
+
+static int message_logical_enum_matches_native(
+    DataBind *codec, const DataBindSchemaField *schema_field,
+    const cmeta_data_desc *native_data) {
+  DataBindSchemaType enum_type = DATA_BIND_SCHEMA_TYPE_INIT;
+  const cmeta_data_desc *underlying;
+  const cmeta_data_integer_shape *integer_shape;
+  const cmeta_data_enum_bits_ops *ops;
+  const cmeta_enum_domain *domain;
+  size_t i;
+
+  if (codec == NULL || schema_field == NULL || native_data == NULL ||
+      !schema_field->is_enum || schema_field->type == NULL ||
+      native_data->kind != CMETA_DATA_ENUM ||
+      !data_bind_schema_find_type(codec, schema_field->type, &enum_type) ||
+      (enum_type.kind != DATA_BIND_SCHEMA_ENUM &&
+       enum_type.kind != DATA_BIND_SCHEMA_FLAGS) ||
+      enum_type.underlying_type == NULL)
+    return 0;
+
+  underlying = schema_cmeta_builtin_data(enum_type.underlying_type);
+  ops = cmeta_data_enum_bits_ops_of(native_data);
+  if (underlying == NULL || underlying->shape == NULL || ops == NULL ||
+      ops->domain == NULL ||
+      (underlying->kind != CMETA_DATA_SINT &&
+       underlying->kind != CMETA_DATA_UINT))
+    return 0;
+  integer_shape = (const cmeta_data_integer_shape *)underlying->shape;
+  domain = ops->domain;
+  if (domain->bits != integer_shape->bits ||
+      domain->signedness != (underlying->kind == CMETA_DATA_SINT
+                                ? CMETA_ENUM_SIGNED : CMETA_ENUM_UNSIGNED) ||
+      domain->kind != (enum_type.kind == DATA_BIND_SCHEMA_FLAGS
+                           ? CMETA_ENUM_FLAGS : CMETA_ENUM_ORDINARY) ||
+      domain->count != enum_type.item_count)
+    return 0;
+
+  for (i = 0u; i < domain->count; ++i) {
+    DataBindSchemaEnumItem item = DATA_BIND_SCHEMA_ENUM_ITEM_INIT;
+    uint64_t bits;
+    if (!data_bind_schema_enum_item_at(codec, schema_field->type, i, &item) ||
+        item.name == NULL || item.value == NULL ||
+        domain->items[i].symbol == NULL ||
+        domain->items[i].text == NULL ||
+        strcmp(item.name, domain->items[i].symbol) != 0 ||
+        strcmp(item.name, domain->items[i].text) != 0)
+      return 0;
+    if (!message_enum_item_bits(item.value, underlying->kind,
+                                domain->bits, &bits) ||
+        bits != domain->items[i].bits)
+      return 0;
+  }
+  return 1;
+}
+
 static int message_schema_field_matches_native(
     DataBind *codec, const char *type_name, size_t field_index,
     const DataBindSchemaField *schema_field,
@@ -475,6 +559,10 @@ static int message_schema_field_matches_native(
            native_data->kind == CMETA_DATA_STRUCT &&
            message_schema_record_matches_native(
                codec, schema_field->type, native_data, depth + 1u);
+
+  if (schema_field->is_enum)
+    return message_logical_enum_matches_native(
+        codec, schema_field, native_data);
 
   schema_data = schema_field->cmeta_data;
   if (schema_data == NULL)

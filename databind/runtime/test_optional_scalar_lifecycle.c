@@ -237,6 +237,97 @@ spec("optional local lifecycle uses canonical CMeta") {
     data_bind_free(codec);
   }
 
+  it("decodes a provider-backed enum through the canonical MessagePlan") {
+    static const char json[] = "{\"value\":7}";
+    static const char invalid_json[] = "{\"value\":8}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    EnumHolder_t value;
+
+    EnumHolder_init(&value);
+    check_equal(ScalarLifecycle_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec != NULL) {
+      check_equal(EnumHolder_from_json(
+                      codec, &value, json, sizeof(json) - 1u, &error),
+                  DATA_BIND_OK);
+      check_equal(value.value, State_Active);
+      check(EnumHolder_from_json(
+                codec, &value, invalid_json, sizeof(invalid_json) - 1u,
+                &error) != DATA_BIND_OK);
+      check_equal(value.value, State_Active);
+    }
+    EnumHolder_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("matches signed enum and flags domains through canonical providers") {
+    static const char signed_json[] = "{\"value\":-1}";
+    static const char flags_json[] = "{\"value\":3}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    SignedEnumHolder_t signed_value;
+    FlagsHolder_t flags_value;
+
+    SignedEnumHolder_init(&signed_value);
+    FlagsHolder_init(&flags_value);
+    check_equal(ScalarLifecycle_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec != NULL) {
+      check_equal(SignedEnumHolder_from_json(
+                      codec, &signed_value, signed_json,
+                      sizeof(signed_json) - 1u, &error),
+                  DATA_BIND_OK);
+      check_equal(signed_value.value, SignedState_Negative);
+      check_equal(FlagsHolder_from_json(
+                      codec, &flags_value, flags_json,
+                      sizeof(flags_json) - 1u, &error),
+                  DATA_BIND_OK);
+      check_equal(flags_value.value, Permissions_Read | Permissions_Write);
+    }
+    SignedEnumHolder_clear(&signed_value);
+    FlagsHolder_clear(&flags_value);
+    data_bind_free(codec);
+  }
+
+  it("preserves the full-width unsigned enum value") {
+    static const char json[] = "{\"value\":18446744073709551615}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    WideEnumHolder_t value;
+
+    WideEnumHolder_init(&value);
+    check_equal(ScalarLifecycle_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec != NULL) {
+      check_equal(WideEnumHolder_from_json(
+                      codec, &value, json, sizeof(json) - 1u, &error),
+                  DATA_BIND_OK);
+      check_equal(value.value, WideState_Maximum);
+    }
+    WideEnumHolder_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("uses the declared default enum storage domain") {
+    static const char json[] = "{\"value\":2}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DefaultEnumHolder_t value;
+
+    DefaultEnumHolder_init(&value);
+    check_equal(ScalarLifecycle_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec != NULL) {
+      check_equal(DefaultEnumHolder_from_json(
+                      codec, &value, json, sizeof(json) - 1u, &error),
+                  DATA_BIND_OK);
+      check_equal(value.value, DefaultState_Two);
+    }
+    DefaultEnumHolder_clear(&value);
+    data_bind_free(codec);
+  }
+
   it("releases owned child storage through local CMeta overlay lifecycle") {
     NestedOwnedState_t value;
     memset(&value, 0xa5, sizeof(value));
