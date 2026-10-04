@@ -78,13 +78,15 @@ size_t databind_message_native_artifact_c_overlay_attrs_raw_offset(void) {
 }
 
 
-static void check_generated_generic_application(
-    const void *object,
+static void check_generated_generic_field(
+    const cmeta_data_desc *owner_data,
+    const char *field_name,
     const cmeta_generic_desc *expected_constructor,
     const cmeta_type_desc *const *expected_arguments,
     size_t expected_arity) {
-  const cmeta_generic_desc *constructor =
-      cmeta_container_type_constructor(object);
+  const cmeta_data_struct_shape *shape;
+  const cmeta_field_desc *field;
+  const cmeta_declared_type *declared;
   const cmeta_type_identity *actual_arguments[2] = {NULL, NULL};
   const cmeta_type_identity *expected_identities[2] = {NULL, NULL};
   cmeta_generic_desc copied_constructor;
@@ -92,22 +94,44 @@ static void check_generated_generic_application(
   cmeta_type_identity expected_application;
   size_t index;
 
-  check_not_null(constructor);
-  check_true(cmeta_container_type_application_valid(object));
-  check_equal(cmeta_container_type_arity(object), expected_arity);
-  if (constructor == NULL || expected_constructor == NULL ||
+  check_not_null(owner_data);
+  if (owner_data == NULL || owner_data->kind != CMETA_DATA_STRUCT)
+    return;
+  shape = (const cmeta_data_struct_shape *)owner_data->shape;
+  check_not_null(shape);
+  check_not_null(shape != NULL ? shape->layout : NULL);
+  if (shape == NULL || shape->layout == NULL)
+    return;
+
+  field = cmeta_struct_find_field(shape->layout, field_name);
+  check_not_null(field);
+  if (field == NULL)
+    return;
+  declared = field->declared_type;
+  check_not_null(declared);
+  check_true(cmeta_declared_type_valid(declared));
+  if (declared == NULL || !cmeta_declared_type_valid(declared))
+    return;
+
+  check_true(cmeta_type_equal(field->type, declared->storage_type));
+  check_equal(declared->arity, expected_arity);
+  check_not_null(declared->constructor);
+  check_not_null(expected_constructor);
+  if (declared->constructor == NULL || expected_constructor == NULL ||
       expected_arguments == NULL || expected_arity > 2u)
     return;
 
-  check_not_null(constructor->stable_id);
+  check_not_null(declared->constructor->stable_id);
   check_not_null(expected_constructor->stable_id);
-  if (constructor->stable_id == NULL || expected_constructor->stable_id == NULL)
+  if (declared->constructor->stable_id == NULL ||
+      expected_constructor->stable_id == NULL)
     return;
-  check(strcmp(constructor->stable_id, expected_constructor->stable_id) == 0);
+  check(strcmp(declared->constructor->stable_id,
+               expected_constructor->stable_id) == 0);
 
   for (index = 0u; index < expected_arity; ++index) {
     const cmeta_type_desc *actual =
-        cmeta_container_type_argument(object, index);
+        cmeta_declared_type_argument(declared, index);
     check_not_null(actual);
     check_true(cmeta_type_equal(actual, expected_arguments[index]));
     actual_arguments[index] = cmeta_type_identity_of(actual);
@@ -118,16 +142,11 @@ static void check_generated_generic_application(
     if (actual_arguments[index] == NULL || expected_identities[index] == NULL)
       return;
   }
-  check_null(cmeta_container_type_argument(object, expected_arity));
+  check_null(cmeta_declared_type_argument(declared, expected_arity));
 
-  /*
-   * Prove semantic generic identity without relying on constructor descriptor
-   * address identity.  The copied descriptor is a different object with the
-   * same canonical stable identity.
-   */
   copied_constructor = *expected_constructor;
   actual_application = (cmeta_type_identity){
-      CMETA_TYPE_APPLY, NULL, constructor, NULL,
+      CMETA_TYPE_APPLY, NULL, declared->constructor, NULL,
       actual_arguments, expected_arity};
   expected_application = (cmeta_type_identity){
       CMETA_TYPE_APPLY, NULL, &copied_constructor, NULL,
@@ -315,6 +334,8 @@ spec("DataBind public Message native artifact") {
   }
 
   it("publishes typed CSTL map providers for required scalar/string maps") {
+    const cmeta_data_desc *event_data = NULL;
+    DataBindError generic_error = DATA_BIND_ERROR_INIT;
     Event_counters_map_t counters = {0};
     Event_aliases_map_t aliases = {0};
     tstr alpha = tstr_dup("alpha");
@@ -344,6 +365,8 @@ spec("DataBind public Message native artifact") {
     check_not_null(alpha);
     check_not_null(beta);
     check_not_null(label);
+    check_equal(Event_cmeta_data(&event_data, &generic_error), DATA_BIND_OK);
+    check_not_null(event_data);
     check_equal(Event_counters_map_t_init(&counters, 4u), STL_OK);
     check_equal(Event_aliases_map_t_init(&aliases, 4u), STL_OK);
     {
@@ -351,11 +374,11 @@ spec("DataBind public Message native artifact") {
           SALTS_TSTR_CMETA_TYPE_REF, &cmeta_type_uint32};
       const cmeta_type_desc *alias_arguments[] = {
           SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_TYPE_REF};
-      check_generated_generic_application(
-          &counters, &stl_map_generic_desc,
+      check_generated_generic_field(
+          event_data, "counters", &stl_map_generic_desc,
           counter_arguments, 2u);
-      check_generated_generic_application(
-          &aliases, &stl_map_generic_desc,
+      check_generated_generic_field(
+          event_data, "aliases", &stl_map_generic_desc,
           alias_arguments, 2u);
     }
     if (alpha != NULL && beta != NULL) {
@@ -416,6 +439,8 @@ spec("DataBind public Message native artifact") {
   }
 
   it("publishes typed CSTL set providers for required scalar/string sets") {
+    const cmeta_data_desc *event_data = NULL;
+    DataBindError generic_error = DATA_BIND_ERROR_INIT;
     Event_ids_set_t ids = {0};
     Event_tags_set_t tags = {0};
     tstr source = tstr_dup("alpha");
@@ -432,11 +457,13 @@ spec("DataBind public Message native artifact") {
     check_true(cmeta_data_desc_equal(id_element, &cmeta_data_uint32));
     check_true(cmeta_data_desc_equal(tag_element, SALTS_TSTR_CMETA_DATA_REF));
 
+    check_equal(Event_cmeta_data(&event_data, &generic_error), DATA_BIND_OK);
+    check_not_null(event_data);
     check_equal(Event_ids_set_t_init(&ids, 4u), STL_OK);
     {
       const cmeta_type_desc *id_arguments[] = {&cmeta_type_uint32};
-      check_generated_generic_application(
-          &ids, &stl_set_generic_desc, id_arguments, 1u);
+      check_generated_generic_field(
+          event_data, "ids", &stl_set_generic_desc, id_arguments, 1u);
     }
     check_equal(Event_ids_set_t_add(&ids, UINT32_C(7)), STL_OK);
     check_true(Event_ids_set_t_contains(&ids, UINT32_C(7)));
@@ -448,8 +475,8 @@ spec("DataBind public Message native artifact") {
       {
         const cmeta_type_desc *tag_arguments[] = {
             SALTS_TSTR_CMETA_TYPE_REF};
-        check_generated_generic_application(
-            &tags, &stl_set_generic_desc, tag_arguments, 1u);
+        check_generated_generic_field(
+            event_data, "tags", &stl_set_generic_desc, tag_arguments, 1u);
       }
       check_equal(Event_tags_set_t_add(&tags, source), STL_OK);
       check_true(Event_tags_set_t_contains(&tags, source));
@@ -486,6 +513,8 @@ spec("DataBind public Message native artifact") {
   }
 
   it("publishes typed CSTL sequence providers for required scalar/string lists") {
+    const cmeta_data_desc *event_data = NULL;
+    DataBindError generic_error = DATA_BIND_ERROR_INIT;
     Event_values_vec_t values = {0};
     Event_labels_vec_t labels = {0};
     tstr source = tstr_dup("alpha");
@@ -496,11 +525,13 @@ spec("DataBind public Message native artifact") {
 
     check_true(cmeta_data_desc_equal(value_element, &cmeta_data_uint32));
     check_true(cmeta_data_desc_equal(label_element, SALTS_TSTR_CMETA_DATA_REF));
+    check_equal(Event_cmeta_data(&event_data, &generic_error), DATA_BIND_OK);
+    check_not_null(event_data);
     check_equal(Event_values_vec_t_init(&values, 4u), STL_OK);
     {
       const cmeta_type_desc *value_arguments[] = {&cmeta_type_uint32};
-      check_generated_generic_application(
-          &values, &stl_vec_generic_desc, value_arguments, 1u);
+      check_generated_generic_field(
+          event_data, "values", &stl_vec_generic_desc, value_arguments, 1u);
     }
     check_equal(Event_values_vec_t_push(&values, UINT32_C(7)), STL_OK);
     check_equal(Event_values_vec_t_size(&values), (size_t)1u);
@@ -511,8 +542,8 @@ spec("DataBind public Message native artifact") {
       {
         const cmeta_type_desc *label_arguments[] = {
             SALTS_TSTR_CMETA_TYPE_REF};
-        check_generated_generic_application(
-            &labels, &stl_vec_generic_desc, label_arguments, 1u);
+        check_generated_generic_field(
+            event_data, "labels", &stl_vec_generic_desc, label_arguments, 1u);
       }
       check_equal(Event_labels_vec_t_push(&labels, source), STL_OK);
       check_equal(Event_labels_vec_t_size(&labels), (size_t)1u);
