@@ -82,6 +82,22 @@ struct DataBindFormatProvider {
 DATA_BIND_API const DataBindFormatProvider *
 data_bind_builtin_format_provider(DataBindFormat format);
 
+/**
+ * Open one exact zero-based CSV data row through the built-in CSV adapter.
+ *
+ * This DataBind facade keeps the concrete CsvParser adapter inside the private
+ * Salts::DataBind link closure. Generated/installed consumers do not link the
+ * CSV adapter target directly. The returned lease is closed with
+ * data_bind_format_reader_close().
+ */
+DATA_BIND_API DataBindStatus data_bind_builtin_format_reader_open_csv_row(
+    const char *data,
+    size_t len,
+    size_t row,
+    size_t max_depth,
+    DataBindFormatReader *out_reader,
+    DataBindError *error);
+
 typedef struct DataBindFormatReader {
   size_t size;
   const DataBindFormatProvider *provider;
