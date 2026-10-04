@@ -369,11 +369,18 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
       check_null(strstr(xml, "<id>11</id>"));
       check_not_null(strstr(xml, "<name>a&amp;b</name>"));
 
+      info("flat XML output bytes=%s", xml);
       error = (DataBindError)DATA_BIND_ERROR_INIT;
-      check_equal(
-          NativeXmlOutputFlat_from_xml(
-              codec, &roundtrip, xml, xml_len, &error),
-          DATA_BIND_OK);
+      {
+        DataBindStatus roundtrip_status =
+            NativeXmlOutputFlat_from_xml(
+                codec, &roundtrip, xml, xml_len, &error);
+        info("flat XML roundtrip status=%d path=%s message=%s",
+             (int)roundtrip_status,
+             error.path[0] != '\0' ? error.path : "<root>",
+             error.message[0] != '\0' ? error.message : "<none>");
+        check_equal(roundtrip_status, DATA_BIND_OK);
+      }
       check_equal(roundtrip.id, UINT32_C(11));
       check_not_null(roundtrip.name);
       if (roundtrip.name != NULL) {
