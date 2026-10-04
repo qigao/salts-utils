@@ -2108,8 +2108,10 @@ static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
     Node *fields = tbe_compiler_find_child(record, "fields");
     size_t j;
     int supported = 1;
+    int output_supported = 0;
 
     tbe_compiler_remove_children(record, "cmeta_native_xml_flat_supported");
+    tbe_compiler_remove_children(record, "cmeta_native_xml_output_supported");
 
     /*
      * Flat XML publication composes two authorities:
@@ -2129,6 +2131,9 @@ static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
         fields == NULL || fields->type != NODE_LIST)
       continue;
 
+    output_supported =
+        tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ? 1 : 0;
+
     for (j = 0u; j < fields->data.list.count; ++j) {
       Node *field = fields->data.list.items[j];
       const char *type = tbe_compiler_string_value(field, "type");
@@ -2138,13 +2143,20 @@ static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
            (tbe_compiler_find_any_record(root, type) != NULL ||
             tbe_compiler_find_record(root, "unions", type) != NULL))) {
         supported = 0;
+        output_supported = 0;
         break;
       }
+      if (tbe_compiler_has_child(field, "is_nullable") ||
+          tbe_compiler_has_child(field, "is_bytes"))
+        output_supported = 0;
     }
 
     if (supported)
       (void)tbe_compiler_set_string(
           record, "cmeta_native_xml_flat_supported", "1");
+    if (supported && output_supported)
+      (void)tbe_compiler_set_string(
+          record, "cmeta_native_xml_output_supported", "1");
   }
 }
 
