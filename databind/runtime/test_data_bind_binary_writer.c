@@ -83,6 +83,20 @@ static DataBindBinaryLayoutPlan var_plan(int big_endian) {
   return plan;
 }
 
+static const DataBindBinaryFieldPlan TAIL_ONLY_FIELDS[] = {
+    {sizeof(DataBindBinaryFieldPlan), "text", CSERDE_STRING,
+     0u, 0u, 0u, 0u, 0u, 0u, DATA_BIND_BINARY_REP_VAR_DATA, 4u},
+};
+
+static DataBindBinaryLayoutPlan tail_only_plan(int big_endian) {
+  DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+  plan.type_name = "TailOnly";
+  plan.wire_big_endian = big_endian;
+  plan.fields = TAIL_ONLY_FIELDS;
+  plan.field_count = sizeof(TAIL_ONLY_FIELDS) / sizeof(TAIL_ONLY_FIELDS[0]);
+  return plan;
+}
+
 static cserde_token map_begin(void) {
   cserde_token token = {0};
   token.kind = CSERDE_MAP_BEGIN;
@@ -164,6 +178,32 @@ static void write_required_scalars(cserde_writer *writer) {
 }
 
 spec("DataBind flat Binary canonical writer") {
+  it("writes VAR_DATA without a fixed block in both wire orders") {
+    int big_endian;
+    for (big_endian = 0; big_endian <= 1; ++big_endian) {
+      DataBindBinaryLayoutPlan plan = tail_only_plan(big_endian);
+      unsigned char wire[16] = {0};
+      BinarySink sink = {wire, sizeof(wire), 0u, 0u};
+      cserde_writer *writer = NULL;
+      void *owner = NULL;
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      check_equal(data_bind_binary_writer_open(
+                      &plan, binary_sink_write, &sink, 8u,
+                      &writer, &owner, &error),
+                  DATA_BIND_OK);
+      check_true(write_token(writer, map_begin()));
+      check_true(write_token(writer, key("text")));
+      check_true(write_token(writer, slice_value(CSERDE_STRING, "cat", 3u)));
+      check_true(write_token(writer, map_end()));
+      check_equal(cserde_writer_finish(writer), CSERDE_OK);
+      check_equal(sink.calls, 1u);
+      check_equal(sink.size, (size_t)7u);
+      check_equal(data_bind_binary_wire_read_u32(wire, big_endian), (uint32_t)3u);
+      check(memcmp(wire + 4u, "cat", 3u) == 0);
+      check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_OK);
+    }
+  }
+
   it("writes fixed scalars in little and big endian order") {
     int big_endian;
     for (big_endian = 0; big_endian <= 1; ++big_endian) {

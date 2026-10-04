@@ -141,6 +141,20 @@ static DataBindBinaryLayoutPlan var_data_plan(int big_endian) {
   return plan;
 }
 
+static const DataBindBinaryFieldPlan TAIL_ONLY_FIELDS[] = {
+    {sizeof(DataBindBinaryFieldPlan), "text", CSERDE_STRING,
+     0u, 0u, 0u, 0u, 0u, 0u, DATA_BIND_BINARY_REP_VAR_DATA, 4u},
+};
+
+static DataBindBinaryLayoutPlan tail_only_plan(int big_endian) {
+  DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+  plan.type_name = "TailOnly";
+  plan.wire_big_endian = big_endian;
+  plan.fields = TAIL_ONLY_FIELDS;
+  plan.field_count = sizeof(TAIL_ONLY_FIELDS) / sizeof(TAIL_ONLY_FIELDS[0]);
+  return plan;
+}
+
 static size_t write_var_data_payload(
     unsigned char *wire, size_t capacity, int big_endian,
     int payload_present, int payload_null,
@@ -212,6 +226,42 @@ static void expect_var_data_message(
 }
 
 spec("DataBind flat Binary canonical reader") {
+  it("reads VAR_DATA without a fixed block in both wire orders") {
+    int big_endian;
+    for (big_endian = 0; big_endian <= 1; ++big_endian) {
+      DataBindBinaryLayoutPlan plan = tail_only_plan(big_endian);
+      unsigned char wire[7];
+      cserde_reader *reader = NULL;
+      void *owner = NULL;
+      cserde_token token = {0};
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      check_true(data_bind_binary_wire_write_var_data(
+          wire, sizeof(wire), big_endian, "cat", 3u));
+      check_equal(data_bind_binary_reader_open(
+                      &plan, wire, sizeof(wire), 8u, &reader, &owner, &error),
+                  DATA_BIND_OK);
+      check_true(next_token(reader, &token));
+      check_equal(token.kind, CSERDE_MAP_BEGIN);
+      check_true(next_token(reader, &token));
+      check_true(token_key_is(&token, "text"));
+      check_true(next_token(reader, &token));
+      check_equal(token.kind, CSERDE_STRING);
+      check_equal(token.value.slice.size, (size_t)3u);
+      check(memcmp(token.value.slice.data, "cat", 3u) == 0);
+      check_true(next_token(reader, &token));
+      check_equal(token.kind, CSERDE_MAP_END);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_DONE);
+      data_bind_binary_reader_close(reader, owner);
+      reader = NULL;
+      owner = NULL;
+      check_equal(data_bind_binary_reader_open(
+                      &plan, wire, 3u, 8u, &reader, &owner, &error),
+                  DATA_BIND_ERR_PARSE);
+      check_null(reader);
+      check_null(owner);
+    }
+  }
+
   it("emits canonical little-endian fixed scalar tokens") {
     DataBindBinaryLayoutPlan plan = binary_plan(0);
     unsigned char wire[15];

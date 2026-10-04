@@ -65,8 +65,8 @@ static const char *binary_codegen_token_kind(
 static int binary_codegen_layout_admitted(
     const databind_binary_type_layout *layout) {
   size_t i;
-  if (layout == NULL || layout->type_id == NULL ||
-      layout->fixed_block_size == 0u)
+  int has_var_data = 0;
+  if (layout == NULL || layout->type_id == NULL)
     return 0;
 
   for (i = 0u; i < layout->field_count; ++i) {
@@ -79,6 +79,7 @@ static int binary_codegen_layout_admitted(
           field->wire_extent != (size_t)(field->scalar_bits / 8u))
         return 0;
     } else if (field->kind == DATABIND_BINARY_FIELD_VAR_DATA) {
+      has_var_data = 1;
       if ((field->scalar_kind != DATABIND_BINARY_SCALAR_STRING &&
            field->scalar_kind != DATABIND_BINARY_SCALAR_BYTES) ||
           field->scalar_bits != 0u ||
@@ -88,7 +89,7 @@ static int binary_codegen_layout_admitted(
       return 0;
     }
   }
-  return 1;
+  return layout->fixed_block_size != 0u || has_var_data;
 }
 
 int databind_compiler_binary_reader_admit(

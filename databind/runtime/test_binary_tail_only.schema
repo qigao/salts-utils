@@ -1,0 +1,6 @@
+schema Tail [id(1), version(1), byte_order(little)];
+
+[id(1)]
+message TailOnly {
+    string text;
+}
