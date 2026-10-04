@@ -1,5 +1,10 @@
 schema Tail [id(1), version(1), byte_order(little)];
 
+// An unreferenced CMeta record must not pull in the legacy typed header.
+composite UnusedPoint {
+    int32 x;
+}
+
 [id(1)]
 message TailOnly {
     string text;
