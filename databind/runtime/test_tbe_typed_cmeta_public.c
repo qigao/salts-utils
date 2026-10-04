@@ -5,13 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Internal migration seam; not part of the generated public API. */
-extern const TbeTypedDescriptor *EnumSymbolStorage_typed_descriptor(void);
-extern const TbeTypedDescriptor *FlagStorage_typed_descriptor(void);
-extern const TbeTypedDescriptor *WideEnumStorage_typed_descriptor(void);
-extern const TbeTypedDescriptor *FixedValues_typed_descriptor(void);
-extern const TbeTypedDescriptor *Sample_typed_descriptor(void);
-
 /* Public-only, release-build-safe checks: no private validator or generated
  * implementation include may make this consumer link accidentally. */
 int main(void) {
@@ -56,7 +49,7 @@ int main(void) {
       return 37;
   }
   {
-    const TbeTypedDescriptor *descriptor = EnumSymbolStorage_typed_descriptor();
+    const cmeta_data_desc *root = NULL;
     const cmeta_data_struct_shape *shape;
     const cmeta_data_desc *value_data;
     EnumSymbolStorage_t object = {0};
@@ -67,9 +60,10 @@ int main(void) {
         EnumSymbols_CMETA_ID, EnumSymbols_CMETA_ITEMS, EnumSymbols_cmeta_is_zero,
         EnumSymbols_cmeta_read, EnumSymbols_cmeta_assign, EnumSymbols_cmeta_restore_zero};
     size_t i;
-    if (!descriptor || tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK)
+    if (EnumSymbolStorage_cmeta_data(&root, &error) != DATA_BIND_OK ||
+        root == NULL || root->shape == NULL)
       return 30;
-    shape = (const cmeta_data_struct_shape *)descriptor->native_data->shape;
+    shape = (const cmeta_data_struct_shape *)root->shape;
     if (!shape || shape->field_count != 1u || !shape->fields || !shape->fields[0].value)
       return 31;
     value_data = shape->fields[0].value;
@@ -145,17 +139,14 @@ int main(void) {
       return 10;
   }
   {
-    const TbeTypedDescriptor *descriptor = FlagStorage_typed_descriptor();
     const cmeta_data_struct_shape *shape;
-    const cmeta_data_desc *root;
+    const cmeta_data_desc *root = NULL;
     const cmeta_data_desc *enum_data;
     Permission_t value = 0;
     uint64_t bits = 0u;
-    if (descriptor == NULL ||
-        tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK)
+    if (FlagStorage_cmeta_data(&root, &error) != DATA_BIND_OK ||
+        root == NULL || root->shape == NULL)
       return 11;
-    root = descriptor->native_data;
-    if (root == NULL || root->shape == NULL) return 12;
     shape = (const cmeta_data_struct_shape *)root->shape;
     if (shape->field_count != 1u || shape->fields == NULL ||
         shape->fields[0].value == NULL)
@@ -171,22 +162,19 @@ int main(void) {
       return 12;
   }
   {
-    const TbeTypedDescriptor *descriptor = WideEnumStorage_typed_descriptor();
     DataBind *codec = NULL;
     int failed;
     const cmeta_data_struct_shape *shape;
-    const cmeta_data_desc *root;
+    const cmeta_data_desc *root = NULL;
     const cmeta_data_desc *enum_data;
     WideEnumStorage_t object = {0};
     WideEnumStorage_t decoded = {0};
     uint8_t wire[sizeof(uint64_t)] = {0};
     size_t wire_len = 0u;
     uint64_t bits = 0u;
-    if (descriptor == NULL ||
-        tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK)
+    if (WideEnumStorage_cmeta_data(&root, &error) != DATA_BIND_OK ||
+        root == NULL || root->shape == NULL)
       return 28;
-    root = descriptor->native_data;
-    if (root == NULL || root->shape == NULL) return 29;
     shape = (const cmeta_data_struct_shape *)root->shape;
     if (shape->field_count != 1u || shape->fields == NULL ||
         shape->fields[0].value == NULL)
@@ -201,13 +189,12 @@ int main(void) {
         !cmeta_data_value_move_supported(root) ||
         cmeta_data_enum_assign_bits(enum_data, &object.value,
                                     UINT64_MAX) != CMETA_OK ||
-        tbe_typed_descriptor_serialize_binary_into(
-            descriptor, &object, wire, sizeof(wire), &wire_len,
+        WideEnumStorage_to_bin_into(
+            codec, &object, wire, sizeof(wire), &wire_len,
             &error) != DATA_BIND_OK ||
         wire_len != sizeof(wire) ||
-        tbe_typed_descriptor_parse(
-            codec, "WideEnumStorage", descriptor, DATA_BIND_FORMAT_BINARY,
-            wire, wire_len, 0u, &decoded, &error) != DATA_BIND_OK ||
+        WideEnumStorage_from_bin(
+            codec, &decoded, wire, wire_len, &error) != DATA_BIND_OK ||
         cmeta_data_enum_read_bits(enum_data, &decoded.value,
                                   &bits) != CMETA_OK ||
         bits != UINT64_MAX || decoded.value != UINT64_MAX;
@@ -215,14 +202,14 @@ int main(void) {
     if (failed) return 29;
   }
   {
-    const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();
-    const cmeta_data_desc *fixed = descriptor ? descriptor->native_data : NULL;
-    const cmeta_data_struct_shape *shape =
-        fixed ? (const cmeta_data_struct_shape *)fixed->shape : NULL;
+    const cmeta_data_desc *fixed = NULL;
+    const cmeta_data_struct_shape *shape = NULL;
     size_t extent = 0u;
-    if (descriptor == NULL ||
-        tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK ||
-        shape == NULL || shape->field_count != 3u)
+    if (FixedValues_cmeta_data(&fixed, &error) != DATA_BIND_OK ||
+        fixed == NULL || fixed->shape == NULL)
+      return 26;
+    shape = (const cmeta_data_struct_shape *)fixed->shape;
+    if (shape->field_count != 3u)
       return 26;
     if (shape->fields[0].value->kind != CMETA_DATA_BOOL ||
         shape->fields[0].value->storage_type->size !=
@@ -238,81 +225,50 @@ int main(void) {
   {
     static const char json[] =
         "{\"point\":{\"x\":3,\"y\":4.5},\"state\":7,\"wire_count\":7}";
-    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
-    const cmeta_data_desc *root_data;
+    const cmeta_data_desc *root_data = NULL;
     const cmeta_data_struct_shape *root_shape;
     const cmeta_data_field_desc *count_field;
-    cmeta_data_desc root_data_copy;
-    cmeta_data_struct_shape root_shape_copy;
-    cmeta_data_field_desc fields_copy[3];
     cmeta_data_desc count_data_copy;
     cmeta_type_desc count_type_copy;
     cmeta_type_identity count_identity_copy;
-    TbeTypedDescriptor descriptor_copy;
     DataBind *codec = NULL;
     Sample_t actual = {0};
-    Sample_t before;
-    DataBindStatus status;
-    size_t count_index;
 
-    if (descriptor == NULL || descriptor->native_data == NULL) return 16;
-    root_data = descriptor->native_data;
+    if (Sample_cmeta_data(&root_data, &error) != DATA_BIND_OK ||
+        root_data == NULL || root_data->shape == NULL)
+      return 16;
     root_shape = (const cmeta_data_struct_shape *)root_data->shape;
-    if (root_shape == NULL || root_shape->field_count != 3u) return 23;
+    if (root_shape->field_count != 3u) return 23;
     count_field = cmeta_data_struct_find_field(root_shape, "count");
-    if (count_field == NULL) return 24;
-    count_index = (size_t)(count_field - root_shape->fields);
+    if (count_field == NULL || count_field->value == NULL ||
+        count_field->value->storage_type == NULL ||
+        count_field->value->storage_type->identity == NULL)
+      return 24;
 
-    descriptor_copy = *descriptor;
-    root_data_copy = *root_data;
-    root_shape_copy = *root_shape;
-    memcpy(fields_copy, root_shape->fields, sizeof(fields_copy));
     count_data_copy = *count_field->value;
     count_type_copy = *count_data_copy.storage_type;
     count_identity_copy = *count_type_copy.identity;
     count_type_copy.identity = &count_identity_copy;
     count_data_copy.storage_type = &count_type_copy;
-    fields_copy[count_index].value = &count_data_copy;
-    root_shape_copy.fields = fields_copy;
-    root_data_copy.shape = &root_shape_copy;
 
     if (&count_data_copy == count_field->value) return 17;
     if (!cmeta_type_equal(count_data_copy.storage_type,
                           count_field->value->storage_type))
       return 18;
-    descriptor_copy.native_data = &root_data_copy;
+
     if (Graph_codec_create(&codec, &error) != DATA_BIND_OK || codec == NULL)
       return 25;
-    status = tbe_typed_descriptor_parse(codec, "Sample", &descriptor_copy,
-                                        DATA_BIND_FORMAT_JSON, json,
-                                        strlen(json), 0u, &actual, &error);
-    if (status != DATA_BIND_OK || actual.count != 7) {
+    Sample_init(&actual);
+    if (Sample_from_json(
+            codec, &actual, json, sizeof(json) - 1u, &error) != DATA_BIND_OK ||
+        actual.point.x != 3 || actual.point.y != 4.5 ||
+        actual.state != State_Ready || actual.count != 7) {
+      Sample_clear(&actual);
       data_bind_free(codec);
       return 19;
     }
-
-    {
-      cmeta_data_desc bad_root_data = root_data_copy;
-      cmeta_data_struct_shape bad_root_shape = root_shape_copy;
-      cmeta_data_field_desc bad_fields[3];
-      memcpy(bad_fields, fields_copy, sizeof(bad_fields));
-      bad_fields[count_index].offset = offsetof(Sample_t, state);
-      bad_root_shape.fields = bad_fields;
-      bad_root_data.shape = &bad_root_shape;
-      actual.point.x = 91;
-      actual.point.y = 8.25;
-      actual.state = State_Ready;
-      actual.count = 31;
-      before = actual;
-      descriptor_copy.native_data = &bad_root_data;
-      status = tbe_typed_descriptor_parse(codec, "Sample", &descriptor_copy,
-                                          DATA_BIND_FORMAT_JSON, json,
-                                          strlen(json), 0u, &actual, &error);
-      data_bind_free(codec);
-      if (status != DATA_BIND_ERR_SCHEMA) return 20;
-      if (strstr(error.path, "Sample.count") == NULL) return 21;
-      if (memcmp(&actual, &before, sizeof(actual)) != 0) return 22;
-    }
+    Sample_clear(&actual);
+    data_bind_free(codec);
   }
   return 0;
 }
