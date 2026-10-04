@@ -558,6 +558,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
       check_not_null(field);
       check_not_null(declared);
       check_true(cmeta_declared_type_valid(declared));
+      check_false(cmeta_declared_type_constructible(declared));
       if (declared != NULL && cmeta_declared_type_valid(declared)) {
         check_not_null(declared->constructor);
         if (declared->constructor != NULL) {
@@ -858,6 +859,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
       check_not_null(field);
       check_not_null(declared);
       check_true(cmeta_declared_type_valid(declared));
+      check_false(cmeta_declared_type_constructible(declared));
       if (declared != NULL && cmeta_declared_type_valid(declared)) {
         check_not_null(declared->constructor);
         if (declared->constructor != NULL) {
