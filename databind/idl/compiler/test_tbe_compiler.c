@@ -2729,7 +2729,9 @@ spec("tbe_compiler") {
           "message FlagStorage { Permission value; }"
           "message WideEnumStorage { WideDomain value; }"
           "message LoginMessage { string user; }"
-          "message NullableFlat { uint32 id; nullable uint32 score; string name; }";
+          "message NullableFlat { uint32 id; nullable uint32 score; string name; }"
+          "message CsvFlat { uint32 id; string name; }"
+          "message CsvDefault { uint32 id default 7; string name; }";
       size_t header_size = 0;
       size_t source_size = 0;
       char *header = NULL;
@@ -2801,6 +2803,19 @@ spec("tbe_compiler") {
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_XML)");
         check_contains(source, "data_bind_message_plan_decode_native_format(");
         check_contains(source, "data_bind_message_plan_encode_native(");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(CsvFlat,");
+        check(strstr(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(Sample,") == NULL);
+        check(strstr(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(NullableFlat,") == NULL);
+        check(strstr(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(CsvDefault,") == NULL);
+        check_contains(source, "DATABIND_DEFINE_DESCRIPTOR_MESSAGE_CSV(Sample)");
+        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_CSV(NullableFlat)");
+        check_contains(source, "data_bind_csv_format_reader_open_row(");
+        check_contains(source, "data_bind_format_plan_compile(");
+        check_contains(source, "data_bind_format_canonical_reader_init(");
         check_contains(source, "TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)");
       }
 
