@@ -249,6 +249,20 @@ suite("compiler_cmeta_field_projection") {
                             "&cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_map_value_data_ref"),
                             "&cmeta_data_int32");
+                check_equal(field_projection_text(
+                                field, "native_declared_type_symbol"),
+                            "Shape_value_CMETA_DECLARED_TYPE");
+                check_equal(field_projection_text(
+                                field, "native_generic_constructor_ref"),
+                            "&stl_map_generic_desc");
+                check_equal(field_projection_text(field, "native_generic_arity"),
+                            "2");
+                check_equal(field_projection_text(
+                                field, "native_generic_arg0_type_ref"),
+                            "SALTS_TSTR_CMETA_TYPE_REF");
+                check_equal(field_projection_text(
+                                field, "native_generic_arg1_type_ref"),
+                            "&cmeta_type_int32");
             } else if (cases[i].kind == CMETA_DATA_SEQUENCE) {
                 check_equal(field_projection_text(field, "native_data_symbol"),
                             "Shape_value_vec_t_collection_data");
@@ -262,6 +276,17 @@ suite("compiler_cmeta_field_projection") {
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
                             "cmeta_data_int32");
+                check_equal(field_projection_text(
+                                field, "native_declared_type_symbol"),
+                            "Shape_value_CMETA_DECLARED_TYPE");
+                check_equal(field_projection_text(
+                                field, "native_generic_constructor_ref"),
+                            "&stl_vec_generic_desc");
+                check_equal(field_projection_text(field, "native_generic_arity"),
+                            "1");
+                check_equal(field_projection_text(
+                                field, "native_generic_arg0_type_ref"),
+                            "&cmeta_type_int32");
             } else if (cases[i].kind == CMETA_DATA_SET) {
                 check_equal(field_projection_text(field, "native_data_symbol"),
                             "Shape_value_set_t_collection_data");
@@ -275,6 +300,17 @@ suite("compiler_cmeta_field_projection") {
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
                             "cmeta_data_int32");
+                check_equal(field_projection_text(
+                                field, "native_declared_type_symbol"),
+                            "Shape_value_CMETA_DECLARED_TYPE");
+                check_equal(field_projection_text(
+                                field, "native_generic_constructor_ref"),
+                            "&stl_set_generic_desc");
+                check_equal(field_projection_text(field, "native_generic_arity"),
+                            "1");
+                check_equal(field_projection_text(
+                                field, "native_generic_arg0_type_ref"),
+                            "&cmeta_type_int32");
             }
             node_free(root);
         }
@@ -663,6 +699,17 @@ suite("compiler_cmeta_field_projection") {
                     "&NativeHeader_CMETA_TYPE");
         check_equal(field_projection_text(headers, "native_element_data_ref"),
                     "&NativeHeader_CMETA_DATA");
+        check_equal(field_projection_text(
+                        headers, "native_declared_type_symbol"),
+                    "NativeHeaderPolicy_headers_CMETA_DECLARED_TYPE");
+        check_equal(field_projection_text(
+                        headers, "native_generic_constructor_ref"),
+                    "&stl_vec_generic_desc");
+        check_equal(field_projection_text(headers, "native_generic_arity"),
+                    "1");
+        check_equal(field_projection_text(
+                        headers, "native_generic_arg0_type_ref"),
+                    "&NativeHeader_CMETA_TYPE");
 
         check_not_null(field_projection_child(header, "cmeta_graph_supported"));
         check_not_null(field_projection_child(policy, "cmeta_graph_supported"));

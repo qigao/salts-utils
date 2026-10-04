@@ -550,6 +550,33 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
       tstr_free(lookup);
       return;
     }
+    {
+      const cmeta_field_desc *field =
+          cmeta_struct_find_field(shape->layout, "headers");
+      const cmeta_declared_type *declared =
+          field != NULL ? field->declared_type : NULL;
+      check_not_null(field);
+      check_not_null(declared);
+      check_true(cmeta_declared_type_valid(declared));
+      check_false(cmeta_declared_type_constructible(declared));
+      if (declared != NULL && cmeta_declared_type_valid(declared)) {
+        check_not_null(declared->constructor);
+        if (declared->constructor != NULL) {
+          check_not_null(declared->constructor->stable_id);
+          if (declared->constructor->stable_id != NULL)
+            check(strcmp(declared->constructor->stable_id,
+                         stl_map_generic_desc.stable_id) == 0);
+        }
+        check_equal(declared->arity, (size_t)2u);
+        check_true(cmeta_type_equal(
+            cmeta_declared_type_argument(declared, 0u),
+            SALTS_TSTR_CMETA_TYPE_REF));
+        check_true(cmeta_type_equal(
+            cmeta_declared_type_argument(declared, 1u),
+            &NativeHeader_CMETA_TYPE));
+        check_null(cmeta_declared_type_argument(declared, 2u));
+      }
+    }
     map_data = shape->fields[1].value;
     check_not_null(map_data);
     if (map_data == NULL) {
@@ -824,6 +851,30 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(policy_shape);
     if (policy_shape == NULL) return;
     check_equal(policy_shape->field_count, (size_t)2u);
+    {
+      const cmeta_field_desc *field =
+          cmeta_struct_find_field(policy_shape->layout, "headers");
+      const cmeta_declared_type *declared =
+          field != NULL ? field->declared_type : NULL;
+      check_not_null(field);
+      check_not_null(declared);
+      check_true(cmeta_declared_type_valid(declared));
+      check_false(cmeta_declared_type_constructible(declared));
+      if (declared != NULL && cmeta_declared_type_valid(declared)) {
+        check_not_null(declared->constructor);
+        if (declared->constructor != NULL) {
+          check_not_null(declared->constructor->stable_id);
+          if (declared->constructor->stable_id != NULL)
+            check(strcmp(declared->constructor->stable_id,
+                         stl_vec_generic_desc.stable_id) == 0);
+        }
+        check_equal(declared->arity, (size_t)1u);
+        check_true(cmeta_type_equal(
+            cmeta_declared_type_argument(declared, 0u),
+            &NativeHeader_CMETA_TYPE));
+        check_null(cmeta_declared_type_argument(declared, 1u));
+      }
+    }
     sequence_data = policy_shape->fields[1].value;
     check_not_null(sequence_data);
     if (sequence_data == NULL) return;

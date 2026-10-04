@@ -2054,6 +2054,102 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
   }
 }
 
+
+static void tbe_compiler_annotate_cmeta_declared_generics(Node *root) {
+  static const char *const lists[] = {"composites", "groups", "messages"};
+  size_t list_index;
+
+  if (root == NULL) return;
+
+  for (list_index = 0u;
+       list_index < sizeof(lists) / sizeof(lists[0]);
+       ++list_index) {
+    Node *owners = tbe_compiler_find_child(root, lists[list_index]);
+    size_t owner_index;
+    if (owners == NULL || owners->type != NODE_LIST) continue;
+
+    for (owner_index = 0u; owner_index < owners->data.list.count;
+         ++owner_index) {
+      Node *owner = owners->data.list.items[owner_index];
+      Node *fields = tbe_compiler_find_child(owner, "fields");
+      size_t field_index;
+      if (fields == NULL || fields->type != NODE_LIST) continue;
+
+      for (field_index = 0u; field_index < fields->data.list.count;
+           ++field_index) {
+        Node *field = fields->data.list.items[field_index];
+        const char *owner_name =
+            tbe_compiler_string_value(field, "owner_name");
+        const char *field_name =
+            tbe_compiler_string_value(field, "c_name");
+        const char *native_type =
+            tbe_compiler_string_value(field, "native_type_symbol");
+        const char *arg0 = NULL;
+        const char *arg1 = NULL;
+        const char *constructor = NULL;
+        const char *arity = NULL;
+        char symbol[320];
+
+        tbe_compiler_remove_children(field, "native_declared_type_symbol");
+        tbe_compiler_remove_children(field, "native_generic_constructor_ref");
+        tbe_compiler_remove_children(field, "native_generic_arity");
+        tbe_compiler_remove_children(field, "native_generic_arg0_type_ref");
+        tbe_compiler_remove_children(field, "native_generic_arg1_type_ref");
+
+        if (tbe_compiler_has_child(field, "native_cstl_sequence")) {
+          constructor = "&stl_vec_generic_desc";
+          arity = "1";
+          arg0 = tbe_compiler_string_value(
+              field, "native_element_type_ref");
+        } else if (tbe_compiler_has_child(field, "native_cstl_set")) {
+          constructor = "&stl_set_generic_desc";
+          arity = "1";
+          arg0 = tbe_compiler_string_value(
+              field, "native_element_type_ref");
+        } else if (tbe_compiler_has_child(field, "native_cstl_map")) {
+          constructor = "&stl_map_generic_desc";
+          arity = "2";
+          arg0 = tbe_compiler_string_value(
+              field, "native_map_key_type_ref");
+          arg1 = tbe_compiler_string_value(
+              field, "native_map_value_type_ref");
+        } else {
+          continue;
+        }
+
+        /*
+         * cmeta_declared_type describes semantic generic identity independently
+         * from storage construction. Generated DataBind fields use typed CSTL
+         * wrappers as their physical storage, so construction intentionally
+         * remains NULL; the wrapper's canonical DataDesc owns lifecycle.
+         */
+        if (owner_name == NULL || field_name == NULL || native_type == NULL ||
+            constructor == NULL || arity == NULL || arg0 == NULL ||
+            (arg1 == NULL && strcmp(arity, "2") == 0))
+          continue;
+
+        if (snprintf(symbol, sizeof(symbol), "%s_%s_CMETA_DECLARED_TYPE",
+                     owner_name, field_name) < 0 ||
+            strlen(owner_name) + strlen(field_name) +
+                    strlen("__CMETA_DECLARED_TYPE") >=
+                sizeof(symbol))
+          continue;
+
+        tbe_compiler_set_string(
+            field, "native_declared_type_symbol", symbol);
+        tbe_compiler_set_string(
+            field, "native_generic_constructor_ref", constructor);
+        tbe_compiler_set_string(field, "native_generic_arity", arity);
+        tbe_compiler_set_string(
+            field, "native_generic_arg0_type_ref", arg0);
+        if (arg1 != NULL)
+          tbe_compiler_set_string(
+              field, "native_generic_arg1_type_ref", arg1);
+      }
+    }
+  }
+}
+
 static void tbe_compiler_annotate_schema_types(Node *root) {
   Node *schema = tbe_compiler_find_child(root, "schema");
   const char *schema_name;
@@ -2275,6 +2371,7 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_cmeta_support(root, 1);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_promote_record_cstl_containers(root);
+  tbe_compiler_annotate_cmeta_declared_generics(root);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
   tbe_compiler_annotate_xml_flat_messages(root);
