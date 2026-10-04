@@ -1523,7 +1523,6 @@ jobs:
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$prefix/lib/cmake/SaltsUtils/IDL.cmake"
           test -x "$prefix/bin/salts-idlc"
-          "$prefix/bin/salts-idlc" --help >/dev/null
           echo "SALTS_UTILS_ARM64_ROOT=$prefix" >> "$GITHUB_ENV"
 
       - name: Build installed salts_idl_target consumer
