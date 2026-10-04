@@ -2803,6 +2803,13 @@ spec("tbe_compiler") {
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_XML)");
         check_contains(source, "data_bind_message_plan_decode_native_format(");
         check_contains(source, "data_bind_message_plan_encode_native(");
+        check_contains(source, "_message_to_text(");
+        check(strstr(source, "_message_to_json(") == NULL);
+        check_contains(
+            source,
+            "DATA_BIND_FORMAT_YAML, (size_t)(depth_), (size_t)(nodes_)");
+        check_contains(
+            source, "DATABIND_DEFINE_RAW_MESSAGE_YAML(NullableFlat)");
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(CsvFlat,");
         check(strstr(

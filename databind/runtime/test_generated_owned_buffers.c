@@ -107,7 +107,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
 
     free(workspace);
   }
-  it("routes generated Message JSON YAML and JSON output through canonical providers") {
+  it("routes generated Message JSON YAML input and JSON YAML output canonically") {
     static const char json[] =
         "{\"id\":7,\"headers\":["
         "{\"name\":\"x-tag\",\"value\":\"a\"},"
@@ -124,13 +124,14 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     NativeHeaderPolicy_t from_json = {0};
     NativeHeaderPolicy_t from_yaml = {0};
     NativeHeaderPolicy_t roundtrip = {0};
+    NativeHeaderPolicy_t yaml_roundtrip = {0};
     NativeHeaderPolicy_t unchanged = {0};
     const NativeHeader_t *header = NULL;
     char *encoded = NULL;
-    char *legacy_yaml = NULL;
+    char *encoded_yaml = NULL;
     uint8_t *legacy_binary = NULL;
     size_t encoded_len = 0u;
-    size_t legacy_yaml_len = 0u;
+    size_t encoded_yaml_len = 0u;
     size_t legacy_binary_len = 0u;
 
     check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
@@ -140,6 +141,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     NativeHeaderPolicy_init(&from_json);
     NativeHeaderPolicy_init(&from_yaml);
     NativeHeaderPolicy_init(&roundtrip);
+    NativeHeaderPolicy_init(&yaml_roundtrip);
     NativeHeaderPolicy_init(&unchanged);
 
     check_equal(
@@ -213,7 +215,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         NativeHeaderPolicy_headers_vec_t_size(&unchanged.headers),
         (size_t)0u);
 
-    /* This slice does not migrate Binary or non-JSON egress. */
+    /* Binary remains outside this text-egress slice. */
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(
         NativeHeaderPolicy_to_bin(
@@ -225,13 +227,28 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(
         NativeHeaderPolicy_to_yaml(
-            codec, &from_json, &legacy_yaml, &legacy_yaml_len, &error),
-        DATA_BIND_ERR_SCHEMA);
-    check_null(legacy_yaml);
-    check_equal(legacy_yaml_len, (size_t)0u);
+            codec, &from_json, &encoded_yaml, &encoded_yaml_len, &error),
+        DATA_BIND_OK);
+    check_not_null(encoded_yaml);
+    check_true(encoded_yaml_len != 0u);
+    if (encoded_yaml != NULL) {
+      check(encoded_yaml[encoded_yaml_len] == '\0');
+      check_not_null(strstr(encoded_yaml, "policyId"));
+      check_null(strstr(encoded_yaml, "id:"));
+      check_equal(
+          NativeHeaderPolicy_from_yaml(
+              codec, &yaml_roundtrip, encoded_yaml, encoded_yaml_len, &error),
+          DATA_BIND_OK);
+      check_equal(yaml_roundtrip.id, UINT32_C(7));
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_size(&yaml_roundtrip.headers),
+          (size_t)2u);
+    }
 
+    tbe_typed_serialized_free(encoded_yaml);
     tbe_typed_serialized_free(encoded);
     NativeHeaderPolicy_clear(&unchanged);
+    NativeHeaderPolicy_clear(&yaml_roundtrip);
     NativeHeaderPolicy_clear(&roundtrip);
     NativeHeaderPolicy_clear(&from_yaml);
     NativeHeaderPolicy_clear(&from_json);
