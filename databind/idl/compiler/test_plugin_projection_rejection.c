@@ -61,7 +61,9 @@ spec("DataBind Plugin projection semantic rejection") {
     };
     databind_compiler_projection_backend backend =
         DATABIND_COMPILER_PLUGIN_BACKEND;
+    const char *call_start;
     const char *lease_check;
+    const char *entry_check;
     const char *error_init;
     const char *invoke_call;
     const char *invoke_clear;
@@ -87,21 +89,38 @@ spec("DataBind Plugin projection semantic rejection") {
     check_equal(salts_fs_read_file(client_source_output, &generated), 0);
     check_not_null(generated.base);
 
-    lease_check = strstr(
-        generated.base, "!salts_plugin_lease_valid(client->lease)");
-    error_init = strstr(generated.base, "__error_init(&local_error);");
-    invoke_call = strstr(
-        generated.base, "if (!entry->value.function.invoke(");
+    call_start = strstr(
+        generated.base,
+        "salts_plugin_status "
+        "databind_11_ErrorPlugin_5_Store_4_Read_plugin_client_call(");
+    lease_check = call_start != NULL
+        ? strstr(call_start, "!salts_plugin_lease_valid(client->lease)")
+        : NULL;
+    entry_check = call_start != NULL
+        ? strstr(call_start, "entry->value.function.invoke == NULL")
+        : NULL;
+    error_init = call_start != NULL
+        ? strstr(call_start, "__error_init(&local_error);")
+        : NULL;
+    invoke_call = call_start != NULL
+        ? strstr(call_start, "if (!entry->value.function.invoke(")
+        : NULL;
     invoke_clear = invoke_call != NULL
         ? strstr(invoke_call, "__error_clear(&local_error);")
         : NULL;
-    move_call = strstr(generated.base, "__error_move(typed_error, &local_error)");
+    move_call = call_start != NULL
+        ? strstr(call_start, "__error_move(typed_error, &local_error)")
+        : NULL;
     move_clear = move_call != NULL
         ? strstr(move_call, "__error_clear(&local_error);")
         : NULL;
-    native_status_write = strstr(generated.base, "*native_status = result;");
+    native_status_write = call_start != NULL
+        ? strstr(call_start, "*native_status = result;")
+        : NULL;
 
+    check_not_null(call_start);
     check_not_null(lease_check);
+    check_not_null(entry_check);
     check_not_null(error_init);
     check_not_null(invoke_call);
     check_not_null(invoke_clear);
@@ -109,7 +128,9 @@ spec("DataBind Plugin projection semantic rejection") {
     check_not_null(move_clear);
     check_not_null(native_status_write);
 
-    check_true(lease_check < error_init);
+    check_true(call_start < lease_check);
+    check_true(lease_check < entry_check);
+    check_true(entry_check < error_init);
     check_true(error_init < invoke_call);
     check_true(invoke_call < invoke_clear);
     check_true(invoke_clear < move_call);
