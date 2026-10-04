@@ -425,6 +425,255 @@ static DataBindServiceNativeBinding rollback_native_binding(void) {
 }
 
 
+typedef struct CleanupTraceSlot {
+  unsigned state;
+} CleanupTraceSlot;
+
+typedef struct CleanupTraceRequest {
+  CleanupTraceSlot a;
+  CleanupTraceSlot b;
+  CleanupTraceSlot c;
+} CleanupTraceRequest;
+
+static char CLEANUP_TRACE[8];
+static size_t CLEANUP_TRACE_COUNT;
+
+static void cleanup_trace_reset(void) {
+  memset(CLEANUP_TRACE, 0, sizeof(CLEANUP_TRACE));
+  CLEANUP_TRACE_COUNT = 0u;
+}
+
+static void cleanup_trace_record(char marker) {
+  if (CLEANUP_TRACE_COUNT < sizeof(CLEANUP_TRACE))
+    CLEANUP_TRACE[CLEANUP_TRACE_COUNT++] = marker;
+}
+
+static bool cleanup_trace_is_zero(const void *object) {
+  const CleanupTraceSlot *slot = (const CleanupTraceSlot *)object;
+  return slot != NULL && slot->state == 0u;
+}
+
+static cmeta_status cleanup_trace_assign(
+    void *object, const unsigned char *data, size_t size, size_t max_bytes) {
+  CleanupTraceSlot *slot = (CleanupTraceSlot *)object;
+  (void)data;
+  (void)size;
+  (void)max_bytes;
+  if (slot == NULL) return CMETA_INVALID_ARGUMENT;
+  slot->state = 1u;
+  return CMETA_OK;
+}
+
+static cmeta_status cleanup_trace_read(
+    const void *object, const unsigned char **out_data, size_t *out_size) {
+  static const unsigned char value = 1u;
+  const CleanupTraceSlot *slot = (const CleanupTraceSlot *)object;
+  if (slot == NULL || out_data == NULL || out_size == NULL)
+    return CMETA_INVALID_ARGUMENT;
+  if (slot->state == 0u) {
+    *out_data = NULL;
+    *out_size = 0u;
+  } else {
+    *out_data = &value;
+    *out_size = 1u;
+  }
+  return CMETA_OK;
+}
+
+static void cleanup_trace_move(void *destination, void *source) {
+  CleanupTraceSlot *to = (CleanupTraceSlot *)destination;
+  CleanupTraceSlot *from = (CleanupTraceSlot *)source;
+  if (to == NULL || from == NULL || to == from) return;
+  *to = *from;
+  from->state = 0u;
+}
+
+static cmeta_status cleanup_trace_init_a(void *object) {
+  CleanupTraceSlot *slot = (CleanupTraceSlot *)object;
+  if (slot == NULL) return CMETA_INVALID_ARGUMENT;
+  slot->state = 0u;
+  return CMETA_OK;
+}
+
+static cmeta_status cleanup_trace_init_b(void *object) {
+  return cleanup_trace_init_a(object);
+}
+
+static cmeta_status cleanup_trace_init_c(void *object) {
+  CleanupTraceSlot *slot = (CleanupTraceSlot *)object;
+  if (slot == NULL) return CMETA_INVALID_ARGUMENT;
+  slot->state = 1u;
+  return CMETA_CALLBACK_ERROR;
+}
+
+static void cleanup_trace_restore_a(void *object) {
+  CleanupTraceSlot *slot = (CleanupTraceSlot *)object;
+  if (slot == NULL) return;
+  cleanup_trace_record('A');
+  slot->state = 0u;
+}
+
+static void cleanup_trace_restore_b(void *object) {
+  CleanupTraceSlot *slot = (CleanupTraceSlot *)object;
+  if (slot == NULL) return;
+  cleanup_trace_record('B');
+  slot->state = 0u;
+}
+
+static void cleanup_trace_restore_c(void *object) {
+  CleanupTraceSlot *slot = (CleanupTraceSlot *)object;
+  if (slot == NULL) return;
+  cleanup_trace_record('C');
+  slot->state = 0u;
+}
+
+static const cmeta_type_identity CLEANUP_TRACE_SLOT_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.binding-plan.CleanupTraceSlot");
+static const cmeta_type_desc CLEANUP_TRACE_SLOT_TYPE = {
+    "CleanupTraceSlot", sizeof(CleanupTraceSlot), _Alignof(CleanupTraceSlot),
+    CMETA_T_OBJECT, NULL, NULL, &CLEANUP_TRACE_SLOT_ID};
+static const cmeta_data_buffer_shape CLEANUP_TRACE_BUFFER_SHAPE = {
+    CMETA_DATA_BUFFER_OWNED};
+
+static const cmeta_data_buffer_ops CLEANUP_TRACE_A_OPS = {
+    .struct_size = sizeof(cmeta_data_buffer_ops),
+    .abi_version = CMETA_DATA_BUFFER_OPS_ABI_VERSION,
+    .storage_type = &CLEANUP_TRACE_SLOT_TYPE,
+    .ownership = CMETA_DATA_BUFFER_OWNED,
+    .is_zero = cleanup_trace_is_zero,
+    .assign = cleanup_trace_assign,
+    .restore_zero = cleanup_trace_restore_a,
+    .read = cleanup_trace_read,
+    .init_zero = cleanup_trace_init_a,
+    .move = cleanup_trace_move};
+static const cmeta_data_buffer_ops CLEANUP_TRACE_B_OPS = {
+    .struct_size = sizeof(cmeta_data_buffer_ops),
+    .abi_version = CMETA_DATA_BUFFER_OPS_ABI_VERSION,
+    .storage_type = &CLEANUP_TRACE_SLOT_TYPE,
+    .ownership = CMETA_DATA_BUFFER_OWNED,
+    .is_zero = cleanup_trace_is_zero,
+    .assign = cleanup_trace_assign,
+    .restore_zero = cleanup_trace_restore_b,
+    .read = cleanup_trace_read,
+    .init_zero = cleanup_trace_init_b,
+    .move = cleanup_trace_move};
+static const cmeta_data_buffer_ops CLEANUP_TRACE_C_OPS = {
+    .struct_size = sizeof(cmeta_data_buffer_ops),
+    .abi_version = CMETA_DATA_BUFFER_OPS_ABI_VERSION,
+    .storage_type = &CLEANUP_TRACE_SLOT_TYPE,
+    .ownership = CMETA_DATA_BUFFER_OWNED,
+    .is_zero = cleanup_trace_is_zero,
+    .assign = cleanup_trace_assign,
+    .restore_zero = cleanup_trace_restore_c,
+    .read = cleanup_trace_read,
+    .init_zero = cleanup_trace_init_c,
+    .move = cleanup_trace_move};
+
+static const cmeta_data_desc CLEANUP_TRACE_A_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.binding-plan.CleanupTrace.a",
+    .display_name = "CleanupTraceA",
+    .kind = CMETA_DATA_STRING,
+    .storage_type = &CLEANUP_TRACE_SLOT_TYPE,
+    .shape = &CLEANUP_TRACE_BUFFER_SHAPE,
+    .buffer_ops = &CLEANUP_TRACE_A_OPS};
+static const cmeta_data_desc CLEANUP_TRACE_B_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.binding-plan.CleanupTrace.b",
+    .display_name = "CleanupTraceB",
+    .kind = CMETA_DATA_STRING,
+    .storage_type = &CLEANUP_TRACE_SLOT_TYPE,
+    .shape = &CLEANUP_TRACE_BUFFER_SHAPE,
+    .buffer_ops = &CLEANUP_TRACE_B_OPS};
+static const cmeta_data_desc CLEANUP_TRACE_C_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.binding-plan.CleanupTrace.c",
+    .display_name = "CleanupTraceC",
+    .kind = CMETA_DATA_STRING,
+    .storage_type = &CLEANUP_TRACE_SLOT_TYPE,
+    .shape = &CLEANUP_TRACE_BUFFER_SHAPE,
+    .buffer_ops = &CLEANUP_TRACE_C_OPS};
+
+static const cmeta_type_identity CLEANUP_TRACE_REQUEST_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.binding-plan.CleanupTraceRequest");
+static const cmeta_type_desc CLEANUP_TRACE_REQUEST_TYPE = {
+    "CleanupTraceRequest", sizeof(CleanupTraceRequest),
+    _Alignof(CleanupTraceRequest), CMETA_T_OBJECT,
+    NULL, NULL, &CLEANUP_TRACE_REQUEST_ID};
+static const cmeta_field_desc CLEANUP_TRACE_REQUEST_LAYOUT_FIELDS[] = {
+    {"a", "CleanupTraceSlot", offsetof(CleanupTraceRequest, a),
+     sizeof(CleanupTraceSlot), _Alignof(CleanupTraceSlot),
+     &CLEANUP_TRACE_SLOT_TYPE, NULL},
+    {"b", "CleanupTraceSlot", offsetof(CleanupTraceRequest, b),
+     sizeof(CleanupTraceSlot), _Alignof(CleanupTraceSlot),
+     &CLEANUP_TRACE_SLOT_TYPE, NULL},
+    {"c", "CleanupTraceSlot", offsetof(CleanupTraceRequest, c),
+     sizeof(CleanupTraceSlot), _Alignof(CleanupTraceSlot),
+     &CLEANUP_TRACE_SLOT_TYPE, NULL}};
+static const cmeta_struct_desc CLEANUP_TRACE_REQUEST_LAYOUT = {
+    "CleanupTraceRequest", sizeof(CleanupTraceRequest),
+    _Alignof(CleanupTraceRequest),
+    CLEANUP_TRACE_REQUEST_LAYOUT_FIELDS, 3u};
+static const cmeta_data_field_desc CLEANUP_TRACE_REQUEST_FIELDS[] = {
+    {"test.binding-plan.CleanupTraceRequest.a", "a",
+     offsetof(CleanupTraceRequest, a), &CLEANUP_TRACE_A_DATA},
+    {"test.binding-plan.CleanupTraceRequest.b", "b",
+     offsetof(CleanupTraceRequest, b), &CLEANUP_TRACE_B_DATA},
+    {"test.binding-plan.CleanupTraceRequest.c", "c",
+     offsetof(CleanupTraceRequest, c), &CLEANUP_TRACE_C_DATA}};
+static const cmeta_data_struct_shape CLEANUP_TRACE_REQUEST_SHAPE = {
+    &CLEANUP_TRACE_REQUEST_LAYOUT, CLEANUP_TRACE_REQUEST_FIELDS, 3u};
+static const cmeta_data_desc CLEANUP_TRACE_REQUEST_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.binding-plan.CleanupTraceRequest.data",
+    .display_name = "CleanupTraceRequest",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &CLEANUP_TRACE_REQUEST_TYPE,
+    .shape = &CLEANUP_TRACE_REQUEST_SHAPE};
+
+static const DataBindNativeTypeBinding CLEANUP_TRACE_REQUEST_NATIVE = {
+    sizeof(DataBindNativeTypeBinding),
+    DATA_BIND_NATIVE_BINDING_ABI_VERSION,
+    "CleanupTraceRequest",
+    &CLEANUP_TRACE_REQUEST_DATA,
+    NULL, 0u, NULL, 0u};
+
+FunctionDeclAs(
+    value, void, &cmeta_type_void, cleanup_trace_run,
+    (CleanupTraceSlot, a, CMETA_PARAM_IN, &CLEANUP_TRACE_SLOT_TYPE),
+    (CleanupTraceSlot, b, CMETA_PARAM_IN, &CLEANUP_TRACE_SLOT_TYPE),
+    (CleanupTraceSlot, c, CMETA_PARAM_IN, &CLEANUP_TRACE_SLOT_TYPE));
+
+static DataBind *create_cleanup_trace_codec(void) {
+  static const char schema[] =
+      "message CleanupTraceRequest {"
+      " string a;"
+      " string b;"
+      " string c;"
+      "}"
+      "service CleanupTrace { Run: CleanupTraceRequest -> void; }";
+  DataBind *codec = NULL;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+
+  check_equal(data_bind_create_from_text(
+                  schema, sizeof(schema) - 1u, &codec, &error),
+              DATA_BIND_OK);
+  return codec;
+}
+
+static DataBindServiceNativeBinding cleanup_trace_native_binding(void) {
+  return (DataBindServiceNativeBinding)
+      DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+          FunctionMeta(cleanup_trace_run),
+          &CLEANUP_TRACE_REQUEST_NATIVE, NULL);
+}
+
+
+
 typedef struct StateRequest {
   uint32_t required_value;
   uint32_t optional_value;
@@ -2070,6 +2319,57 @@ spec("DataBind canonical Service BindingPlan") {
     data_bind_binding_plan_free(plan);
     data_bind_free(codec);
   }
+
+  it("clears only initialized direct params once in reverse order") {
+    DataBind *codec = create_cleanup_trace_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-cleanup-trace", &scratch, rpc_project);
+    DataBindServiceNativeBinding native = cleanup_trace_native_binding();
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    TestProvider state = {0};
+    DataBindBindingProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    CleanupTraceSlot a = {99u};
+    CleanupTraceSlot b = {99u};
+    CleanupTraceSlot c = {99u};
+    void *params[] = {&a, &b, &c};
+    const size_t param_bytes[] = {
+        sizeof(a), sizeof(b), sizeof(c)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+
+    check_true(cmeta_data_desc_valid(&CLEANUP_TRACE_A_DATA));
+    check_true(cmeta_data_desc_valid(&CLEANUP_TRACE_B_DATA));
+    check_true(cmeta_data_desc_valid(&CLEANUP_TRACE_C_DATA));
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "CleanupTrace", "Run", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 3u;
+    cleanup_trace_reset();
+
+    check_equal(data_bind_binding_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_ERR_RUNTIME);
+    check_equal(diagnostic.function_param, "c");
+    check_equal(CLEANUP_TRACE_COUNT, (size_t)3u);
+    check_equal(memcmp(CLEANUP_TRACE, "CBA", 3u), 0);
+    check_equal(a.state, 0u);
+    check_equal(b.state, 0u);
+    check_equal(c.state, 0u);
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
 
   it("rolls back native staging and presence after ingress decode failure") {
     DataBind *codec = create_codec();
