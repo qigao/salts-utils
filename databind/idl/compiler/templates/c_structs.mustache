@@ -451,8 +451,8 @@ TBE_GENERATED_API DataBindStatus {{name}}_from_json(DataBind *codec, {{name}}_t 
 TBE_GENERATED_API DataBindStatus {{name}}_from_yaml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_from_csv(DataBind *codec, {{name}}_t *object, const char *data, size_t len, size_t row, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_from_xml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin(const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin_into(const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
+TBE_GENERATED_API DataBindStatus {{name}}_to_bin(DataBind *codec, const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
+TBE_GENERATED_API DataBindStatus {{name}}_to_bin_into(DataBind *codec, const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
@@ -848,8 +848,8 @@ TBE_GENERATED_API DataBindStatus {{name}}_from_json(DataBind *codec, {{name}}_t 
 TBE_GENERATED_API DataBindStatus {{name}}_from_yaml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_from_csv(DataBind *codec, {{name}}_t *object, const char *data, size_t len, size_t row, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_from_xml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin(const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin_into(const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
+TBE_GENERATED_API DataBindStatus {{name}}_to_bin(DataBind *codec, const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
+TBE_GENERATED_API DataBindStatus {{name}}_to_bin_into(DataBind *codec, const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
@@ -1500,8 +1500,8 @@ TBE_GENERATED_API DataBindStatus {{name}}_from_json(DataBind *codec, {{name}}_t 
 TBE_GENERATED_API DataBindStatus {{name}}_from_yaml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_from_csv(DataBind *codec, {{name}}_t *object, const char *data, size_t len, size_t row, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_from_xml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin(const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin_into(const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
+TBE_GENERATED_API DataBindStatus {{name}}_to_bin(DataBind *codec, const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
+TBE_GENERATED_API DataBindStatus {{name}}_to_bin_into(DataBind *codec, const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
