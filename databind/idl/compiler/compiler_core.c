@@ -1390,14 +1390,13 @@ static int tbe_compiler_cmeta_classify_record(
   for (i = 0; i < fields->data.list.count; ++i) {
     Node *field = fields->data.list.items[i];
     const char *type = tbe_compiler_string_value(field, "type");
-    const char *kind = tbe_compiler_string_value(field, "typed_kind");
     const int is_map = tbe_compiler_has_child(field, "is_map");
     const int is_set = tbe_compiler_has_child(field, "is_set");
     const tbe_compiler_scalar_projection_t *scalar;
     Node *target;
     size_t target_index;
 
-    if (!type || !kind ||
+    if (!type ||
         ((context->runtime || context->lifecycle) &&
          (tbe_compiler_has_child(field, "is_optional") ||
           tbe_compiler_has_child(field, "is_nullable"))) ||
@@ -1660,14 +1659,18 @@ static int tbe_compiler_cmeta_classify_record(
       continue;
     }
 
+    /*
+     * Native capability admission is owned by the canonical requirement plus
+     * concrete CMeta provider refs. Historical typed-kind strings are output
+     * metadata for the retiring descriptor path and must not be semantic
+     * authority for CMeta/native classification.
+     */
     if ((context->runtime || context->lifecycle) &&
         tbe_compiler_string_value(field, "cmeta_native_requirement") != NULL &&
         strcmp(tbe_compiler_string_value(field, "cmeta_native_requirement"),
                "fixed_value") == 0 &&
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
-        tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
-        (strcmp(kind, "TBE_TYPED_UUID") == 0 ||
-         strcmp(kind, "TBE_TYPED_FIXED_BYTES") == 0)) {
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL) {
       if (native_budget) {
         if (native_nodes == SIZE_MAX) goto unsupported;
         ++native_nodes;
@@ -1681,9 +1684,7 @@ static int tbe_compiler_cmeta_classify_record(
         strcmp(tbe_compiler_string_value(field, "cmeta_native_requirement"),
                "owned_lifecycle") == 0 &&
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
-        tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
-        (strcmp(kind, "TBE_TYPED_STRING") == 0 ||
-         strcmp(kind, "TBE_TYPED_BYTES") == 0)) {
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL) {
       if (native_budget) {
         if (native_nodes == SIZE_MAX) goto unsupported;
         ++native_nodes;
