@@ -43,6 +43,7 @@ typedef struct {
     cxml_literal_t literal_type;
     char *start;
     int length;
+    bool owns_start;
     int line;
     int column;
     size_t byte_offset;
