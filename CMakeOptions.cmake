@@ -42,6 +42,10 @@ option(SALTS_UTILS_QUALIFY_BINDINGS
        "Internal focused language-binding qualification profile" OFF)
 mark_as_advanced(SALTS_UTILS_QUALIFY_BINDINGS)
 
+option(SALTS_UTILS_QUALIFY_XML
+       "Internal focused XML parser qualification profile" OFF)
+mark_as_advanced(SALTS_UTILS_QUALIFY_XML)
+
 if(SALTS_UTILS_QUALIFY_DATABIND AND
    (SALTS_UTILS_ENABLE_CAPTURE OR SALTS_UTILS_ENABLE_CFLOW_USB))
   message(FATAL_ERROR
@@ -52,6 +56,12 @@ if(SALTS_UTILS_QUALIFY_BINDINGS AND
    (SALTS_UTILS_ENABLE_CAPTURE OR SALTS_UTILS_ENABLE_CFLOW_USB))
   message(FATAL_ERROR
     "The focused bindings qualification profile excludes capture and USB")
+endif()
+
+if(SALTS_UTILS_QUALIFY_XML AND
+   (SALTS_UTILS_ENABLE_CAPTURE OR SALTS_UTILS_ENABLE_CFLOW_USB))
+  message(FATAL_ERROR
+    "The focused XML qualification profile excludes capture and USB")
 endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)

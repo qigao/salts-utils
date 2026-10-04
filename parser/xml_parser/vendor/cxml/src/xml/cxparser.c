@@ -230,10 +230,28 @@ _cxml_p__handle_error(_cxml_parser *cxparser, _cxml_token *token) {
     /*
      * Preserve the first useful token context before returning to the
      * structured parse boundary.
+     *
+     * Lexer error tokens own a temporary diagnostic buffer. They are local to
+     * _cxml_p__advance() and would become unreachable after longjmp, so copy
+     * their diagnostic into parser-owned storage and release them first.
      */
     cxparser->error.source = _cxml_p__token_location(cxparser, token);
     if (!cxparser->err_msg) {
-        cxparser->err_msg = cxml_token_type_as_str(token->type);
+        cxparser->err_msg = cxml_token_type_as_str(
+            token != NULL ? token->type : CXML_TOKEN_ERROR);
+    }
+    if (token != NULL && token->owns_start) {
+        (void)snprintf(
+            cxparser->error.message, sizeof(cxparser->error.message),
+            "Error occurred at line %d\nReason: %.*s\n%s\n",
+            token->line, token->length,
+            token->start, cxparser->err_msg);
+        FREE(token->start);
+        token->start = NULL;
+        token->length = 0;
+        token->owns_start = false;
+        cxparser->has_error = true;
+        longjmp(cxparser->error_jmp, 1);
     }
     if (token){
         parse__error(cxparser, "Error occurred at line %d\nReason: %.*s\n%s\n",

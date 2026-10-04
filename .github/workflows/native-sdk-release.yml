@@ -18,6 +18,7 @@ on:
       - "databind/schema/**"
       - "databind/runtime/**"
       - "capture/**"
+      - "parser/xml_parser/**"
   push:
     branches: [master]
     tags: ["v*"]
@@ -37,6 +38,7 @@ on:
       - "databind/schema/**"
       - "databind/runtime/**"
       - "capture/**"
+      - "parser/xml_parser/**"
 
 permissions:
   contents: read
@@ -76,6 +78,68 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "source_commit=$source_commit" >> "$GITHUB_OUTPUT"
+
+  xml-parser:
+    name: XML parser sanitizer contract
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Configure shared vcpkg binary cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Prepare focused native toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config
+          test -n "${VCPKG_ROOT:-}"
+          test -n "${VCPKG_BINARY_SOURCES:-}"
+
+      - name: Restore latest published Salts SDK
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
+
+      - name: Configure focused XML sanitizer build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build/xml-sanitize -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DSALTS_UTILS_QUALIFY_XML=ON \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DENABLE_SANITIZER_ADDRESS=ON \
+            -DENABLE_SANITIZER_UNDEFINED=ON
+          cmake --build build/xml-sanitize --target xml_parser_test xml_sax_parser_test --parallel 2
+
+      - name: Run XML parser ASan UBSan and leak contract
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build/xml-sanitize --no-tests=error -R 'xml_parser_test|xml_sax_parser_test' --output-on-failure
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
 
   binding-plan:
     name: DataBind BindingPlan contract
