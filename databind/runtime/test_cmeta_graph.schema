@@ -78,3 +78,40 @@ composite Depth30 { Depth29 child; }
 composite Depth31 { Depth30 child; }
 composite Depth32 { Depth31 child; }
 composite Depth33 { Depth32 child; }
+
+// Owned messages exercise local lifecycle past the graph-publication limit.
+message OwnedDepth0 { int32 value; string label; bytes payload; }
+message OwnedDepth1 { OwnedDepth0 child; }
+message OwnedDepth2 { OwnedDepth1 child; }
+message OwnedDepth3 { OwnedDepth2 child; }
+message OwnedDepth4 { OwnedDepth3 child; }
+message OwnedDepth5 { OwnedDepth4 child; }
+message OwnedDepth6 { OwnedDepth5 child; }
+message OwnedDepth7 { OwnedDepth6 child; }
+message OwnedDepth8 { OwnedDepth7 child; }
+message OwnedDepth9 { OwnedDepth8 child; }
+message OwnedDepth10 { OwnedDepth9 child; }
+message OwnedDepth11 { OwnedDepth10 child; }
+message OwnedDepth12 { OwnedDepth11 child; }
+message OwnedDepth13 { OwnedDepth12 child; }
+message OwnedDepth14 { OwnedDepth13 child; }
+message OwnedDepth15 { OwnedDepth14 child; }
+message OwnedDepth16 { OwnedDepth15 child; }
+message OwnedDepth17 { OwnedDepth16 child; }
+message OwnedDepth18 { OwnedDepth17 child; }
+message OwnedDepth19 { OwnedDepth18 child; }
+message OwnedDepth20 { OwnedDepth19 child; }
+message OwnedDepth21 { OwnedDepth20 child; }
+message OwnedDepth22 { OwnedDepth21 child; }
+message OwnedDepth23 { OwnedDepth22 child; }
+message OwnedDepth24 { OwnedDepth23 child; }
+message OwnedDepth25 { OwnedDepth24 child; }
+message OwnedDepth26 { OwnedDepth25 child; }
+message OwnedDepth27 { OwnedDepth26 child; }
+message OwnedDepth28 { OwnedDepth27 child; }
+message OwnedDepth29 { OwnedDepth28 child; }
+message OwnedDepth30 { OwnedDepth29 child; }
+message OwnedDepth31 { OwnedDepth30 child; }
+message OwnedDepth32 { OwnedDepth31 child; }
+message OwnedDepth33 { OwnedDepth32 child; }
+message OwnedDepth34 { optional OwnedDepth33 child; nullable string note; }

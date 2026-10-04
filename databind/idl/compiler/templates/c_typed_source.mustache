@@ -1864,15 +1864,18 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
         return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
     }
 
-{{#composites}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
+{{#composites}}{{#cmeta_member_lifecycle}}DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS({{name}})
+{{/cmeta_member_lifecycle}}{{^cmeta_member_lifecycle}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_UNAVAILABLE_CMETA_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
-{{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/composites}}{{#groups}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
+{{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_member_lifecycle}}{{/composites}}{{#groups}}{{#cmeta_member_lifecycle}}DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS({{name}})
+{{/cmeta_member_lifecycle}}{{^cmeta_member_lifecycle}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_UNAVAILABLE_CMETA_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
-{{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/groups}}{{#messages}}{{#cmeta_graph_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
+{{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_member_lifecycle}}{{/groups}}{{#messages}}{{#cmeta_member_lifecycle}}DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS({{name}})
+{{/cmeta_member_lifecycle}}{{^cmeta_member_lifecycle}}{{#cmeta_graph_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
 DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 {{#cmeta_native_xml_flat_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 {{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_XML({{name}})
@@ -1908,7 +1911,7 @@ DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_graph_supported}}
-{{/messages}}
+{{/cmeta_member_lifecycle}}{{/messages}}
 
 static DataBindStatus {{schema.schema_name}}_schema_codec_error(DataBindError *error,
                                                                 DataBindStatus status,

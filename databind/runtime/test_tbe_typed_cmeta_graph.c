@@ -217,6 +217,65 @@ static DataBindStatus parse_sample_count(
 }
 
 spec("generated native CMeta graph") {
+  it("initializes and clears a scalar record beyond the published graph limit") {
+    Depth33_t value;
+    Depth33_t zero;
+    memset(&zero, 0, sizeof(zero));
+    memset(&value, 0xa5, sizeof(value));
+    Depth33_init(&value);
+    check_equal(memcmp(&value, &zero, sizeof(value)), 0);
+    memset(&value, 0x5a, sizeof(value));
+    Depth33_clear(&value);
+    check_equal(memcmp(&value, &zero, sizeof(value)), 0);
+    Depth33_clear(&value);
+  }
+
+  it("releases deeply nested owned fields and local state overlays") {
+    OwnedDepth34_t value;
+    const cmeta_data_desc *data = &cmeta_data_int32;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    OwnedDepth0_t *leaf = &value.child.child.child.child.child.child.child.child
+        .child.child.child.child.child.child.child.child.child.child.child.child
+        .child.child.child.child.child.child.child.child.child.child.child.child
+        .child.child;
+    memset(&value, 0xa5, sizeof(value));
+    check_equal(OwnedDepth34_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
+    check(data == &cmeta_data_int32);
+    OwnedDepth34_init(&value);
+    check_null(leaf->label);
+    check_null(value.note);
+    check_equal(leaf->value, 0);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+    if (leaf->label != NULL || value.note != NULL) return;
+    check_equal(stl_byte_buffer_size(&leaf->payload), (size_t)0u);
+
+    leaf->label = tstr_dup("deep owned string");
+    value.note = tstr_dup("owned even when marked null");
+    check_not_null(leaf->label);
+    check_not_null(value.note);
+    check_equal(stl_byte_buffer_resize(&leaf->payload, 16u), STL_OK);
+    leaf->value = 7;
+    value._nulls[0] = 1u;
+    /* The absent/null overlays do not relinquish native field ownership. */
+    OwnedDepth34_clear(&value);
+    check_null(leaf->label);
+    check_null(value.note);
+    check_equal(stl_byte_buffer_size(&leaf->payload), (size_t)0u);
+    check_equal(leaf->value, 0);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+    OwnedDepth34_clear(&value);
+
+    OwnedDepth34_init(&value);
+    leaf->label = tstr_dup("reuse after clear");
+    check_not_null(leaf->label);
+    check_equal(stl_byte_buffer_resize(&leaf->payload, 8u), STL_OK);
+    OwnedDepth34_clear(&value);
+    OwnedDepth34_init(NULL);
+    OwnedDepth34_clear(NULL);
+  }
+
   it("publishes structural CMeta and keeps wire facts in schema overlay") {
     const cmeta_data_desc *data = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
