@@ -1,4 +1,5 @@
 #include "data_bind_xml_provider.h"
+#include "data_bind_xml_writer.h"
 
 #include <cserde/reader.h>
 #include <cserde/writer.h>
