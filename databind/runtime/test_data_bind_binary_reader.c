@@ -6,23 +6,23 @@
 #include <stdint.h>
 #include <string.h>
 
-static const DataBindBinaryReaderFieldPlan BINARY_FIELDS[] = {
-    {sizeof(DataBindBinaryReaderFieldPlan), "flag",
+static const DataBindBinaryFieldPlan BINARY_FIELDS[] = {
+    {sizeof(DataBindBinaryFieldPlan), "flag",
      CSERDE_BOOL, 8u, 2u, 1u, 0u, 0u, 0u},
-    {sizeof(DataBindBinaryReaderFieldPlan), "delta",
+    {sizeof(DataBindBinaryFieldPlan), "delta",
      CSERDE_SINT, 16u, 3u, 2u, 0u, 0u, 0u},
-    {sizeof(DataBindBinaryReaderFieldPlan), "count",
+    {sizeof(DataBindBinaryFieldPlan), "count",
      CSERDE_UINT, 32u, 5u, 4u, 0u, 0u, 0u},
-    {sizeof(DataBindBinaryReaderFieldPlan), "ratio",
+    {sizeof(DataBindBinaryFieldPlan), "ratio",
      CSERDE_FLOAT, 32u, 9u, 4u, 0u, 0u, 0u},
-    {sizeof(DataBindBinaryReaderFieldPlan), "maybe",
+    {sizeof(DataBindBinaryFieldPlan), "maybe",
      CSERDE_UINT, 16u, 13u, 2u, 0u, 0u,
-     DATA_BIND_BINARY_READER_FIELD_OPTIONAL |
-         DATA_BIND_BINARY_READER_FIELD_NULLABLE},
+     DATA_BIND_BINARY_FIELD_OPTIONAL |
+         DATA_BIND_BINARY_FIELD_NULLABLE},
 };
 
-static DataBindBinaryReaderPlan binary_plan(int big_endian) {
-  DataBindBinaryReaderPlan plan = DATA_BIND_BINARY_READER_PLAN_INIT;
+static DataBindBinaryLayoutPlan binary_plan(int big_endian) {
+  DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
   plan.type_name = "BinaryScalars";
   plan.wire_big_endian = big_endian;
   plan.fixed_block_size = 15u;
@@ -112,22 +112,22 @@ static void expect_required_prefix(
   check_equal(cserde_reader_next(reader, &token), CSERDE_DONE);
 }
 
-static const DataBindBinaryReaderFieldPlan VAR_DATA_FIELDS[] = {
-    {sizeof(DataBindBinaryReaderFieldPlan), "sequence",
+static const DataBindBinaryFieldPlan VAR_DATA_FIELDS[] = {
+    {sizeof(DataBindBinaryFieldPlan), "sequence",
      CSERDE_UINT, 32u, 2u, 4u, 0u, 0u, 0u,
-     DATA_BIND_BINARY_READER_REP_FIXED, 0u},
-    {sizeof(DataBindBinaryReaderFieldPlan), "source",
+     DATA_BIND_BINARY_REP_FIXED, 0u},
+    {sizeof(DataBindBinaryFieldPlan), "source",
      CSERDE_STRING, 0u, 0u, 0u, 0u, 0u, 0u,
-     DATA_BIND_BINARY_READER_REP_VAR_DATA, 4u},
-    {sizeof(DataBindBinaryReaderFieldPlan), "payload",
+     DATA_BIND_BINARY_REP_VAR_DATA, 4u},
+    {sizeof(DataBindBinaryFieldPlan), "payload",
      CSERDE_BYTES, 0u, 0u, 0u, 0u, 0u,
-     DATA_BIND_BINARY_READER_FIELD_OPTIONAL |
-         DATA_BIND_BINARY_READER_FIELD_NULLABLE,
-     DATA_BIND_BINARY_READER_REP_VAR_DATA, 4u},
+     DATA_BIND_BINARY_FIELD_OPTIONAL |
+         DATA_BIND_BINARY_FIELD_NULLABLE,
+     DATA_BIND_BINARY_REP_VAR_DATA, 4u},
 };
 
-static DataBindBinaryReaderPlan var_data_plan(int big_endian) {
-  DataBindBinaryReaderPlan plan = DATA_BIND_BINARY_READER_PLAN_INIT;
+static DataBindBinaryLayoutPlan var_data_plan(int big_endian) {
+  DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
   plan.type_name = "BinaryVarData";
   plan.wire_big_endian = big_endian;
   plan.fixed_block_size = 6u;
@@ -213,7 +213,7 @@ static void expect_var_data_message(
 
 spec("DataBind flat Binary canonical reader") {
   it("emits canonical little-endian fixed scalar tokens") {
-    DataBindBinaryReaderPlan plan = binary_plan(0);
+    DataBindBinaryLayoutPlan plan = binary_plan(0);
     unsigned char wire[15];
     cserde_reader *reader = NULL;
     void *owner = NULL;
@@ -221,7 +221,7 @@ spec("DataBind flat Binary canonical reader") {
 
     write_payload(wire, 0, 1, 0);
     check_equal(
-        data_bind_binary_reader_plan_validate(&plan, &error),
+        data_bind_binary_layout_plan_validate(&plan, &error),
         DATA_BIND_OK);
     check_equal(
         data_bind_binary_reader_open(
@@ -235,7 +235,7 @@ spec("DataBind flat Binary canonical reader") {
   }
 
   it("preserves the same scalar semantics in big-endian wire order") {
-    DataBindBinaryReaderPlan plan = binary_plan(1);
+    DataBindBinaryLayoutPlan plan = binary_plan(1);
     unsigned char wire[15];
     cserde_reader *reader = NULL;
     void *owner = NULL;
@@ -252,7 +252,7 @@ spec("DataBind flat Binary canonical reader") {
   }
 
   it("omits ABSENT optional fields and distinguishes explicit NULL") {
-    DataBindBinaryReaderPlan plan = binary_plan(0);
+    DataBindBinaryLayoutPlan plan = binary_plan(0);
     unsigned char wire[15];
     cserde_reader *reader = NULL;
     void *owner = NULL;
@@ -280,7 +280,7 @@ spec("DataBind flat Binary canonical reader") {
   }
 
   it("rejects malformed state truncation and trailing bytes before publication") {
-    DataBindBinaryReaderPlan plan = binary_plan(0);
+    DataBindBinaryLayoutPlan plan = binary_plan(0);
     unsigned char wire[16];
     cserde_reader *reader = NULL;
     void *owner = NULL;
@@ -321,7 +321,7 @@ spec("DataBind flat Binary canonical reader") {
     int big_endian;
 
     for (big_endian = 0; big_endian <= 1; ++big_endian) {
-      DataBindBinaryReaderPlan plan = var_data_plan(big_endian);
+      DataBindBinaryLayoutPlan plan = var_data_plan(big_endian);
       unsigned char wire[64];
       size_t wire_size = write_var_data_payload(
           wire, sizeof(wire), big_endian, 1, 0,
@@ -332,7 +332,7 @@ spec("DataBind flat Binary canonical reader") {
 
       check_greater(wire_size, plan.fixed_block_size);
       check_equal(
-          data_bind_binary_reader_plan_validate(&plan, &error),
+          data_bind_binary_layout_plan_validate(&plan, &error),
           DATA_BIND_OK);
       check_equal(
           data_bind_binary_reader_open(
@@ -349,7 +349,7 @@ spec("DataBind flat Binary canonical reader") {
   }
 
   it("preserves ABSENT NULL and empty VALUE as distinct VAR_DATA states") {
-    DataBindBinaryReaderPlan plan = var_data_plan(0);
+    DataBindBinaryLayoutPlan plan = var_data_plan(0);
     unsigned char wire[64];
     cserde_reader *reader = NULL;
     void *owner = NULL;
@@ -397,7 +397,7 @@ spec("DataBind flat Binary canonical reader") {
   }
 
   it("rejects malformed VAR_DATA tails before publishing a reader") {
-    DataBindBinaryReaderPlan plan = var_data_plan(0);
+    DataBindBinaryLayoutPlan plan = var_data_plan(0);
     unsigned char wire[64];
     static const unsigned char payload[] = {1u, 2u};
     cserde_reader *reader = NULL;
@@ -487,8 +487,8 @@ spec("DataBind flat Binary canonical reader") {
   }
 
   it("continues to admit released v1 fixed-scalar field records") {
-    DataBindBinaryReaderPlan plan = binary_plan(0);
-    DataBindBinaryReaderFieldPlan fields[5];
+    DataBindBinaryLayoutPlan plan = binary_plan(0);
+    DataBindBinaryFieldPlan fields[5];
     unsigned char wire[15];
     cserde_reader *reader = NULL;
     void *owner = NULL;
@@ -497,12 +497,12 @@ spec("DataBind flat Binary canonical reader") {
 
     memcpy(fields, BINARY_FIELDS, sizeof(fields));
     for (i = 0u; i < sizeof(fields) / sizeof(fields[0]); ++i)
-      fields[i].size = DATA_BIND_BINARY_READER_FIELD_PLAN_V1_SIZE;
+      fields[i].size = DATA_BIND_BINARY_FIELD_PLAN_V1_SIZE;
     plan.fields = fields;
 
     write_payload(wire, 0, 1, 0);
     check_equal(
-        data_bind_binary_reader_plan_validate(&plan, &error),
+        data_bind_binary_layout_plan_validate(&plan, &error),
         DATA_BIND_OK);
     check_equal(
         data_bind_binary_reader_open(
@@ -514,8 +514,8 @@ spec("DataBind flat Binary canonical reader") {
   }
 
   it("fails closed on unsupported or overlapping runtime plans") {
-    DataBindBinaryReaderPlan plan = binary_plan(0);
-    DataBindBinaryReaderFieldPlan fields[5];
+    DataBindBinaryLayoutPlan plan = binary_plan(0);
+    DataBindBinaryFieldPlan fields[5];
     DataBindError error = DATA_BIND_ERROR_INIT;
 
     memcpy(fields, BINARY_FIELDS, sizeof(fields));
@@ -523,14 +523,14 @@ spec("DataBind flat Binary canonical reader") {
 
     fields[0].token_kind = CSERDE_BYTES;
     check_equal(
-        data_bind_binary_reader_plan_validate(&plan, &error),
+        data_bind_binary_layout_plan_validate(&plan, &error),
         DATA_BIND_ERR_SCHEMA);
 
     fields[0] = BINARY_FIELDS[0];
     fields[1].wire_offset = fields[0].wire_offset;
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(
-        data_bind_binary_reader_plan_validate(&plan, &error),
+        data_bind_binary_layout_plan_validate(&plan, &error),
         DATA_BIND_ERR_SCHEMA);
     check_equal(error.path, "delta");
   }

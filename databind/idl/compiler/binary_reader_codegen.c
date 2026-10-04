@@ -125,9 +125,9 @@ static const char *binary_codegen_representation(
     const databind_binary_field_layout *field) {
   if (field == NULL) return NULL;
   if (field->kind == DATABIND_BINARY_FIELD_FIXED)
-    return "DATA_BIND_BINARY_READER_REP_FIXED";
+    return "DATA_BIND_BINARY_REP_FIXED";
   if (field->kind == DATABIND_BINARY_FIELD_VAR_DATA)
-    return "DATA_BIND_BINARY_READER_REP_VAR_DATA";
+    return "DATA_BIND_BINARY_REP_VAR_DATA";
   return NULL;
 }
 
@@ -181,7 +181,7 @@ int databind_compiler_binary_reader_emit(
   if (layout.field_count != 0u) {
     if (fprintf(
             file,
-            "static const DataBindBinaryReaderFieldPlan "
+            "static const DataBindBinaryFieldPlan "
             "%s_fields[] = {\n",
             symbol) < 0)
       goto cleanup;
@@ -193,7 +193,7 @@ int databind_compiler_binary_reader_emit(
       unsigned flags = binary_codegen_flags(field);
 
       if (token == NULL || representation == NULL ||
-          fputs("  {sizeof(DataBindBinaryReaderFieldPlan), ", file) == EOF ||
+          fputs("  {sizeof(DataBindBinaryFieldPlan), ", file) == EOF ||
           binary_codegen_c_string(file, field->field_id) != 0 ||
           fprintf(
               file,
@@ -209,7 +209,7 @@ int databind_compiler_binary_reader_emit(
         int wrote = 0;
         if ((flags & 1u) != 0u) {
           if (fputs(
-                  "DATA_BIND_BINARY_READER_FIELD_OPTIONAL",
+                  "DATA_BIND_BINARY_FIELD_OPTIONAL",
                   file) == EOF)
             goto cleanup;
           wrote = 1;
@@ -217,7 +217,7 @@ int databind_compiler_binary_reader_emit(
         if ((flags & 2u) != 0u) {
           if (wrote && fputs(" | ", file) == EOF) goto cleanup;
           if (fputs(
-                  "DATA_BIND_BINARY_READER_FIELD_NULLABLE",
+                  "DATA_BIND_BINARY_FIELD_NULLABLE",
                   file) == EOF)
             goto cleanup;
         }
@@ -236,9 +236,9 @@ int databind_compiler_binary_reader_emit(
 
   if (fprintf(
           file,
-          "static const DataBindBinaryReaderPlan %s_plan = {\n"
-          "  sizeof(DataBindBinaryReaderPlan), "
-          "DATA_BIND_BINARY_READER_PLAN_ABI_VERSION,\n"
+          "static const DataBindBinaryLayoutPlan %s_plan = {\n"
+          "  sizeof(DataBindBinaryLayoutPlan), "
+          "DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION,\n"
           "  ",
           symbol) < 0 ||
       binary_codegen_c_string(file, type_name) != 0 ||
@@ -277,8 +277,8 @@ int databind_compiler_binary_reader_emit(
           "static const DataBindFormatProvider %s_provider =\n"
           "    DATA_BIND_FORMAT_PROVIDER_INIT(\n"
           "        DATA_BIND_FORMAT_BINARY, %s_open, %s_close);\n\n"
-          "static inline const DataBindBinaryReaderPlan *\n"
-          "%s_databind_binary_reader_plan(void) {\n"
+          "static inline const DataBindBinaryLayoutPlan *\n"
+          "%s_databind_binary_layout_plan(void) {\n"
           "  return &%s_plan;\n"
           "}\n"
           "static inline const DataBindFormatProvider *\n"

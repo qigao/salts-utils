@@ -16,11 +16,11 @@ typedef enum DataBindBinaryReaderStage {
 
 typedef struct DataBindBinaryReaderOwner {
   cserde_reader reader;
-  const DataBindBinaryReaderPlan *plan;
+  const DataBindBinaryLayoutPlan *plan;
   const unsigned char *payload;
   size_t payload_bytes;
   size_t field_index;
-  const DataBindBinaryReaderFieldPlan *current;
+  const DataBindBinaryFieldPlan *current;
   DataBindBinaryReaderStage stage;
 } DataBindBinaryReaderOwner;
 
@@ -96,25 +96,25 @@ static int binary_token_width_valid(
 }
 
 static size_t binary_field_representation(
-    const DataBindBinaryReaderFieldPlan *field) {
+    const DataBindBinaryFieldPlan *field) {
   if (field == NULL ||
       field->size <
-          offsetof(DataBindBinaryReaderFieldPlan, representation) +
+          offsetof(DataBindBinaryFieldPlan, representation) +
               sizeof(field->representation))
-    return DATA_BIND_BINARY_READER_REP_FIXED;
+    return DATA_BIND_BINARY_REP_FIXED;
   return field->representation;
 }
 
 static int binary_field_has_var_data_tail(
-    const DataBindBinaryReaderFieldPlan *field) {
+    const DataBindBinaryFieldPlan *field) {
   return field != NULL &&
          field->size >=
-             offsetof(DataBindBinaryReaderFieldPlan, tail_prefix_bytes) +
+             offsetof(DataBindBinaryFieldPlan, tail_prefix_bytes) +
                  sizeof(field->tail_prefix_bytes);
 }
 
-DataBindStatus data_bind_binary_reader_plan_validate(
-    const DataBindBinaryReaderPlan *plan,
+DataBindStatus data_bind_binary_layout_plan_validate(
+    const DataBindBinaryLayoutPlan *plan,
     DataBindError *error) {
   size_t state_end;
   size_t i;
@@ -123,7 +123,7 @@ DataBindStatus data_bind_binary_reader_plan_validate(
   binary_error_clear(error);
   if (plan == NULL ||
       plan->size < sizeof(*plan) ||
-      plan->abi_version != DATA_BIND_BINARY_READER_PLAN_ABI_VERSION ||
+      plan->abi_version != DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION ||
       plan->type_name == NULL || plan->type_name[0] == '\0' ||
       plan->fixed_block_size == 0u ||
       (plan->field_count != 0u && plan->fields == NULL))
@@ -141,20 +141,20 @@ DataBindStatus data_bind_binary_reader_plan_validate(
         "Binary reader state exceeds the fixed block");
 
   for (i = 0u; i < plan->field_count; ++i) {
-    const DataBindBinaryReaderFieldPlan *field = &plan->fields[i];
+    const DataBindBinaryFieldPlan *field = &plan->fields[i];
     size_t end;
     size_t j;
 
     const size_t representation = binary_field_representation(field);
 
-    if (field->size < DATA_BIND_BINARY_READER_FIELD_PLAN_V1_SIZE ||
+    if (field->size < DATA_BIND_BINARY_FIELD_PLAN_V1_SIZE ||
         field->field_name == NULL || field->field_name[0] == '\0')
       return binary_fail(
           error, DATA_BIND_ERR_SCHEMA,
           field->field_name != NULL ? field->field_name : plan->type_name,
           "Binary reader field metadata is incomplete");
 
-    if (representation == DATA_BIND_BINARY_READER_REP_FIXED) {
+    if (representation == DATA_BIND_BINARY_REP_FIXED) {
       if (saw_var_data ||
           !binary_token_width_valid(field->token_kind, field->scalar_bits) ||
           field->wire_extent != (size_t)(field->scalar_bits / 8u) ||
@@ -165,7 +165,7 @@ DataBindStatus data_bind_binary_reader_plan_validate(
         return binary_fail(
             error, DATA_BIND_ERR_SCHEMA, field->field_name,
             "Binary scalar field layout is invalid");
-    } else if (representation == DATA_BIND_BINARY_READER_REP_VAR_DATA) {
+    } else if (representation == DATA_BIND_BINARY_REP_VAR_DATA) {
       saw_var_data = 1;
       if (!binary_field_has_var_data_tail(field) ||
           (field->token_kind != CSERDE_STRING &&
@@ -182,14 +182,14 @@ DataBindStatus data_bind_binary_reader_plan_validate(
           "Binary reader field representation is unsupported");
     }
 
-    if ((field->flags & DATA_BIND_BINARY_READER_FIELD_OPTIONAL) != 0u) {
+    if ((field->flags & DATA_BIND_BINARY_FIELD_OPTIONAL) != 0u) {
       if (plan->presence_size == 0u ||
           field->optional_bit / 8u >= plan->presence_size)
         return binary_fail(
             error, DATA_BIND_ERR_SCHEMA, field->field_name,
             "Binary optional state bit is outside the presence bitmap");
     }
-    if ((field->flags & DATA_BIND_BINARY_READER_FIELD_NULLABLE) != 0u) {
+    if ((field->flags & DATA_BIND_BINARY_FIELD_NULLABLE) != 0u) {
       if (plan->null_size == 0u ||
           field->nullable_bit / 8u >= plan->null_size)
         return binary_fail(
@@ -197,18 +197,18 @@ DataBindStatus data_bind_binary_reader_plan_validate(
             "Binary nullable state bit is outside the null bitmap");
     }
     if ((field->flags &
-         ~(DATA_BIND_BINARY_READER_FIELD_OPTIONAL |
-           DATA_BIND_BINARY_READER_FIELD_NULLABLE)) != 0u)
+         ~(DATA_BIND_BINARY_FIELD_OPTIONAL |
+           DATA_BIND_BINARY_FIELD_NULLABLE)) != 0u)
       return binary_fail(
           error, DATA_BIND_ERR_SCHEMA, field->field_name,
           "Binary reader field contains unknown state flags");
 
     for (j = 0u; j < i; ++j) {
-      const DataBindBinaryReaderFieldPlan *prior = &plan->fields[j];
+      const DataBindBinaryFieldPlan *prior = &plan->fields[j];
       if (strcmp(prior->field_name, field->field_name) == 0 ||
-          (representation == DATA_BIND_BINARY_READER_REP_FIXED &&
+          (representation == DATA_BIND_BINARY_REP_FIXED &&
            binary_field_representation(prior) ==
-               DATA_BIND_BINARY_READER_REP_FIXED &&
+               DATA_BIND_BINARY_REP_FIXED &&
            binary_ranges_overlap(
                prior->wire_offset, prior->wire_extent,
                field->wire_offset, field->wire_extent)))
@@ -230,16 +230,16 @@ static int binary_state_bit(
 }
 
 static DataBindStatus binary_wire_state_validate(
-    const DataBindBinaryReaderPlan *plan,
+    const DataBindBinaryLayoutPlan *plan,
     const unsigned char *payload,
     DataBindError *error) {
   size_t i;
   for (i = 0u; i < plan->field_count; ++i) {
-    const DataBindBinaryReaderFieldPlan *field = &plan->fields[i];
+    const DataBindBinaryFieldPlan *field = &plan->fields[i];
     const int optional =
-        (field->flags & DATA_BIND_BINARY_READER_FIELD_OPTIONAL) != 0u;
+        (field->flags & DATA_BIND_BINARY_FIELD_OPTIONAL) != 0u;
     const int nullable =
-        (field->flags & DATA_BIND_BINARY_READER_FIELD_NULLABLE) != 0u;
+        (field->flags & DATA_BIND_BINARY_FIELD_NULLABLE) != 0u;
     const int present =
         !optional ||
         binary_state_bit(
@@ -258,7 +258,7 @@ static DataBindStatus binary_wire_state_validate(
 }
 
 static DataBindStatus binary_tail_preflight(
-    const DataBindBinaryReaderPlan *plan,
+    const DataBindBinaryLayoutPlan *plan,
     const unsigned char *payload,
     size_t payload_bytes,
     DataBindError *error) {
@@ -274,13 +274,13 @@ static DataBindStatus binary_tail_preflight(
 
   cursor = plan->fixed_block_size;
   for (i = 0u; i < plan->field_count; ++i) {
-    const DataBindBinaryReaderFieldPlan *field = &plan->fields[i];
+    const DataBindBinaryFieldPlan *field = &plan->fields[i];
     uint32_t length;
     size_t remaining;
     const int optional =
-        (field->flags & DATA_BIND_BINARY_READER_FIELD_OPTIONAL) != 0u;
+        (field->flags & DATA_BIND_BINARY_FIELD_OPTIONAL) != 0u;
     const int nullable =
-        (field->flags & DATA_BIND_BINARY_READER_FIELD_NULLABLE) != 0u;
+        (field->flags & DATA_BIND_BINARY_FIELD_NULLABLE) != 0u;
     const int present =
         !optional ||
         binary_state_bit(
@@ -291,7 +291,7 @@ static DataBindStatus binary_tail_preflight(
             payload, plan->null_offset, field->nullable_bit);
 
     if (binary_field_representation(field) !=
-        DATA_BIND_BINARY_READER_REP_VAR_DATA)
+        DATA_BIND_BINARY_REP_VAR_DATA)
       continue;
 
     if (cursor > payload_bytes ||
@@ -332,8 +332,8 @@ static DataBindStatus binary_tail_preflight(
 
 static int binary_field_present(
     const DataBindBinaryReaderOwner *owner,
-    const DataBindBinaryReaderFieldPlan *field) {
-  if ((field->flags & DATA_BIND_BINARY_READER_FIELD_OPTIONAL) == 0u)
+    const DataBindBinaryFieldPlan *field) {
+  if ((field->flags & DATA_BIND_BINARY_FIELD_OPTIONAL) == 0u)
     return 1;
   return binary_state_bit(
       owner->payload, owner->plan->presence_offset, field->optional_bit);
@@ -341,8 +341,8 @@ static int binary_field_present(
 
 static int binary_field_null(
     const DataBindBinaryReaderOwner *owner,
-    const DataBindBinaryReaderFieldPlan *field) {
-  if ((field->flags & DATA_BIND_BINARY_READER_FIELD_NULLABLE) == 0u)
+    const DataBindBinaryFieldPlan *field) {
+  if ((field->flags & DATA_BIND_BINARY_FIELD_NULLABLE) == 0u)
     return 0;
   return binary_state_bit(
       owner->payload, owner->plan->null_offset, field->nullable_bit);
@@ -364,11 +364,11 @@ static cserde_status binary_var_data_view_at(
   cursor = owner->plan->fixed_block_size;
 
   for (i = 0u; i < owner->plan->field_count; ++i) {
-    const DataBindBinaryReaderFieldPlan *field = &owner->plan->fields[i];
+    const DataBindBinaryFieldPlan *field = &owner->plan->fields[i];
     uint32_t length;
 
     if (binary_field_representation(field) !=
-        DATA_BIND_BINARY_READER_REP_VAR_DATA)
+        DATA_BIND_BINARY_REP_VAR_DATA)
       continue;
     if (cursor > owner->payload_bytes ||
         owner->payload_bytes - cursor < sizeof(uint32_t))
@@ -395,7 +395,7 @@ static cserde_status binary_var_data_view_at(
 static cserde_status binary_var_data_token(
     const DataBindBinaryReaderOwner *owner,
     size_t field_index,
-    const DataBindBinaryReaderFieldPlan *field,
+    const DataBindBinaryFieldPlan *field,
     cserde_token *out) {
   DataBindBinaryVarData value = {0};
 
@@ -415,7 +415,7 @@ static cserde_status binary_var_data_token(
 }
 
 static cserde_token binary_field_key(
-    const DataBindBinaryReaderFieldPlan *field) {
+    const DataBindBinaryFieldPlan *field) {
   cserde_token token = {0};
   token.kind = CSERDE_STRING;
   token.value.slice.data =
@@ -427,7 +427,7 @@ static cserde_token binary_field_key(
 
 static cserde_status binary_scalar_token(
     const DataBindBinaryReaderOwner *owner,
-    const DataBindBinaryReaderFieldPlan *field,
+    const DataBindBinaryFieldPlan *field,
     cserde_token *out) {
   const unsigned char *source =
       owner->payload + field->wire_offset;
@@ -556,7 +556,7 @@ static cserde_status binary_reader_next(
       } else {
         cserde_status status;
         if (binary_field_representation(owner->current) ==
-            DATA_BIND_BINARY_READER_REP_VAR_DATA)
+            DATA_BIND_BINARY_REP_VAR_DATA)
           status = binary_var_data_token(
               owner, owner->field_index, owner->current, out);
         else
@@ -589,7 +589,7 @@ static const cserde_reader_ops BINARY_READER_OPS = {
     binary_reader_next};
 
 DataBindStatus data_bind_binary_reader_open(
-    const DataBindBinaryReaderPlan *plan,
+    const DataBindBinaryLayoutPlan *plan,
     const void *payload,
     size_t payload_bytes,
     size_t max_depth,
@@ -610,7 +610,7 @@ DataBindStatus data_bind_binary_reader_open(
         error, DATA_BIND_ERR_INVALID_ARG, NULL,
         "Invalid Binary reader open arguments");
 
-  status = data_bind_binary_reader_plan_validate(plan, error);
+  status = data_bind_binary_layout_plan_validate(plan, error);
   if (status != DATA_BIND_OK) return status;
 
   if (payload_bytes < plan->fixed_block_size)

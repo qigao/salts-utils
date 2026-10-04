@@ -127,17 +127,17 @@ static DataBindNativeOptions socket_native_options(
   return options;
 }
 
-static const DataBindBinaryReaderFieldPlan SOCKET_BINARY_FIELDS[] = {
-    {sizeof(DataBindBinaryReaderFieldPlan), "sequence",
+static const DataBindBinaryFieldPlan SOCKET_BINARY_FIELDS[] = {
+    {sizeof(DataBindBinaryFieldPlan), "sequence",
      CSERDE_UINT, 32u, 1u, 4u, 0u, 0u, 0u},
-    {sizeof(DataBindBinaryReaderFieldPlan), "sample",
+    {sizeof(DataBindBinaryFieldPlan), "sample",
      CSERDE_UINT, 32u, 5u, 4u, 0u, 0u,
-     DATA_BIND_BINARY_READER_FIELD_OPTIONAL},
+     DATA_BIND_BINARY_FIELD_OPTIONAL},
 };
 
-static const DataBindBinaryReaderPlan SOCKET_BINARY_PLAN = {
-    sizeof(DataBindBinaryReaderPlan),
-    DATA_BIND_BINARY_READER_PLAN_ABI_VERSION,
+static const DataBindBinaryLayoutPlan SOCKET_BINARY_PLAN = {
+    sizeof(DataBindBinaryLayoutPlan),
+    DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION,
     "Event",
     0,
     9u,

@@ -28,8 +28,8 @@ static DataBind *binary_exec_codec(void) {
   return codec;
 }
 
-static const DataBindBinaryReaderFieldPlan *binary_field(
-    const DataBindBinaryReaderPlan *plan, const char *name) {
+static const DataBindBinaryFieldPlan *binary_field(
+    const DataBindBinaryLayoutPlan *plan, const char *name) {
   size_t i;
   if (plan == NULL || name == NULL) return NULL;
   for (i = 0u; i < plan->field_count; ++i)
@@ -84,16 +84,16 @@ static void set_state(
 }
 
 static void make_wire(
-    const DataBindBinaryReaderPlan *plan,
+    const DataBindBinaryLayoutPlan *plan,
     unsigned char *wire,
     size_t capacity,
     uint32_t sequence,
     int sample_present,
     int sample_null,
     uint32_t sample) {
-  const DataBindBinaryReaderFieldPlan *sequence_field =
+  const DataBindBinaryFieldPlan *sequence_field =
       binary_field(plan, "sequence");
-  const DataBindBinaryReaderFieldPlan *sample_field =
+  const DataBindBinaryFieldPlan *sample_field =
       binary_field(plan, "sample");
 
   check_not_null(sequence_field);
@@ -138,8 +138,8 @@ static int state_is_set(
 
 spec("generated Binary provider transport composition") {
   it("shares one provider across Socket and FlowMQ and executes Socket payloads") {
-    const DataBindBinaryReaderPlan *reader_plan =
-        databind_binary_exec_binary_Event_databind_binary_reader_plan();
+    const DataBindBinaryLayoutPlan *reader_plan =
+        databind_binary_exec_binary_Event_databind_binary_layout_plan();
     const DataBindFormatProvider *provider =
         databind_binary_exec_binary_Event_databind_binary_provider();
     DataBindNativeTypeBinding binding = {0};

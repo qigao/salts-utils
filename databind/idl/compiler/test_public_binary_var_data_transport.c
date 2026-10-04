@@ -8,8 +8,8 @@
 #include <stdint.h>
 #include <string.h>
 
-static const DataBindBinaryReaderFieldPlan *var_data_field(
-    const DataBindBinaryReaderPlan *plan, const char *name) {
+static const DataBindBinaryFieldPlan *var_data_field(
+    const DataBindBinaryLayoutPlan *plan, const char *name) {
   size_t i;
   if (plan == NULL || name == NULL) return NULL;
   for (i = 0u; i < plan->field_count; ++i)
@@ -46,13 +46,13 @@ static void var_data_set_state(
 }
 
 static size_t var_data_make_wire(
-    const DataBindBinaryReaderPlan *plan,
+    const DataBindBinaryLayoutPlan *plan,
     unsigned char *wire, size_t capacity) {
   static const unsigned char source[] = {'c', 'a', 'm'};
   static const unsigned char payload[] = {0x00u, 0x7fu, 0xffu};
-  const DataBindBinaryReaderFieldPlan *sequence =
+  const DataBindBinaryFieldPlan *sequence =
       var_data_field(plan, "sequence");
-  const DataBindBinaryReaderFieldPlan *payload_field =
+  const DataBindBinaryFieldPlan *payload_field =
       var_data_field(plan, "payload");
   size_t cursor;
 
@@ -106,8 +106,8 @@ spec("generated Binary VAR_DATA transport composition") {
   it("shares one generated VAR_DATA provider across Socket and FlowMQ") {
     static const unsigned char expected_payload[] =
         {0x00u, 0x7fu, 0xffu};
-    const DataBindBinaryReaderPlan *plan =
-        databind_binary_var_binary_TelemetryEvent_databind_binary_reader_plan();
+    const DataBindBinaryLayoutPlan *plan =
+        databind_binary_var_binary_TelemetryEvent_databind_binary_layout_plan();
     const DataBindFormatProvider *provider =
         databind_binary_var_binary_TelemetryEvent_databind_binary_provider();
     DataBindFormatReader lease = DATA_BIND_FORMAT_READER_INIT;
@@ -130,10 +130,10 @@ spec("generated Binary VAR_DATA transport composition") {
     check_not_null(var_data_field(plan, "payload"));
     check_equal(
         var_data_field(plan, "source")->representation,
-        (size_t)DATA_BIND_BINARY_READER_REP_VAR_DATA);
+        (size_t)DATA_BIND_BINARY_REP_VAR_DATA);
     check_equal(
         var_data_field(plan, "payload")->representation,
-        (size_t)DATA_BIND_BINARY_READER_REP_VAR_DATA);
+        (size_t)DATA_BIND_BINARY_REP_VAR_DATA);
 
     wire_size = var_data_make_wire(plan, wire, sizeof(wire));
     check_greater(wire_size, plan->fixed_block_size);

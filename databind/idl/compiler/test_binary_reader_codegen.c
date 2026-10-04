@@ -105,8 +105,8 @@ spec("DataBind compiler Binary reader codegen") {
       check_contains(text, "\"perms\", CSERDE_UINT, 8u");
       check_contains(
           text,
-          "DATA_BIND_BINARY_READER_FIELD_OPTIONAL | "
-          "DATA_BIND_BINARY_READER_FIELD_NULLABLE");
+          "DATA_BIND_BINARY_FIELD_OPTIONAL | "
+          "DATA_BIND_BINARY_FIELD_NULLABLE");
       check_contains(
           text,
           "databind_binary_fixture_binary_Scalars_databind_binary_provider");
@@ -163,11 +163,11 @@ spec("DataBind compiler Binary reader codegen") {
       check_contains(text, "\"source\", CSERDE_STRING, 0u");
       check_contains(text, "\"payload\", CSERDE_BYTES, 0u");
       check_contains(
-          text, "DATA_BIND_BINARY_READER_REP_VAR_DATA, 4u");
+          text, "DATA_BIND_BINARY_REP_VAR_DATA, 4u");
       check_contains(
           text,
-          "DATA_BIND_BINARY_READER_FIELD_OPTIONAL | "
-          "DATA_BIND_BINARY_READER_FIELD_NULLABLE");
+          "DATA_BIND_BINARY_FIELD_OPTIONAL | "
+          "DATA_BIND_BINARY_FIELD_NULLABLE");
       check_contains(
           text,
           "databind_binary_var_binary_TelemetryEvent_"

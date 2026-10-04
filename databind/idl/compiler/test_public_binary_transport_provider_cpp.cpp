@@ -5,14 +5,14 @@
 
 #include <type_traits>
 
-static_assert(std::is_standard_layout_v<DataBindBinaryReaderPlan>);
-static_assert(std::is_standard_layout_v<DataBindBinaryReaderFieldPlan>);
+static_assert(std::is_standard_layout_v<DataBindBinaryLayoutPlan>);
+static_assert(std::is_standard_layout_v<DataBindBinaryFieldPlan>);
 
 int main() {
   const auto *provider =
       databind_binary_exec_binary_Event_databind_binary_provider();
   const auto *plan =
-      databind_binary_exec_binary_Event_databind_binary_reader_plan();
+      databind_binary_exec_binary_Event_databind_binary_layout_plan();
   return provider != nullptr &&
          provider->format == DATA_BIND_FORMAT_BINARY &&
          plan != nullptr &&

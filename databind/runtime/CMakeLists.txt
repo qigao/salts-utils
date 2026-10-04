@@ -139,8 +139,11 @@ add_library(
   data_bind_value_internal.h
   data_bind_record.c
   data_bind_builtin_format_provider.c
+  data_bind_binary_layout.h
   data_bind_binary_reader.c
   data_bind_binary_reader.h
+  data_bind_binary_writer.c
+  data_bind_binary_writer.h
   data_bind_binding_plan.c
   data_bind_binding_plan.h
   data_bind_plugin_catalog.h
@@ -278,7 +281,9 @@ install(
     data_bind.h
     data_bind_format_provider.h
     data_bind_native.h
+    data_bind_binary_layout.h
     data_bind_binary_reader.h
+    data_bind_binary_writer.h
     data_bind_binding_plan.h
     data_bind_plugin_catalog.h
     data_bind_plugin_execution.h
@@ -474,6 +479,13 @@ cmake_add_test(test_data_bind_binary_reader
   FOLDER "databind/runtime/tests")
 set_tests_properties(test_data_bind_binary_reader PROPERTIES
   LABELS "databind;binary;reader")
+cmake_add_test(test_data_bind_binary_writer
+  SOURCES test_data_bind_binary_writer.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_data_bind_binary_writer PROPERTIES
+  LABELS "databind;binary;writer")
+
 
 cmake_add_test(test_data_bind_plugin_execution_public_cpp
   SOURCES test_data_bind_plugin_execution_public_cpp.cpp
