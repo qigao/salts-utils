@@ -2728,7 +2728,8 @@ spec("tbe_compiler") {
           "message Sample { Point point; State state; uint32 count; }"
           "message FlagStorage { Permission value; }"
           "message WideEnumStorage { WideDomain value; }"
-          "message LoginMessage { string user; }";
+          "message LoginMessage { string user; }"
+          "message NullableFlat { uint32 id; nullable uint32 score; string name; }";
       size_t header_size = 0;
       size_t source_size = 0;
       char *header = NULL;
@@ -2759,6 +2760,8 @@ spec("tbe_compiler") {
                        "const TbeTypedDescriptor *WideEnumStorage_typed_descriptor(void)");
         check(strstr(header,
                      "const TbeTypedDescriptor *LoginMessage_typed_descriptor(void)") == NULL);
+        check(strstr(header,
+                     "const TbeTypedDescriptor *NullableFlat_typed_descriptor(void)") == NULL);
       }
       if (source != NULL) {
         check(strstr(source, "tbe_typed_descriptor_init(") == NULL);
@@ -2771,12 +2774,32 @@ spec("tbe_compiler") {
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(Sample,");
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(LoginMessage,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(LoginMessage,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(FlagStorage,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(WideEnumStorage,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(NullableFlat,");
+        check_contains(source, "TBE_TYPED_DEFINE_RAW_LIFECYCLE(NullableFlat)");
+        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_TEXT(NullableFlat)");
+        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(NullableFlat)");
+        check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(NullableFlat)") == NULL);
+        check(strstr(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(NullableFlat,") == NULL);
+        check_contains(source, "DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML(Sample)");
+        check(strstr(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(Sample,") == NULL);
+        check(strstr(
+            source, "DATABIND_DEFINE_RAW_MESSAGE_XML(LoginMessage)") == NULL);
         check(strstr(source, "DATABIND_DEFINE_CMETA_RAW_RECORD(LoginMessage)") == NULL);
         check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(LoginMessage)") == NULL);
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(LoginMessage)");
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON)");
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML)");
-        check_contains(source, "data_bind_message_plan_decode_native(");
+        check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_XML)");
+        check_contains(source, "data_bind_message_plan_decode_native_format(");
         check_contains(source, "data_bind_message_plan_encode_native(");
         check_contains(source, "TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)");
       }

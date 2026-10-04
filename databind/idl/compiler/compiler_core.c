@@ -2095,6 +2095,59 @@ static void tbe_compiler_annotate_schema_types(Node *root) {
   tbe_compiler_set_string(schema, "go_package_name", package_name);
 }
 
+static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
+  Node *messages;
+  size_t i;
+
+  if (root == NULL) return;
+  messages = tbe_compiler_find_child(root, "messages");
+  if (messages == NULL || messages->type != NODE_LIST) return;
+
+  for (i = 0u; i < messages->data.list.count; ++i) {
+    Node *record = messages->data.list.items[i];
+    Node *fields = tbe_compiler_find_child(record, "fields");
+    size_t j;
+    int supported = 1;
+
+    tbe_compiler_remove_children(record, "cmeta_native_xml_flat_supported");
+
+    /*
+     * Flat XML publication composes two authorities:
+     *   - CMeta owns the reflected physical fields;
+     *   - DataBind MessagePlan ownss presence/null overlay state.
+     *
+     * Do not require whole-record cmeta_lifecycle_supported here: optional
+     * and nullable overlay bytes are intentionally not CMeta fields. The
+     * generated helper preflights physical move support at runtime and copies
+     * overlay state through the exact native binding.
+     */
+    if (!tbe_compiler_has_child(record, "cmeta_graph_supported") ||
+        tbe_compiler_string_value(
+            record, "cmeta_native_descriptor_depth") == NULL ||
+        tbe_compiler_string_value(
+            record, "cmeta_native_descriptor_nodes") == NULL ||
+        fields == NULL || fields->type != NODE_LIST)
+      continue;
+
+    for (j = 0u; j < fields->data.list.count; ++j) {
+      Node *field = fields->data.list.items[j];
+      const char *type = tbe_compiler_string_value(field, "type");
+      if (tbe_compiler_has_child(field, "is_collection") ||
+          tbe_compiler_has_child(field, "is_group_field") ||
+          (type != NULL &&
+           (tbe_compiler_find_any_record(root, type) != NULL ||
+            tbe_compiler_find_record(root, "unions", type) != NULL))) {
+        supported = 0;
+        break;
+      }
+    }
+
+    if (supported)
+      (void)tbe_compiler_set_string(
+          record, "cmeta_native_xml_flat_supported", "1");
+  }
+}
+
 void tbe_compiler_annotate_language_types(
     const IdlContract *contract, Node *root) {
   if (contract == NULL || root == NULL) return;
@@ -2109,6 +2162,7 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_promote_record_cstl_containers(root);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
+  tbe_compiler_annotate_xml_flat_messages(root);
 }
 
 static const char *tbe_compiler_path_basename(const char *path) {
