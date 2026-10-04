@@ -20,6 +20,7 @@ static_assert(std::is_standard_layout_v<NativeHeaderMap_headers_map_t>,
 static_assert(sizeof(NativeHeaderMap_headers_map_t) > sizeof(map_t),
               "record Map storage must not preserve raw map_t ABI");
 
+/* Keep diagnostics explicit while #506 qualifies canonical generic identity. */
 static bool generic_constructor_is(
     const void *container, const char *stable_id, size_t arity) {
   const cmeta_generic_desc *constructor =
