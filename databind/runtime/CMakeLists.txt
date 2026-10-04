@@ -626,6 +626,30 @@ set_tests_properties(test_tbe_typed_nullable_binary PROPERTIES
 # This fixture executes salts_idlc during the build. Do not run a target-
 # platform executable on the build host when cross-compiling (e.g. Android).
 if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
+  set(OPTIONAL_SCALAR_LIFECYCLE_DIR
+      "${CMAKE_CURRENT_BINARY_DIR}/optional_scalar_lifecycle_generated")
+  add_custom_command(
+    OUTPUT "${OPTIONAL_SCALAR_LIFECYCLE_DIR}/optional_scalar_lifecycle_generated.h"
+           "${OPTIONAL_SCALAR_LIFECYCLE_DIR}/optional_scalar_lifecycle_generated.c"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${OPTIONAL_SCALAR_LIFECYCLE_DIR}"
+    COMMAND $<TARGET_FILE:salts_idlc>
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_optional_scalar_lifecycle.schema"
+            --lang c
+            --output "${OPTIONAL_SCALAR_LIFECYCLE_DIR}/optional_scalar_lifecycle_generated.h"
+            --source-output "${OPTIONAL_SCALAR_LIFECYCLE_DIR}/optional_scalar_lifecycle_generated.c"
+    DEPENDS salts_idlc
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_optional_scalar_lifecycle.schema"
+    VERBATIM)
+  cmake_add_test(test_optional_scalar_lifecycle
+    SOURCES test_optional_scalar_lifecycle.c
+            "${OPTIONAL_SCALAR_LIFECYCLE_DIR}/optional_scalar_lifecycle_generated.c"
+            "${OPTIONAL_SCALAR_LIFECYCLE_DIR}/optional_scalar_lifecycle_generated.h"
+    LIBS ${DATA_BIND_TEST_LIBS}
+    INCLUDES "${OPTIONAL_SCALAR_LIFECYCLE_DIR}"
+    FOLDER "databind/runtime/tests")
+  set_tests_properties(test_optional_scalar_lifecycle PROPERTIES
+    LABELS "databind;cmeta;generated;lifecycle")
+
   set(BINARY_TAIL_ONLY_DIR "${CMAKE_CURRENT_BINARY_DIR}/binary_tail_only_generated")
   add_custom_command(
     OUTPUT "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.h"
