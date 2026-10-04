@@ -129,9 +129,9 @@ class EnumConformance(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         consumer = self.path / 'consumer.c'
         consumer.write_text('#include "types.h"\n'
-                            f'const TbeTypedDescriptor *descriptors[{len(records)}];\n'
+                            f'const struct cmeta_data_desc *descriptors[{len(records)}];\n'
                             'void load_descriptors(void) {\n' +
-                            '\n'.join(f'descriptors[{i}] = {name}_typed_descriptor();'
+                            '\n'.join(f'(void){name}_cmeta_data(&descriptors[{i}], NULL);'
                                       for i, name in enumerate(records)) + '\n}\n')
         for source in (generated, consumer):
             result = self.run_command([
