@@ -71,6 +71,7 @@ single_package_dir() {
 }
 
 salts_package="$(single_package_dir "$packages/salts.native" Salts.Native)"
+salts_version="$(basename "$salts_package")"
 re2c_package="$(single_package_dir "$packages/qigao.re2c.binary" Qigao.Re2c.Binary)"
 turbowasm_package=""
 if [ "$with_turbowasm" = "1" ]; then
@@ -107,6 +108,8 @@ fi
 
 printf "SALTS_ROOT=%s\n" "$salts_root" >> "$GITHUB_ENV"
 printf "SALTS_HOST_ROOT=%s\n" "$salts_host_root" >> "$GITHUB_ENV"
+printf "SALTS_VERSION=%s\n" "$salts_version" >> "$GITHUB_ENV"
+printf 'restored Salts.Native %s for %s\n' "$salts_version" "$salts_rid"
 printf "RE2C_ROOT=%s\n" "$re2c_root" >> "$GITHUB_ENV"
 printf "QIGAO_NUGET_PACKAGES=%s\n" "$packages" >> "$GITHUB_ENV"
 printf "%s\n" "$re2c_root/bin" >> "$GITHUB_PATH"
