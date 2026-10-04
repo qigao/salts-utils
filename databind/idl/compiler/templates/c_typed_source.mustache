@@ -346,13 +346,28 @@ static const cmeta_type_identity {{name}}_CMETA_ID =
     {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
     &{{name}}_CMETA_ID
 };
+{{#fields}}
+{{#native_declared_type_symbol}}
+static const cmeta_type_desc *const {{native_declared_type_symbol}}_ARGS[] = {
+    {{native_generic_arg0_type_ref}}{{#native_generic_arg1_type_ref}},
+    {{native_generic_arg1_type_ref}}{{/native_generic_arg1_type_ref}}
+};
+static const cmeta_declared_type {{native_declared_type_symbol}} = {
+    &{{native_type_symbol}},
+    {{native_generic_constructor_ref}},
+    {{native_declared_type_symbol}}_ARGS,
+    {{native_generic_arity}}u,
+    NULL
+};
+{{/native_declared_type_symbol}}
+{{/fields}}
 static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
 {{#fields}}
     { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
       sizeof((({{owner_name}}_t *)0)->{{c_name}}),
       {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
       {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}}{{/native_external}},
-      NULL },
+      {{#native_declared_type_symbol}}&{{native_declared_type_symbol}}{{/native_declared_type_symbol}}{{^native_declared_type_symbol}}NULL{{/native_declared_type_symbol}} },
 {{/fields}}};
 static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
@@ -427,13 +442,28 @@ static const cmeta_type_identity {{name}}_CMETA_ID =
     {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
     &{{name}}_CMETA_ID
 };
+{{#fields}}
+{{#native_declared_type_symbol}}
+static const cmeta_type_desc *const {{native_declared_type_symbol}}_ARGS[] = {
+    {{native_generic_arg0_type_ref}}{{#native_generic_arg1_type_ref}},
+    {{native_generic_arg1_type_ref}}{{/native_generic_arg1_type_ref}}
+};
+static const cmeta_declared_type {{native_declared_type_symbol}} = {
+    &{{native_type_symbol}},
+    {{native_generic_constructor_ref}},
+    {{native_declared_type_symbol}}_ARGS,
+    {{native_generic_arity}}u,
+    NULL
+};
+{{/native_declared_type_symbol}}
+{{/fields}}
 static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
 {{#fields}}
     { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
       sizeof((({{owner_name}}_t *)0)->{{c_name}}),
       {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
       {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}}{{/native_external}},
-      NULL },
+      {{#native_declared_type_symbol}}&{{native_declared_type_symbol}}{{/native_declared_type_symbol}}{{^native_declared_type_symbol}}NULL{{/native_declared_type_symbol}} },
 {{/fields}}};
 static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
@@ -508,13 +538,28 @@ static const cmeta_type_identity {{name}}_CMETA_ID =
     {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
     &{{name}}_CMETA_ID
 };
+{{#fields}}
+{{#native_declared_type_symbol}}
+static const cmeta_type_desc *const {{native_declared_type_symbol}}_ARGS[] = {
+    {{native_generic_arg0_type_ref}}{{#native_generic_arg1_type_ref}},
+    {{native_generic_arg1_type_ref}}{{/native_generic_arg1_type_ref}}
+};
+static const cmeta_declared_type {{native_declared_type_symbol}} = {
+    &{{native_type_symbol}},
+    {{native_generic_constructor_ref}},
+    {{native_declared_type_symbol}}_ARGS,
+    {{native_generic_arity}}u,
+    NULL
+};
+{{/native_declared_type_symbol}}
+{{/fields}}
 static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
 {{#fields}}
     { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
       sizeof((({{owner_name}}_t *)0)->{{c_name}}),
       {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
       {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}}{{/native_external}},
-      NULL },
+      {{#native_declared_type_symbol}}&{{native_declared_type_symbol}}{{/native_declared_type_symbol}}{{^native_declared_type_symbol}}NULL{{/native_declared_type_symbol}} },
 {{/fields}}};
 static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
