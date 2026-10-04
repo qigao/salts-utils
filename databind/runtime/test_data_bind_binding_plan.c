@@ -173,6 +173,258 @@ static DataBindServiceNativeBinding native_binding(
 }
 
 
+typedef struct RollbackProbeBuffer {
+  size_t size;
+  unsigned char bytes[8];
+} RollbackProbeBuffer;
+
+typedef struct RollbackRequest {
+  RollbackProbeBuffer first;
+  RollbackProbeBuffer second;
+  RollbackProbeBuffer third;
+} RollbackRequest;
+
+typedef struct RollbackLifecycleProbe {
+  size_t init_calls[3];
+  size_t restore_calls[3];
+  size_t restore_order_count;
+  unsigned restore_order[4];
+} RollbackLifecycleProbe;
+
+static RollbackLifecycleProbe ROLLBACK_LIFECYCLE_PROBE;
+
+static void rollback_probe_reset(void) {
+  memset(&ROLLBACK_LIFECYCLE_PROBE, 0, sizeof(ROLLBACK_LIFECYCLE_PROBE));
+}
+
+static bool rollback_buffer_is_zero(const void *object) {
+  const RollbackProbeBuffer *buffer =
+      (const RollbackProbeBuffer *)object;
+  return buffer != NULL && buffer->size == 0u;
+}
+
+static cmeta_status rollback_buffer_assign(
+    void *object, const unsigned char *data, size_t size, size_t max_bytes) {
+  RollbackProbeBuffer *buffer = (RollbackProbeBuffer *)object;
+  if (buffer == NULL || (size != 0u && data == NULL))
+    return CMETA_INVALID_ARGUMENT;
+  if (size > sizeof(buffer->bytes) || size > max_bytes)
+    return CMETA_CAPACITY_EXCEEDED;
+  memset(buffer, 0, sizeof(*buffer));
+  if (size != 0u) memcpy(buffer->bytes, data, size);
+  buffer->size = size;
+  return CMETA_OK;
+}
+
+static cmeta_status rollback_buffer_read(
+    const void *object, const unsigned char **out_data, size_t *out_size) {
+  const RollbackProbeBuffer *buffer =
+      (const RollbackProbeBuffer *)object;
+  if (buffer == NULL || out_data == NULL || out_size == NULL)
+    return CMETA_INVALID_ARGUMENT;
+  *out_data = buffer->bytes;
+  *out_size = buffer->size;
+  return CMETA_OK;
+}
+
+static void rollback_buffer_move(void *destination, void *source) {
+  RollbackProbeBuffer *to = (RollbackProbeBuffer *)destination;
+  RollbackProbeBuffer *from = (RollbackProbeBuffer *)source;
+  if (to == NULL || from == NULL) return;
+  *to = *from;
+  memset(from, 0, sizeof(*from));
+}
+
+static cmeta_status rollback_buffer_init_common(
+    void *object, unsigned slot, int fail) {
+  RollbackProbeBuffer *buffer = (RollbackProbeBuffer *)object;
+  if (buffer == NULL || slot >= 3u) return CMETA_INVALID_ARGUMENT;
+  ++ROLLBACK_LIFECYCLE_PROBE.init_calls[slot];
+  memset(buffer, 0, sizeof(*buffer));
+  return fail ? CMETA_CALLBACK_ERROR : CMETA_OK;
+}
+
+static void rollback_buffer_restore_common(void *object, unsigned slot) {
+  RollbackProbeBuffer *buffer = (RollbackProbeBuffer *)object;
+  if (buffer == NULL || slot >= 3u) return;
+  ++ROLLBACK_LIFECYCLE_PROBE.restore_calls[slot];
+  /*
+   * Only successfully initialized parameters participate in the BindingPlan
+   * rollback order proof. The failing third provider may restore internally
+   * while making its own failed init failure-atomic.
+   */
+  if (slot < 2u &&
+      ROLLBACK_LIFECYCLE_PROBE.restore_order_count <
+          sizeof(ROLLBACK_LIFECYCLE_PROBE.restore_order) /
+              sizeof(ROLLBACK_LIFECYCLE_PROBE.restore_order[0])) {
+    ROLLBACK_LIFECYCLE_PROBE.restore_order[
+        ROLLBACK_LIFECYCLE_PROBE.restore_order_count++] = slot;
+  }
+  memset(buffer, 0, sizeof(*buffer));
+}
+
+static cmeta_status rollback_buffer_init_first(void *object) {
+  return rollback_buffer_init_common(object, 0u, 0);
+}
+
+static cmeta_status rollback_buffer_init_second(void *object) {
+  return rollback_buffer_init_common(object, 1u, 0);
+}
+
+static cmeta_status rollback_buffer_init_third(void *object) {
+  return rollback_buffer_init_common(object, 2u, 1);
+}
+
+static void rollback_buffer_restore_first(void *object) {
+  rollback_buffer_restore_common(object, 0u);
+}
+
+static void rollback_buffer_restore_second(void *object) {
+  rollback_buffer_restore_common(object, 1u);
+}
+
+static void rollback_buffer_restore_third(void *object) {
+  rollback_buffer_restore_common(object, 2u);
+}
+
+static const cmeta_type_identity ROLLBACK_BUFFER_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.binding.RollbackProbeBuffer");
+
+static const cmeta_type_desc ROLLBACK_BUFFER_TYPE = {
+    "RollbackProbeBuffer", sizeof(RollbackProbeBuffer),
+    _Alignof(RollbackProbeBuffer), CMETA_T_OBJECT, NULL, NULL,
+    &ROLLBACK_BUFFER_ID};
+
+static const cmeta_data_buffer_shape ROLLBACK_BUFFER_SHAPE = {
+    CMETA_DATA_BUFFER_OWNED};
+
+#define ROLLBACK_BUFFER_OPS(NAME, INIT, RESTORE)                              \
+  static const cmeta_data_buffer_ops NAME = {                                 \
+      sizeof(cmeta_data_buffer_ops), CMETA_DATA_BUFFER_OPS_ABI_VERSION,       \
+      &ROLLBACK_BUFFER_TYPE, CMETA_DATA_BUFFER_OWNED,                         \
+      rollback_buffer_is_zero, rollback_buffer_assign, RESTORE,               \
+      rollback_buffer_read, INIT, rollback_buffer_move}
+
+ROLLBACK_BUFFER_OPS(
+    ROLLBACK_FIRST_OPS, rollback_buffer_init_first,
+    rollback_buffer_restore_first);
+ROLLBACK_BUFFER_OPS(
+    ROLLBACK_SECOND_OPS, rollback_buffer_init_second,
+    rollback_buffer_restore_second);
+ROLLBACK_BUFFER_OPS(
+    ROLLBACK_THIRD_OPS, rollback_buffer_init_third,
+    rollback_buffer_restore_third);
+
+#undef ROLLBACK_BUFFER_OPS
+
+#define ROLLBACK_BUFFER_DATA(NAME, STABLE, DISPLAY, OPS)                      \
+  static const cmeta_data_desc NAME = {                                       \
+      .struct_size = sizeof(cmeta_data_desc),                                 \
+      .abi_version = CMETA_DATA_DESC_ABI_VERSION,                             \
+      .stable_id = STABLE,                                                    \
+      .display_name = DISPLAY,                                                \
+      .kind = CMETA_DATA_BYTES,                                               \
+      .storage_type = &ROLLBACK_BUFFER_TYPE,                                  \
+      .shape = &ROLLBACK_BUFFER_SHAPE,                                        \
+      .buffer_ops = &(OPS)}
+
+ROLLBACK_BUFFER_DATA(
+    ROLLBACK_FIRST_DATA, "test.binding.rollback.first",
+    "RollbackFirst", ROLLBACK_FIRST_OPS);
+ROLLBACK_BUFFER_DATA(
+    ROLLBACK_SECOND_DATA, "test.binding.rollback.second",
+    "RollbackSecond", ROLLBACK_SECOND_OPS);
+ROLLBACK_BUFFER_DATA(
+    ROLLBACK_THIRD_DATA, "test.binding.rollback.third",
+    "RollbackThird", ROLLBACK_THIRD_OPS);
+
+#undef ROLLBACK_BUFFER_DATA
+
+static const cmeta_type_identity ROLLBACK_REQUEST_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.binding.RollbackRequest");
+
+static const cmeta_type_desc ROLLBACK_REQUEST_TYPE = {
+    "RollbackRequest", sizeof(RollbackRequest), _Alignof(RollbackRequest),
+    CMETA_T_OBJECT, NULL, NULL, &ROLLBACK_REQUEST_ID};
+
+static const cmeta_field_desc ROLLBACK_REQUEST_LAYOUT_FIELDS[] = {
+    {"first", "bytes", offsetof(RollbackRequest, first),
+     sizeof(RollbackProbeBuffer), _Alignof(RollbackProbeBuffer),
+     &ROLLBACK_BUFFER_TYPE, NULL},
+    {"second", "bytes", offsetof(RollbackRequest, second),
+     sizeof(RollbackProbeBuffer), _Alignof(RollbackProbeBuffer),
+     &ROLLBACK_BUFFER_TYPE, NULL},
+    {"third", "bytes", offsetof(RollbackRequest, third),
+     sizeof(RollbackProbeBuffer), _Alignof(RollbackProbeBuffer),
+     &ROLLBACK_BUFFER_TYPE, NULL}};
+
+static const cmeta_struct_desc ROLLBACK_REQUEST_LAYOUT = {
+    "RollbackRequest", sizeof(RollbackRequest), _Alignof(RollbackRequest),
+    ROLLBACK_REQUEST_LAYOUT_FIELDS, 3u};
+
+static const cmeta_data_field_desc ROLLBACK_REQUEST_FIELDS[] = {
+    {"test.binding.RollbackRequest.first", "first",
+     offsetof(RollbackRequest, first), &ROLLBACK_FIRST_DATA},
+    {"test.binding.RollbackRequest.second", "second",
+     offsetof(RollbackRequest, second), &ROLLBACK_SECOND_DATA},
+    {"test.binding.RollbackRequest.third", "third",
+     offsetof(RollbackRequest, third), &ROLLBACK_THIRD_DATA}};
+
+static const cmeta_data_struct_shape ROLLBACK_REQUEST_SHAPE = {
+    &ROLLBACK_REQUEST_LAYOUT, ROLLBACK_REQUEST_FIELDS, 3u};
+
+static const cmeta_data_desc ROLLBACK_REQUEST_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.binding.RollbackRequest.data",
+    .display_name = "RollbackRequest",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &ROLLBACK_REQUEST_TYPE,
+    .shape = &ROLLBACK_REQUEST_SHAPE};
+
+static const DataBindNativeTypeBinding ROLLBACK_REQUEST_NATIVE = {
+    sizeof(DataBindNativeTypeBinding),
+    DATA_BIND_NATIVE_BINDING_ABI_VERSION,
+    "RollbackRequest",
+    &ROLLBACK_REQUEST_DATA,
+    NULL,
+    0u,
+    NULL,
+    0u};
+
+FunctionDecl(
+    value, void, rollback_bind_fields,
+    (RollbackProbeBuffer, first, CMETA_PARAM_IN, &ROLLBACK_BUFFER_TYPE),
+    (RollbackProbeBuffer, second, CMETA_PARAM_IN, &ROLLBACK_BUFFER_TYPE),
+    (RollbackProbeBuffer, third, CMETA_PARAM_IN, &ROLLBACK_BUFFER_TYPE));
+
+static DataBind *create_rollback_codec(void) {
+  static const char schema[] =
+      "message RollbackRequest {"
+      " bytes first;"
+      " bytes second;"
+      " bytes third;"
+      "}"
+      "service Rollback {"
+      " Run: RollbackRequest -> void;"
+      "}";
+  DataBind *codec = NULL;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+
+  check_equal(data_bind_create_from_text(
+                  schema, sizeof(schema) - 1u, &codec, &error),
+              DATA_BIND_OK);
+  return codec;
+}
+
+static DataBindServiceNativeBinding rollback_native_binding(void) {
+  return (DataBindServiceNativeBinding)
+      DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+          FunctionMeta(rollback_bind_fields),
+          &ROLLBACK_REQUEST_NATIVE, NULL);
+}
+
+
 typedef struct StateRequest {
   uint32_t required_value;
   uint32_t optional_value;
@@ -1723,6 +1975,97 @@ spec("DataBind canonical Service BindingPlan") {
                     plan, &provider, &frame, &diagnostic),
                 DATA_BIND_OK);
     check_equal(state.published_sum, 7u);
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("clears only initialized direct parameters once in reverse order") {
+    DataBind *codec = create_rollback_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-rollback-order", &scratch, rpc_project);
+    DataBindServiceNativeBinding native = rollback_native_binding();
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    TestProvider state = {0};
+    DataBindBindingProvider provider = provider_for(&state);
+    unsigned char workspace[4096] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    RollbackProbeBuffer first = {0};
+    RollbackProbeBuffer second = {0};
+    RollbackProbeBuffer third = {0};
+    RollbackProbeBuffer baseline = {0};
+    void *params[] = {&first, &second, &third};
+    const size_t param_bytes[] = {
+        sizeof(first), sizeof(second), sizeof(third)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    size_t failed_init_restore_baseline;
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Rollback", "Run", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    /*
+     * Establish how many restore callbacks belong to the failing provider's
+     * own failure-atomic init path. BindingPlan rollback must not add another
+     * clear for that never-initialized parameter.
+     */
+    rollback_probe_reset();
+    check_equal(data_bind_native_init(
+                    &options, &ROLLBACK_THIRD_DATA, &baseline,
+                    sizeof(baseline), &native_diagnostic),
+                DATA_BIND_ERR_RUNTIME);
+    failed_init_restore_baseline =
+        ROLLBACK_LIFECYCLE_PROBE.restore_calls[2];
+    check(failed_init_restore_baseline != 0u);
+
+    rollback_probe_reset();
+    native_diagnostic =
+        (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    memset(&first, 0xa1, sizeof(first));
+    memset(&second, 0xb2, sizeof(second));
+    memset(&third, 0xc3, sizeof(third));
+
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 3u;
+
+    check_equal(data_bind_binding_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_ERR_RUNTIME);
+    check_equal(diagnostic.function_param, "third");
+
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.init_calls[0], (size_t)1u);
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.init_calls[1], (size_t)1u);
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.init_calls[2], (size_t)1u);
+
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.restore_calls[0], (size_t)1u);
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.restore_calls[1], (size_t)1u);
+    check_equal(
+        ROLLBACK_LIFECYCLE_PROBE.restore_calls[2],
+        failed_init_restore_baseline);
+
+    check_equal(
+        ROLLBACK_LIFECYCLE_PROBE.restore_order_count, (size_t)2u);
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.restore_order[0], 1u);
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.restore_order[1], 0u);
+
+    check_true(rollback_buffer_is_zero(&first));
+    check_true(rollback_buffer_is_zero(&second));
+    check_true(rollback_buffer_is_zero(&third));
 
     data_bind_binding_plan_free(plan);
     data_bind_free(codec);
