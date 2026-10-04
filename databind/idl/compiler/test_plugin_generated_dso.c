@@ -170,6 +170,63 @@ static DataBindBindingProvider plugin_provider(
   return provider;
 }
 
+static const cmeta_field_desc *plugin_test_struct_field(
+    const cmeta_data_desc *data, const char *name) {
+  const cmeta_data_struct_shape *shape;
+  if (data == NULL || name == NULL || data->kind != CMETA_DATA_STRUCT ||
+      data->shape == NULL)
+    return NULL;
+  shape = (const cmeta_data_struct_shape *)data->shape;
+  return shape->layout != NULL
+             ? cmeta_struct_find_field(shape->layout, name)
+             : NULL;
+}
+
+static bool plugin_test_declared_generic_equal(
+    const cmeta_declared_type *left,
+    const cmeta_declared_type *right) {
+  const cmeta_type_identity *left_args[2] = {NULL, NULL};
+  const cmeta_type_identity *right_args[2] = {NULL, NULL};
+  cmeta_type_identity left_application;
+  cmeta_type_identity right_application;
+  size_t i;
+
+  if (!cmeta_declared_type_valid(left) ||
+      !cmeta_declared_type_valid(right) ||
+      left->constructor == NULL || right->constructor == NULL ||
+      left->constructor->stable_id == NULL ||
+      right->constructor->stable_id == NULL ||
+      left->arity != right->arity || left->arity > 2u ||
+      strcmp(left->constructor->stable_id,
+             right->constructor->stable_id) != 0)
+    return false;
+
+  for (i = 0u; i < left->arity; ++i) {
+    const cmeta_type_desc *left_arg =
+        cmeta_declared_type_argument(left, i);
+    const cmeta_type_desc *right_arg =
+        cmeta_declared_type_argument(right, i);
+    if (!cmeta_type_equal(left_arg, right_arg))
+      return false;
+    left_args[i] = cmeta_type_identity_of(left_arg);
+    right_args[i] = cmeta_type_identity_of(right_arg);
+    if (left_args[i] == NULL || right_args[i] == NULL)
+      return false;
+  }
+
+  left_application = (cmeta_type_identity){
+      CMETA_TYPE_APPLY, NULL, left->constructor, NULL,
+      left->arity != 0u ? left_args : NULL, left->arity};
+  right_application = (cmeta_type_identity){
+      CMETA_TYPE_APPLY, NULL, right->constructor, NULL,
+      right->arity != 0u ? right_args : NULL, right->arity};
+
+  return cmeta_type_identity_valid(&left_application) &&
+         cmeta_type_identity_valid(&right_application) &&
+         cmeta_type_identity_equal(
+             &left_application, &right_application);
+}
+
 spec("generated DataBind Plugin Service") {
   it("executes BindingPlan -> Plugin -> BindingPlan under one DSO lease") {
     salts_plugin_registry registry = {0};
@@ -178,9 +235,12 @@ spec("generated DataBind Plugin Service") {
     salts_plugin_lease lease = {0};
     const salts_plugin_manifest *manifest = NULL;
     const salts_plugin_export *entry = NULL;
+    const salts_plugin_export *generic_entry = NULL;
     const salts_plugin_export *catalog_entry = NULL;
     data_bind_plugin_catalog *catalog = NULL;
     DataBindPluginOperationBinding operation =
+        DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
+    DataBindPluginOperationBinding generic_operation =
         DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
     DataBindServiceNativeBinding native =
         DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);
@@ -188,6 +248,8 @@ spec("generated DataBind Plugin Service") {
         (DataBindNativeExecution)DATA_BIND_NATIVE_EXECUTION_INIT;
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
+    const cmeta_data_desc *host_generic_request_data = NULL;
+    const cmeta_data_desc *host_generic_response_data = NULL;
     DataBindBindingProjection projection = {
         sizeof(DataBindBindingProjection),
         DATA_BIND_BINDING_PLAN_ABI_VERSION,
@@ -236,7 +298,7 @@ spec("generated DataBind Plugin Service") {
 
     check_not_null(manifest);
     check_equal(manifest->plugin_id, "Image.ImageProcessor");
-    check_equal(manifest->export_count, (size_t)3u);
+    check_equal(manifest->export_count, (size_t)4u);
     check_equal(salts_plugin_manifest_find_export(
                     manifest, "Image.Codec.Decode", &entry),
                 SALTS_PLUGIN_OK);
@@ -266,6 +328,19 @@ spec("generated DataBind Plugin Service") {
                 CMETA_ABI_OBJECT_POINTER);
 
     check_equal(salts_plugin_manifest_find_export(
+                    manifest, "Image.Codec.Qualify", &generic_entry),
+                SALTS_PLUGIN_OK);
+    check_not_null(generic_entry);
+    check_equal(generic_entry->kind, SALTS_PLUGIN_EXPORT_FUNCTION);
+    check_equal(salts_plugin_export_require_function(
+                    generic_entry, "Image.Codec", 1u, 0u),
+                SALTS_PLUGIN_OK);
+    check_true(cmeta_function_desc_valid(
+        generic_entry->value.function.desc));
+    check_true(cmeta_function_abi_desc_valid(
+        generic_entry->value.function.abi));
+
+    check_equal(salts_plugin_manifest_find_export(
                     manifest, DATA_BIND_PLUGIN_CATALOG_EXPORT_ID,
                     &catalog_entry),
                 SALTS_PLUGIN_OK);
@@ -281,7 +356,7 @@ spec("generated DataBind Plugin Service") {
     catalog =
         (data_bind_plugin_catalog *)catalog_entry->value.interface.value;
     check_true(data_bind_plugin_catalog_valid(catalog));
-    check_equal(data_bind_plugin_catalog_operation_count(catalog), (size_t)2u);
+    check_equal(data_bind_plugin_catalog_operation_count(catalog), (size_t)3u);
 
     {
       size_t index;
@@ -305,6 +380,115 @@ spec("generated DataBind Plugin Service") {
         }
       }
       check_true(found);
+    }
+
+    {
+      size_t index;
+      int found = 0;
+      for (index = 0u;
+           index < data_bind_plugin_catalog_operation_count(catalog);
+           ++index) {
+        DataBindPluginOperationBinding candidate =
+            DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
+        error = (DataBindError)DATA_BIND_ERROR_INIT;
+        check_equal(
+            data_bind_plugin_catalog_operation_at(
+                catalog, index, &candidate, &error),
+            DATA_BIND_OK);
+        if (candidate.export_id != NULL &&
+            strcmp(candidate.export_id, "Image.Codec.Qualify") == 0) {
+          generic_operation = candidate;
+          found = 1;
+          break;
+        }
+      }
+      check_true(found);
+    }
+
+    check_true(data_bind_plugin_operation_binding_valid(
+        &generic_operation));
+    check_true(generic_operation.function ==
+               generic_entry->value.function.desc);
+    check_true(cmeta_function_desc_equal(
+        generic_operation.function,
+        generic_entry->value.function.desc));
+    check_true(cmeta_data_desc_valid(generic_operation.request.data));
+    check_true(cmeta_data_desc_valid(generic_operation.response.data));
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(GenericRequest_cmeta_data(
+                    &host_generic_request_data, &error),
+                DATA_BIND_OK);
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(GenericResponse_cmeta_data(
+                    &host_generic_response_data, &error),
+                DATA_BIND_OK);
+    check_not_null(host_generic_request_data);
+    check_not_null(host_generic_response_data);
+    check_true(cmeta_data_desc_equal(
+        generic_operation.request.data, host_generic_request_data));
+    check_true(cmeta_data_desc_equal(
+        generic_operation.response.data, host_generic_response_data));
+
+    {
+      const cmeta_param_desc *request_param =
+          cmeta_function_param(
+              generic_entry->value.function.desc, 0u);
+      const cmeta_param_desc *response_param =
+          cmeta_function_param(
+              generic_entry->value.function.desc, 1u);
+      check_not_null(request_param);
+      check_not_null(response_param);
+      check_not_null(request_param != NULL ? request_param->type : NULL);
+      check_not_null(response_param != NULL ? response_param->type : NULL);
+      if (request_param != NULL && response_param != NULL &&
+          request_param->type != NULL &&
+          response_param->type != NULL) {
+        check_true(cmeta_type_equal(
+            request_param->type->pointee,
+            host_generic_request_data->storage_type));
+        check_true(cmeta_type_equal(
+            response_param->type->pointee,
+            host_generic_response_data->storage_type));
+      }
+    }
+
+    {
+      const cmeta_field_desc *provider_field =
+          plugin_test_struct_field(
+              generic_operation.request.data, "items");
+      const cmeta_field_desc *host_field =
+          plugin_test_struct_field(
+              host_generic_request_data, "items");
+      check_not_null(provider_field);
+      check_not_null(host_field);
+      check_not_null(
+          provider_field != NULL ? provider_field->declared_type : NULL);
+      check_not_null(
+          host_field != NULL ? host_field->declared_type : NULL);
+      if (provider_field != NULL && host_field != NULL)
+        check_true(plugin_test_declared_generic_equal(
+            provider_field->declared_type,
+            host_field->declared_type));
+    }
+
+    {
+      const cmeta_field_desc *provider_field =
+          plugin_test_struct_field(
+              generic_operation.response.data, "by_name");
+      const cmeta_field_desc *host_field =
+          plugin_test_struct_field(
+              host_generic_response_data, "by_name");
+      check_not_null(provider_field);
+      check_not_null(host_field);
+      check_not_null(
+          provider_field != NULL ? provider_field->declared_type : NULL);
+      check_not_null(
+          host_field != NULL ? host_field->declared_type : NULL);
+      if (provider_field != NULL && host_field != NULL)
+        check_true(plugin_test_declared_generic_equal(
+            provider_field->declared_type,
+            host_field->declared_type));
     }
 
     check_equal(operation.service_name, "Codec");
@@ -418,9 +602,15 @@ spec("generated DataBind Plugin Service") {
     data_bind_free(codec);
     codec = NULL;
 
-    check_equal(salts_plugin_registry_release(&registry, &lease),
-                SALTS_PLUGIN_OK);
     check_equal(salts_plugin_registry_request_stop(&registry, ref),
+                SALTS_PLUGIN_OK);
+    check_equal(salts_plugin_registry_unload(&registry, ref),
+                SALTS_PLUGIN_BUSY);
+    check_equal(salts_plugin_registry_poll_quiescent(
+                    &registry, ref, &quiescent),
+                SALTS_PLUGIN_OK);
+    check_false(quiescent);
+    check_equal(salts_plugin_registry_release(&registry, &lease),
                 SALTS_PLUGIN_OK);
     check_equal(salts_plugin_registry_poll_quiescent(
                     &registry, ref, &quiescent),
