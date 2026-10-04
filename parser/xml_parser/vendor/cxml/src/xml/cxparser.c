@@ -1484,8 +1484,16 @@ static void x__dispatch_token(_cxml_parser *cxparser) {
         case CXML_TOKEN_CDATA:
             x__cdata_sect(cxparser);
             break;
-        case CXML_TOKEN_F_SLASH:  // x__wrap_elem()
-            break;
+        case CXML_TOKEN_F_SLASH:
+            /*
+             * x__wrap_elem() consumes '/' only while parsing an already-open
+             * element. Reaching it from the document dispatcher means a
+             * top-level stray closing tag. Returning without consuming the
+             * token leaves prev_tok == '<' and makes x__document() spin.
+             */
+            parse__error(
+                cxparser,
+                "Unexpected closing tag outside an open element");
         case CXML_TOKEN_ERROR:
             parse__error(cxparser, "%.*s\n", cxparser->current_tok.length, cxparser->current_tok.start)
         case CXML_TOKEN_G_THAN:
