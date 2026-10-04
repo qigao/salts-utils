@@ -263,10 +263,16 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     NativeXmlFlat_init(&unchanged);
     NativeHeaderPolicy_init(&collection);
 
-    check_equal(
-        NativeXmlFlat_from_xml(
-            codec, &flat, xml, sizeof(xml) - 1u, &error),
-        DATA_BIND_OK);
+    {
+      DataBindStatus xml_status =
+          NativeXmlFlat_from_xml(
+              codec, &flat, xml, sizeof(xml) - 1u, &error);
+      info("flat XML status=%d path=%s message=%s",
+           (int)xml_status,
+           error.path[0] != '\0' ? error.path : "<root>",
+           error.message[0] != '\0' ? error.message : "<none>");
+      check_equal(xml_status, DATA_BIND_OK);
+    }
     check_equal(flat.id, UINT32_C(9));
     check_not_null(flat.name);
     if (flat.name != NULL) {
