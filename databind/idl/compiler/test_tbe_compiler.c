@@ -2813,7 +2813,7 @@ spec("tbe_compiler") {
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(CsvDefault,") == NULL);
         check_contains(source, "DATABIND_DEFINE_DESCRIPTOR_MESSAGE_CSV(Sample)");
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_CSV(NullableFlat)");
-        check_contains(source, "data_bind_csv_format_reader_open_row(");
+        check_contains(source, "data_bind_builtin_format_reader_open_csv_row(");
         check_contains(source, "data_bind_format_plan_compile(");
         check_contains(source, "data_bind_format_canonical_reader_init(");
         check_contains(source, "TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)");
