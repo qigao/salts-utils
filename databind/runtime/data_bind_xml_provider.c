@@ -534,23 +534,28 @@ static cserde_status xml_writer_status(salts_xml_status status) {
   }
 }
 
-static char *xml_writer_copy_slice(const cserde_token *token) {
+static cserde_status xml_writer_copy_slice(
+    const cserde_token *token, char **out) {
   char *copy;
+  if (out == NULL) return CSERDE_INVALID_ARGUMENT;
+  *out = NULL;
   if (token == NULL || token->kind != CSERDE_STRING ||
       (token->value.slice.size != 0u &&
-       token->value.slice.data == NULL) ||
-      token->value.slice.size == SIZE_MAX)
-    return NULL;
+       token->value.slice.data == NULL))
+    return CSERDE_UNSUPPORTED;
+  if (token->value.slice.size == SIZE_MAX)
+    return CSERDE_LIMIT_EXCEEDED;
   if (token->value.slice.size != 0u &&
       memchr(token->value.slice.data, '\0',
              token->value.slice.size) != NULL)
-    return NULL;
+    return CSERDE_UNSUPPORTED;
   copy = (char *)malloc(token->value.slice.size + 1u);
-  if (copy == NULL) return NULL;
+  if (copy == NULL) return CSERDE_CALLBACK_ERROR;
   if (token->value.slice.size != 0u)
     memcpy(copy, token->value.slice.data, token->value.slice.size);
   copy[token->value.slice.size] = '\0';
-  return copy;
+  *out = copy;
+  return CSERDE_OK;
 }
 
 static cserde_status xml_writer_scalar_text(
@@ -564,13 +569,7 @@ static cserde_status xml_writer_scalar_text(
 
   switch (token->kind) {
   case CSERDE_STRING:
-    copy = xml_writer_copy_slice(token);
-    if (copy == NULL)
-      return token->value.slice.size == SIZE_MAX
-                 ? CSERDE_LIMIT_EXCEEDED
-                 : CSERDE_UNSUPPORTED;
-    *out = copy;
-    return CSERDE_OK;
+    return xml_writer_copy_slice(token, out);
   case CSERDE_BOOL:
     copy = (char *)malloc(token->value.boolean ? 5u : 6u);
     if (copy == NULL) return CSERDE_CALLBACK_ERROR;
@@ -628,12 +627,7 @@ static cserde_status xml_root_writer_write(
       return CSERDE_OK;
     }
     if (token->kind != CSERDE_STRING) return CSERDE_UNSUPPORTED;
-    owner->pending_key = xml_writer_copy_slice(token);
-    if (owner->pending_key == NULL)
-      return token->value.slice.size == SIZE_MAX
-                 ? CSERDE_LIMIT_EXCEEDED
-                 : CSERDE_UNSUPPORTED;
-    return CSERDE_OK;
+    return xml_writer_copy_slice(token, &owner->pending_key);
   }
 
   status = xml_writer_scalar_text(token, &text);
