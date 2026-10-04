@@ -2839,7 +2839,8 @@ spec("tbe_compiler") {
         check_contains(source, "DATABIND_DEFINE_DESCRIPTOR_MESSAGE_XML_OUTPUT(Sample)");
         check_contains(source, "data_bind_xml_writer_open_root(");
         check_contains(source, "_message_to_xml(");
-        check_contains(source, "TBE_TYPED_DEFINE_RAW_LIFECYCLE(NullableFlat)");
+        check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(NullableFlat)");
+        check(strstr(source, "TBE_TYPED_DEFINE_RAW_LIFECYCLE(NullableFlat)") == NULL);
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_TEXT(NullableFlat)");
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(NullableFlat)");
         check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(NullableFlat)") == NULL);
@@ -2896,7 +2897,8 @@ spec("tbe_compiler") {
       const char *schema =
           "schema CanonicalOnly; composite Point { int32 x; }"
           "group Level { uint64 price; }"
-          "message Value { uint32 id; }";
+          "message Value { uint32 id; }"
+          "message OwnedState { optional string label; }";
       size_t source_size = 0u;
       char *source = NULL;
       tbe_compiler_options_t options = {
@@ -2919,9 +2921,11 @@ spec("tbe_compiler") {
         check(strstr(source, "static TbeTypedType Point_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType Level_TYPED_TYPE") == NULL);
         check(strstr(source, "static TbeTypedType Value_TYPED_TYPE") == NULL);
+        check(strstr(source, "static TbeTypedType OwnedState_TYPED_TYPE") == NULL);
         check_contains(source, "Point_cmeta_data(");
         check_contains(source, "Level_cmeta_data(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(Value)");
+        check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(OwnedState)");
       }
       free(source);
       cleanup_test_file(schema_path);
