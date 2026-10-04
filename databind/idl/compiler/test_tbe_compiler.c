@@ -2883,6 +2883,43 @@ spec("tbe_compiler") {
     }
 
 
+    it("retains legacy type tables referenced by nested message fields") {
+      const char *schema_path = "test_tbe_compiler_nested_legacy.tbe";
+      const char *header_path = "test_tbe_compiler_nested_legacy.h";
+      const char *source_path = "test_tbe_compiler_nested_legacy.c";
+      const char *schema =
+          "schema Nested;"
+          "message Inner { uint32 x; }"
+          "message Outer { Inner child; optional uint32 other; }"
+          "message Standalone { uint32 x; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+      size_t source_size = 0u;
+      char *source = NULL;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      source = tt_read_file(source_path, &source_size);
+      check_not_null(source);
+      if (source != NULL) {
+        check_contains(source, "static TbeTypedType Inner_TYPED_TYPE;");
+        check_contains(source, ".object_type = &Inner_TYPED_TYPE");
+        check_contains(source, "static TbeTypedType Outer_TYPED_TYPE;");
+        check(strstr(source, "Standalone_TYPED_TYPE") == NULL);
+      }
+      free(source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+    }
+
     it("should reject duplicate c field annotations in typed C output") {
       const char *schema_path = "test_tbe_compiler_c_collision.tbe";
       const char *header_path = "test_tbe_compiler_c_collision.h";
