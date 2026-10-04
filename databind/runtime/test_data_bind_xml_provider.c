@@ -1,6 +1,8 @@
 #include "data_bind_xml_provider.h"
+#include "data_bind_xml_writer.h"
 
 #include <cserde/reader.h>
+#include <cserde/writer.h>
 
 #include <string.h>
 
@@ -16,6 +18,34 @@ static int slice_equal(const cserde_token *token, const char *text) {
   return token->kind == CSERDE_STRING &&
          token->value.slice.size == len &&
          memcmp(token->value.slice.data, text, len) == 0;
+}
+
+typedef struct XmlOutput {
+  char data[2048];
+  size_t size;
+  size_t calls;
+  int fail;
+} XmlOutput;
+
+static int xml_output_write(const void *data, size_t len, void *user) {
+  XmlOutput *out = (XmlOutput *)user;
+  if (out == NULL || (data == NULL && len != 0u)) return -1;
+  ++out->calls;
+  if (out->fail || len > sizeof(out->data) - out->size - 1u)
+    return -1;
+  if (len != 0u) memcpy(out->data + out->size, data, len);
+  out->size += len;
+  out->data[out->size] = '\0';
+  return 0;
+}
+
+static cserde_token xml_string(const char *text) {
+  cserde_token token = {0};
+  token.kind = CSERDE_STRING;
+  token.value.slice.data = (const unsigned char *)text;
+  token.value.slice.size = strlen(text);
+  token.value.slice.lifetime = CSERDE_VIEW_STABLE;
+  return token;
 }
 
 int main(void) {
@@ -108,6 +138,133 @@ int main(void) {
           &limits, &diagnostic, &lease, &error) == DATA_BIND_OK)
     return 28;
   if (lease.reader != NULL) return 29;
+
+  {
+    DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
+    XmlOutput output = {{0}, 0u, 0u, 0};
+    cserde_writer *native;
+    cserde_token token = {0};
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_xml_writer_open_root(
+            "NativeXmlFlat", xml_output_write, &output, 0u,
+            &writer, &error) != DATA_BIND_ERR_LIMIT)
+      return 30;
+
+    writer = (DataBindXmlWriter)DATA_BIND_XML_WRITER_INIT;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_xml_writer_open_root(
+            "NativeXmlFlat", xml_output_write, &output, 2u,
+            &writer, &error) != DATA_BIND_OK)
+      return 31;
+    native = data_bind_xml_writer_writer(&writer);
+    if (native == NULL) return 32;
+
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 33;
+    token = xml_string("id");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 34;
+    token = (cserde_token){.kind = CSERDE_UINT, .value.uint = UINT64_C(9)};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 35;
+    token = xml_string("name");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 36;
+    token = xml_string("a&b");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 37;
+    token = xml_string("score");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 38;
+    token = (cserde_token){.kind = CSERDE_FLOAT, .value.floating = 2.5};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 39;
+    token = (cserde_token){.kind = CSERDE_MAP_END};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 40;
+    if (data_bind_xml_writer_close(&writer, &error) != DATA_BIND_OK)
+      return 41;
+    if (output.calls != 1u || output.size == 0u) return 42;
+    if (strstr(output.data, "<NativeXmlFlat>") == NULL ||
+        strstr(output.data, "<id>9</id>") == NULL ||
+        strstr(output.data, "<name>a&amp;b</name>") == NULL ||
+        strstr(output.data, "<score>2.5</score>") == NULL)
+      return 43;
+
+    lease = (DataBindFormatReader)DATA_BIND_FORMAT_READER_INIT;
+    if (data_bind_format_reader_open(
+            data_bind_xml_format_provider(), output.data, output.size,
+            4u, &lease, &error) != DATA_BIND_OK)
+      return 44;
+    if (!next_kind(lease.reader, CSERDE_MAP_BEGIN, &token)) return 45;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "id")) return 46;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "9")) return 47;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "name")) return 48;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "a&b")) return 49;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "score")) return 50;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "2.5")) return 51;
+    if (!next_kind(lease.reader, CSERDE_MAP_END, &token)) return 52;
+    if (data_bind_format_reader_close(&lease) != DATA_BIND_OK) return 53;
+  }
+
+  {
+    DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
+    XmlOutput output = {{0}, 0u, 0u, 0};
+    cserde_writer *native;
+    cserde_token token = {0};
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_xml_writer_open_root(
+            "Flat", xml_output_write, &output, 2u,
+            &writer, &error) != DATA_BIND_OK)
+      return 54;
+    native = data_bind_xml_writer_writer(&writer);
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 55;
+    token = xml_string("value");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 56;
+    token = (cserde_token){.kind = CSERDE_NULL};
+    if (cserde_writer_write(native, &token) != CSERDE_UNSUPPORTED)
+      return 57;
+    if (data_bind_xml_writer_close(&writer, &error) !=
+        DATA_BIND_ERR_TYPE_MISMATCH)
+      return 58;
+  }
+
+  {
+    DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
+    XmlOutput output = {{0}, 0u, 0u, 0};
+    cserde_writer *native;
+    cserde_token token = {0};
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_xml_writer_open_root(
+            "Flat", xml_output_write, &output, 2u,
+            &writer, &error) != DATA_BIND_OK)
+      return 59;
+    native = data_bind_xml_writer_writer(&writer);
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 60;
+    token = xml_string("nested");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 61;
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    if (cserde_writer_write(native, &token) != CSERDE_UNSUPPORTED)
+      return 62;
+    if (data_bind_xml_writer_close(&writer, &error) !=
+        DATA_BIND_ERR_TYPE_MISMATCH)
+      return 63;
+  }
+
+  {
+    DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
+    XmlOutput output = {{0}, 0u, 0u, 0};
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_xml_writer_open_root(
+            "bad root", xml_output_write, &output, 2u,
+            &writer, &error) != DATA_BIND_ERR_INVALID_ARG)
+      return 64;
+    if (data_bind_xml_writer_writer(&writer) != NULL) return 65;
+  }
 
   return 0;
 }

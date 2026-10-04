@@ -160,6 +160,8 @@ add_library(
   data_bind_socket_execution_plan.h
   data_bind_validation_plan.c
   data_bind_validation_plan.h
+  data_bind_xml_writer.c
+  data_bind_xml_writer.h
   data_bind_stream_format_state.c
   data_bind_stream_format_state_internal.h
   tbe_typed.c
@@ -293,6 +295,7 @@ install(
     data_bind_yaml_provider.h
     data_bind_csv_provider.h
     data_bind_xml_provider.h
+    data_bind_xml_writer.h
     data_bind_temporal_adapter.h
     data_bind_cflow.h
     data_bind_cmeta.h
@@ -357,7 +360,7 @@ add_executable(test_data_bind_xml_provider
   test_data_bind_xml_provider.c)
 target_compile_features(test_data_bind_xml_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_xml_provider
-  PRIVATE Salts::DataBindXmlAdapter)
+  PRIVATE Salts::DataBind Salts::DataBindXmlAdapter)
 set_target_properties(test_data_bind_xml_provider
   PROPERTIES FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_xml_provider
