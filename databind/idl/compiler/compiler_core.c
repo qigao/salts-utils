@@ -2989,6 +2989,17 @@ static Node *tbe_compiler_clone_canonical_node(const Node *node) {
   }
 }
 
+static int tbe_compiler_projection_requires_binary(
+    const tbe_compiler_options_t *options) {
+  size_t i;
+  if (options == NULL) return 0;
+  for (i = 0u; i < options->projection_count; ++i)
+    if (options->projection_requests[i].id.axis ==
+        DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT)
+      return 1;
+  return 0;
+}
+
 int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *root = NULL;
   Node *projection_root = NULL;
@@ -3031,7 +3042,14 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     tbe_error_init(&format_error);
     if (!databind_binary_format_plan_build(
             contract, projection_root, &binary_format, &format_error)) {
-      if (options->projection_count != 0u) {
+      /*
+       * Binary is one FormatPlan, not an artifact prerequisite. Native,
+       * Plugin and WASM generation may still emit canonical C/CMeta artifacts
+       * for schemas whose Binary wire projection is intentionally unsupported.
+       * Current transport backends consume the Binary plan explicitly, so only
+       * a selected transport makes this failure fatal.
+       */
+      if (tbe_compiler_projection_requires_binary(options)) {
         fprintf(stderr, "Failed to compile TBE format plan: %s\n",
                 format_error.message);
         status = 1;

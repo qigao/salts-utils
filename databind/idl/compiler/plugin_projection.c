@@ -452,16 +452,18 @@ static int plugin_write_client_header(
       fputs("#include ", file) == EOF ||
       !plugin_write_c_string(file, service_header) ||
       fputs(
-          "\n#include <salts/plugin.h>\n"
+          "\n#include <data_bind_plugin_catalog.h>\n"
+          "#include <salts/plugin.h>\n"
           "#include <stdbool.h>\n\n"
           "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
           file) == EOF ||
       fprintf(
           file,
           "/* Owning generated Plugin client. One live client owns one Plugin lease.\n"
-          " * Cached *_export pointers and their FunctionDesc/FunctionAbi/callable\n"
-          " * views are borrowed from that lease. They expire when close succeeds;\n"
-          " * callers must not retain or dereference those views after close. */\n"
+          " * Cached operation snapshots, *_export pointers, and their reachable\n"
+          " * FunctionDesc/FunctionAbi/DataDesc/GenericDesc/callable views are\n"
+          " * borrowed from that lease. They expire when close succeeds; callers\n"
+          " * must not retain or dereference those views after close. */\n"
           "typedef struct %s {\n"
           "  salts_plugin_registry *registry;\n"
           "  salts_plugin_lease lease;\n",
@@ -471,7 +473,9 @@ static int plugin_write_client_header(
   for (i = 0u; i < ir->operation_count; ++i)
     if (fprintf(
             file,
+            "  DataBindPluginOperationBinding %s_operation;\n"
             "  const salts_plugin_export *%s_export;\n",
+            ir->operations[i].symbol,
             ir->operations[i].symbol) < 0)
       return 0;
 
@@ -567,6 +571,39 @@ static int plugin_write_client_source(
 
   if (fprintf(
           file,
+          "static DataBindStatus %s_catalog_operation_find(\n"
+          "    data_bind_plugin_catalog *catalog, const char *export_id,\n"
+          "    DataBindPluginOperationBinding *out) {\n"
+          "  DataBindError error = DATA_BIND_ERROR_INIT;\n"
+          "  size_t count;\n"
+          "  size_t index;\n"
+          "  if (catalog == NULL || export_id == NULL || out == NULL ||\n"
+          "      !data_bind_plugin_catalog_valid(catalog))\n"
+          "    return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  *out = (DataBindPluginOperationBinding)\n"
+          "      DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;\n"
+          "  count = data_bind_plugin_catalog_operation_count(catalog);\n"
+          "  for (index = 0u; index < count; ++index) {\n"
+          "    DataBindPluginOperationBinding candidate =\n"
+          "        DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;\n"
+          "    DataBindStatus status = data_bind_plugin_catalog_operation_at(\n"
+          "        catalog, index, &candidate, &error);\n"
+          "    if (status != DATA_BIND_OK) return status;\n"
+          "    if (candidate.export_id != NULL &&\n"
+          "        strcmp(candidate.export_id, export_id) == 0) {\n"
+          "      if (!data_bind_plugin_operation_binding_valid(&candidate))\n"
+          "        return DATA_BIND_ERR_RUNTIME;\n"
+          "      *out = candidate;\n"
+          "      return DATA_BIND_OK;\n"
+          "    }\n"
+          "  }\n"
+          "  return DATA_BIND_ERR_TYPE_NOT_FOUND;\n"
+          "}\n\n",
+          client_symbol) < 0)
+    return 0;
+
+  if (fprintf(
+          file,
           "bool %s_valid(const %s *client) {\n"
           "  return client != NULL && client->registry != NULL &&\n"
           "         salts_plugin_lease_valid(client->lease)",
@@ -576,7 +613,10 @@ static int plugin_write_client_source(
   for (i = 0u; i < ir->operation_count; ++i)
     if (fprintf(
             file,
-            " &&\n         client->%s_export != NULL",
+            " &&\n         data_bind_plugin_operation_binding_valid("
+            "&client->%s_operation) &&"
+            "\n         client->%s_export != NULL",
+            ir->operations[i].symbol,
             ir->operations[i].symbol) < 0)
       return 0;
 
@@ -592,7 +632,9 @@ static int plugin_write_client_source(
           "  salts_plugin_status release_status;\n"
           "  salts_plugin_lease lease = {0};\n"
           "  const salts_plugin_manifest *manifest = NULL;\n"
-          "  const salts_plugin_export *entry = NULL;\n\n"
+          "  const salts_plugin_export *catalog_entry = NULL;\n"
+          "  const salts_plugin_export *entry = NULL;\n"
+          "  data_bind_plugin_catalog *catalog = NULL;\n\n"
           "  if (out_client == NULL)\n"
           "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
           "  if (out_client->registry != NULL ||\n"
@@ -606,7 +648,9 @@ static int plugin_write_client_source(
   for (i = 0u; i < ir->operation_count; ++i)
     if (fprintf(
             file,
+            " ||\n      out_client->%s_operation.size != 0u"
             " ||\n      out_client->%s_export != NULL",
+            ir->operations[i].symbol,
             ir->operations[i].symbol) < 0)
       return 0;
 
@@ -631,6 +675,7 @@ static int plugin_write_client_source(
           file) == EOF)
     return 0;
 
+  /* First preserve exact FUNCTION export admission and its error ordering. */
   for (i = 0u; i < ir->operation_count; ++i) {
     const databind_compiler_service_native_operation *operation =
         &ir->operations[i];
@@ -662,6 +707,58 @@ static int plugin_write_client_source(
             "  }\n"
             "  out_client->%s_export = entry;\n\n",
             contract_version,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol) < 0)
+      return 0;
+  }
+
+  /* The same client lease also owns the canonical DataBind catalog graph. */
+  if (fputs(
+          "  status = salts_plugin_manifest_find_export(\n"
+          "      manifest, DATA_BIND_PLUGIN_CATALOG_EXPORT_ID,\n"
+          "      &catalog_entry);\n"
+          "  if (status != SALTS_PLUGIN_OK) goto fail;\n"
+          "  status = salts_plugin_export_require_interface(\n"
+          "      catalog_entry, DATA_BIND_PLUGIN_CATALOG_CONTRACT_ID,\n"
+          "      DATA_BIND_PLUGIN_CATALOG_CONTRACT_VERSION, 0u,\n"
+          "      data_bind_plugin_catalog_interface());\n"
+          "  if (status != SALTS_PLUGIN_OK) goto fail;\n"
+          "  catalog = (data_bind_plugin_catalog *)\n"
+          "      catalog_entry->value.interface.value;\n"
+          "  if (!data_bind_plugin_catalog_valid(catalog)) {\n"
+          "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+          "    goto fail;\n"
+          "  }\n\n",
+          file) == EOF)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *operation =
+        &ir->operations[i];
+
+    if (fprintf(
+            file,
+            "  if (%s_catalog_operation_find(catalog, ",
+            client_symbol) < 0 ||
+        !plugin_write_c_string(file, operation->qualified_operation) ||
+        fprintf(
+            file,
+            ", &out_client->%s_operation) != DATA_BIND_OK) {\n"
+            "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+            "    goto fail;\n"
+            "  }\n"
+            "  if (!cmeta_function_desc_equal(\n"
+            "          out_client->%s_operation.function,\n"
+            "          &%s__function_meta) ||\n"
+            "      !cmeta_function_desc_equal(\n"
+            "          out_client->%s_operation.function,\n"
+            "          out_client->%s_export->value.function.desc)) {\n"
+            "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+            "    goto fail;\n"
+            "  }\n\n",
+            operation->symbol,
+            operation->symbol,
             operation->symbol,
             operation->symbol,
             operation->symbol) < 0)

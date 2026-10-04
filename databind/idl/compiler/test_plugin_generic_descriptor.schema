@@ -1,0 +1,17 @@
+schema GenericPlugin [version(1)];
+
+component GenericProcessor {
+    service GenericService;
+}
+
+message GenericRequest {
+    list<int32> values;
+}
+
+message GenericResponse {
+    set<int32> values;
+}
+
+service GenericService {
+    Inspect: GenericRequest -> GenericResponse;
+}
