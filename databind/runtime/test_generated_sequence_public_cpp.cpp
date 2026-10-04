@@ -1,6 +1,7 @@
 #include "generated_owned_buffers.h"
 #include "data_bind_native_binding.h"
 
+#include <cstring>
 #include <type_traits>
 
 static_assert(std::is_standard_layout_v<NativeHeader_t>,
@@ -17,6 +18,17 @@ static_assert(std::is_standard_layout_v<NativeHeaderMap_headers_map_t>,
               "generated record Map declaration must remain C-compatible");
 static_assert(sizeof(NativeHeaderMap_headers_map_t) > sizeof(map_t),
               "record Map storage must not preserve raw map_t ABI");
+
+static bool generic_constructor_is(
+    const void *container, const char *stable_id, size_t arity) {
+  const cmeta_generic_desc *constructor =
+      cmeta_container_type_constructor(container);
+  return constructor != nullptr &&
+         constructor->stable_id != nullptr &&
+         std::strcmp(constructor->stable_id, stable_id) == 0 &&
+         cmeta_container_type_arity(container) == arity &&
+         cmeta_container_type_application_valid(container);
+}
 
 int main() {
   NativeHeaderPolicy_t value{};
@@ -45,10 +57,17 @@ int main() {
     NativeHeaderPolicy_clear(&value);
     return 5;
   }
+  if (!generic_constructor_is(&value.headers, "cstl.Vec", 1u) ||
+      !cmeta_type_equal(
+          cmeta_container_type_argument(&value.headers, 0u),
+          &NativeHeader_CMETA_TYPE)) {
+    NativeHeaderPolicy_clear(&value);
+    return 6;
+  }
 
   NativeHeaderPolicy_clear(&value);
   if (value.headers.cmeta.descriptor != nullptr)
-    return 6;
+    return 7;
 
   NativeHeaderMap_init(&map_owner);
   if (map_owner.headers.cmeta.descriptor == nullptr ||
@@ -59,12 +78,22 @@ int main() {
       !cmeta_type_equal(
           map_owner.headers.raw.value_type, &NativeHeader_CMETA_TYPE)) {
     NativeHeaderMap_clear(&map_owner);
-    return 7;
+    return 8;
+  }
+  if (!generic_constructor_is(&map_owner.headers, "cstl.Map", 2u) ||
+      !cmeta_type_equal(
+          cmeta_container_type_argument(&map_owner.headers, 0u),
+          SALTS_TSTR_CMETA_TYPE_REF) ||
+      !cmeta_type_equal(
+          cmeta_container_type_argument(&map_owner.headers, 1u),
+          &NativeHeader_CMETA_TYPE)) {
+    NativeHeaderMap_clear(&map_owner);
+    return 9;
   }
 
   NativeHeaderMap_clear(&map_owner);
   return map_owner.headers.cmeta.descriptor == nullptr &&
                  map_owner.headers.raw.impl == nullptr
              ? 0
-             : 8;
+             : 10;
 }
