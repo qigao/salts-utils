@@ -4,6 +4,29 @@
 #include <string.h>
 
 spec("optional local lifecycle uses canonical CMeta") {
+  it("initializes and clears enum storage and state overlays") {
+    EnumState_t value;
+    memset(&value, 0xa5, sizeof(value));
+    EnumState_init(&value);
+    check_equal(value.optional_value, State_Idle);
+    check_equal(value.nullable_value, State_Idle);
+    check_equal(value.tri_value, State_Idle);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+
+    value.optional_value = State_Active;
+    value.nullable_value = State_Active;
+    value.tri_value = State_Active;
+    value._presence[0] = 0xffu;
+    value._nulls[0] = 0xffu;
+    EnumState_clear(&value);
+    check_equal(value.optional_value, State_Idle);
+    check_equal(value.nullable_value, State_Idle);
+    check_equal(value.tri_value, State_Idle);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+  }
+
   it("initializes and clears scalar storage and state overlays") {
     ScalarState_t value;
     memset(&value, 0xa5, sizeof(value));
