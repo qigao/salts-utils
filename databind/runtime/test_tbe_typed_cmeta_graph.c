@@ -7,25 +7,53 @@
 #include <stddef.h>
 #include <string.h>
 
-/* Internal migration seam; not part of the generated public API. */
-extern const TbeTypedDescriptor *Sample_typed_descriptor(void);
+/* Residual composite-only migration seam; removed with non-flat provider work. */
 extern const TbeTypedDescriptor *Depth32_typed_descriptor(void);
-extern const TbeTypedDescriptor *BoolStorage_typed_descriptor(void);
-extern const TbeTypedDescriptor *IntegerBoolDefaults_typed_descriptor(void);
-extern const TbeTypedDescriptor *FlagStorage_typed_descriptor(void);
-extern const TbeTypedDescriptor *FixedValues_typed_descriptor(void);
-extern const TbeTypedDescriptor *WideEnumStorage_typed_descriptor(void);
-extern const TbeTypedDescriptor *Signed8Storage_typed_descriptor(void);
 
 static unsigned reject_fixed_copy_hits;
+
+static DataBindStatus sample_parse_generated(
+    DataBind *codec, DataBindFormat format,
+    Sample_t *value, const char *input, size_t input_len,
+    DataBindError *error) {
+  switch (format) {
+  case DATA_BIND_FORMAT_JSON:
+    return Sample_from_json(codec, value, input, input_len, error);
+  case DATA_BIND_FORMAT_YAML:
+    return Sample_from_yaml(codec, value, input, input_len, error);
+  case DATA_BIND_FORMAT_CSV:
+    return Sample_from_csv(codec, value, input, input_len, 0u, error);
+  case DATA_BIND_FORMAT_XML:
+    return Sample_from_xml(codec, value, input, input_len, error);
+  default:
+    return DATA_BIND_ERR_INVALID_ARG;
+  }
+}
+
+static DataBindStatus sample_serialize_generated(
+    DataBind *codec, DataBindFormat format,
+    const Sample_t *value, char **out, size_t *out_len,
+    DataBindError *error) {
+  switch (format) {
+  case DATA_BIND_FORMAT_JSON:
+    return Sample_to_json(codec, value, out, out_len, error);
+  case DATA_BIND_FORMAT_YAML:
+    return Sample_to_yaml(codec, value, out, out_len, error);
+  case DATA_BIND_FORMAT_CSV:
+    return Sample_to_csv(codec, value, out, out_len, error);
+  case DATA_BIND_FORMAT_XML:
+    return Sample_to_xml(codec, value, out, out_len, error);
+  default:
+    return DATA_BIND_ERR_INVALID_ARG;
+  }
+}
 
 static void check_native_text_format_isolated(
     DataBindFormat format, const char *input, size_t input_len,
     const char *mapped_output, const char *canonical_output) {
-  const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
   DataBindError error = DATA_BIND_ERROR_INIT;
   DataBind *codec = NULL;
-  Sample_t value = {0};
+  Sample_t value;
   char *serialized = NULL;
   size_t serialized_len = 0u;
   size_t allocated_before = 0u;
@@ -43,24 +71,22 @@ static void check_native_text_format_isolated(
   int has_mapped_output = 0;
   int has_canonical_output = 0;
 
-  check_not_null(descriptor);
   check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
   check_not_null(codec);
-  if (codec == NULL || descriptor == NULL) return;
+  if (codec == NULL) return;
 
+  Sample_init(&value);
   data_bind_set_value_pool_enabled(0);
   data_bind_get_value_pool_stats(&allocated_before, &reused_before);
-  parse_status = tbe_typed_descriptor_parse(
-      codec, "Sample", descriptor, format, input, input_len, 0u, &value,
-      &error);
+  parse_status = sample_parse_generated(
+      codec, format, &value, input, input_len, &error);
   data_bind_get_value_pool_stats(&allocated_after_parse, &reused_after_parse);
 
   if (parse_status == DATA_BIND_OK)
-    serialize_status = tbe_typed_descriptor_serialize(
-        codec, "Sample", descriptor, &value, format, &serialized,
-        &serialized_len, &error);
-  data_bind_get_value_pool_stats(&allocated_after_serialize,
-                                 &reused_after_serialize);
+    serialize_status = sample_serialize_generated(
+        codec, format, &value, &serialized, &serialized_len, &error);
+  data_bind_get_value_pool_stats(
+      &allocated_after_serialize, &reused_after_serialize);
 
   parsed_x = value.point.x;
   parsed_y = value.point.y;
@@ -70,8 +96,8 @@ static void check_native_text_format_isolated(
     has_mapped_output = strstr(serialized, mapped_output) != NULL;
     has_canonical_output = strstr(serialized, canonical_output) != NULL;
   }
-  tbe_typed_serialized_free(serialized);
-  (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+  data_bind_serialized_free(serialized);
+  Sample_clear(&value);
   data_bind_free(codec);
   data_bind_set_value_pool_enabled(1);
 
@@ -182,24 +208,23 @@ static DataBindStatus serialize_depth32(DataBindFormat format) {
   return status;
 }
 
-static DataBindStatus parse_sample_count(DataBindFormat format,
-                                         const char *input,
-                                         size_t input_length,
-                                         int32_t *out_count) {
-  const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+static DataBindStatus parse_sample_count(
+    DataBindFormat format, const char *input, size_t input_length,
+    int32_t *out_count) {
   DataBindError error = DATA_BIND_ERROR_INIT;
   DataBind *codec = NULL;
-  Sample_t value = {0};
+  Sample_t value;
   DataBindStatus status = Graph_codec_create(&codec, &error);
-  if (status == DATA_BIND_OK && descriptor != NULL) {
-    status = tbe_typed_descriptor_parse(codec, "Sample", descriptor, format,
-                                        input, input_length, 0u, &value,
-                                        &error);
-    if (status == DATA_BIND_OK && out_count != NULL) *out_count = value.count;
-    (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
-  } else if (status == DATA_BIND_OK) {
-    status = DATA_BIND_ERR_RUNTIME;
+  if (status != DATA_BIND_OK || codec == NULL) {
+    data_bind_free(codec);
+    return status != DATA_BIND_OK ? status : DATA_BIND_ERR_RUNTIME;
   }
+  Sample_init(&value);
+  status = sample_parse_generated(
+      codec, format, &value, input, input_length, &error);
+  if (status == DATA_BIND_OK && out_count != NULL)
+    *out_count = value.count;
+  Sample_clear(&value);
   data_bind_free(codec);
   return status;
 }
