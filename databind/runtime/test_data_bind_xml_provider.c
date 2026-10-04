@@ -140,6 +140,42 @@ int main(void) {
   if (lease.reader != NULL) return 29;
 
   {
+    static const char entity_xml[] =
+        "<r attr='x&amp;y'><text>a&amp;b&#33;&#x1F600;</text>"
+        "<literal><![CDATA[c&amp;d]]></literal></r>";
+
+    lease = (DataBindFormatReader)DATA_BIND_FORMAT_READER_INIT;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    if (data_bind_format_reader_open(
+            data_bind_xml_format_provider(),
+            entity_xml, sizeof(entity_xml) - 1u, 8u,
+            &lease, &error) != DATA_BIND_OK)
+      return 66;
+    if (!next_kind(lease.reader, CSERDE_MAP_BEGIN, &token)) return 67;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "text")) return 68;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        token.value.slice.lifetime != CSERDE_VIEW_TRANSIENT ||
+        token.value.slice.size != 8u ||
+        memcmp(token.value.slice.data, "a&b!\xF0\x9F\x98\x80", 8u) != 0)
+      return 69;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "literal")) return 70;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        token.value.slice.lifetime != CSERDE_VIEW_STABLE ||
+        !slice_equal(&token, "c&amp;d"))
+      return 71;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        !slice_equal(&token, "attr")) return 72;
+    if (!next_kind(lease.reader, CSERDE_STRING, &token) ||
+        token.value.slice.lifetime != CSERDE_VIEW_TRANSIENT ||
+        !slice_equal(&token, "x&y"))
+      return 73;
+    if (!next_kind(lease.reader, CSERDE_MAP_END, &token)) return 74;
+    if (data_bind_format_reader_close(&lease) != DATA_BIND_OK) return 75;
+  }
+
+  {
     DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
     XmlOutput output = {{0}, 0u, 0u, 0};
     cserde_writer *native;
