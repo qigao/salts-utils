@@ -62,7 +62,6 @@ typedef struct salts_uuid_s {
 #endif
 
 {{#typed_source_enabled}}
-#include "tbe_typed.h"
 #include "data_bind_native_binding.h"
 #include <cstl/typed.h>
 #include <salts_cmeta_data.h>
@@ -185,17 +184,11 @@ TBE_GENERATED_API extern const cmeta_data_desc {{name}}_CMETA_DATA;
  * Wire/default/presence/fingerprint metadata stays in the schema overlay.
  * This graph seam does not itself promise native decode/encode behavior. */
 {{#composites}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
-{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const TbeTypedDescriptor *{{name}}_typed_descriptor(void);
-{{/typed_cmeta_runtime_supported}}
 {{/composites}}
 {{#groups}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
-{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const TbeTypedDescriptor *{{name}}_typed_descriptor(void);
-{{/typed_cmeta_runtime_supported}}
 {{/groups}}
 {{#messages}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
 TBE_GENERATED_API const DataBindMessageNativeArtifact *{{name}}_native_artifact(void);
-{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const TbeTypedDescriptor *{{name}}_typed_descriptor(void);
-{{/typed_cmeta_runtime_supported}}
 {{/messages}}
 TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBindError *error);
 TBE_GENERATED_API const char *{{schema.schema_name}}_schema_text(void);
@@ -450,7 +443,7 @@ typedef struct {{name}}_s {
 } {{name}}_t;
 
 {{#typed_source_enabled}}
-/** Owning lifecycle and schema serialization API; serialized buffers use tbe_typed_serialized_free. */
+/** Owning lifecycle and schema serialization API; serialized buffers use the DataBind generated-output release contract. */
 TBE_GENERATED_API void {{name}}_init({{name}}_t *object);
 TBE_GENERATED_API void {{name}}_clear({{name}}_t *object);
 TBE_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
@@ -847,7 +840,7 @@ typedef struct {{name}}_s {
 } {{name}}_t;
 
 {{#typed_source_enabled}}
-/** Owning lifecycle and schema serialization API; serialized buffers use tbe_typed_serialized_free. */
+/** Owning lifecycle and schema serialization API; serialized buffers use the DataBind generated-output release contract. */
 TBE_GENERATED_API void {{name}}_init({{name}}_t *object);
 TBE_GENERATED_API void {{name}}_clear({{name}}_t *object);
 TBE_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
@@ -1499,7 +1492,7 @@ typedef struct {{name}}_s {
 } {{name}}_t;
 
 {{#typed_source_enabled}}
-/** Owning lifecycle and schema serialization API; serialized buffers use tbe_typed_serialized_free. */
+/** Owning lifecycle and schema serialization API; serialized buffers use the DataBind generated-output release contract. */
 TBE_GENERATED_API void {{name}}_init({{name}}_t *object);
 TBE_GENERATED_API void {{name}}_clear({{name}}_t *object);
 TBE_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
