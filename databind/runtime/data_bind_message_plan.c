@@ -469,6 +469,13 @@ static int message_schema_field_matches_native(
     return 0;
   }
 
+  if (schema_field->has_cmeta_kind &&
+      schema_field->cmeta_kind == CMETA_DATA_STRUCT)
+    return schema_field->type != NULL &&
+           native_data->kind == CMETA_DATA_STRUCT &&
+           message_schema_record_matches_native(
+               codec, schema_field->type, native_data, depth + 1u);
+
   schema_data = schema_field->cmeta_data;
   if (schema_data == NULL)
     (void)data_bind_schema_field_cmeta_data(
