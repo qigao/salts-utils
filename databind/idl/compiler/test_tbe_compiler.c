@@ -2823,6 +2823,7 @@ spec("tbe_compiler") {
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON)");
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML)");
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_XML)");
+        check_contains(source, "data_bind_format_plan_compile_reader(");
         check_contains(source, "data_bind_message_plan_decode_native_format(");
         check_contains(source, "data_bind_message_plan_encode_native(");
         check_contains(source, "_message_to_text(");
