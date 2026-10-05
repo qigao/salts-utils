@@ -1,4 +1,4 @@
-#include "tbe30_generated.h"
+#include "binary_admission_generated.h"
 #include "tinytest.h"
 
 #include <stdint.h>
@@ -6,7 +6,7 @@
 
 enum { GENERATED_WIRE_CAPACITY = 128, GENERATED_WIRE_SENTINEL = 0xa5 };
 
-spec("generated typed descriptor compatibility") {
+spec("generated canonical Binary admission") {
   it("fails closed for generated nested Binary layouts without canonical admission") {
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
@@ -63,7 +63,7 @@ spec("generated typed descriptor compatibility") {
     source.header.seq_num = 37u;
     source.header.timestamp = 99u;
     memset(source.pass_hash, 0x5a, sizeof(source.pass_hash));
-    source.username = tstr_dup("descriptor-boundary");
+    source.username = tstr_dup("binary-admission");
     check_not_null(source.username);
     decoded.header.seq_num = source.header.seq_num;
     memset(wire, GENERATED_WIRE_SENTINEL, sizeof(wire));

@@ -6,15 +6,14 @@ DataBind 是 SaltsUtils 的组成部分，源码、构建、测试、安装和�
 生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
 DataBind 私有的 owning dynamic-container compatibility engine、storage fallback、第二 binder
 或格式 fallback。原生对象使用 canonical CMeta graph 与 DataBind plans；历史
-`TBE_TYPED_*` runtime 的移除由 [#488](https://github.com/qigao/salts-utils/issues/488) 跟踪。
-历史 `tbe_typed` 已移除动态值/JSON 转换、通用 parse/serialize、格式分发与对应
-`TBE_TYPED_BIND_PARSE*` / `TBE_TYPED_BIND_SERIALIZE*` 宏；没有转发兼容入口。
-descriptor init/clear 与 `TBE_TYPED_BIND_INIT/CLEAR` 宏也已移除；已有 CMeta graph
-的对象直接使用 `data_bind_native_init/clear`，Binary overlay 只参与 wire 验证和编解码。
+typed runtime、公开头文件与宏已物理删除，没有转发兼容入口。
+已有 CMeta graph 的对象直接使用 `data_bind_native_init/clear`，Binary overlay
+只参与 wire 验证和编解码。使用旧接口的调用方必须迁移到规范 native binding。
 JSON/YAML/XML/CSV 原生路径使用 FormatPlan 和 MessagePlan/native，动态值转换使用
-canonical value reader。剩余 descriptor 解码只暴露显式
-`tbe_typed_descriptor_parse_binary`，与 Binary 专用序列化入口一起等待
-[#489](https://github.com/qigao/salts-utils/issues/489) 切换；raw lifecycle 的清理仍属 #488。
+canonical value reader。BinaryLayoutIR 经验证后生成 BinaryLayoutPlan provider；
+Binary reader/writer 通过 CSerde 与 MessagePlan/native 交互，不持有宿主字段偏移
+或生命周期。当前准入 flat FIXED scalar 与 VAR_DATA string/bytes；不支持的
+group、固定数组与嵌套布局在修改对象或发布输出前返回明确错误。
 
 通用组合生命周期测试使用 CMeta Struct 与 CSTL 的受管 Vec、Set、Map provider，
 覆盖嵌套 owner 的独立复制、释放、重复 clear、状态位复位和解码中途超限后的清理。
@@ -22,8 +21,9 @@ native storage 测试也直接使用 canonical native API，验证平台原生�
 受管 string/bytes，以及 provider 定义的非全零 semantic zero 和恰好一次释放。
 固定字节使用 CMeta exact fixed provider 的 init/copy/restore-zero；当前 native 路径
 要求 owned buffer provider，因此对只有 fixed provider 的形状在修改宿主前返回 schema 错误。
-固定数组尚无 canonical sequence provider，保留显式 Binary 回归覆盖，
-不借用 raw composite init/clear 模拟 canonical 所有权。
+固定数组尚无 canonical sequence provider，不借用 raw composite init/clear
+模拟 canonical 所有权。Binary/native 回归覆盖旧 wire 黄金字节、大小端、
+ABSENT/NULL/VALUE、独立 owner、重复 clear、失败回滚和有界输出的一次性发布。
 
 DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，

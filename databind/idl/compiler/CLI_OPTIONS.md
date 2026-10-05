@@ -305,9 +305,9 @@ FormatPlan, not to a second native metadata table.
 
 See the [native binding guide](../../runtime/README.md#路线二映射现有-c-struct) and the
 [executable native benchmark](../../runtime/benchmark_data_bind_native.c) for ownership,
-capacity limits and cleanup. Legacy `TBE_TYPED_*` runtime removal is tracked by
-[#488](https://github.com/qigao/salts-utils/issues/488); Binary backend separation is
-tracked by [#489](https://github.com/qigao/salts-utils/issues/489).
+capacity limits and cleanup. The historical typed runtime is removed. Generated
+Binary entry points use validated BinaryLayoutIR/providers, CSerde and native
+MessagePlan execution; unsupported shapes fail before object/output publication.
 
 `Orders_schema_codec()` exposes a schema-specific dispatch table for trusted host providers.
 Its `text_to_binary_into` operation binds JSON/YAML/CSV/XML directly into caller-owned,
@@ -507,4 +507,4 @@ target_link_libraries(order_schema PUBLIC Salts::DataBind)
   RulesForge/TurboScript process loads only DataBind and any prebuilt schema
   libraries; it does not need an external C compiler.
 - Dynamic schema hosts may skip code generation and use `DataBindObject`. Existing
-  C structs use `TBE_TYPED_*` macro descriptors and also do not invoke the compiler.
+  C structs use canonical CMeta graphs and native bindings without invoking the compiler.

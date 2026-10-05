@@ -1,6 +1,6 @@
 # DataBind 2.5 ABI
 
-DataBind 2.5 使用纯 C schema parser、动态值树和 typed descriptor。运行时不加载
+DataBind 使用纯 C schema parser、动态值树和 canonical CMeta/native binding。运行时不加载
 中间代码、不生成机器码，也不要求宿主进程提供编译器。
 
 ## 版本边界
@@ -30,14 +30,15 @@ DataBind 2.5 使用纯 C schema parser、动态值树和 typed descriptor。运�
 
 ## 两条强类型路线
 
-1. schema 生成 `.h/.c`：生成代码公开 owning struct、typed descriptor 和格式
+1. schema 生成 `.h/.c`：生成代码公开 owning struct、CMeta graph/native binding 和格式
    入口。生成源可编译进静态库或动态库。
-2. schema 映射现有 C struct：应用通过 `TBE_TYPED_*` 宏声明 descriptor，
-   不生成业务头文件，仍复用相同 DataBind 格式适配器。
+2. schema 映射现有 C struct：应用声明 canonical CMeta graph 与
+   `DataBindNativeTypeBinding`，编译 MessagePlan 与格式计划，不生成业务头文件。
 
 两条路线都以 schema 为格式与名称的唯一事实源。`[name]` 和 `[alias]` 决定
-外部名称与反序列化别名；`[c]` 决定生成代码的成员名，宏 descriptor 则直接
-指定现有 struct 成员。
+外部名称与反序列化别名；`[c]` 决定生成代码的成员名，CMeta metadata 则直接
+描述现有 struct 成员及生命周期。历史 typed runtime 的公开接口已删除；旧调用方
+必须迁移，不提供兼容 alias。
 
 ## 生成动态库
 

@@ -112,7 +112,7 @@ typedef struct databind_binary_layout_diagnostic {
  * typed Binary format plan. Semantic kinds come only from Contract IR; offsets/state
  * come only from the Binary format plan. The builder never consumes parser/frontend
  * Node trees, native C offsets, CMeta storage/lifecycle, or historical
- * TbeTyped descriptors.
+ * native host/lifecycle metadata.
  */
 databind_binary_layout_status databind_binary_layout_build(
     const IdlContract *contract,

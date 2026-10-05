@@ -414,9 +414,11 @@ spec("DataBind flat Binary canonical writer") {
       cserde_token bad = key("count");
       check_equal(
           cserde_writer_write(writer, &bad),
-          CSERDE_INVALID_STATE);
+          CSERDE_UNSUPPORTED);
     }
-    (void)data_bind_binary_writer_close(writer, owner, NULL);
+    check_equal(cserde_writer_finish(writer), CSERDE_UNSUPPORTED);
+    check_equal(sink.calls, 0u);
+    check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_ERR_SCHEMA);
 
     writer = NULL;
     owner = NULL;
@@ -433,7 +435,25 @@ spec("DataBind flat Binary canonical writer") {
           cserde_writer_write(writer, &bad),
           CSERDE_UNSUPPORTED);
     }
-    (void)data_bind_binary_writer_close(writer, owner, NULL);
+    check_equal(cserde_writer_finish(writer), CSERDE_UNSUPPORTED);
+    check_equal(sink.calls, 0u);
+    check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_ERR_SCHEMA);
+  }
+
+  it("rejects an incomplete message without invoking the byte sink") {
+    DataBindBinaryLayoutPlan plan = scalar_plan(0);
+    unsigned char wire[32] = {0};
+    BinarySink sink = {wire, sizeof(wire), 0u, 0u};
+    cserde_writer *writer = NULL;
+    void *owner = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink, 8u,
+                &writer, &owner, &error), DATA_BIND_OK);
+    check_true(write_token(writer, map_begin()));
+    check_equal(cserde_writer_finish(writer), CSERDE_UNSUPPORTED);
+    check_equal(cserde_writer_finish(writer), CSERDE_UNSUPPORTED);
+    check_equal(sink.calls, 0u);
+    check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_ERR_SCHEMA);
   }
 
   it("commits to the byte sink once and leaves bounded sinks unchanged on failure") {

@@ -2693,7 +2693,6 @@ spec("tbe_compiler") {
       if (source != NULL) {
         check_contains(source, "{sizeof(DataBindBinaryFieldPlan), \"id\",");
         check_contains(source, "offsetof(Order_t, order_id)");
-        check(strstr(source, "TbeTypedType Order_TYPED_TYPE") == NULL);
       }
 
       free(header);
@@ -2744,8 +2743,6 @@ spec("tbe_compiler") {
       check_not_null(header);
       check_not_null(source);
       if (header != NULL) {
-        check(strstr(header, "tbe_typed.h") == NULL);
-        check(strstr(header, "TbeTypedDescriptor") == NULL);
         check(strstr(header, "_typed_descriptor(void)") == NULL);
         check_contains(header, "Sample_cmeta_data(");
         check_contains(header, "FlagStorage_cmeta_data(");
@@ -2758,19 +2755,9 @@ spec("tbe_compiler") {
             "LoginMessage_to_bin_into(DataBind *codec, const LoginMessage_t *object");
       }
       if (source != NULL) {
-        check(strstr(source, "#include \"tbe_typed.h\"") == NULL);
-        check(strstr(source, "static TbeTypedType Point_TYPED_TYPE") == NULL);
-        check(strstr(source, "TbeTypedDescriptor") == NULL);
-        check(strstr(source, "TBE_TYPED_DESCRIPTOR_INIT") == NULL);
         check(strstr(source, "_typed_descriptor(void)") == NULL);
-        check(strstr(source, "tbe_typed_descriptor_init(") == NULL);
-        check(strstr(source, "tbe_typed_descriptor_clear(") == NULL);
         check_contains(source, "cmeta_data_value_init_zero(&name##_CMETA_DATA");
         check_contains(source, "cmeta_data_value_restore_zero(&name##_CMETA_DATA");
-        check(strstr(source, "tbe_typed_descriptor_parse(codec") == NULL);
-        check(strstr(source, "tbe_typed_descriptor_serialize_binary") == NULL);
-        check(strstr(source, "tbe_typed_parse_ex(codec") == NULL);
-        check(strstr(source, "tbe_typed_serialize_binary") == NULL);
         check_contains(
             source, "DATABIND_DEFINE_UNAVAILABLE_MESSAGE_CSV_OUTPUT(LoginMessage)");
         check_contains(
@@ -2828,10 +2815,8 @@ spec("tbe_compiler") {
         check_contains(source, "data_bind_xml_writer_open_root(");
         check_contains(source, "_message_to_xml(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(NullableFlat)");
-        check(strstr(source, "TBE_TYPED_DEFINE_RAW_LIFECYCLE(NullableFlat)") == NULL);
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_TEXT(NullableFlat)");
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(NullableFlat)");
-        check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(NullableFlat)") == NULL);
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(NullableFlat,") == NULL);
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML(Sample)");
@@ -2840,7 +2825,6 @@ spec("tbe_compiler") {
         check(strstr(
             source, "DATABIND_DEFINE_RAW_MESSAGE_XML(LoginMessage)") == NULL);
         check(strstr(source, "DATABIND_DEFINE_CMETA_RAW_RECORD(LoginMessage)") == NULL);
-        check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(LoginMessage)") == NULL);
         check(strstr(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(LoginMessage)") == NULL);
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON)");
         check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML)");
@@ -2915,28 +2899,6 @@ spec("tbe_compiler") {
       source = tt_read_file(source_path, &source_size);
       check_not_null(source);
       if (source != NULL) {
-        check(strstr(source, "#include \"tbe_typed.h\"") == NULL);
-        check(strstr(source, "static TbeTypedType Point_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType Level_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType Value_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType OwnedState_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType OwnedBytesState_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType MapState_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType FixedBytesState_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType NestedValue_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType NestedHolder_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType OwnedChild_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType NestedOwnedState_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType EnumState_TYPED_TYPE") == NULL);
-        check(strstr(source, "static TbeTypedType UuidState_TYPED_TYPE") == NULL);
-        check(strstr(source, "#define TBE_TYPED_DEFINE_RAW_LIFECYCLE") == NULL);
-        check(strstr(source, "TBE_TYPED_DEFINE_DESCRIPTOR_RECORD") == NULL);
-        check(strstr(source, "TBE_TYPED_DEFINE_RAW_CONVERSIONS") == NULL);
-        check(strstr(source, "TBE_TYPED_") == NULL);
-        check(strstr(source, "TbeTyped") == NULL);
-        check(strstr(source, "tbe_typed_") == NULL);
-        check(strstr(source, "tbe_typed_init(") == NULL);
-        check(strstr(source, "tbe_typed_clear(") == NULL);
         check_contains(source, "Point_cmeta_data(");
         check_contains(source, "Level_cmeta_data(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(Value)");
@@ -3022,9 +2984,6 @@ spec("tbe_compiler") {
       source = tt_read_file(source_path, &source_size);
       check_not_null(source);
       if (source != NULL) {
-        check(strstr(source, "TbeTyped") == NULL);
-        check(strstr(source, "TBE_TYPED") == NULL);
-        check(strstr(source, "tbe_typed") == NULL);
         check_contains(source, "DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(Inner)");
         check_contains(source, "DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(Outer)");
       }
