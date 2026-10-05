@@ -1,8 +1,9 @@
 #include "tbe_typed.h"
+#include "data_bind_native.h"
 #include "tinytest.h"
 
 #include <cmeta/data.h>
-#include <cmeta/data.h>
+#include <salts_cmeta_data.h>
 #include <tstr.h>
 
 #include <stddef.h>
@@ -17,6 +18,64 @@ typedef struct NullableBinaryRecord {
   uint8_t presence;
   uint8_t nulls;
 } NullableBinaryRecord;
+
+enum { NULLABLE_FIELD_COUNT = 4, NULLABLE_NOTE_INDEX = 3,
+       NULLABLE_WORKSPACE_BYTES = 4096, NULLABLE_MAX_DEPTH = 8,
+       NULLABLE_MAX_ITEMS = 16, NULLABLE_MAX_OWNED_BYTES = 64 };
+
+static const cmeta_type_identity NULLABLE_NATIVE_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.NullableBinary.Record");
+static const cmeta_type_desc NULLABLE_NATIVE_TYPE = {
+    "NullableBinaryRecord", sizeof(NullableBinaryRecord),
+    _Alignof(NullableBinaryRecord), CMETA_T_OBJECT, NULL, NULL, &NULLABLE_NATIVE_ID};
+static cmeta_field_desc nullable_layout_fields[] = {
+    {"required_value", "uint16_t", offsetof(NullableBinaryRecord, required_value),
+     sizeof(uint16_t), _Alignof(uint16_t), &cmeta_type_uint16, NULL},
+    {"nullable_value", "uint16_t", offsetof(NullableBinaryRecord, nullable_value),
+     sizeof(uint16_t), _Alignof(uint16_t), &cmeta_type_uint16, NULL},
+    {"tri_value", "uint16_t", offsetof(NullableBinaryRecord, tri_value),
+     sizeof(uint16_t), _Alignof(uint16_t), &cmeta_type_uint16, NULL},
+    {"note", "tstr", offsetof(NullableBinaryRecord, note),
+     sizeof(tstr), _Alignof(tstr), NULL, NULL}};
+static const cmeta_struct_desc NULLABLE_NATIVE_LAYOUT = {
+    "NullableBinaryRecord", sizeof(NullableBinaryRecord),
+    _Alignof(NullableBinaryRecord), nullable_layout_fields, NULLABLE_FIELD_COUNT};
+static cmeta_data_field_desc nullable_native_fields[] = {
+    {"test.NullableBinary.required_value", "required_value",
+     offsetof(NullableBinaryRecord, required_value), &cmeta_data_uint16},
+    {"test.NullableBinary.nullable_value", "nullable_value",
+     offsetof(NullableBinaryRecord, nullable_value), &cmeta_data_uint16},
+    {"test.NullableBinary.tri_value", "tri_value",
+     offsetof(NullableBinaryRecord, tri_value), &cmeta_data_uint16},
+    {"test.NullableBinary.note", "note", offsetof(NullableBinaryRecord, note), NULL}};
+static const cmeta_data_struct_shape NULLABLE_NATIVE_SHAPE = {
+    &NULLABLE_NATIVE_LAYOUT, nullable_native_fields, NULLABLE_FIELD_COUNT};
+static const cmeta_data_desc NULLABLE_NATIVE_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.NullableBinary.Record.data", .display_name = "NullableBinaryRecord",
+    .kind = CMETA_DATA_STRUCT, .storage_type = &NULLABLE_NATIVE_TYPE,
+    .shape = &NULLABLE_NATIVE_SHAPE};
+
+static _Alignas(64) unsigned char nullable_workspace[NULLABLE_WORKSPACE_BYTES];
+static DataBindNativeOptions nullable_options;
+static DataBindNativeDiagnostic nullable_diagnostic;
+static NullableBinaryRecord owned_source;
+static NullableBinaryRecord owned_destination;
+static uint8_t *owned_wire;
+
+/* Single-threaded native lifecycle owns text and the complete host envelope.
+ * Binary owns only wire state. Initialization requires unused storage, and
+ * clear runs after parsing has stopped borrowing input or host pointers. */
+static DataBindStatus nullable_init(const cmeta_data_desc *data, void *object) {
+  return data_bind_native_init(&nullable_options, data, object,
+                               data->storage_type->size, &nullable_diagnostic);
+}
+
+static DataBindStatus nullable_clear(const cmeta_data_desc *data, void *object) {
+  return data_bind_native_clear(&nullable_options, data, object,
+                                data->storage_type->size, &nullable_diagnostic);
+}
 
 static const TbeTypedField NULLABLE_BINARY_FIELDS[] = {
     {.name = "required_value",
@@ -150,6 +209,69 @@ static DataBind *canonical_binary_codec(void) {
 }
 
 spec("typed nullable TBE binary") {
+  before_each() {
+    nullable_options = (DataBindNativeOptions)DATA_BIND_NATIVE_OPTIONS_INIT;
+    nullable_diagnostic = (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    nullable_options.workspace = nullable_workspace;
+    nullable_options.workspace_bytes = sizeof(nullable_workspace);
+    nullable_options.max_depth = NULLABLE_MAX_DEPTH;
+    nullable_options.max_items = NULLABLE_MAX_ITEMS;
+    nullable_options.max_owned_bytes = NULLABLE_MAX_OWNED_BYTES;
+    nullable_layout_fields[NULLABLE_NOTE_INDEX].type = salts_tstr_cmeta_data.storage_type;
+    nullable_native_fields[NULLABLE_NOTE_INDEX].value = &salts_tstr_cmeta_data;
+  }
+  after_each() {
+    /* Provider cleanup also runs after a fatal assertion with a live owner. */
+    (void)cmeta_data_value_restore_zero(&NULLABLE_NATIVE_DATA, &owned_source);
+    (void)cmeta_data_value_restore_zero(&NULLABLE_NATIVE_DATA, &owned_destination);
+    tbe_typed_serialized_free(owned_wire);
+    owned_wire = NULL;
+  }
+
+  it("preserves and replaces canonical text ownership through historical Binary decode") {
+    static const unsigned char payload[] = "owned";
+    static const unsigned char previous[] = "keep";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    size_t wire_len = 0u;
+    unsigned char before[sizeof(owned_destination)];
+    tstr previous_owner;
+
+    check_equal(nullable_init(&NULLABLE_NATIVE_DATA, &owned_source), DATA_BIND_OK);
+    check_equal(nullable_init(&NULLABLE_NATIVE_DATA, &owned_destination), DATA_BIND_OK);
+    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &owned_source.note,
+                payload, sizeof(payload) - 1u, NULLABLE_MAX_OWNED_BYTES), CMETA_OK);
+    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &owned_destination.note,
+                previous, sizeof(previous) - 1u, NULLABLE_MAX_OWNED_BYTES), CMETA_OK);
+    owned_source.required_value = 7u;
+    owned_source.tri_value = 9u;
+    owned_source.presence = (uint8_t)((1u << 0) | (1u << 1));
+    previous_owner = owned_destination.note;
+    memcpy(before, &owned_destination, sizeof(before));
+    check_equal(tbe_typed_serialize_binary(&NULLABLE_BINARY_TYPE, &owned_source,
+                &owned_wire, &wire_len, &error), DATA_BIND_OK);
+    check_true(wire_len > 1u);
+    check_equal(tbe_typed_parse_binary(&NULLABLE_BINARY_TYPE, owned_wire,
+                wire_len - 1u, &owned_destination, &error), DATA_BIND_ERR_PARSE);
+    check_equal(&owned_destination, before, sizeof(before));
+    check_true(owned_destination.note == previous_owner);
+    check_equal(memcmp(owned_destination.note, previous, sizeof(previous) - 1u), 0);
+
+    check_equal(tbe_typed_parse_binary(&NULLABLE_BINARY_TYPE, owned_wire,
+                wire_len, &owned_destination, &error), DATA_BIND_OK);
+    check_true(owned_destination.note != owned_source.note);
+    check_equal(nullable_clear(&NULLABLE_NATIVE_DATA, &owned_source), DATA_BIND_OK);
+    tbe_typed_serialized_free(owned_wire);
+    owned_wire = NULL;
+    check_equal(owned_destination.required_value, 7u);
+    check_equal(owned_destination.tri_value, 9u);
+    check_equal(tstr_len(owned_destination.note), sizeof(payload) - 1u);
+    check_equal(memcmp(owned_destination.note, payload, sizeof(payload) - 1u), 0);
+    check_equal(nullable_clear(&NULLABLE_NATIVE_DATA, &owned_destination), DATA_BIND_OK);
+    check_equal(nullable_clear(&NULLABLE_NATIVE_DATA, &owned_destination), DATA_BIND_OK);
+    check_null(owned_destination.note);
+    check_equal(owned_destination.presence, 0u);
+    check_equal(owned_destination.nulls, 0u);
+  }
   it("round trips dual state bitmaps and NULL variable data") {
     NullableBinaryRecord value;
     NullableBinaryRecord decoded;
@@ -157,9 +279,9 @@ spec("typed nullable TBE binary") {
     uint8_t *wire = NULL;
     size_t wire_len = 0u;
 
-    check_equal(tbe_typed_init(&NULLABLE_BINARY_TYPE, &value, &error),
+    check_equal(nullable_init(&NULLABLE_NATIVE_DATA, &value),
                 DATA_BIND_OK);
-    check_equal(tbe_typed_init(&NULLABLE_BINARY_TYPE, &decoded, &error),
+    check_equal(nullable_init(&NULLABLE_NATIVE_DATA, &decoded),
                 DATA_BIND_OK);
 
     value.required_value = 7u;
@@ -201,8 +323,8 @@ spec("typed nullable TBE binary") {
     check_equal(decoded.nulls, value.nulls);
 
     tbe_typed_serialized_free(wire);
-    tbe_typed_clear(&NULLABLE_BINARY_TYPE, &decoded);
-    tbe_typed_clear(&NULLABLE_BINARY_TYPE, &value);
+    check_equal(nullable_clear(&NULLABLE_NATIVE_DATA, &decoded), DATA_BIND_OK);
+    check_equal(nullable_clear(&NULLABLE_NATIVE_DATA, &value), DATA_BIND_OK);
   }
 
   it("rejects impossible ABSENT plus NULL and nonempty NULL tail payload") {
@@ -213,7 +335,7 @@ spec("typed nullable TBE binary") {
     size_t wire_len = 0u;
     uint8_t malformed[13] = {0};
 
-    check_equal(tbe_typed_init(&NULLABLE_BINARY_TYPE, &value, &error),
+    check_equal(nullable_init(&NULLABLE_NATIVE_DATA, &value),
                 DATA_BIND_OK);
     value.required_value = 1u;
     value.nulls = (uint8_t)(1u << 1); /* tri_value NULL while absent */
@@ -225,7 +347,7 @@ spec("typed nullable TBE binary") {
     check_null(wire);
     check_equal(wire_len, 0u);
 
-    check_equal(tbe_typed_init(&NULLABLE_BINARY_TYPE, &decoded, &error),
+    check_equal(nullable_init(&NULLABLE_NATIVE_DATA, &decoded),
                 DATA_BIND_OK);
     malformed[0] = (uint8_t)(1u << 1); /* note present */
     malformed[1] = (uint8_t)(1u << 2); /* note NULL */
@@ -239,8 +361,8 @@ spec("typed nullable TBE binary") {
         DATA_BIND_ERR_PARSE);
     check_contains(error.message, "NULL");
 
-    tbe_typed_clear(&NULLABLE_BINARY_TYPE, &decoded);
-    tbe_typed_clear(&NULLABLE_BINARY_TYPE, &value);
+    check_equal(nullable_clear(&NULLABLE_NATIVE_DATA, &decoded), DATA_BIND_OK);
+    check_equal(nullable_clear(&NULLABLE_NATIVE_DATA, &value), DATA_BIND_OK);
   }
 
   it("round trips the same fixed state through the canonical CMeta descriptor") {
@@ -255,7 +377,7 @@ spec("typed nullable TBE binary") {
     if (!codec) return;
 
     check_equal(
-        tbe_typed_descriptor_init(&CANONICAL_BINARY_DESCRIPTOR, &value, &error),
+        nullable_init(&CANONICAL_BINARY_DATA, &value),
         DATA_BIND_OK);
     value.required_value = 7u;
     value.tri_value = 99u;
@@ -278,7 +400,7 @@ spec("typed nullable TBE binary") {
     }
 
     check_equal(
-        tbe_typed_descriptor_init(&CANONICAL_BINARY_DESCRIPTOR, &decoded, &error),
+        nullable_init(&CANONICAL_BINARY_DATA, &decoded),
         DATA_BIND_OK);
     check_equal(
         tbe_typed_descriptor_parse_binary(
@@ -292,10 +414,10 @@ spec("typed nullable TBE binary") {
 
     tbe_typed_serialized_free(wire);
     check_equal(
-        tbe_typed_descriptor_clear(&CANONICAL_BINARY_DESCRIPTOR, &decoded, &error),
+        nullable_clear(&CANONICAL_BINARY_DATA, &decoded),
         DATA_BIND_OK);
     check_equal(
-        tbe_typed_descriptor_clear(&CANONICAL_BINARY_DESCRIPTOR, &value, &error),
+        nullable_clear(&CANONICAL_BINARY_DATA, &value),
         DATA_BIND_OK);
     data_bind_free(codec);
   }
@@ -338,7 +460,7 @@ spec("typed nullable TBE binary") {
     CanonicalBinaryRecord value = {0};
     uint8_t before[sizeof(value)];
     check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1u, &codec, &error), DATA_BIND_OK);
-    check_equal(tbe_typed_descriptor_init(&CANONICAL_BINARY_DESCRIPTOR, &value, &error), DATA_BIND_OK);
+    check_equal(nullable_init(&CANONICAL_BINARY_DATA, &value), DATA_BIND_OK);
     memcpy(before, &value, sizeof(before));
     check_equal(tbe_typed_descriptor_parse_binary(codec, "Canonical", &CANONICAL_BINARY_DESCRIPTOR,
                                                   valid_with_trailing, WIRE_BYTES - 1u, &value, &error),
@@ -352,7 +474,7 @@ spec("typed nullable TBE binary") {
                                                   invalid_state, sizeof(invalid_state), &value, &error),
                 DATA_BIND_ERR_SCHEMA);
     check_equal(&value, before, sizeof(before));
-    check_equal(tbe_typed_descriptor_clear(&CANONICAL_BINARY_DESCRIPTOR, &value, &error), DATA_BIND_OK);
+    check_equal(nullable_clear(&CANONICAL_BINARY_DATA, &value), DATA_BIND_OK);
     data_bind_free(codec);
   }
 }

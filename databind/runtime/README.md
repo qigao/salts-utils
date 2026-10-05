@@ -9,6 +9,8 @@ DataBind 私有的 owning dynamic-container compatibility engine、storage fallb
 `TBE_TYPED_*` runtime 的移除由 [#488](https://github.com/qigao/salts-utils/issues/488) 跟踪。
 历史 `tbe_typed` 已移除动态值/JSON 转换、通用 parse/serialize、格式分发与对应
 `TBE_TYPED_BIND_PARSE*` / `TBE_TYPED_BIND_SERIALIZE*` 宏；没有转发兼容入口。
+descriptor init/clear 与 `TBE_TYPED_BIND_INIT/CLEAR` 宏也已移除；已有 CMeta graph
+的对象直接使用 `data_bind_native_init/clear`，Binary overlay 只参与 wire 验证和编解码。
 JSON/YAML/XML/CSV 原生路径使用 FormatPlan 和 MessagePlan/native，动态值转换使用
 canonical value reader。剩余 descriptor 解码只暴露显式
 `tbe_typed_descriptor_parse_binary`，与 Binary 专用序列化入口一起等待
