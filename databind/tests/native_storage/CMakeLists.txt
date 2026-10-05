@@ -1,4 +1,4 @@
-# #99 migration prerequisites, using the real existing DataBind implementation.
+# Canonical native storage admission and provider semantic-zero lifecycle.
 add_executable(test_data_bind_native_storage_requirements native_storage_requirements.c)
 target_link_libraries(test_data_bind_native_storage_requirements
   PRIVATE Salts::DataBind Salts::Core Salts::TinyTest)

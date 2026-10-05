@@ -1,4 +1,5 @@
 #include "tbe_typed.h"
+#include "data_bind_native.h"
 #include "tinytest.h"
 
 #include <cmeta/data.h>
@@ -7,7 +8,9 @@
 #include <stdint.h>
 #include <string.h>
 
-enum { BOUNDARY_STORAGE_SIZE = 128, BOUNDARY_SENTINEL = 0xa5 };
+enum { BOUNDARY_STORAGE_SIZE = 128, BOUNDARY_SENTINEL = 0xa5,
+       BOUNDARY_WORKSPACE_BYTES = 4096, BOUNDARY_MAX_DEPTH = 8,
+       BOUNDARY_MAX_ITEMS = 16 };
 
 #ifdef _MSC_VER
 typedef union BoundaryMaxAlign {
@@ -93,9 +96,6 @@ static const TbeTypedType STATE_BOUNDARY_OVERLAY = {
     .wire_big_endian = 0,
     .null_offset = offsetof(StateBoundary, nulls),
     .null_size = 1u};
-static const TbeTypedDescriptor STATE_BOUNDARY_DESCRIPTOR =
-    TBE_TYPED_DESCRIPTOR_INIT(&STATE_BOUNDARY_OVERLAY, &STATE_BOUNDARY_DATA);
-
 static TbeTypedType boundary_type(const TbeTypedField *fields, size_t count) {
   TbeTypedType type = {
       .name = "Boundary", .size = sizeof(BoundaryStorage),
@@ -125,20 +125,10 @@ static void expect_binary_rejection(const TbeTypedType *type) {
   check_equal(memcmp(&object, before, sizeof(object)), 0);
 }
 
-/* Host-only APIs deliberately do not require a binary layout: text-only
- * descriptors remain valid. Only malformed host layouts reach this helper. */
+/* Invalid host metadata must be rejected before Binary input or output is used. */
 static void expect_host_rejection(const TbeTypedType *type) {
-  BoundaryStorage object;
-  uint8_t before[sizeof(object)];
   DataBindError error = DATA_BIND_ERROR_INIT;
-  memset(&object, BOUNDARY_SENTINEL, sizeof(object));
-  memcpy(before, &object, sizeof(object));
-
   check_equal(tbe_typed_validate_descriptor(type, &error), DATA_BIND_ERR_SCHEMA);
-  check_equal(tbe_typed_init(type, &object, &error), DATA_BIND_ERR_SCHEMA);
-  check_equal(memcmp(&object, before, sizeof(object)), 0);
-  tbe_typed_clear(type, &object);
-  check_equal(memcmp(&object, before, sizeof(object)), 0);
   expect_binary_rejection(type);
 }
 
@@ -181,7 +171,7 @@ spec("typed descriptor boundary") {
     expect_binary_rejection(&type);
   }
 
-  it("rejects presence overlapping owning storage before lifecycle operations") {
+  it("rejects presence overlapping owning storage before Binary IO") {
     const TbeTypedField field = {
         .name = "owner", .kind = TBE_TYPED_STRING, .wire_kind = TBE_TYPED_STRING};
     TbeTypedType type = boundary_type(&field, 1u);
@@ -236,7 +226,7 @@ spec("typed descriptor boundary") {
     expect_host_rejection(&type);
   }
 
-  it("rejects map key and scalar value overlap before lifecycle operations") {
+  it("rejects map key and scalar value overlap before Binary IO") {
     const TbeTypedField field = {
         .name = "entries", .kind = TBE_TYPED_MAP,
         .element_size = sizeof(tstr), .map_entry_size = sizeof(tstr),
@@ -327,16 +317,14 @@ spec("typed descriptor boundary") {
     expect_binary_rejection(&type);
   }
 
-  it("keeps empty host intervals disjoint from owning storage") {
+  it("validates empty host intervals before independent Binary admission") {
     const TbeTypedField fields[] = {
         {.name = "empty", .kind = TBE_TYPED_FIXED_BYTES, .fixed_count = 0u},
         {.name = "owner", .kind = TBE_TYPED_STRING, .wire_kind = TBE_TYPED_STRING}};
     TbeTypedType type = boundary_type(fields, 2u);
-    BoundaryStorage object;
     DataBindError error = DATA_BIND_ERROR_INIT;
     check_equal(tbe_typed_validate_descriptor(&type, &error), DATA_BIND_OK);
-    check_equal(tbe_typed_init(&type, &object, &error), DATA_BIND_OK);
-    tbe_typed_clear(&type, &object);
+    expect_binary_rejection(&type);
   }
 
   it("requires an ABI-v3 descriptor with one canonical Struct graph") {
@@ -387,19 +375,22 @@ spec("typed descriptor boundary") {
     expect_descriptor_rejection(&rejected);
   }
 
-  it("validates and clears independent presence and null overlays") {
+  it("uses canonical lifecycle to reset independent presence and null overlays") {
     StateBoundary object = {
         .value = 99u,
         .presence = 0xffu,
         .nulls = 0xffu};
-    DataBindError error = DATA_BIND_ERROR_INIT;
+    _Alignas(64) unsigned char workspace[BOUNDARY_WORKSPACE_BYTES];
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindNativeDiagnostic diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+    options.max_depth = BOUNDARY_MAX_DEPTH;
+    options.max_items = BOUNDARY_MAX_ITEMS;
 
     check_equal(
-        tbe_typed_descriptor_validate(&STATE_BOUNDARY_DESCRIPTOR, &error),
-        DATA_BIND_OK);
-
-    check_equal(
-        tbe_typed_descriptor_init(&STATE_BOUNDARY_DESCRIPTOR, &object, &error),
+        data_bind_native_init(&options, &STATE_BOUNDARY_DATA, &object,
+                              sizeof(object), &diagnostic),
         DATA_BIND_OK);
     check_equal(object.value, 0u);
     check_equal(object.presence, 0u);
@@ -409,7 +400,8 @@ spec("typed descriptor boundary") {
     object.presence = 1u;
     object.nulls = 1u;
     check_equal(
-        tbe_typed_descriptor_clear(&STATE_BOUNDARY_DESCRIPTOR, &object, &error),
+        data_bind_native_clear(&options, &STATE_BOUNDARY_DATA, &object,
+                               sizeof(object), &diagnostic),
         DATA_BIND_OK);
     check_equal(object.value, 0u);
     check_equal(object.presence, 0u);
