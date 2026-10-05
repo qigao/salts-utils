@@ -153,9 +153,8 @@ static void expect_descriptor_rejection(const TbeTypedDescriptor *descriptor) {
   check_equal(tbe_typed_descriptor_validate(descriptor, &error), DATA_BIND_ERR_SCHEMA);
   check_equal(tbe_typed_descriptor_init(descriptor, &object, &error), DATA_BIND_ERR_SCHEMA);
   check_equal(memcmp(&object, before, sizeof(object)), 0);
-  check_equal(tbe_typed_descriptor_parse(NULL, "Boundary", descriptor,
-                                         DATA_BIND_FORMAT_BINARY, input,
-                                         sizeof(input), 0u, &object, &error),
+  check_equal(tbe_typed_descriptor_parse_binary(NULL, "Boundary", descriptor,
+                                                input, sizeof(input), &object, &error),
               DATA_BIND_ERR_SCHEMA);
   check_equal(memcmp(&object, before, sizeof(object)), 0);
   check_equal(tbe_typed_descriptor_clear(descriptor, &object, &error),

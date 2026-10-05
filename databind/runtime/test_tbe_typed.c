@@ -44,29 +44,6 @@ static const TbeTypedType TEST_PACKET_TYPE = {
     .presence_size = 1,
     .wire_big_endian = 1};
 
-TBE_TYPED_VEC_DEFINE(test_u32_vec_t, uint32_t)
-
-typedef struct TestValues {
-  test_u32_vec_t values;
-} TestValues;
-
-static const TbeTypedField TEST_VALUES_FIELDS[] = {{
-    .name = "values",
-    .kind = TBE_TYPED_LIST,
-    .wire_kind = TBE_TYPED_LIST,
-    .offset = offsetof(TestValues, values),
-    .element_kind = TBE_TYPED_U32,
-    .element_wire_kind = TBE_TYPED_U32,
-    .element_size = sizeof(uint32_t),
-}};
-
-static const TbeTypedType TEST_VALUES_TYPE = {
-    .name = "Values",
-    .size = sizeof(TestValues),
-    .fields = TEST_VALUES_FIELDS,
-    .field_count = sizeof(TEST_VALUES_FIELDS) / sizeof(TEST_VALUES_FIELDS[0]),
-};
-
 typedef struct TestFixedValues {
   uint16_t values[2];
 } TestFixedValues;
@@ -217,8 +194,7 @@ spec("typed DataBind binary") {
                    DATA_BIND_OK);
       check_equal(wire_len, sizeof(expected));
       check_equal(wire, expected, sizeof(expected));
-      check_equal(tbe_typed_parse(codec, "Packet", &TEST_PACKET_TYPE, "bin", wire, wire_len, 0,
-                                   &decoded, &error),
+      check_equal(tbe_typed_parse_binary(&TEST_PACKET_TYPE, wire, wire_len, &decoded, &error),
                    DATA_BIND_OK);
       check_equal(decoded.presence[0], 1u);
       check_equal(decoded.code, UINT16_C(0x1234));
@@ -337,34 +313,6 @@ spec("typed DataBind binary") {
     check_equal(output, expected, sizeof(output));
   }
 
-  it("keeps variable collections compatible through the typed struct API") {
-    static const char schema[] = "message Values { list<uint32> values; }";
-    static const uint8_t wire[] = {2, 0, 0, 0, 7, 0, 0, 0, 9, 0, 0, 0};
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    DataBind *codec = NULL;
-    TestValues values;
-
-    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
-                 DATA_BIND_OK);
-    check_equal(tbe_typed_init(&TEST_VALUES_TYPE, &values, &error), DATA_BIND_OK);
-    if (codec != NULL) {
-      const uint32_t *items;
-      check_equal(tbe_typed_validate_schema(codec, "Values", &TEST_VALUES_TYPE, &error),
-                   DATA_BIND_OK);
-      check_equal(tbe_typed_parse(codec, "Values", &TEST_VALUES_TYPE, "bin", wire, sizeof(wire),
-                                   0, &values, &error),
-                   DATA_BIND_OK);
-      check_equal(test_u32_vec_t_size(&values.values), 2u);
-      items = test_u32_vec_t_data_const(&values.values);
-      if (test_u32_vec_t_size(&values.values) == 2u) {
-        check_equal(items[0], 7u);
-        check_equal(items[1], 9u);
-      }
-    }
-    tbe_typed_clear(&TEST_VALUES_TYPE, &values);
-    data_bind_free(codec);
-  }
-
   it("matches and decodes fixed array schema fields") {
     static const char schema[] = "message FixedValues { uint16[2] values; }";
     static const uint8_t wire[] = {0x34, 0x12, 0xcd, 0xab};
@@ -379,8 +327,8 @@ spec("typed DataBind binary") {
       check_equal(tbe_typed_validate_schema(codec, "FixedValues", &TEST_FIXED_VALUES_TYPE,
                                              &error),
                    DATA_BIND_OK);
-      check_equal(tbe_typed_parse(codec, "FixedValues", &TEST_FIXED_VALUES_TYPE, "bin", wire,
-                                   sizeof(wire), 0, &values, &error),
+      check_equal(tbe_typed_parse_binary(&TEST_FIXED_VALUES_TYPE, wire,
+                                        sizeof(wire), &values, &error),
                    DATA_BIND_OK);
       check_equal(values.values[0], UINT16_C(0x1234));
       check_equal(values.values[1], UINT16_C(0xabcd));

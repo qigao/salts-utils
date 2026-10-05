@@ -281,9 +281,9 @@ spec("typed nullable TBE binary") {
         tbe_typed_descriptor_init(&CANONICAL_BINARY_DESCRIPTOR, &decoded, &error),
         DATA_BIND_OK);
     check_equal(
-        tbe_typed_descriptor_parse(
+        tbe_typed_descriptor_parse_binary(
             codec, "Canonical", &CANONICAL_BINARY_DESCRIPTOR,
-            DATA_BIND_FORMAT_BINARY, wire, wire_len, 0u, &decoded, &error),
+            wire, wire_len, &decoded, &error),
         DATA_BIND_OK);
     check_equal(decoded.required_value, 7u);
     check_equal(decoded.tri_value, 0u);
@@ -316,5 +316,43 @@ spec("typed nullable TBE binary") {
     check_null(wire);
     check_equal(wire_len, 0u);
     check_contains(error.message, "absent");
+
+    uint8_t guarded[sizeof(CanonicalBinaryRecord)];
+    uint8_t before[sizeof(guarded)];
+    memset(guarded, 0xa5, sizeof(guarded));
+    memcpy(before, guarded, sizeof(before));
+    check_equal(tbe_typed_descriptor_serialize_binary_into(
+                    &CANONICAL_BINARY_DESCRIPTOR, &value, guarded,
+                    sizeof(guarded), &wire_len, &error), DATA_BIND_ERR_SCHEMA);
+    check_equal(wire_len, CANONICAL_BINARY_OVERLAY.fixed_block_size);
+    check_equal(guarded, before, sizeof(before));
+  }
+
+  it("keeps fixed native storage unchanged on Binary size and state rejection") {
+    static const char schema[] = "message Canonical { uint16 required_value; optional nullable uint16 tri_value; }";
+    enum { WIRE_BYTES = 6, TRAILING_BYTES = WIRE_BYTES + 1 };
+    static const uint8_t invalid_state[WIRE_BYTES] = {0u, 1u, 7u, 0u, 0u, 0u};
+    static const uint8_t valid_with_trailing[TRAILING_BYTES] = {1u, 0u, 7u, 0u, 9u, 0u, 0u};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    CanonicalBinaryRecord value = {0};
+    uint8_t before[sizeof(value)];
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1u, &codec, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_descriptor_init(&CANONICAL_BINARY_DESCRIPTOR, &value, &error), DATA_BIND_OK);
+    memcpy(before, &value, sizeof(before));
+    check_equal(tbe_typed_descriptor_parse_binary(codec, "Canonical", &CANONICAL_BINARY_DESCRIPTOR,
+                                                  valid_with_trailing, WIRE_BYTES - 1u, &value, &error),
+                DATA_BIND_ERR_PARSE);
+    check_equal(&value, before, sizeof(before));
+    check_equal(tbe_typed_descriptor_parse_binary(codec, "Canonical", &CANONICAL_BINARY_DESCRIPTOR,
+                                                  valid_with_trailing, sizeof(valid_with_trailing), &value, &error),
+                DATA_BIND_ERR_PARSE);
+    check_equal(&value, before, sizeof(before));
+    check_equal(tbe_typed_descriptor_parse_binary(codec, "Canonical", &CANONICAL_BINARY_DESCRIPTOR,
+                                                  invalid_state, sizeof(invalid_state), &value, &error),
+                DATA_BIND_ERR_SCHEMA);
+    check_equal(&value, before, sizeof(before));
+    check_equal(tbe_typed_descriptor_clear(&CANONICAL_BINARY_DESCRIPTOR, &value, &error), DATA_BIND_OK);
+    data_bind_free(codec);
   }
 }
