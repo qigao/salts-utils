@@ -11,8 +11,6 @@
 #include "data_bind_native.h"
 #include "data_bind_xml_writer.h"
 #include "data_bind_projection_plan.h"
-{{#legacy_typed_required}}#include "tbe_typed.h"
-{{/legacy_typed_required}}
 
 {{#messages}}{{#binary_reader_supported}}
 static inline const DataBindFormatProvider *{{name}}_binary_{{name}}_databind_binary_provider(void);
@@ -30,126 +28,6 @@ DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBin
                                       sizeof({{schema.schema_name}}_SCHEMA_TEXT) - 1,
                                       out_codec, error);
 }
-
-{{#composites}}{{^cmeta_canonical_record}}static TbeTypedType {{name}}_TYPED_TYPE;
-{{/cmeta_canonical_record}}{{/composites}}{{#groups}}{{^cmeta_canonical_record}}static TbeTypedType {{name}}_TYPED_TYPE;
-{{/cmeta_canonical_record}}{{/groups}}{{#messages}}{{^no_legacy_typed_table}}static TbeTypedType {{name}}_TYPED_TYPE;
-{{/no_legacy_typed_table}}{{/messages}}
-
-{{#composites}}{{^cmeta_canonical_record}}
-static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
-{{#fields}}
-    {
-        .name = "{{name}}",
-        .kind = {{typed_kind}},
-        .wire_kind = {{#typed_wire_kind}}{{typed_wire_kind}}{{/typed_wire_kind}}{{^typed_wire_kind}}{{typed_kind}}{{/typed_wire_kind}},
-        .offset = offsetof({{owner_name}}_t, {{c_name}}),
-        .element_kind = {{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}},
-        .element_wire_kind = {{#typed_element_wire_kind}}{{typed_element_wire_kind}}{{/typed_element_wire_kind}}{{^typed_element_wire_kind}}{{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}}{{/typed_element_wire_kind}},
-        .element_size = {{#typed_element_c_type}}sizeof({{typed_element_c_type}}){{/typed_element_c_type}}{{^typed_element_c_type}}0{{/typed_element_c_type}},
-        .fixed_count = {{#typed_fixed_count}}{{typed_fixed_count}}{{/typed_fixed_count}}{{^typed_fixed_count}}0{{/typed_fixed_count}},
-        .object_type = {{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}},
-        .nested_overlay = {{#typed_nested_overlay}}{{typed_nested_overlay}}{{/typed_nested_overlay}}{{^typed_nested_overlay}}NULL{{/typed_nested_overlay}},
-        .map_entry_size = {{#typed_map_entry_type}}sizeof({{typed_map_entry_type}}){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
-        .map_key_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, key){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
-        .map_value_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, value){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
-        .map_value_kind = {{#typed_map_value_kind}}{{typed_map_value_kind}}{{/typed_map_value_kind}}{{^typed_map_value_kind}}TBE_TYPED_BOOL{{/typed_map_value_kind}},
-        .map_value_wire_kind = {{#typed_map_value_wire_kind}}{{typed_map_value_wire_kind}}{{/typed_map_value_wire_kind}}{{^typed_map_value_wire_kind}}{{#typed_map_value_kind}}{{typed_map_value_kind}}{{/typed_map_value_kind}}{{^typed_map_value_kind}}TBE_TYPED_BOOL{{/typed_map_value_kind}}{{/typed_map_value_wire_kind}},
-        .map_value_type = {{#typed_map_value_descriptor}}{{typed_map_value_descriptor}}{{/typed_map_value_descriptor}}{{^typed_map_value_descriptor}}NULL{{/typed_map_value_descriptor}},
-        .wire_offset = {{#has_offset}}{{offset}}{{/has_offset}}{{^has_offset}}0{{/has_offset}},
-        .wire_size = {{#field_size_bytes}}{{field_size_bytes}}{{/field_size_bytes}}{{^field_size_bytes}}{{#size_bytes}}{{size_bytes}}{{/size_bytes}}{{^size_bytes}}0{{/size_bytes}}{{/field_size_bytes}},
-        .optional_bit = {{#is_optional}}{{optional_bit_index}}{{/is_optional}}{{^is_optional}}0{{/is_optional}},
-        .flags = 0{{#is_optional}} | TBE_TYPED_FIELD_OPTIONAL{{/is_optional}}{{#is_nullable}} | TBE_TYPED_FIELD_NULLABLE{{/is_nullable}}{{#has_offset}} | TBE_TYPED_FIELD_WIRE_OFFSET{{/has_offset}}{{#typed_is_var_data}} | TBE_TYPED_FIELD_VAR_DATA{{/typed_is_var_data}}{{#typed_is_group}} | TBE_TYPED_FIELD_GROUP{{/typed_is_group}},
-        .nullable_bit = {{#is_nullable}}{{nullable_bit_index}}{{/is_nullable}}{{^is_nullable}}0{{/is_nullable}}
-    }{{^last}},{{/last}}
-{{/fields}}
-};
-
-static TbeTypedType {{name}}_TYPED_TYPE = {
-    .name = "{{name}}",
-    .size = sizeof({{name}}_t),
-    .fields = {{name}}_TYPED_FIELDS,
-    .field_count = sizeof({{name}}_TYPED_FIELDS) / sizeof({{name}}_TYPED_FIELDS[0]),
-    .fixed_block_size = {{#fixed_block_size}}{{fixed_block_size}}{{/fixed_block_size}}{{^fixed_block_size}}0{{/fixed_block_size}},
-    .presence_offset = {{#has_optional_fields}}offsetof({{name}}_t, _presence){{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
-    .presence_size = {{#has_optional_fields}}{{presence_bitmap_bytes}}{{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
-    .wire_big_endian = {{schema.schema_wire_big_endian_value}},
-    .null_offset = {{#has_nullable_fields}}offsetof({{name}}_t, _nulls){{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}},
-    .null_size = {{#has_nullable_fields}}{{null_bitmap_bytes}}{{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}}
-};
-{{/cmeta_canonical_record}}{{/composites}}
-
-{{#groups}}{{^cmeta_canonical_record}}
-static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
-{{#fields}}
-    { .name = "{{name}}", .kind = {{typed_kind}},
-      .wire_kind = {{#typed_wire_kind}}{{typed_wire_kind}}{{/typed_wire_kind}}{{^typed_wire_kind}}{{typed_kind}}{{/typed_wire_kind}}, .offset = offsetof({{owner_name}}_t, {{c_name}}),
-      .element_kind = {{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}},
-      .element_wire_kind = {{#typed_element_wire_kind}}{{typed_element_wire_kind}}{{/typed_element_wire_kind}}{{^typed_element_wire_kind}}{{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}}{{/typed_element_wire_kind}},
-      .element_size = {{#typed_element_c_type}}sizeof({{typed_element_c_type}}){{/typed_element_c_type}}{{^typed_element_c_type}}0{{/typed_element_c_type}},
-      .fixed_count = {{#typed_fixed_count}}{{typed_fixed_count}}{{/typed_fixed_count}}{{^typed_fixed_count}}0{{/typed_fixed_count}},
-      .object_type = {{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}},
-      .nested_overlay = {{#typed_nested_overlay}}{{typed_nested_overlay}}{{/typed_nested_overlay}}{{^typed_nested_overlay}}NULL{{/typed_nested_overlay}},
-      .map_entry_size = {{#typed_map_entry_type}}sizeof({{typed_map_entry_type}}){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
-      .map_key_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, key){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
-      .map_value_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, value){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
-      .map_value_kind = {{#typed_map_value_kind}}{{typed_map_value_kind}}{{/typed_map_value_kind}}{{^typed_map_value_kind}}TBE_TYPED_BOOL{{/typed_map_value_kind}},
-      .map_value_wire_kind = {{#typed_map_value_wire_kind}}{{typed_map_value_wire_kind}}{{/typed_map_value_wire_kind}}{{^typed_map_value_wire_kind}}{{#typed_map_value_kind}}{{typed_map_value_kind}}{{/typed_map_value_kind}}{{^typed_map_value_kind}}TBE_TYPED_BOOL{{/typed_map_value_kind}}{{/typed_map_value_wire_kind}},
-      .map_value_type = {{#typed_map_value_descriptor}}{{typed_map_value_descriptor}}{{/typed_map_value_descriptor}}{{^typed_map_value_descriptor}}NULL{{/typed_map_value_descriptor}},
-      .wire_offset = {{#has_offset}}{{offset}}{{/has_offset}}{{^has_offset}}0{{/has_offset}},
-      .wire_size = {{#field_size_bytes}}{{field_size_bytes}}{{/field_size_bytes}}{{^field_size_bytes}}{{#size_bytes}}{{size_bytes}}{{/size_bytes}}{{^size_bytes}}0{{/size_bytes}}{{/field_size_bytes}},
-      .optional_bit = {{#is_optional}}{{optional_bit_index}}{{/is_optional}}{{^is_optional}}0{{/is_optional}},
-      .flags = 0{{#is_optional}} | TBE_TYPED_FIELD_OPTIONAL{{/is_optional}}{{#is_nullable}} | TBE_TYPED_FIELD_NULLABLE{{/is_nullable}}{{#has_offset}} | TBE_TYPED_FIELD_WIRE_OFFSET{{/has_offset}}{{#typed_is_var_data}} | TBE_TYPED_FIELD_VAR_DATA{{/typed_is_var_data}}{{#typed_is_group}} | TBE_TYPED_FIELD_GROUP{{/typed_is_group}},
-      .nullable_bit = {{#is_nullable}}{{nullable_bit_index}}{{/is_nullable}}{{^is_nullable}}0{{/is_nullable}} }{{^last}},{{/last}}
-{{/fields}}
-};
-static TbeTypedType {{name}}_TYPED_TYPE = {
-    .name = "{{name}}", .size = sizeof({{name}}_t), .fields = {{name}}_TYPED_FIELDS,
-    .field_count = sizeof({{name}}_TYPED_FIELDS) / sizeof({{name}}_TYPED_FIELDS[0]),
-    .fixed_block_size = {{#fixed_block_size}}{{fixed_block_size}}{{/fixed_block_size}}{{^fixed_block_size}}0{{/fixed_block_size}},
-    .presence_offset = {{#has_optional_fields}}offsetof({{name}}_t, _presence){{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
-    .presence_size = {{#has_optional_fields}}{{presence_bitmap_bytes}}{{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
-    .wire_big_endian = {{schema.schema_wire_big_endian_value}},
-    .null_offset = {{#has_nullable_fields}}offsetof({{name}}_t, _nulls){{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}},
-    .null_size = {{#has_nullable_fields}}{{null_bitmap_bytes}}{{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}}
-};
-{{/cmeta_canonical_record}}{{/groups}}
-
-{{#messages}}{{^no_legacy_typed_table}}
-static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
-{{#fields}}
-    { .name = "{{name}}", .kind = {{typed_kind}},
-      .wire_kind = {{#typed_wire_kind}}{{typed_wire_kind}}{{/typed_wire_kind}}{{^typed_wire_kind}}{{typed_kind}}{{/typed_wire_kind}}, .offset = offsetof({{owner_name}}_t, {{c_name}}),
-      .element_kind = {{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}},
-      .element_wire_kind = {{#typed_element_wire_kind}}{{typed_element_wire_kind}}{{/typed_element_wire_kind}}{{^typed_element_wire_kind}}{{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}}{{/typed_element_wire_kind}},
-      .element_size = {{#typed_element_c_type}}sizeof({{typed_element_c_type}}){{/typed_element_c_type}}{{^typed_element_c_type}}0{{/typed_element_c_type}},
-      .fixed_count = {{#typed_fixed_count}}{{typed_fixed_count}}{{/typed_fixed_count}}{{^typed_fixed_count}}0{{/typed_fixed_count}},
-      .object_type = {{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}},
-      .nested_overlay = {{#typed_nested_overlay}}{{typed_nested_overlay}}{{/typed_nested_overlay}}{{^typed_nested_overlay}}NULL{{/typed_nested_overlay}},
-      .map_entry_size = {{#typed_map_entry_type}}sizeof({{typed_map_entry_type}}){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
-      .map_key_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, key){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
-      .map_value_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, value){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
-      .map_value_kind = {{#typed_map_value_kind}}{{typed_map_value_kind}}{{/typed_map_value_kind}}{{^typed_map_value_kind}}TBE_TYPED_BOOL{{/typed_map_value_kind}},
-      .map_value_wire_kind = {{#typed_map_value_wire_kind}}{{typed_map_value_wire_kind}}{{/typed_map_value_wire_kind}}{{^typed_map_value_wire_kind}}{{#typed_map_value_kind}}{{typed_map_value_kind}}{{/typed_map_value_kind}}{{^typed_map_value_kind}}TBE_TYPED_BOOL{{/typed_map_value_kind}}{{/typed_map_value_wire_kind}},
-      .map_value_type = {{#typed_map_value_descriptor}}{{typed_map_value_descriptor}}{{/typed_map_value_descriptor}}{{^typed_map_value_descriptor}}NULL{{/typed_map_value_descriptor}},
-      .wire_offset = {{#has_offset}}{{offset}}{{/has_offset}}{{^has_offset}}0{{/has_offset}},
-      .wire_size = {{#field_size_bytes}}{{field_size_bytes}}{{/field_size_bytes}}{{^field_size_bytes}}{{#size_bytes}}{{size_bytes}}{{/size_bytes}}{{^size_bytes}}0{{/size_bytes}}{{/field_size_bytes}},
-      .optional_bit = {{#is_optional}}{{optional_bit_index}}{{/is_optional}}{{^is_optional}}0{{/is_optional}},
-      .flags = 0{{#is_optional}} | TBE_TYPED_FIELD_OPTIONAL{{/is_optional}}{{#is_nullable}} | TBE_TYPED_FIELD_NULLABLE{{/is_nullable}}{{#has_offset}} | TBE_TYPED_FIELD_WIRE_OFFSET{{/has_offset}}{{#typed_is_var_data}} | TBE_TYPED_FIELD_VAR_DATA{{/typed_is_var_data}}{{#typed_is_group}} | TBE_TYPED_FIELD_GROUP{{/typed_is_group}},
-      .nullable_bit = {{#is_nullable}}{{nullable_bit_index}}{{/is_nullable}}{{^is_nullable}}0{{/is_nullable}} }{{^last}},{{/last}}
-{{/fields}}
-};
-static TbeTypedType {{name}}_TYPED_TYPE = {
-    .name = "{{name}}", .size = sizeof({{name}}_t), .fields = {{name}}_TYPED_FIELDS,
-    .field_count = sizeof({{name}}_TYPED_FIELDS) / sizeof({{name}}_TYPED_FIELDS[0]),
-    .fixed_block_size = {{#fixed_block_size}}{{fixed_block_size}}{{/fixed_block_size}}{{^fixed_block_size}}0{{/fixed_block_size}},
-    .presence_offset = {{#has_optional_fields}}offsetof({{name}}_t, _presence){{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
-    .presence_size = {{#has_optional_fields}}{{presence_bitmap_bytes}}{{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
-    .wire_big_endian = {{schema.schema_wire_big_endian_value}},
-    .null_offset = {{#has_nullable_fields}}offsetof({{name}}_t, _nulls){{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}},
-    .null_size = {{#has_nullable_fields}}{{null_bitmap_bytes}}{{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}}
-};
-{{/no_legacy_typed_table}}{{/messages}}
 
 {{#messages}}
 {{#has_optional_fields}}
@@ -1656,16 +1534,7 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     } \
     DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS(name)
 
-{{#legacy_typed_required}}#define TBE_TYPED_DEFINE_RAW_LIFECYCLE(name) \
-    void name##_init(name##_t *object) { \
-        if (object) (void)tbe_typed_init(&name##_TYPED_TYPE, object, NULL); \
-    } \
-    void name##_clear(name##_t *object) { tbe_typed_clear(&name##_TYPED_TYPE, object); }
 
-#define TBE_TYPED_DEFINE_RAW_RECORD(name) \
-    TBE_TYPED_DEFINE_RAW_LIFECYCLE(name) \
-    DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS(name)
-{{/legacy_typed_required}}
 
 #define DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(name) \
     DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(name) \
@@ -1868,12 +1737,10 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 {{/cmeta_member_lifecycle}}{{^cmeta_member_lifecycle}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_UNAVAILABLE_CMETA_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
-{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_member_lifecycle}}{{/composites}}{{#groups}}{{#cmeta_member_lifecycle}}DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS({{name}})
 {{/cmeta_member_lifecycle}}{{^cmeta_member_lifecycle}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_UNAVAILABLE_CMETA_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
-{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_member_lifecycle}}{{/groups}}{{#messages}}{{#cmeta_member_lifecycle}}DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS({{name}})
 {{/cmeta_member_lifecycle}}{{^cmeta_member_lifecycle}}{{#cmeta_graph_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
 DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
@@ -1893,7 +1760,6 @@ DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY({{name}}, {{cmeta_native_descriptor_dep
 {{/cmeta_native_xml_output_supported}}{{^cmeta_native_xml_output_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_XML_OUTPUT({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
 {{/native_cstl_storage}}{{/cmeta_native_xml_output_supported}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#cmeta_native_xml_flat_supported}}{{#cmeta_local_overlay_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
-{{/cmeta_local_overlay_lifecycle}}{{^cmeta_local_overlay_lifecycle}}TBE_TYPED_DEFINE_RAW_LIFECYCLE({{name}})
 {{/cmeta_local_overlay_lifecycle}}
 DATABIND_DEFINE_RAW_MESSAGE_TEXT({{name}})
 DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
@@ -1904,12 +1770,10 @@ DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
 {{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_UNAVAILABLE_CMETA_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_local_overlay_lifecycle}}DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD({{name}})
-{{/cmeta_local_overlay_lifecycle}}{{^cmeta_local_overlay_lifecycle}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
 {{/cmeta_local_overlay_lifecycle}}
 {{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}{{/cmeta_lifecycle_supported}}{{/cmeta_graph_supported}}{{^cmeta_graph_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_UNAVAILABLE_CMETA_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
-{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_graph_supported}}
 {{/cmeta_member_lifecycle}}{{/messages}}
 
