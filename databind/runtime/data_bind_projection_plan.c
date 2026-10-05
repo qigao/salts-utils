@@ -1,6 +1,8 @@
 #include "data_bind_projection_plan.h"
 #include "data_bind_internal.h"
 
+#include <vstr.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -852,6 +854,13 @@ static cserde_status plan_canonical_writer_write(
     state->value_depth = 1u;
   else
     state->expect_root_key = 1;
+  if (state->plan->format == DATA_BIND_FORMAT_JSON && token.kind == CSERDE_BYTES) {
+    /* DataBind owns this text representation; the parser stays token-strict. */
+    if (!vstr_utf8_valid(vstr_from_buf(
+            (const char *)token.value.slice.data, token.value.slice.size)))
+      return CSERDE_UNSUPPORTED;
+    token.kind = CSERDE_STRING;
+  }
   status = cserde_writer_write(state->target, &token);
   return plan_canonical_writer_status(status);
 }

@@ -177,12 +177,15 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native(
 /**
  * Decode one native message using explicit format token semantics.
  *
- * JSON/YAML retain the strict canonical token rules of
+ * JSON admits UTF-8 STRING tokens for root fields whose canonical descriptor
+ * is BYTES, copying their complete length into provider-owned byte storage.
+ * Embedded NUL is preserved. YAML retains the strict canonical token rules of
  * data_bind_message_plan_decode_native(). CSV and XML additionally admit
  * textual leaf scalar coercion through each field's canonical CMeta descriptor:
  * BOOL/SINT/UINT/FLOAT text becomes the corresponding CSerde scalar token
  * before native decode. Binary readers provide canonical scalar tokens directly.
- * String/bytes/enum/container semantics are unchanged.
+ * Other string/bytes/enum/container semantics are unchanged; nested bytes do
+ * not receive the root-field JSON projection.
  * CSV row selection, empty-cell omission and header-name canonicalization are
  * provider/FormatPlan concerns and are not performed by this API.
  *

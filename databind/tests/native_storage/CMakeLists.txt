@@ -108,3 +108,10 @@ cmake_add_test(test_data_bind_native_ownership_boundary
   FOLDER "databind/tests")
 set_tests_properties(test_data_bind_native_ownership_boundary PROPERTIES
   LABELS "databind;cmeta;native;ownership" TIMEOUT 60)
+
+cmake_add_test(test_data_bind_native_bytes_json
+  SOURCES native_bytes_json_test.c
+  LIBS Salts::DataBind Salts::CSTL Salts::TinyTest
+  FOLDER "databind/tests")
+set_tests_properties(test_data_bind_native_bytes_json PROPERTIES
+  LABELS "databind;cmeta;native;bytes;json" TIMEOUT 60)

@@ -134,24 +134,6 @@ static const TbeTypedType TEST_WIDE_ENUM_TYPE = {
     .fixed_block_size = 8,
 };
 
-typedef struct TestBytes {
-  tbe_bytes_t value;
-} TestBytes;
-
-static const TbeTypedField TEST_BYTES_FIELDS[] = {{
-    .name = "value",
-    .kind = TBE_TYPED_BYTES,
-    .wire_kind = TBE_TYPED_BYTES,
-    .offset = offsetof(TestBytes, value),
-}};
-
-static const TbeTypedType TEST_BYTES_TYPE = {
-    .name = "BytesRecord",
-    .size = sizeof(TestBytes),
-    .fields = TEST_BYTES_FIELDS,
-    .field_count = sizeof(TEST_BYTES_FIELDS) / sizeof(TEST_BYTES_FIELDS[0]),
-};
-
 typedef struct MacroChild {
   uint16_t code;
 } MacroChild;
@@ -330,24 +312,6 @@ spec("typed DataBind binary") {
     tbe_typed_serialized_free(wire);
     tbe_typed_clear(&TEST_WIDE_ENUM_TYPE, &decoded);
     tbe_typed_clear(&TEST_WIDE_ENUM_TYPE, &value);
-  }
-
-  it("rejects invalid UTF-8 bytes before creating JSON strings") {
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    TestBytes bytes;
-    json_value_t *json;
-
-    check_equal(tbe_typed_init(&TEST_BYTES_TYPE, &bytes, &error), DATA_BIND_OK);
-    check_equal(vec_resize((vec_t *)&bytes.value, 2), STL_OK);
-    if (tbe_bytes_t_data(&bytes.value) != NULL) {
-      tbe_bytes_t_data(&bytes.value)[0] = UINT8_C(0xc3);
-      tbe_bytes_t_data(&bytes.value)[1] = UINT8_C(0x28);
-      json = tbe_typed_to_json(&TEST_BYTES_TYPE, &bytes, &error);
-      check_null(json);
-      check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
-      tbe_typed_json_free(&json);
-    }
-    tbe_typed_clear(&TEST_BYTES_TYPE, &bytes);
   }
 
   it("converts dynamic values transactionally into initialized owning structs") {
