@@ -5,6 +5,39 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int generated_source_has_raii_cleanup(const char *path) {
+  static const char expected[] =
+      "native_status != 0)\n"
+      "    goto cleanup;\n"
+      "  return true;\n"
+      "cleanup:\n"
+      "  (void)cmeta_data_value_restore_zero(response_data, out);\n"
+      "  return false;\n";
+  FILE *file = NULL;
+  char *text = NULL;
+  long end;
+  size_t size;
+  int ok = 0;
+
+  if (path == NULL) return 0;
+  file = fopen(path, "rb");
+  if (file == NULL) return 0;
+  if (fseek(file, 0, SEEK_END) != 0) goto cleanup;
+  end = ftell(file);
+  if (end < 0 || fseek(file, 0, SEEK_SET) != 0) goto cleanup;
+  size = (size_t)end;
+  text = (char *)malloc(size + 1u);
+  if (text == NULL) goto cleanup;
+  if (fread(text, 1u, size, file) != size) goto cleanup;
+  text[size] = '\0';
+  ok = strstr(text, expected) != NULL;
+
+cleanup:
+  free(text);
+  fclose(file);
+  return ok;
+}
+
 static int write_header(
     const char *path,
     const char *native_header,
@@ -120,6 +153,11 @@ int main(int argc, char **argv) {
   }
   if (!write_source(argv[3], argv[2], &ir)) {
     fprintf(stderr, "service-native-codegen: failed to emit service source\n");
+    goto cleanup;
+  }
+  if (!generated_source_has_raii_cleanup(argv[3])) {
+    fprintf(stderr,
+            "service-native-codegen: generated CFlow cleanup plan missing\n");
     goto cleanup;
   }
 

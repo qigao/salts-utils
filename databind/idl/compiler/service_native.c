@@ -7,6 +7,36 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct native_cleanup_value {
+  const char *data_expr;
+  const char *value_expr;
+} native_cleanup_value;
+
+typedef struct native_cleanup_plan {
+  const char *label;
+  const native_cleanup_value *values;
+  size_t value_count;
+} native_cleanup_plan;
+
+static int native_emit_cleanup_plan(
+    FILE *file, const native_cleanup_plan *plan) {
+  size_t i;
+  if (file == NULL || plan == NULL || plan->label == NULL ||
+      plan->values == NULL || plan->value_count == 0u)
+    return -1;
+  if (fprintf(file, "%s:\n", plan->label) < 0) return -1;
+  for (i = plan->value_count; i != 0u; --i) {
+    const native_cleanup_value *value = &plan->values[i - 1u];
+    if (value->data_expr == NULL || value->value_expr == NULL ||
+        fprintf(
+            file,
+            "  (void)cmeta_data_value_restore_zero(%s, %s);\n",
+            value->data_expr, value->value_expr) < 0)
+      return -1;
+  }
+  return 0;
+}
+
 static char *native_strdup(const char *text) {
   size_t length;
   char *copy;
@@ -1180,6 +1210,12 @@ int databind_compiler_service_native_emit_execution(
 int databind_compiler_service_native_emit_cflow_projection(
     FILE *file,
     const databind_compiler_service_native_operation *operation) {
+  const native_cleanup_value cflow_cleanup_values[] = {
+      {"response_data", "out"}};
+  const native_cleanup_plan cflow_cleanup = {
+      "cleanup", cflow_cleanup_values,
+      sizeof(cflow_cleanup_values) / sizeof(cflow_cleanup_values[0])};
+
   if (file == NULL || operation == NULL ||
       operation->symbol == NULL ||
       operation->request_type == NULL ||
@@ -1205,32 +1241,40 @@ int databind_compiler_service_native_emit_cflow_projection(
                : 0;
   }
 
+  if (fprintf(
+          file,
+          "static bool %s__databind_cflow_invoke(\n"
+          "    const cmeta_callable *self, void *out,\n"
+          "    const void *const *args) {\n"
+          "  const cmeta_data_desc *response_data = NULL;\n"
+          "  int native_status = -1;\n"
+          "  void *params[2];\n"
+          "  if (self == NULL || out == NULL || args == NULL ||\n"
+          "      args[0] == NULL ||\n"
+          "      self->capture_size != sizeof(response_data))\n"
+          "    return false;\n"
+          "  memcpy(&response_data, self->capture.bytes, sizeof(response_data));\n"
+          "  if (response_data == NULL ||\n"
+          "      cmeta_data_value_init_zero(response_data, out) != CMETA_OK)\n"
+          "    return false;\n"
+          "  params[0] = (void *)args[0];\n"
+          "  params[1] = out;\n"
+          "  if (!%s__execution_meta.invoke(\n"
+          "          %s__execution_meta.context, &native_status, params, 2u) ||\n"
+          "      native_status != 0)\n"
+          "    goto cleanup;\n"
+          "  return true;\n",
+          operation->symbol,
+          operation->symbol,
+          operation->symbol) < 0)
+    return -1;
+
+  if (native_emit_cleanup_plan(file, &cflow_cleanup) != 0 ||
+      fputs("  return false;\n}\n", file) == EOF)
+    return -1;
+
   return fprintf(
              file,
-             "static bool %s__databind_cflow_invoke(\n"
-             "    const cmeta_callable *self, void *out,\n"
-             "    const void *const *args) {\n"
-             "  const cmeta_data_desc *response_data = NULL;\n"
-             "  int native_status = -1;\n"
-             "  void *params[2];\n"
-             "  if (self == NULL || out == NULL || args == NULL ||\n"
-             "      args[0] == NULL ||\n"
-             "      self->capture_size != sizeof(response_data))\n"
-             "    return false;\n"
-             "  memcpy(&response_data, self->capture.bytes, sizeof(response_data));\n"
-             "  if (response_data == NULL ||\n"
-             "      cmeta_data_value_init_zero(response_data, out) != CMETA_OK)\n"
-             "    return false;\n"
-             "  params[0] = (void *)args[0];\n"
-             "  params[1] = out;\n"
-             "  if (!%s__execution_meta.invoke(\n"
-             "          %s__execution_meta.context, &native_status, params, 2u) ||\n"
-             "      native_status != 0) {\n"
-             "    (void)cmeta_data_value_restore_zero(response_data, out);\n"
-             "    return false;\n"
-             "  }\n"
-             "  return true;\n"
-             "}\n"
              "cflow_function_projection_status %s__databind_cflow_projection(\n"
              "    cflow_function_typed_adapter_projection *out) {\n"
              "  DataBindNativeTypeBinding request = {0};\n"
@@ -1276,9 +1320,6 @@ int databind_compiler_service_native_emit_cflow_projection(
              "      function, &%s__function_abi_meta, adapter,\n"
              "      request.data->storage_type, response.data->storage_type, out);\n"
              "}\n\n",
-             operation->symbol,
-             operation->symbol,
-             operation->symbol,
              operation->symbol,
              operation->symbol,
              operation->symbol,
