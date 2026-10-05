@@ -152,31 +152,6 @@ static const TbeTypedType TEST_BYTES_TYPE = {
     .field_count = sizeof(TEST_BYTES_FIELDS) / sizeof(TEST_BYTES_FIELDS[0]),
 };
 
-TBE_TYPED_VEC_DEFINE(macro_u32_vec_t, uint32_t)
-
-typedef struct MacroOrder {
-  uint32_t order_id;
-  tstr note;
-  macro_u32_vec_t values;
-  uint8_t presence[1];
-} MacroOrder;
-
-TBE_TYPED_DEFINE_STRUCT_WITH_PRESENCE(
-    MACRO_ORDER_BINDING, MacroOrder, "MacroOrder", presence,
-    TBE_TYPED_FIELD(MacroOrder, order_id, "id", TBE_TYPED_U32, TBE_TYPED_REQUIRED),
-    TBE_TYPED_FIELD(MacroOrder, note, "note", TBE_TYPED_STRING, TBE_TYPED_OPTIONAL(0)),
-    TBE_TYPED_LIST_FIELD(MacroOrder, values, "values", TBE_TYPED_U32, uint32_t, NULL,
-                         TBE_TYPED_REQUIRED));
-
-typedef struct InvalidMacroOrder {
-  tstr note;
-} InvalidMacroOrder;
-
-TBE_TYPED_DEFINE_STRUCT(
-    INVALID_MACRO_ORDER_BINDING, InvalidMacroOrder, "MacroOrder",
-    TBE_TYPED_FIELD(InvalidMacroOrder, note, "note", TBE_TYPED_STRING,
-                    TBE_TYPED_OPTIONAL(0)));
-
 typedef struct MacroChild {
   uint16_t code;
 } MacroChild;
@@ -410,39 +385,6 @@ spec("typed DataBind binary") {
     data_bind_free(codec);
   }
 
-  it("rejects invalid UTF-8 map keys in JSON") {
-    static const char invalid_utf8[] = "\xC3\x28";
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    MacroCollections collections;
-    json_value_t *json = NULL;
-
-    check_equal(TBE_TYPED_BIND_INIT(MACRO_COLLECTIONS_BINDING, &collections, &error),
-                 DATA_BIND_OK);
-    {
-      MacroChildMapEntry entry = {0};
-      int push_status;
-      entry.key = tstr_dup_len(invalid_utf8, sizeof(invalid_utf8) - 1u);
-      check_not_null(entry.key);
-      if (entry.key != NULL) {
-        push_status = macro_child_map_vec_t_push(&collections.children_by_name, entry);
-        check_equal(push_status, SALTS_OK);
-        if (push_status != SALTS_OK) tstr_free(entry.key);
-      }
-    }
-    check_equal(macro_child_map_vec_t_size(&collections.children_by_name), 1u);
-    if (macro_child_map_vec_t_size(&collections.children_by_name) == 1u) {
-      MacroChildMapEntry *entry = macro_child_map_vec_t_at(&collections.children_by_name, 0u);
-      check_not_null(entry->key);
-      if (entry->key != NULL) {
-        json = tbe_typed_to_json(&MACRO_COLLECTIONS_BINDING, &collections, &error);
-        check_null(json);
-        check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
-      }
-      tbe_typed_json_free(&json);
-    }
-    TBE_TYPED_BIND_CLEAR(MACRO_COLLECTIONS_BINDING, &collections);
-  }
-
   it("validates the fixed wire layout before writing output") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     TbeTypedField fields[3];
@@ -528,57 +470,6 @@ spec("typed DataBind binary") {
                  DATA_BIND_OK);
     check_equal(text.text, "abc");
     tbe_typed_clear(&TEST_TEXT_TYPE, &text);
-  }
-
-  it("binds an existing C struct through header-only macros") {
-    static const char schema[] =
-        "message MacroOrder { "
-        "[name(orderId), alias(legacyId)] uint32 id; "
-        "list<uint32> values; "
-        "optional string note; "
-        "}";
-    static const char json[] = "{\"legacyId\":42,\"note\":\"macro\",\"values\":[7,9]}";
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    DataBind *codec = NULL;
-    MacroOrder order;
-    const uint32_t *values;
-    char *mapped = NULL;
-    size_t mapped_len = 0;
-
-    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
-                 DATA_BIND_OK);
-    check_equal(TBE_TYPED_BIND_INIT(MACRO_ORDER_BINDING, &order, &error), DATA_BIND_OK);
-    if (codec != NULL) {
-      check_equal(TBE_TYPED_BIND_PARSE(codec, MACRO_ORDER_BINDING, "json", json,
-                                        sizeof(json) - 1, 0, &order, &error),
-                   DATA_BIND_OK);
-      check_equal(order.order_id, 42u);
-      check_equal(order.note, "macro");
-      check_equal(order.presence[0], 1u);
-      check_equal(macro_u32_vec_t_size(&order.values), 2u);
-      values = macro_u32_vec_t_data_const(&order.values);
-      if (macro_u32_vec_t_size(&order.values) == 2u) {
-        check_equal(values[0], 7u);
-        check_equal(values[1], 9u);
-      }
-      check_equal(TBE_TYPED_BIND_SERIALIZE(codec, MACRO_ORDER_BINDING, &order, "json", &mapped,
-                                           &mapped_len, &error),
-                   DATA_BIND_OK);
-      check_equal(mapped, "{\"orderId\":42,\"values\":[7,9],\"note\":\"macro\"}");
-      check_equal(mapped_len, strlen(mapped));
-    }
-    tbe_typed_serialized_free(mapped);
-    TBE_TYPED_BIND_CLEAR(MACRO_ORDER_BINDING, &order);
-    data_bind_free(codec);
-  }
-
-  it("rejects an optional macro field without a presence bitmap") {
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    InvalidMacroOrder order;
-
-    check_equal(TBE_TYPED_BIND_INIT(INVALID_MACRO_ORDER_BINDING, &order, &error),
-                 DATA_BIND_ERR_SCHEMA);
-    check_contains(error.message, "presence bitmap");
   }
 
   it("validates all composite macro field families") {

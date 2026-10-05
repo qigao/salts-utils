@@ -365,6 +365,7 @@ static int message_logical_sequence_matches_native(
     const cmeta_data_desc *native_data, unsigned depth) {
   const cmeta_data_collection_ops *ops;
   const cmeta_data_desc *element;
+  const cmeta_data_desc *builtin;
 
   if (codec == NULL || schema_field == NULL || native_data == NULL ||
       depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH ||
@@ -386,9 +387,13 @@ static int message_logical_sequence_matches_native(
   if (ops == NULL || element == NULL ||
       cmeta_data_construct_ops_of(native_data) == NULL ||
       ops->collector == NULL || ops->borrow == NULL ||
-      !cmeta_data_desc_valid(element) ||
-      element->kind != CMETA_DATA_STRUCT)
+      !cmeta_data_desc_valid(element))
     return 0;
+
+  if (element->kind != CMETA_DATA_STRUCT) {
+    builtin = schema_cmeta_builtin_data(schema_field->inner_type);
+    return builtin != NULL && cmeta_data_desc_equal(builtin, element);
+  }
 
   return message_schema_record_matches_native(
       codec, schema_field->inner_type, element, depth + 1u);

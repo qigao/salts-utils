@@ -159,6 +159,12 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_validate_object(
  * a bounded field-seen bitmap is reserved from the front, and exact field
  * native decoders use the remaining workspace. No runtime heap allocation is
  * performed by MessagePlan.
+ *
+ * Lists admit builtin elements with canonical schema storage descriptors (exact
+ * semantic identity, including integer width/signedness), or admitted nested
+ * Struct descriptors. String/bytes elements require a separate owned-buffer
+ * contract and remain outside this list admission.
+ * CSTL/provider collectors own their bounded element storage and cleanup.
  */
 DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native(
     const DataBindMessagePlan *plan,

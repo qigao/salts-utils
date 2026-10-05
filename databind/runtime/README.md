@@ -93,6 +93,13 @@ typed struct 的 storage 始终由调用方拥有。原生 staging 必须为空�
 解码成功并关闭 reader 后才能发布，失败时保留原对象。释放由同一 CMeta 生命周期负责；
 生成代码通过 `Type_init()` / `Type_clear()` 管理对象，清理不依赖字段 presence 位。
 
+MessagePlan 的原生 list 接纳具有 canonical storage 描述的 builtin 元素或已准入的嵌套 Struct。
+builtin 元素必须与 IDL 描述具有相同 CMeta 语义身份，包括整数宽度和符号；
+宿主布局相同不足以准入。元素存储、复制与释放由 CSTL/provider collector 管理，
+继续受 native item/owned-byte 预算和 schema `@Size` 约束。DataBind presence/null
+overlay 位不属于 CMeta 值图；调用方发布带状态位的 staging 时也须转移这些位。
+string/bytes 元素所需的独立 owned-buffer 契约尚未纳入 list 准入。
+
 字符串格式参数、格式专用 stream 构造器、`DataBindRecord` facade 和 `as_*`
 便捷读取函数作为源码兼容入口保留。新代码使用 `DataBindFormat`、配置式 stream 和
 带状态的 getter，以获得可区分的错误语义。
