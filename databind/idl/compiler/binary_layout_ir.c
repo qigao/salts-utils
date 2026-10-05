@@ -76,6 +76,9 @@ static databind_binary_layout_status binary_field_scalar_representation(
   }
 
   switch (semantic.kind) {
+  case CMETA_DATA_BYTES:
+    field->scalar_kind = DATABIND_BINARY_SCALAR_BYTES;
+    break;
   case CMETA_DATA_BOOL:
     field->scalar_kind = DATABIND_BINARY_SCALAR_BOOL;
     bits = 8u;
@@ -131,7 +134,7 @@ static databind_binary_layout_status binary_field_scalar_representation(
 
   default:
     /*
-     * Structural/custom/buffer semantics are intentionally not inferred into a
+     * Structural/custom semantics are intentionally not inferred into a
      * scalar token class. Record lowering resolves canonical Contract children;
      * other SCALAR_NONE forms remain fail-closed.
      */
@@ -283,6 +286,7 @@ databind_binary_layout_status databind_binary_layout_validate(
         return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
       }
       if (field->scalar_kind != DATABIND_BINARY_SCALAR_NONE &&
+          field->scalar_kind != DATABIND_BINARY_SCALAR_BYTES &&
           field->wire_extent != (size_t)(field->scalar_bits / 8u)) {
         binary_diag(diagnostic, field->field_id,
                     "Fixed Binary scalar width disagrees with canonical semantics");

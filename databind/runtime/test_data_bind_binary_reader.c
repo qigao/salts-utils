@@ -237,6 +237,56 @@ static void expect_var_data_message(
 }
 
 spec("DataBind canonical Binary reader") {
+  it("borrows exact fixed bytes without endian conversion and rejects malformed metadata") {
+    enum { BYTE_EXTENT = 6 };
+    static const unsigned char wire[BYTE_EXTENT] = {0u, 1u, 0x80u, 0xffu, 2u, 3u};
+    DataBindBinaryFieldPlan field = DATA_BIND_BINARY_FIELD_PLAN_INIT;
+    DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    cserde_reader *reader = NULL;
+    void *owner = NULL;
+    cserde_token token = {0};
+    field.field_name = "digest";
+    field.token_kind = CSERDE_BYTES;
+    field.wire_extent = sizeof(wire);
+    plan.type_name = "FixedBytes";
+    plan.fixed_block_size = sizeof(wire);
+    plan.fields = &field;
+    plan.field_count = 1u;
+    for (int big_endian = 0; big_endian <= 1; ++big_endian) {
+      plan.wire_big_endian = big_endian;
+      check_equal(data_bind_binary_reader_open(&plan, wire, sizeof(wire), 0u,
+                  &reader, &owner, &error), DATA_BIND_OK);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+      check_equal(token.kind, CSERDE_MAP_BEGIN);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+      check_true(token_key_is(&token, "digest"));
+      check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+      check_equal(token.kind, CSERDE_BYTES);
+      check_true(token.value.slice.data == wire);
+      check_equal(token.value.slice.size, sizeof(wire));
+      check_equal(token.value.slice.lifetime, CSERDE_VIEW_STABLE);
+      check_equal(token.value.slice.data, wire, sizeof(wire));
+      check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+      check_equal(token.kind, CSERDE_MAP_END);
+      data_bind_binary_reader_close(reader, owner);
+      reader = NULL;
+      owner = NULL;
+    }
+    check_equal(data_bind_binary_reader_open(&plan, wire, sizeof(wire) - 1u, 0u,
+                &reader, &owner, &error), DATA_BIND_ERR_PARSE);
+    check_null(reader);
+    check_null(owner);
+    field.scalar_bits = 8u;
+    check_equal(data_bind_binary_layout_plan_validate(&plan, &error), DATA_BIND_ERR_SCHEMA);
+    field.scalar_bits = 0u;
+    field.tail_prefix_bytes = sizeof(uint32_t);
+    check_equal(data_bind_binary_layout_plan_validate(&plan, &error), DATA_BIND_ERR_SCHEMA);
+    field.tail_prefix_bytes = 0u;
+    field.wire_extent = 0u;
+    check_equal(data_bind_binary_layout_plan_validate(&plan, &error), DATA_BIND_ERR_SCHEMA);
+  }
+
   it("preflights GROUP strides and active entry states in both wire orders") {
     enum { GROUP_ENTRY_STRIDE = 17u, GROUP_ENTRY_COUNT = 2u,
            GROUP_WIRE_BYTES = 2u + DATA_BIND_BINARY_GROUP_HEADER_SIZE +

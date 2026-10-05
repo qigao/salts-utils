@@ -270,6 +270,12 @@ static int binary_writer_fixed_value(
 
   if (token->kind != field->token_kind) return 0;
   switch (field->token_kind) {
+  case CSERDE_BYTES:
+    if (token->value.slice.size != field->wire_extent ||
+        token->value.slice.data == NULL)
+      return 0;
+    memcpy(destination, token->value.slice.data, field->wire_extent);
+    return 1;
   case CSERDE_BOOL:
     if (field->scalar_bits != 8u) return 0;
     data_bind_binary_wire_write_u8(

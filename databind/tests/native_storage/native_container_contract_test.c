@@ -374,18 +374,17 @@ spec("DataBind canonical CSTL native containers") {
     check_equal(native_clear(&COMPOSITE_DATA, &source), DATA_BIND_OK);
   }
 
-  it("uses exact fixed byte lifecycle while rejecting missing native buffer semantics") {
+  it("round-trips inline fixed bytes through the canonical owned lifecycle") {
     InlineBytes source = {1u, 2u, 3u, 4u};
     InlineBytes destination;
-    InlineBytes before;
+    TokenSink sink;
     memset(destination, CONTAINER_SENTINEL, sizeof(destination));
-    memcpy(before, destination, sizeof(before));
     check_true(cmeta_data_desc_valid(&inline_bytes_cmeta_data));
-    check_equal(native_init(&inline_bytes_cmeta_data, destination), DATA_BIND_ERR_SCHEMA);
-    check_equal(native_clear(&inline_bytes_cmeta_data, destination), DATA_BIND_ERR_SCHEMA);
-    check_equal(memcmp(destination, before, sizeof(before)), 0);
-    check_equal(cmeta_data_value_init_zero(&inline_bytes_cmeta_data, destination), CMETA_OK);
+    check_equal(native_init(&inline_bytes_cmeta_data, destination), DATA_BIND_OK);
     check_true(inline_bytes_cmeta_is_zero(destination));
+    check_equal(roundtrip(&inline_bytes_cmeta_data, source, destination, &sink), DATA_BIND_OK);
+    check_equal(destination, source, sizeof(source));
+    check_equal(native_clear(&inline_bytes_cmeta_data, destination), DATA_BIND_OK);
     check_equal(cmeta_data_fixed_copy(&inline_bytes_cmeta_data, destination,
                                       source, sizeof(source)), CMETA_OK);
     check_equal(memcmp(destination, source, sizeof(source)), 0);
@@ -393,6 +392,42 @@ spec("DataBind canonical CSTL native containers") {
     check_true(inline_bytes_cmeta_is_zero(destination));
     check_equal(cmeta_data_value_restore_zero(&inline_bytes_cmeta_data, destination), CMETA_OK);
     check_true(inline_bytes_cmeta_is_zero(destination));
+  }
+
+  it("rejects incomplete fixed-only providers without changing destination storage") {
+    cmeta_data_desc incomplete = inline_bytes_cmeta_data;
+    InlineBytes destination;
+    InlineBytes before;
+    incomplete.buffer_ops = NULL;
+    incomplete.construct_ops = NULL;
+    memset(destination, CONTAINER_SENTINEL, sizeof(destination));
+    memcpy(before, destination, sizeof(before));
+    check_true(cmeta_data_desc_valid(&incomplete));
+    check_equal(native_init(&incomplete, destination), DATA_BIND_ERR_SCHEMA);
+    check_equal(native_clear(&incomplete, destination), DATA_BIND_ERR_SCHEMA);
+    check_equal(destination, before, sizeof(before));
+  }
+
+  it("counts inline fixed byte payloads against native owned-byte budgets") {
+    InlineBytes source = {1u, 2u, 3u, 4u};
+    InlineBytes destination;
+    TokenSink sink;
+    cserde_writer writer;
+    cserde_reader reader;
+    NativeContainerTokenSource token_source;
+    check_equal(native_init(&inline_bytes_cmeta_data, destination), DATA_BIND_OK);
+    open_writer(&sink, &writer);
+    check_equal(data_bind_native_encode(&options, &inline_bytes_cmeta_data, source,
+                sizeof(source), &writer, &diagnostic), DATA_BIND_OK);
+    open_reader(&sink, &token_source, &reader);
+    options.max_owned_bytes = sizeof(source) - 1u;
+    check_equal(data_bind_native_decode(&options, &inline_bytes_cmeta_data, &reader,
+                destination, sizeof(destination), &diagnostic), DATA_BIND_ERR_LIMIT);
+    check_true(inline_bytes_cmeta_is_zero(destination));
+    options.max_owned_bytes = sizeof(source);
+    check_equal(roundtrip(&inline_bytes_cmeta_data, source, destination, &sink), DATA_BIND_OK);
+    check_equal(destination, source, sizeof(source));
+    check_equal(native_clear(&inline_bytes_cmeta_data, destination), DATA_BIND_OK);
   }
 
   it("measures collection graphs only from static member metadata") {

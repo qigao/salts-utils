@@ -12,11 +12,11 @@ typed runtime、公开头文件与宏已物理删除，没有转发兼容入口�
 JSON/YAML/XML/CSV 原生路径使用 FormatPlan 和 MessagePlan/native，动态值转换使用
 canonical value reader。BinaryLayoutIR 经验证后生成 BinaryLayoutPlan provider；
 Binary reader/writer 通过 CSerde 与 MessagePlan/native 交互，不持有宿主字段偏移
-或生命周期。当前准入 FIXED scalar、递归固定 record、GROUP 与 VAR_DATA string/bytes。
+或生命周期。当前准入 FIXED scalar/bytes、递归固定 record、GROUP 与 VAR_DATA string/bytes。
 子 record 的范围必须与其固定块完全一致，拥有独立状态位并输出嵌套 MAP token；
 child plan 表以 size-versioned tail 追加到 layout plan，field struct 步长保持不变。
 旧尺寸 scalar/VAR_DATA 计划继续有效。新增 record provider 需要支持此 tail 的运行时；
-旧运行时仍拒绝 MAP/GROUP 字段。不支持的固定 bytes/数组与含可变 tail 的子 record
+旧运行时仍拒绝 MAP/GROUP/FIXED BYTES 字段。不支持的固定数组与含可变 tail 的子 record
 在修改对象或发布输出前返回明确错误。
 
 Binary lease 由单线程持有，借用不可变 plan graph 与输入 wire 到 close，
@@ -43,8 +43,12 @@ entry，仅在 ARRAY_END 提交 count，在整条消息完成后发布一次。G
 覆盖嵌套 owner 的独立复制、释放、重复 clear、状态位复位和解码中途超限后的清理。
 native storage 测试也直接使用 canonical native API，验证平台原生标量身份、
 受管 string/bytes，以及 provider 定义的非全零 semantic zero 和恰好一次释放。
-固定字节使用 CMeta exact fixed provider 的 init/copy/restore-zero；当前 native 路径
-要求 owned buffer provider，因此对只有 fixed provider 的形状在修改宿主前返回 schema 错误。
+固定字节要求 Salts v1.8.24 的完整 CMeta exact fixed/buffer-v2 provider，精确长度赋值、借用读取、
+独立 copy、清零源对象的无分配 move 与幂等 restore 共享同一 inline 存储。
+Binary FIXED BYTES 的 `scalar_bits` 为零，`wire_extent` 是唯一 wire 长度事实源；
+不添加长度前缀、不做端序转换。reader 借用完整 wire span 到 close，writer 在
+精确长度校验后复制到消息 buffer，仅在整条消息完成时发布。native/MessagePlan
+仍要求完整 owned buffer provider；只有 fixed copy/restore 的自定义形状继续被拒绝。
 固定数组尚无 canonical sequence provider，不借用 raw composite init/clear
 模拟 canonical 所有权。Binary/native 回归覆盖旧 wire 黄金字节、大小端、
 ABSENT/NULL/VALUE、独立 owner、重复 clear、失败回滚和有界输出的一次性发布。

@@ -72,3 +72,31 @@ message MultiGroupWire {
     group<WireEntry> second;
     string text;
 }
+
+composite FixedByteRecord {
+    bytes(6) digest;
+    uint16 code;
+}
+
+[id(8)]
+message FixedByteWire {
+    FixedByteRecord record;
+    string text;
+}
+
+[id(9)]
+message NullableFixedByteWire {
+    optional nullable bytes(6) digest;
+    string text;
+}
+
+group FixedByteEntry {
+    bytes(6) digest;
+    uint16 code;
+}
+
+[id(10)]
+message FixedByteGroupWire {
+    group<FixedByteEntry> entries;
+    string text;
+}

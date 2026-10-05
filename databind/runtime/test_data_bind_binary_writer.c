@@ -180,6 +180,59 @@ static void write_required_scalars(cserde_writer *writer) {
 }
 
 spec("DataBind canonical Binary writer") {
+  it("publishes exact fixed bytes once and keeps malformed spans failure atomic") {
+    enum { BYTE_EXTENT = 6, WIRE_SENTINEL = 0xa5 };
+    static const unsigned char bytes[BYTE_EXTENT] = {0u, 1u, 0x80u, 0xffu, 2u, 3u};
+    DataBindBinaryFieldPlan field = DATA_BIND_BINARY_FIELD_PLAN_INIT;
+    DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+    field.field_name = "digest";
+    field.token_kind = CSERDE_BYTES;
+    field.wire_extent = sizeof(bytes);
+    plan.type_name = "FixedBytes";
+    plan.fixed_block_size = sizeof(bytes);
+    plan.fields = &field;
+    plan.field_count = 1u;
+    for (int big_endian = 0; big_endian <= 1; ++big_endian) {
+      plan.wire_big_endian = big_endian;
+      for (size_t scenario = 0u; scenario < 4u; ++scenario) {
+        unsigned char wire[BYTE_EXTENT];
+        BinarySink sink = {wire, sizeof(wire), 0u, 0u};
+        cserde_writer *writer = NULL;
+        void *owner = NULL;
+        DataBindError error = DATA_BIND_ERROR_INIT;
+        cserde_token token = slice_value(CSERDE_BYTES, bytes, sizeof(bytes));
+        memset(wire, WIRE_SENTINEL, sizeof(wire));
+        if (scenario == 1u) --token.value.slice.size;
+        if (scenario == 2u) ++token.value.slice.size;
+        if (scenario == 3u) token.value.slice.data = NULL;
+        check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink,
+                    0u, &writer, &owner, &error), DATA_BIND_OK);
+        check_true(write_token(writer, map_begin()));
+        check_true(write_token(writer, key("digest")));
+        if (scenario == 0u) {
+          check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+          check_equal(sink.calls, 0u);
+          check_true(write_token(writer, map_end()));
+          check_equal(cserde_writer_finish(writer), CSERDE_OK);
+          check_equal(sink.calls, 1u);
+          check_equal(sink.size, sizeof(bytes));
+          check_equal(wire, bytes, sizeof(bytes));
+        } else {
+          const cserde_status expected = scenario == 3u
+              ? CSERDE_INVALID_TOKEN : CSERDE_UNSUPPORTED;
+          check_equal(cserde_writer_write(writer, &token), expected);
+          check_equal(cserde_writer_finish(writer), CSERDE_UNSUPPORTED);
+          check_equal(sink.calls, 0u);
+          for (size_t i = 0u; i < sizeof(wire); ++i)
+            check_equal(wire[i], (unsigned char)WIRE_SENTINEL);
+        }
+        check_equal(data_bind_binary_writer_close(writer, owner, &error),
+                    scenario == 0u ? DATA_BIND_OK : DATA_BIND_ERR_SCHEMA);
+        check_equal(sink.calls, scenario == 0u ? 1u : 0u);
+      }
+    }
+  }
+
   it("bounds GROUP count and depth and publishes complete entries once") {
     const DataBindBinaryFieldPlan entry_field[] = {
         {sizeof(DataBindBinaryFieldPlan), "value", CSERDE_UINT,

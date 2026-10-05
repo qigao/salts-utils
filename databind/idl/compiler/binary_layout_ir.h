@@ -28,8 +28,8 @@ typedef enum databind_binary_field_layout_kind {
  * Binary-private scalar token representation derived from canonical Contract /
  * CMeta semantics. This is not a second public DataBind type system.
  *
- * NONE means the field is not a scalar (for example an inline fixed record or
- * bytes value). Fixed record lowering resolves the canonical Contract child
+ * NONE means the field is not a scalar (for example an inline fixed record).
+ * Fixed record lowering resolves the canonical Contract child
  * and validates its independent BinaryLayoutIR; unsupported structural forms
  * remain fail-closed without guessing scalar semantics from their extent.
  */
@@ -61,8 +61,9 @@ typedef struct databind_binary_field_layout {
   /*
    * Canonical semantic representation. FIXED scalar bits come from CMeta
    * integer/float metadata or enum underlying storage, never from wire_extent.
-   * BOOL records 8 bits. VAR_DATA STRING/BYTES record zero scalar bits and
-   * use tail_prefix_bytes for the Binary representation.
+   * BOOL records 8 bits. FIXED BYTES records zero scalar bits and its exact
+   * wire_extent. VAR_DATA STRING/BYTES record zero scalar bits and use
+   * tail_prefix_bytes for the Binary representation.
    */
   databind_binary_scalar_kind scalar_kind;
   unsigned scalar_bits;

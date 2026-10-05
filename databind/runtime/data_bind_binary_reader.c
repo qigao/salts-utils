@@ -202,6 +202,11 @@ static DataBindStatus binary_layout_validate(
             (child->wire_big_endian != 0) != (plan->wire_big_endian != 0))
           return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
                              "Binary fixed record extent or byte order disagrees");
+      } else if (field->token_kind == CSERDE_BYTES) {
+        if (field->scalar_bits != 0u ||
+            (binary_field_has_var_data_tail(field) && field->tail_prefix_bytes != 0u))
+          return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                             "Binary fixed byte extent metadata is invalid");
       } else if (!binary_token_width_valid(field->token_kind, field->scalar_bits) ||
                  field->wire_extent != (size_t)(field->scalar_bits / 8u)) {
         return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
@@ -552,6 +557,12 @@ static cserde_status binary_scalar_token(
   memset(out, 0, sizeof(*out));
 
   switch (field->token_kind) {
+  case CSERDE_BYTES:
+    out->kind = CSERDE_BYTES;
+    out->value.slice.data = source;
+    out->value.slice.size = field->wire_extent;
+    out->value.slice.lifetime = CSERDE_VIEW_STABLE;
+    return CSERDE_OK;
   case CSERDE_BOOL:
     out->kind = CSERDE_BOOL;
     out->value.boolean =

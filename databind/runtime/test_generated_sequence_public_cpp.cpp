@@ -24,6 +24,9 @@ static_assert(std::is_standard_layout_v<GroupWire_entries_vec_t> &&
               "generated GROUP storage and state must remain C-compatible");
 static_assert(sizeof(GroupWire_entries_vec_t) > sizeof(vec_t),
               "GROUP must own canonical element semantics");
+static_assert(std::is_standard_layout_v<FixedByteEntry_t> &&
+              std::is_standard_layout_v<FixedByteGroupWire_entries_vec_t>,
+              "fixed inline bytes preserve C layout inside managed GROUP storage");
 
 static bool group_owner_contract() {
   static const char json[] =
@@ -50,9 +53,37 @@ static bool group_owner_contract() {
   return valid;
 }
 
+static bool fixed_byte_owner_contract() {
+  static const uint8_t expected[] = {
+      8u, 0u, 1u, 0u, 'a', 'b', 'c', 'd', 'e', 'f', 0x34u, 0x12u,
+      3u, 0u, 0u, 0u, 'c', 'a', 't'};
+  DataBind *codec = nullptr;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  bool valid = false;
+  if (Tail_codec_create(&codec, &error) != DATA_BIND_OK) return false;
+  {
+    Tail_typed::FixedByteGroupWireOwner source, copy;
+    uint8_t wire[sizeof(expected)]{};
+    size_t len = 0u;
+    if (source.from_bin(codec, expected, sizeof(expected), &error) == DATA_BIND_OK &&
+        cmeta_data_value_copy(&FixedByteGroupWire_CMETA_DATA, copy.get(), source.get()) == CMETA_OK) {
+      const auto *entry = static_cast<const FixedByteEntry_t *>(vec_at_const(&source->entries.raw, 0u));
+      const auto *copied = static_cast<const FixedByteEntry_t *>(vec_at_const(&copy->entries.raw, 0u));
+      valid = entry != nullptr && copied != nullptr && entry != copied &&
+          std::memcmp(entry->digest, copied->digest, sizeof(entry->digest)) == 0 &&
+          copy->text != source->text &&
+          FixedByteGroupWire_to_bin_into(codec, copy.get(), wire, sizeof(wire), &len, &error) == DATA_BIND_OK &&
+          len == sizeof(expected) && std::memcmp(wire, expected, sizeof(expected)) == 0;
+    }
+  }
+  data_bind_free(codec);
+  return valid;
+}
+
 int main() {
-  enum { GROUP_CONTRACT_FAILURE = 11 };
+  enum { GROUP_CONTRACT_FAILURE = 11, FIXED_BYTES_CONTRACT_FAILURE = 12 };
   if (!group_owner_contract()) return GROUP_CONTRACT_FAILURE;
+  if (!fixed_byte_owner_contract()) return FIXED_BYTES_CONTRACT_FAILURE;
   NativeHeaderPolicy_t value{};
   NativeHeaderMap_t map_owner{};
   const DataBindMessageNativeArtifact *artifact =

@@ -220,7 +220,7 @@ spec("DataBind compiler Binary reader codegen") {
     free(schema_data);
   }
 
-  it("fails closed when BinaryLayoutIR still contains unsupported structural semantics") {
+  it("lowers nested fixed bytes from BinaryLayoutIR with their exact wire extent") {
     Node *root = NULL;
     IdlContract *contract = NULL;
     char *schema_data = NULL;
@@ -254,11 +254,19 @@ spec("DataBind compiler Binary reader codegen") {
       check_equal(
           databind_compiler_binary_reader_admit(
               contract, &format_plan, "LoginMessage"),
-          -1);
+          0);
       check_equal(
           databind_compiler_binary_reader_emit(
               file, contract, &format_plan, "LoginMessage", "databind_login"),
-          -1);
+          0);
+      check_greater(ftell(file), 0L);
+      {
+        char *text = emit_to_text(contract, &format_plan, "LoginMessage", "databind_login");
+        check_not_null(text);
+        if (text != NULL)
+          check_contains(text, "\"pass_hash\", CSERDE_BYTES, 0u, 13u, 16u");
+        free(text);
+      }
     }
 
     if (file != NULL) fclose(file);

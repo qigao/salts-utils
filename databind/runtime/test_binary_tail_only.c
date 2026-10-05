@@ -1,4 +1,5 @@
 #include "binary_tail_only_generated.h"
+#include "data_bind_binary_layout.h"
 #include "tinytest.h"
 
 #include <tstr.h>
@@ -10,6 +11,189 @@ static const char BINARY_TEXT[] = "cat";
 static const char BINARY_PAYLOAD[] = "raw";
 
 spec("generated and generic canonical Binary wire parity") {
+  it("matches fixed inline byte records with generic wire and preserves destination on failure") {
+    static const char json[] = "{\"record\":{\"digest\":\"abcdef\",\"code\":4660},\"text\":\"cat\"}";
+    static const uint8_t expected[] = {'a', 'b', 'c', 'd', 'e', 'f', 0x34u, 0x12u,
+                                     3u, 0u, 0u, 0u, 'c', 'a', 't'};
+    DataBind *codec = NULL;
+    DataBindObject *dynamic = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    FixedByteWire_t source;
+    FixedByteWire_t decoded;
+    FixedByteWire_t copied;
+    uint8_t *generic_wire = NULL;
+    uint8_t *wire = NULL;
+    uint8_t bounded[sizeof(expected)] = {0};
+    uint8_t too_small[sizeof(expected) - 1u];
+    size_t generic_len = 0u, wire_len = 0u, bounded_len = 0u;
+    FixedByteWire_init(&source);
+    FixedByteWire_init(&decoded);
+    FixedByteWire_init(&copied);
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(data_bind_object_from_json(codec, "FixedByteWire", json, sizeof(json) - 1u,
+                &dynamic, &error), DATA_BIND_OK);
+    check_equal(FixedByteWire_from_json(codec, &source, json, sizeof(json) - 1u, &error), DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(FixedByteWire_from_bin(codec, &source, expected, sizeof(expected), &error), DATA_BIND_OK);
+    check_equal(data_bind_object_serialize_bin(codec, dynamic, &generic_wire, &generic_len, &error), DATA_BIND_OK);
+    check_equal(FixedByteWire_to_bin(codec, &source, &wire, &wire_len, &error), DATA_BIND_OK);
+    check_equal(wire_len, sizeof(expected));
+    check_equal(generic_len, wire_len);
+    check_equal(wire, expected, sizeof(expected));
+    check_equal(generic_wire, wire, wire_len);
+    check_equal(FixedByteWire_to_bin_into(codec, &source, bounded, sizeof(bounded), &bounded_len, &error), DATA_BIND_OK);
+    check_equal(bounded_len, sizeof(expected));
+    check_equal(bounded, expected, sizeof(expected));
+    memset(too_small, 0xa5, sizeof(too_small));
+    check_equal(FixedByteWire_to_bin_into(codec, &source, too_small, sizeof(too_small), &bounded_len, &error), DATA_BIND_ERR_LIMIT);
+    check_equal(bounded_len, (size_t)0u);
+    for (size_t i = 0u; i < sizeof(too_small); ++i)
+      check_equal(too_small[i], (uint8_t)0xa5u);
+    check_equal(FixedByteWire_from_bin(codec, &decoded, wire, wire_len, &error), DATA_BIND_OK);
+    check_equal(cmeta_data_value_copy(&FixedByteWire_CMETA_DATA, &copied, &decoded), CMETA_OK);
+    check_true(copied.text != decoded.text);
+    check_equal(copied.record.digest, decoded.record.digest, sizeof(decoded.record.digest));
+    {
+      tstr retained = decoded.text;
+      check_equal(FixedByteWire_from_bin(codec, &decoded, wire, wire_len - 1u, &error), DATA_BIND_ERR_PARSE);
+      check_true(decoded.text == retained);
+      check_equal(decoded.record.digest, expected, sizeof(decoded.record.digest));
+    }
+    memset(wire, 0, wire_len);
+    FixedByteWire_clear(&source);
+    data_bind_object_free(dynamic);
+    data_bind_binary_free(generic_wire);
+    data_bind_binary_free(wire);
+    check_equal(decoded.record.digest, expected, sizeof(decoded.record.digest));
+    check_equal(decoded.text, BINARY_TEXT);
+    FixedByteWire_clear(&decoded);
+    check_equal(copied.record.digest, expected, sizeof(copied.record.digest));
+    check_equal(copied.text, BINARY_TEXT);
+    FixedByteWire_clear(&copied);
+    FixedByteWire_clear(&copied);
+    data_bind_free(codec);
+  }
+
+  it("keeps ABSENT NULL VALUE fixed bytes distinct and restores owners after rejection") {
+    enum { FIXED_BYTES_WIRE_SIZE = 2u + 6u + sizeof(uint32_t) + 3u };
+    static const char *const json[] = {"{\"text\":\"cat\"}",
+        "{\"digest\":null,\"text\":\"cat\"}", "{\"digest\":\"abcdef\",\"text\":\"cat\"}"};
+    static const uint8_t expected[][FIXED_BYTES_WIRE_SIZE] = {
+        {0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 3u, 0u, 0u, 0u, 'c', 'a', 't'},
+        {1u, 1u, 0u, 0u, 0u, 0u, 0u, 0u, 3u, 0u, 0u, 0u, 'c', 'a', 't'},
+        {1u, 0u, 'a', 'b', 'c', 'd', 'e', 'f', 3u, 0u, 0u, 0u, 'c', 'a', 't'}};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    check_null(NullableFixedByteWire_CMETA_TYPE.traits);
+    for (size_t scenario = 0u; scenario < sizeof(json) / sizeof(json[0]); ++scenario) {
+      NullableFixedByteWire_t source;
+      NullableFixedByteWire_t decoded;
+      uint8_t *wire = NULL;
+      size_t wire_len = 0u, bounded_len = 0u;
+      uint8_t bounded[sizeof(expected[0])] = {0};
+      NullableFixedByteWire_init(&source);
+      NullableFixedByteWire_init(&decoded);
+      check_equal(NullableFixedByteWire_from_json(codec, &source, json[scenario], strlen(json[scenario]), &error), DATA_BIND_OK);
+      check_equal(NullableFixedByteWire_to_bin(codec, &source, &wire, &wire_len, &error), DATA_BIND_OK);
+      check_equal(wire_len, sizeof(expected[scenario]));
+      check_equal(wire, expected[scenario], wire_len);
+      check_equal(NullableFixedByteWire_to_bin_into(codec, &source, bounded, sizeof(bounded), &bounded_len, &error), DATA_BIND_OK);
+      check_equal(bounded_len, wire_len);
+      check_equal(bounded, wire, wire_len);
+      check_equal(NullableFixedByteWire_from_bin(codec, &decoded, wire, wire_len, &error), DATA_BIND_OK);
+      check_equal(decoded._presence[0], expected[scenario][0]);
+      check_equal(decoded._nulls[0], expected[scenario][1]);
+      check_equal(decoded.digest, expected[scenario] + 2u, sizeof(decoded.digest));
+      {
+        tstr retained = decoded.text;
+        static const char short_value[] = "{\"digest\":\"a\",\"text\":\"replace\"}";
+        bounded[0] = 0u;
+        bounded[1] = 1u;
+        check_equal(NullableFixedByteWire_from_bin(codec, &decoded, bounded, sizeof(bounded), &error), DATA_BIND_ERR_PARSE);
+        check(NullableFixedByteWire_from_json(codec, &decoded, short_value, sizeof(short_value) - 1u, &error) != DATA_BIND_OK);
+        check_true(decoded.text == retained);
+        check_equal(decoded.digest, expected[scenario] + 2u, sizeof(decoded.digest));
+        check_equal(decoded._presence[0], expected[scenario][0]);
+        check_equal(decoded._nulls[0], expected[scenario][1]);
+      }
+      memset(wire, 0, wire_len);
+      check_equal(decoded.text, BINARY_TEXT);
+      data_bind_binary_free(wire);
+      NullableFixedByteWire_clear(&source);
+      NullableFixedByteWire_clear(&decoded);
+      NullableFixedByteWire_clear(&decoded);
+      check_equal(decoded._presence[0], (uint8_t)0u);
+      check_equal(decoded._nulls[0], (uint8_t)0u);
+      check_equal(decoded.digest, (uint8_t[sizeof(decoded.digest)]){0}, sizeof(decoded.digest));
+    }
+    data_bind_free(codec);
+  }
+
+  it("owns fixed byte GROUP entries independently of wire and source storage") {
+    static const char json[] = "{\"entries\":[{\"digest\":\"abcdef\",\"code\":4660}],\"text\":\"cat\"}";
+    static const uint8_t expected[] = {8u, 0u, 1u, 0u, 'a', 'b', 'c', 'd', 'e', 'f',
+                                     0x34u, 0x12u, 3u, 0u, 0u, 0u, 'c', 'a', 't'};
+    DataBind *codec = NULL;
+    DataBindObject *dynamic = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    FixedByteGroupWire_t source;
+    FixedByteGroupWire_t decoded;
+    FixedByteGroupWire_t copied;
+    uint8_t *wire = NULL, *generic_wire = NULL;
+    size_t wire_len = 0u, generic_len = 0u;
+    uint8_t bounded[sizeof(expected)] = {0};
+    FixedByteGroupWire_init(&source);
+    FixedByteGroupWire_init(&decoded);
+    FixedByteGroupWire_init(&copied);
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(data_bind_object_from_json(codec, "FixedByteGroupWire", json, sizeof(json) - 1u, &dynamic, &error), DATA_BIND_OK);
+    check_equal(FixedByteGroupWire_from_bin(codec, &source, expected, sizeof(expected), &error), DATA_BIND_OK);
+    check_equal(data_bind_object_serialize_bin(codec, dynamic, &generic_wire, &generic_len, &error), DATA_BIND_OK);
+    check_equal(FixedByteGroupWire_to_bin(codec, &source, &wire, &wire_len, &error), DATA_BIND_OK);
+    check_equal(wire_len, sizeof(expected));
+    check_equal(generic_len, wire_len);
+    check_equal(wire, expected, wire_len);
+    check_equal(generic_wire, wire, wire_len);
+    check_equal(FixedByteGroupWire_to_bin_into(codec, &source, bounded, sizeof(bounded), &generic_len, &error), DATA_BIND_OK);
+    check_equal(generic_len, wire_len);
+    check_equal(bounded, wire, wire_len);
+    check_equal(FixedByteGroupWire_from_bin(codec, &decoded, wire, wire_len, &error), DATA_BIND_OK);
+    check_equal(cmeta_data_value_copy(&FixedByteGroupWire_CMETA_DATA, &copied, &decoded), CMETA_OK);
+    {
+      const FixedByteEntry_t *entry = FixedByteGroupWire_entries_vec_t_at_const(&decoded.entries, 0u);
+      const FixedByteEntry_t *copy = FixedByteGroupWire_entries_vec_t_at_const(&copied.entries, 0u);
+      static const char invalid[] =
+          "{\"entries\":[{\"digest\":\"abcdef\",\"code\":1},{\"digest\":\"a\",\"code\":2}],\"text\":\"replace\"}";
+      tstr retained = decoded.text;
+      check_not_null(entry);
+      check_not_null(copy);
+      check_true(entry != copy);
+      check_equal(entry->digest, expected + DATA_BIND_BINARY_GROUP_HEADER_SIZE, sizeof(entry->digest));
+      check_equal(copy->digest, entry->digest, sizeof(entry->digest));
+      check_equal(entry->code, (uint16_t)0x1234u);
+      bounded[DATA_BIND_BINARY_GROUP_HEADER_SIZE] = 'z';
+      check_equal(FixedByteGroupWire_from_bin(codec, &decoded, bounded, sizeof(bounded) - 1u, &error), DATA_BIND_ERR_PARSE);
+      check_true(FixedByteGroupWire_entries_vec_t_at_const(&decoded.entries, 0u) == entry);
+      check_equal(entry->digest[0], (uint8_t)'a');
+      check(FixedByteGroupWire_from_json(codec, &decoded, invalid, sizeof(invalid) - 1u, &error) != DATA_BIND_OK);
+      check_true(FixedByteGroupWire_entries_vec_t_at_const(&decoded.entries, 0u) == entry);
+      check_true(decoded.text == retained);
+      check_equal(FixedByteGroupWire_entries_vec_t_size(&decoded.entries), (size_t)1u);
+    }
+    memset(wire, 0, wire_len);
+    FixedByteGroupWire_clear(&source);
+    FixedByteGroupWire_clear(&decoded);
+    data_bind_binary_free(wire);
+    data_bind_binary_free(generic_wire);
+    data_bind_object_free(dynamic);
+    check_equal(FixedByteGroupWire_entries_vec_t_at_const(&copied.entries, 0u)->digest,
+                expected + DATA_BIND_BINARY_GROUP_HEADER_SIZE,
+                sizeof(((FixedByteEntry_t *)0)->digest));
+    FixedByteGroupWire_clear(&copied);
+    FixedByteGroupWire_clear(&copied);
+    data_bind_free(codec);
+  }
+
   it("round-trips a string without a fixed block") {
     static const uint8_t expected[] = {3u, 0u, 0u, 0u, 'c', 'a', 't'};
     DataBind *codec = NULL;
