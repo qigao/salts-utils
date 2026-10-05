@@ -107,6 +107,56 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
 
     free(workspace);
   }
+  it("round trips generated owned bytes through the canonical JSON projection") {
+    static const char json[] =
+        "{\"id\":7,\"text\":\"owned\",\"payload\":\"A\\u0000B\"}";
+    static const unsigned char payload[] = {'A', 0u, 'B'};
+    static const char invalid[] =
+        "{\"payload\":\"staged\",\"id\":\"invalid\",\"text\":\"owned\"}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    NativeOwnedBufferRecord_t value = {0};
+    NativeOwnedBufferRecord_t roundtrip = {0};
+    char *encoded = NULL;
+    size_t encoded_len = 0u;
+    const unsigned char *owner;
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    if (codec == NULL) return;
+    NativeOwnedBufferRecord_init(&value);
+    NativeOwnedBufferRecord_init(&roundtrip);
+    check_equal(NativeOwnedBufferRecord_from_json(
+                    codec, &value, json, sizeof(json) - 1u, &error), DATA_BIND_OK);
+    check_equal(stl_byte_buffer_size(&value.payload), sizeof(payload));
+    owner = stl_byte_buffer_data_const(&value.payload);
+    check_not_null(owner);
+    if (owner != NULL) check_equal(owner, payload, sizeof(payload));
+    check_equal(NativeOwnedBufferRecord_to_json(
+                    codec, &value, &encoded, &encoded_len, &error), DATA_BIND_OK);
+    check_not_null(encoded);
+    if (encoded != NULL) {
+      check_equal(encoded, json);
+      check_equal(NativeOwnedBufferRecord_from_json(
+                      codec, &roundtrip, encoded, encoded_len, &error), DATA_BIND_OK);
+      check_equal(stl_byte_buffer_size(&roundtrip.payload), sizeof(payload));
+      const unsigned char *copy = stl_byte_buffer_data_const(&roundtrip.payload);
+      check_not_null(copy);
+      if (copy != NULL) {
+        check_equal(copy, payload, sizeof(payload));
+        check_true(copy != owner);
+      }
+    }
+    check_equal(NativeOwnedBufferRecord_from_json(
+                    codec, &value, invalid, sizeof(invalid) - 1u, &error),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_true(stl_byte_buffer_data_const(&value.payload) == owner);
+    check_equal(value.id, 7u);
+    check_equal(value.text, "owned");
+    data_bind_serialized_free(encoded);
+    NativeOwnedBufferRecord_clear(&roundtrip);
+    NativeOwnedBufferRecord_clear(&value);
+    data_bind_free(codec);
+  }
+
   it("routes generated Message JSON YAML input and JSON YAML output canonically") {
     static const char json[] =
         "{\"id\":7,\"headers\":["

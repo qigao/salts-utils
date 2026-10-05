@@ -321,6 +321,14 @@ raw storage 的 `data_bind_native_init/clear` 会先验证完整 CMeta 图，再
 校验成功后才调用赋值 provider。未知名称、非法位、截断或预算耗尽不会发布部分值。
 普通 enum 仍拒绝数组。输出保持 canonical 整数位值，不把 flags 数组作为另一套宿主存储。
 
+JSON 的根 bytes 字段沿用 UTF-8 文本表示：显式
+`data_bind_message_plan_decode_native_format(..., DATA_BIND_FORMAT_JSON, ...)` 将
+STRING token 的完整长度复制到 provider-owned byte buffer，FormatPlan canonical writer
+把根 BYTES token 投影为 JSON 字符串。嵌入 NUL 会转义并保留；非法 UTF-8 输出失败，
+不改变源对象所有权。普通 native decoder、Binary、YAML 和嵌套 bytes 不执行此投影。
+该协议及容量不足后的重试见
+[`native_bytes_json_test.c`](../tests/native_storage/native_bytes_json_test.c)。
+
 公共契约见 [`data_bind_message_plan.h`](data_bind_message_plan.h)、
 [`data_bind_projection_plan.h`](data_bind_projection_plan.h) 和
 [`data_bind_format_provider.h`](data_bind_format_provider.h)。完整 FormatPlan 编译用于输出

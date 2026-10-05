@@ -7,6 +7,7 @@
 #include "schema_cmeta.h"
 
 #include <cmeta/type_traits.h>
+#include <vstr.h>
 
 #include <errno.h>
 #include <limits.h>
@@ -1808,6 +1809,17 @@ static DataBindStatus message_decode_native_impl(
       message_set_null(base, field, 1);
     } else {
       cserde_token value_token = token;
+      if (format_aware && format == DATA_BIND_FORMAT_JSON &&
+          field->data->kind == CMETA_DATA_BYTES && token.kind == CSERDE_STRING) {
+        if (!vstr_utf8_valid(vstr_from_buf(
+                (const char *)token.value.slice.data, token.value.slice.size))) {
+          status = message_fail(
+              diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
+              "JSON bytes field is not valid UTF-8 text");
+          goto fail;
+        }
+        value_token.kind = CSERDE_BYTES;
+      }
       if (format_aware &&
           (format == DATA_BIND_FORMAT_CSV ||
            format == DATA_BIND_FORMAT_XML)) {

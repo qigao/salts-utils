@@ -70,6 +70,9 @@ enum { DATA_BIND_FORMAT_CANONICAL_READER_ABI_VERSION = 1u };
  *
  * The wrapper accepts canonical root MAP keys and rewrites them to the
  * FormatPlan's compiled primary external names. Input aliases are never emitted.
+ * JSON root BYTES values project to STRING tokens after UTF-8 validation; the
+ * JSON target escapes their complete length, including embedded NUL. This is a
+ * borrowed synchronous projection and never mutates native byte storage.
  * Nested value token streams are forwarded unchanged.
  */
 typedef struct DataBindFormatCanonicalWriter {
