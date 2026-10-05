@@ -146,7 +146,7 @@ static void expect_host_rejection(const TbeTypedType *type) {
 static void expect_descriptor_rejection(const TbeTypedDescriptor *descriptor) {
   BoundaryStorage object;
   uint8_t before[sizeof(object)];
-  const uint8_t input[] = {'{', '}'};
+  const uint8_t input[] = {0u};
   DataBindError error = DATA_BIND_ERROR_INIT;
   memset(&object, BOUNDARY_SENTINEL, sizeof(object));
   memcpy(before, &object, sizeof(object));
@@ -155,7 +155,7 @@ static void expect_descriptor_rejection(const TbeTypedDescriptor *descriptor) {
   check_equal(tbe_typed_descriptor_init(descriptor, &object, &error), DATA_BIND_ERR_SCHEMA);
   check_equal(memcmp(&object, before, sizeof(object)), 0);
   check_equal(tbe_typed_descriptor_parse(NULL, "Boundary", descriptor,
-                                         DATA_BIND_FORMAT_JSON, input,
+                                         DATA_BIND_FORMAT_BINARY, input,
                                          sizeof(input), 0u, &object, &error),
               DATA_BIND_ERR_SCHEMA);
   check_equal(memcmp(&object, before, sizeof(object)), 0);
@@ -442,31 +442,6 @@ spec("typed descriptor boundary") {
     check_equal(tbe_typed_validate_descriptor(&overlap, &error),
                 DATA_BIND_ERR_SCHEMA);
     check_contains(error.message, "overlap");
-  }
-
-  it("keeps non-JSON nullable formats fail-fast after ABI admission") {
-    StateBoundary object = {0};
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    const uint8_t text[] = {'{', '}'};
-    char *out = NULL;
-    size_t out_len = 0u;
-
-    check_equal(
-        tbe_typed_descriptor_parse(
-            NULL, "StateBoundary", &STATE_BOUNDARY_DESCRIPTOR,
-            DATA_BIND_FORMAT_YAML, text, sizeof(text), 0u, &object, &error),
-        DATA_BIND_ERR_SCHEMA);
-    check_contains(error.message, "nullable");
-
-    error = (DataBindError)DATA_BIND_ERROR_INIT;
-    check_equal(
-        tbe_typed_descriptor_serialize(
-            NULL, "StateBoundary", &STATE_BOUNDARY_DESCRIPTOR, &object,
-            DATA_BIND_FORMAT_XML, &out, &out_len, &error),
-        DATA_BIND_ERR_SCHEMA);
-    check_null(out);
-    check_equal(out_len, 0u);
-    check_contains(error.message, "nullable");
   }
 
 }

@@ -94,3 +94,10 @@ cmake_add_test(test_data_bind_native_message
   FOLDER "databind/tests")
 set_tests_properties(test_data_bind_native_message PROPERTIES
   LABELS "databind;cmeta;native;message" TIMEOUT 60)
+
+cmake_add_test(test_data_bind_native_collection_message
+  SOURCES native_collection_message_test.c
+  LIBS Salts::DataBind Salts::CSTL Salts::TinyTest
+  FOLDER "databind/tests")
+set_tests_properties(test_data_bind_native_collection_message PROPERTIES
+  LABELS "databind;cmeta;native;collection" TIMEOUT 60)
