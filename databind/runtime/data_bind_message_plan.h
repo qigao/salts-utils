@@ -116,6 +116,7 @@ data_bind_message_plan_field_count(const DataBindMessagePlan *plan);
 /**
  * Validate one already-normalized complete native message.
  *
+ * Contradictory ABSENT plus NULL native state returns DATA_BIND_ERR_SCHEMA.
  * ABSENT optional fields and explicit NULL fields skip value constraints.
  * VALUE fields execute the immutable native ValidationPlan binding. No schema
  * lookup or constraint parsing occurs on this runtime path.
@@ -199,6 +200,8 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native_format(
  * NULL writes CSERDE_NULL, and VALUE fields are validated then encoded through
  * their canonical CMeta descriptors.
  *
+ * Contradictory ABSENT plus NULL state returns DATA_BIND_ERR_SCHEMA before
+ * emitting the first token; the diagnostic identifies the field.
  * The source remains caller-owned and is never mutated. As with the underlying
  * CSerde writer/native encoder, this API does not claim transport-level output
  * rollback after a sink has accepted tokens.

@@ -134,13 +134,14 @@ jobs:
           cmake --build build/xml-sanitize \
             --target xml_parser_test xml_sax_parser_test test_tbe_typed_cmeta_graph \
                      test_tbe_typed_cmeta_public test_tbe_typed_cmeta_public_cpp \
-                     test_optional_scalar_lifecycle test_databind_message_native_artifact --parallel 2
+                     test_optional_scalar_lifecycle test_databind_message_native_artifact \
+                     test_data_bind_native_nullable --parallel 2
 
       - name: Run XML parser and native lifecycle ASan UBSan and leak contracts
         shell: bash
         run: |
           set -euxo pipefail
-          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build/xml-sanitize --no-tests=error -R '^(xml_parser_test|xml_sax_parser_test|test_tbe_typed_cmeta_graph|test_tbe_typed_cmeta_public|test_tbe_typed_cmeta_public_cpp|test_optional_scalar_lifecycle|test_databind_message_native_artifact)$' --output-on-failure
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build/xml-sanitize --no-tests=error -R '^(xml_parser_test|xml_sax_parser_test|test_tbe_typed_cmeta_graph|test_tbe_typed_cmeta_public|test_tbe_typed_cmeta_public_cpp|test_optional_scalar_lifecycle|test_databind_message_native_artifact|test_data_bind_native_nullable)$' --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
 
@@ -200,6 +201,7 @@ jobs:
             -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
           cmake --build build/binding-plan \
             --target test_data_bind_binding_plan test_data_bind_object_message_plan \
+                     test_data_bind_native_nullable \
                      test_data_bind_projection_plan test_data_bind_record_exact \
                      test_data_bind_binary_reader test_data_bind_opaque_plan \
                      test_databind_binary_reader_codegen test_databind_binary_layout_ir \
@@ -236,7 +238,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_databind_binary_reader_codegen|test_databind_binary_layout_ir|test_databind_binary_var_data_transport|test_databind_opaque_transport|test_databind_opaque_service|test_databind_method_plan_binary_admission|test_databind_flowmq_plan_projection|test_data_bind_service_native_error|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_cmeta_public_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp|test_tbe_compiler|test_tbe_compiler_cmeta_fields|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_service_native_lowering|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact|test_databind_plugin_projection_rejection|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_tbe_cmeta_cli_gates)$' \
+            -R '^(test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_native_nullable|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_databind_binary_reader_codegen|test_databind_binary_layout_ir|test_databind_binary_var_data_transport|test_databind_opaque_transport|test_databind_opaque_service|test_databind_method_plan_binary_admission|test_databind_flowmq_plan_projection|test_data_bind_service_native_error|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_cmeta_public_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp|test_tbe_compiler|test_tbe_compiler_cmeta_fields|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_service_native_lowering|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact|test_databind_plugin_projection_rejection|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_tbe_cmeta_cli_gates)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"

@@ -1219,6 +1219,53 @@ const cserde_token *data_bind_message_plan_internal_default_token(
              : NULL;
 }
 
+static DataBindStatus message_native_field_state(
+    const DataBindMessageFieldPlan *field,
+    const unsigned char *base,
+    size_t source_bytes,
+    DataBindMessageObjectFieldState *out_state,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  int present = 1;
+  int is_null = 0;
+
+  if (field == NULL || base == NULL || out_state == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG,
+        field != NULL ? field->name : NULL,
+        "Invalid native MessagePlan state lookup");
+
+  if (field->optional) {
+    if (!field->has_presence || field->presence_bit >= 8u ||
+        field->presence_offset >= source_bytes)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
+          "Optional native field has no valid presence binding");
+    present =
+        (base[field->presence_offset] &
+         (unsigned char)(1u << field->presence_bit)) != 0u;
+  }
+
+  if (field->nullable) {
+    if (!field->has_null || field->null_bit >= 8u ||
+        field->null_offset >= source_bytes)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
+          "Nullable native field has no valid null binding");
+    is_null =
+        (base[field->null_offset] &
+         (unsigned char)(1u << field->null_bit)) != 0u;
+  }
+
+  if (!present && is_null)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
+        "Native field cannot be both absent and null");
+  *out_state = !present ? DATA_BIND_MESSAGE_OBJECT_ABSENT
+                       : is_null ? DATA_BIND_MESSAGE_OBJECT_NULL
+                                 : DATA_BIND_MESSAGE_OBJECT_VALUE;
+  return DATA_BIND_OK;
+}
+
 DataBindStatus data_bind_message_plan_validate_native(
     const DataBindMessagePlan *plan,
     const void *source,
@@ -1237,21 +1284,23 @@ DataBindStatus data_bind_message_plan_validate_native(
   for (i = 0u; i < plan->field_count; ++i) {
     const DataBindMessageFieldPlan *field = &plan->fields[i];
 
-    if (field->has_presence) {
-      const unsigned char *presence = base + field->presence_offset;
-      if ((*presence & (unsigned char)(1u << field->presence_bit)) == 0u)
-        continue;
+    DataBindMessageObjectFieldState state;
+    DataBindMessagePlanDiagnostic diagnostic = DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindStatus status = message_native_field_state(
+        field, base, source_bytes, &state, &diagnostic);
+    if (status != DATA_BIND_OK) {
+      if (error != NULL) {
+        error->code = status;
+        snprintf(error->path, sizeof(error->path), "%s", diagnostic.schema_field);
+        snprintf(error->message, sizeof(error->message), "%s", diagnostic.message);
+      }
+      return status;
     }
-    if (field->has_null) {
-      const unsigned char *nulls = base + field->null_offset;
-      if ((*nulls & (unsigned char)(1u << field->null_bit)) != 0u)
-        continue;
-    }
+    if (state != DATA_BIND_MESSAGE_OBJECT_VALUE) continue;
 
     {
-      DataBindStatus status =
-          data_bind_message_plan_internal_validate_field(
-              plan, field->name, base + field->native_offset, error);
+      status = data_bind_message_plan_internal_validate_field(
+          plan, field->name, base + field->native_offset, error);
       if (status != DATA_BIND_OK) return status;
     }
   }
@@ -1435,53 +1484,6 @@ static void message_set_null(
     *state |= (unsigned char)(1u << field->null_bit);
   else
     *state &= (unsigned char)~(1u << field->null_bit);
-}
-
-static DataBindStatus message_native_field_state(
-    const DataBindMessageFieldPlan *field,
-    const unsigned char *base,
-    size_t source_bytes,
-    DataBindMessageObjectFieldState *out_state,
-    DataBindMessagePlanDiagnostic *diagnostic) {
-  int present = 1;
-  int is_null = 0;
-
-  if (field == NULL || base == NULL || out_state == NULL)
-    return message_fail(
-        diagnostic, DATA_BIND_ERR_INVALID_ARG,
-        field != NULL ? field->name : NULL,
-        "Invalid native MessagePlan state lookup");
-
-  if (field->optional) {
-    if (!field->has_presence || field->presence_bit >= 8u ||
-        field->presence_offset >= source_bytes)
-      return message_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
-          "Optional native field has no valid presence binding");
-    present =
-        (base[field->presence_offset] &
-         (unsigned char)(1u << field->presence_bit)) != 0u;
-    if (!present) {
-      *out_state = DATA_BIND_MESSAGE_OBJECT_ABSENT;
-      return DATA_BIND_OK;
-    }
-  }
-
-  if (field->nullable) {
-    if (!field->has_null || field->null_bit >= 8u ||
-        field->null_offset >= source_bytes)
-      return message_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
-          "Nullable native field has no valid null binding");
-    is_null =
-        (base[field->null_offset] &
-         (unsigned char)(1u << field->null_bit)) != 0u;
-  }
-
-  *out_state = is_null
-                   ? DATA_BIND_MESSAGE_OBJECT_NULL
-                   : DATA_BIND_MESSAGE_OBJECT_VALUE;
-  return DATA_BIND_OK;
 }
 
 static const char *message_validation_diagnostic_field(
@@ -2572,6 +2574,15 @@ DataBindStatus data_bind_message_plan_encode_native(
     return message_fail(
         diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
         "Invalid native MessagePlan encode arguments");
+
+  /* State overlays are one logical value. Reject contradictions before the
+   * streaming sink observes any part of this message. */
+  for (i = 0u; i < plan->field_count; ++i) {
+    DataBindMessageObjectFieldState state;
+    status = message_native_field_state(
+        &plan->fields[i], base, source_bytes, &state, diagnostic);
+    if (status != DATA_BIND_OK) return status;
+  }
 
   token.kind = CSERDE_MAP_BEGIN;
   status = message_write_token(
