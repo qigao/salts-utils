@@ -1609,7 +1609,7 @@ spec("tbe_compiler") {
       node_free(root);
     }
 
-    it("should map short integer aliases across language and typed metadata") {
+    it("should map short integer aliases across language and native metadata") {
       const char *schema =
           "enum ShortCode <u16> { One = 1; } "
           "message Aliases { i8 a; u8 b; i16 c; u16 d; i32 e; u32 f; i64 g; u64 h; }";
@@ -1618,9 +1618,9 @@ spec("tbe_compiler") {
       const char *go_types[] = {"int8", "uint8", "int16", "uint16",
                                 "int32", "uint32", "int64", "uint64"};
       const char *rust_types[] = {"i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64"};
-      const char *typed_kinds[] = {"TBE_TYPED_I8",  "TBE_TYPED_U8",  "TBE_TYPED_I16",
-                                   "TBE_TYPED_U16", "TBE_TYPED_I32", "TBE_TYPED_U32",
-                                   "TBE_TYPED_I64", "TBE_TYPED_U64"};
+      const char *native_symbols[] = {"cmeta_data_int8",  "cmeta_data_uint8",  "cmeta_data_int16",
+                                   "cmeta_data_uint16", "cmeta_data_int32", "cmeta_data_uint32",
+                                   "cmeta_data_int64", "cmeta_data_uint64"};
       Node *root = create_node_map(NULL);
       int rc = databind_binary_contract_parse(schema, strlen(schema), root, NULL);
 
@@ -1642,7 +1642,7 @@ spec("tbe_compiler") {
           check_equal(find_child(field, "ts_type")->data.string_val, "number");
           check_equal(find_child(field, "python_type")->data.string_val, "int");
           check_equal(find_child(field, "rust_type")->data.string_val, rust_types[i]);
-          check_equal(find_child(field, "typed_kind")->data.string_val, typed_kinds[i]);
+          check_equal(find_child(field, "native_data_symbol")->data.string_val, native_symbols[i]);
         }
         check_equal(find_child(enums->data.list.items[0], "cpp_underlying_type")->data.string_val,
                      "std::uint16_t");

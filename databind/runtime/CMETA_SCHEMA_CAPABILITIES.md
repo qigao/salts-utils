@@ -134,6 +134,10 @@ CSTL 存储，或已准入的逐成员生命周期。单个容器字段的 provi
 生成缺少释放语义的 void API。仅生成 wire view/builder 的头文件不受此检查影响。
 
 生成模板不再包含 `tbe_typed.h`、历史 typed 表、descriptor 或 raw 生命周期宏。
+编译器不再发出 `typed_kind`、wire-kind、descriptor 引用和
+`typed_cmeta_runtime_supported` 注解，也不再执行历史 runtime 分类遍历。
+C 声明使用既有标量投影和 schema 命名类型；枚举操作使用 `native_enum_supported`，
+记录操作使用 canonical graph/lifecycle 准入。字段错误仍先于记录生命周期错误报告。
 CMeta/native provider 是结构和所有权的事实源；MessagePlan 负责 presence/null、
 default 和校验；FormatPlan 与 BinaryLayoutIR/provider 负责格式和线布局。
 格式准入独立于生命周期，不支持的格式返回明确错误，不改走历史 typed 引擎。

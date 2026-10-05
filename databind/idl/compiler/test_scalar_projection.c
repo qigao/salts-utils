@@ -51,8 +51,9 @@ static Node *projection_field(Node *root) {
 static int projection_equal(const char *alias, const char *canonical, const char *format) {
     static const char *const keys[] = {
         "cpp_type", "go_type", "ts_type", "python_type", "rust_type", "rfl_type",
-        "typed_kind", "typed_declaration", "typed_element_kind", "typed_element_c_type",
-        "typed_element_wire_kind", "typed_map_value_kind", "typed_map_value_wire_kind",
+        "native_data_symbol", "native_type_symbol", "native_c_type",
+        "typed_declaration", "typed_element_c_type", "typed_map_value_c_type",
+        "native_element_data_ref", "native_map_value_data_ref",
         "typed_map_entry_type", "typed_vector_type", "typed_fixed_count",
         "is_numeric", "is_integer", "is_unsigned", "is_float", "offset", "field_size_bytes"
     };
@@ -75,7 +76,7 @@ static int projection_equal(const char *alias, const char *canonical, const char
     }
     /* The canonical case must reach native code generation, not silently lack
      * the same annotation as a broken alias. */
-    if (projection_text(fields[1], "typed_kind") == NULL) goto done;
+    if (projection_text(fields[1], "native_data_symbol") == NULL) goto done;
     for (i = 0; i < PROJECTION_COUNT(keys); ++i) {
         const char *left = projection_text(fields[0], keys[i]);
         const char *right = projection_text(fields[1], keys[i]);
@@ -98,7 +99,7 @@ done:
 }
 
 static int projection_float_is(const char *type, const char *cpp, const char *go,
-                                const char *rust, const char *typed) {
+                                const char *rust, const char *native_data) {
     char schema[PROJECTION_SCHEMA_CAPACITY];
     Node *root = create_node_map("root");
     Node *field;
@@ -110,9 +111,9 @@ static int projection_float_is(const char *type, const char *cpp, const char *go
     annotate_language_types_from_tree(root);
     field = projection_field(root);
     if (field != NULL) {
-        const char *keys[] = {"cpp_type", "go_type", "rust_type", "typed_kind",
+        const char *keys[] = {"cpp_type", "go_type", "rust_type", "native_data_symbol",
                               "python_type", "ts_type"};
-        const char *values[] = {cpp, go, rust, typed, "float", "number"};
+        const char *values[] = {cpp, go, rust, native_data, "float", "number"};
         size_t i;
         ok = 1;
         for (i = 0; i < PROJECTION_COUNT(keys); ++i) {
@@ -144,15 +145,15 @@ suite("compiler_cmeta_scalar_projection") {
     }
 
     it("projects f32 exactly like canonical float without changing schema spelling") {
-        check_true(projection_float_is("float", "float", "float32", "f32", "TBE_TYPED_F32"));
+        check_true(projection_float_is("float", "float", "float32", "f32", "cmeta_data_float"));
         check_true(projection_equal("f32", "float", "message Scalar { %s value; }"));
-        check_true(projection_float_is("f32", "float", "float32", "f32", "TBE_TYPED_F32"));
+        check_true(projection_float_is("f32", "float", "float32", "f32", "cmeta_data_float"));
     }
 
     it("projects f64 exactly like canonical double without changing schema spelling") {
-        check_true(projection_float_is("double", "double", "float64", "f64", "TBE_TYPED_F64"));
+        check_true(projection_float_is("double", "double", "float64", "f64", "cmeta_data_double"));
         check_true(projection_equal("f64", "double", "message Scalar { %s value; }"));
-        check_true(projection_float_is("f64", "double", "float64", "f64", "TBE_TYPED_F64"));
+        check_true(projection_float_is("f64", "double", "float64", "f64", "cmeta_data_double"));
     }
 
     it("uses the same scalar projection for list elements") {

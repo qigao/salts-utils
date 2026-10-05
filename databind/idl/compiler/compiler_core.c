@@ -280,7 +280,6 @@ typedef struct tbe_compiler_scalar_projection {
   const char *ts_type;
   const char *python_type;
   const char *rfl_type;
-  const char *typed_kind;
   const char *native_data_symbol;
   const char *native_type_symbol;
 } tbe_compiler_scalar_projection_t;
@@ -327,17 +326,17 @@ static const char *tbe_compiler_native_requirement_name(
 
 /* Native symbol spellings project the same canonical records into generated C. */
 static const tbe_compiler_scalar_projection_t TBE_COMPILER_SCALAR_PROJECTIONS[] = {
-    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "TBE_TYPED_BOOL", "salts_bool8_cmeta_data", "salts_bool8_cmeta_type"},
-    {&cmeta_data_int8, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "TBE_TYPED_I8", "cmeta_data_int8", "cmeta_type_int8"},
-    {&cmeta_data_uint8, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "TBE_TYPED_U8", "cmeta_data_uint8", "cmeta_type_uint8"},
-    {&cmeta_data_int16, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "TBE_TYPED_I16", "cmeta_data_int16", "cmeta_type_int16"},
-    {&cmeta_data_uint16, "uint16_t", "std::uint16_t", "uint16", "u16", "number", "int", "int", "TBE_TYPED_U16", "cmeta_data_uint16", "cmeta_type_uint16"},
-    {&cmeta_data_int32, "int32_t", "std::int32_t", "int32", "i32", "number", "int", "int", "TBE_TYPED_I32", "cmeta_data_int32", "cmeta_type_int32"},
-    {&cmeta_data_uint32, "uint32_t", "std::uint32_t", "uint32", "u32", "number", "int", "int", "TBE_TYPED_U32", "cmeta_data_uint32", "cmeta_type_uint32"},
-    {&cmeta_data_int64, "int64_t", "std::int64_t", "int64", "i64", "number", "int", "long", "TBE_TYPED_I64", "cmeta_data_int64", "cmeta_type_int64"},
-    {&cmeta_data_uint64, "uint64_t", "std::uint64_t", "uint64", "u64", "number", "int", "uint64", "TBE_TYPED_U64", "cmeta_data_uint64", "cmeta_type_uint64"},
-    {&cmeta_data_float, "float", "float", "float32", "f32", "number", "float", "float", "TBE_TYPED_F32", "cmeta_data_float", "cmeta_type_float"},
-    {&cmeta_data_double, "double", "double", "float64", "f64", "number", "float", "double", "TBE_TYPED_F64", "cmeta_data_double", "cmeta_type_double"},
+    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "salts_bool8_cmeta_data", "salts_bool8_cmeta_type"},
+    {&cmeta_data_int8, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "cmeta_data_int8", "cmeta_type_int8"},
+    {&cmeta_data_uint8, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "cmeta_data_uint8", "cmeta_type_uint8"},
+    {&cmeta_data_int16, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "cmeta_data_int16", "cmeta_type_int16"},
+    {&cmeta_data_uint16, "uint16_t", "std::uint16_t", "uint16", "u16", "number", "int", "int", "cmeta_data_uint16", "cmeta_type_uint16"},
+    {&cmeta_data_int32, "int32_t", "std::int32_t", "int32", "i32", "number", "int", "int", "cmeta_data_int32", "cmeta_type_int32"},
+    {&cmeta_data_uint32, "uint32_t", "std::uint32_t", "uint32", "u32", "number", "int", "int", "cmeta_data_uint32", "cmeta_type_uint32"},
+    {&cmeta_data_int64, "int64_t", "std::int64_t", "int64", "i64", "number", "int", "long", "cmeta_data_int64", "cmeta_type_int64"},
+    {&cmeta_data_uint64, "uint64_t", "std::uint64_t", "uint64", "u64", "number", "int", "uint64", "cmeta_data_uint64", "cmeta_type_uint64"},
+    {&cmeta_data_float, "float", "float", "float32", "f32", "number", "float", "float", "cmeta_data_float", "cmeta_type_float"},
+    {&cmeta_data_double, "double", "double", "float64", "f64", "number", "float", "double", "cmeta_data_double", "cmeta_type_double"},
 };
 
 static const tbe_compiler_scalar_projection_t *tbe_compiler_scalar_projection(const char *type) {
@@ -428,15 +427,6 @@ static const char *tbe_compiler_rfl_scalar_type(const char *type) {
   return type;
 }
 
-static const char *tbe_compiler_typed_kind(const char *type) {
-  const tbe_compiler_scalar_projection_t *projection;
-  if (!type) return NULL;
-  projection = tbe_compiler_scalar_projection(type);
-  if (projection) return projection->typed_kind;
-  if (strcmp(type, "uuid") == 0) return "TBE_TYPED_UUID";
-  return NULL;
-}
-
 static const char *tbe_compiler_typed_c_scalar(const char *type) {
   const tbe_compiler_scalar_projection_t *projection;
   if (!type) return NULL;
@@ -458,55 +448,25 @@ static Node *tbe_compiler_find_record(Node *root, const char *list_name, const c
   return NULL;
 }
 
-static const char *tbe_compiler_typed_named_kind(Node *root, const char *type,
-                                                 char *c_type, size_t c_type_size,
-                                                 char *descriptor, size_t descriptor_size) {
-  const char *kind = tbe_compiler_typed_kind(type);
+/* Resolve C storage spelling without introducing a second type taxonomy. */
+static int tbe_compiler_native_named_c_type(Node *root, const char *type,
+                                           char *c_type, size_t c_type_size) {
   const char *scalar = tbe_compiler_typed_c_scalar(type);
-  Node *record;
-  if (type && strcmp(type, "string") == 0) {
-    snprintf(c_type, c_type_size, "tstr");
-    descriptor[0] = '\0';
-    return "TBE_TYPED_STRING";
+  int written;
+  if (!type) return 0;
+  if (strcmp(type, "string") == 0) scalar = "tstr";
+  if (strcmp(type, "bytes") == 0) scalar = "tbe_bytes_t";
+  if (scalar) {
+    written = snprintf(c_type, c_type_size, "%s", scalar);
+  } else if (tbe_compiler_find_record(root, "enums", type) ||
+             tbe_compiler_find_record(root, "composites", type) ||
+             tbe_compiler_find_record(root, "groups", type) ||
+             tbe_compiler_find_record(root, "messages", type)) {
+    written = snprintf(c_type, c_type_size, "%s_t", type);
+  } else {
+    return 0;
   }
-  if (type && strcmp(type, "bytes") == 0) {
-    snprintf(c_type, c_type_size, "tbe_bytes_t");
-    descriptor[0] = '\0';
-    return "TBE_TYPED_BYTES";
-  }
-  if (kind && scalar) {
-    snprintf(c_type, c_type_size, "%s", scalar);
-    descriptor[0] = '\0';
-    return kind;
-  }
-  record = tbe_compiler_find_record(root, "enums", type);
-  if (record) {
-    snprintf(c_type, c_type_size, "%s_t", type);
-    descriptor[0] = '\0';
-    return "TBE_TYPED_ENUM";
-  }
-  record = tbe_compiler_find_record(root, "composites", type);
-  if (!record) record = tbe_compiler_find_record(root, "groups", type);
-  if (!record) record = tbe_compiler_find_record(root, "messages", type);
-  if (record) {
-    snprintf(c_type, c_type_size, "%s_t", type);
-    snprintf(descriptor, descriptor_size, "&%s_TYPED_TYPE", type);
-    return "TBE_TYPED_OBJECT";
-  }
-  c_type[0] = '\0';
-  descriptor[0] = '\0';
-  return NULL;
-}
-
-static const char *tbe_compiler_typed_wire_kind(Node *root, const char *type,
-                                                const char *fallback) {
-  Node *record = tbe_compiler_find_record(root, "enums", type);
-  if (record) {
-    const char *underlying = tbe_compiler_string_value(record, "underlying_type");
-    const char *kind = tbe_compiler_typed_kind(underlying ? underlying : "int32");
-    return kind ? kind : "TBE_TYPED_I32";
-  }
-  return fallback;
+  return written >= 0 && (size_t)written < c_type_size;
 }
 
 static const char *tbe_compiler_cpp_enum_underlying_type(const char *type) {
@@ -812,10 +772,8 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
   const char *owner = tbe_compiler_string_value(field, "owner_name");
   const char *type = tbe_compiler_string_value(field, "type");
   char c_type[256] = {0};
-  char descriptor[256] = {0};
   char declaration[512] = {0};
   char vector_type[256] = {0};
-  const char *kind = NULL;
 
   if (!name || !owner) return;
   if (!c_name || !c_name[0]) c_name = name;
@@ -824,14 +782,9 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       strcmp(semantic->schema_kind, "group") == 0) {
     const char *group_type = tbe_compiler_string_value(field, "group_type");
     snprintf(c_type, sizeof(c_type), "%s_t", group_type ? group_type : "unknown");
-    snprintf(descriptor, sizeof(descriptor), "&%s_TYPED_TYPE", group_type ? group_type : "unknown");
     snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
     snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
-    tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_LIST");
-    tbe_compiler_set_string(field, "typed_element_kind", "TBE_TYPED_OBJECT");
-    tbe_compiler_set_string(field, "typed_element_wire_kind", "TBE_TYPED_OBJECT");
     tbe_compiler_set_string(field, "typed_element_c_type", c_type);
-    tbe_compiler_set_string(field, "typed_object_descriptor", descriptor);
     tbe_compiler_set_string(field, "typed_vector_type", vector_type);
     tbe_compiler_set_string(field, "typed_needs_vector", "1");
     tbe_compiler_set_string(field, "typed_is_group", "1");
@@ -846,8 +799,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       int written;
       snprintf(declaration, sizeof(declaration), "uint8_t %s[%s];", c_name,
                count ? count : "0");
-      tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_FIXED_BYTES");
-      tbe_compiler_set_string(field, "typed_wire_kind", "TBE_TYPED_FIXED_BYTES");
       tbe_compiler_set_string(field, "typed_fixed_count", count ? count : "0");
       written = snprintf(base, sizeof(base), "tbe_fixed_bytes_%zu_%s_%zu_%s",
                          strlen(owner), owner, strlen(c_name), c_name);
@@ -876,7 +827,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "native_type_symbol", symbol);
     } else {
       snprintf(declaration, sizeof(declaration), "stl_byte_buffer %s;", c_name);
-      tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_BYTES");
       tbe_compiler_set_string(field, "typed_is_var_data", "1");
       tbe_compiler_set_string(field, "native_data_symbol",
                               "stl_byte_buffer_cmeta_data");
@@ -893,19 +843,13 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     const char *storage_element = semantic->kind == CMETA_DATA_MAP
         ? tbe_compiler_string_value(field, "value_type")
         : inner;
-    kind = tbe_compiler_typed_named_kind(root, storage_element, c_type,
-                                         sizeof(c_type), descriptor,
-                                         sizeof(descriptor));
-    if (!kind) {
+    if (!tbe_compiler_native_named_c_type(root, storage_element, c_type,
+                                           sizeof(c_type))) {
       snprintf(declaration, sizeof(declaration), "%s_t %s;", inner ? inner : "unknown", c_name);
       tbe_compiler_set_string(field, "typed_declaration", declaration);
       return;
     }
-    tbe_compiler_set_string(field, "typed_element_kind", kind);
-    tbe_compiler_set_string(field, "typed_element_wire_kind",
-                            tbe_compiler_typed_wire_kind(root, inner, kind));
     tbe_compiler_set_string(field, "typed_element_c_type", c_type);
-    if (descriptor[0]) tbe_compiler_set_string(field, "typed_object_descriptor", descriptor);
     (void)databind_compiler_annotate_named_native_semantic(
         root, field, storage_element ? storage_element : inner,
         "native_element_type_symbol", "native_element_data_symbol");
@@ -916,22 +860,19 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       const char *count = tbe_compiler_string_value(field, "length_field");
       snprintf(declaration, sizeof(declaration), "%s %s[%s];", c_type, c_name,
                count ? count : "0");
-      tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_FIXED_ARRAY");
       tbe_compiler_set_string(field, "typed_fixed_count", count ? count : "0");
     } else if (semantic->kind == CMETA_DATA_MAP) {
       const char *key_type = tbe_compiler_string_value(field, "key_type");
       const char *value_type = tbe_compiler_string_value(field, "value_type");
       char value_c_type[256] = {0};
-      char value_descriptor[256] = {0};
-      const char *value_kind = tbe_compiler_typed_named_kind(
-          root, value_type ? value_type : inner, value_c_type, sizeof(value_c_type),
-          value_descriptor, sizeof(value_descriptor));
+      const int value_supported = tbe_compiler_native_named_c_type(
+          root, value_type ? value_type : inner, value_c_type, sizeof(value_c_type));
       char entry_type[256];
       if (key_type != NULL)
         (void)databind_compiler_annotate_named_native_refs(
             root, field, key_type, "native_map_key_type_ref",
             "native_map_key_data_ref");
-      if (!value_kind || !key_type || strcmp(key_type, "string") != 0) {
+      if (!value_supported || !key_type || strcmp(key_type, "string") != 0) {
         snprintf(declaration, sizeof(declaration), "/* unsupported map field %s */ uint8_t %s;",
                  name, c_name);
         tbe_compiler_set_string(field, "typed_declaration", declaration);
@@ -940,15 +881,8 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       snprintf(entry_type, sizeof(entry_type), "%s_%s_entry_t", owner, name);
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
       snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
-      tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_MAP");
       tbe_compiler_set_string(field, "typed_map_entry_type", entry_type);
-      tbe_compiler_set_string(field, "typed_map_value_kind", value_kind);
-      tbe_compiler_set_string(field, "typed_map_value_wire_kind",
-                              tbe_compiler_typed_wire_kind(
-                                  root, value_type ? value_type : inner, value_kind));
       tbe_compiler_set_string(field, "typed_map_value_c_type", value_c_type);
-      if (value_descriptor[0])
-        tbe_compiler_set_string(field, "typed_map_value_descriptor", value_descriptor);
       tbe_compiler_set_string(field, "typed_vector_type", vector_type);
       tbe_compiler_set_string(field, "typed_element_c_type", entry_type);
       tbe_compiler_set_string(field, "typed_needs_map_vector", "1");
@@ -992,9 +926,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     } else {
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
       snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
-      tbe_compiler_set_string(field, "typed_kind",
-                              semantic->kind == CMETA_DATA_SET ? "TBE_TYPED_SET"
-                                                              : "TBE_TYPED_LIST");
       tbe_compiler_set_string(field, "typed_vector_type", vector_type);
       tbe_compiler_set_string(field, "typed_needs_vector", "1");
       if (semantic->kind == CMETA_DATA_SEQUENCE &&
@@ -1069,7 +1000,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
   }
   if (semantic && semantic->kind == CMETA_DATA_STRING) {
     snprintf(declaration, sizeof(declaration), "tstr %s;", c_name);
-    tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_STRING");
     tbe_compiler_set_string(field, "typed_is_var_data", "1");
     tbe_compiler_set_string(field, "native_data_symbol",
                             "salts_tstr_cmeta_data");
@@ -1080,9 +1010,7 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     tbe_compiler_set_string(field, "typed_declaration", declaration);
     return;
   }
-  kind = tbe_compiler_typed_named_kind(root, type, c_type, sizeof(c_type), descriptor,
-                                       sizeof(descriptor));
-  if (!kind) {
+  if (!tbe_compiler_native_named_c_type(root, type, c_type, sizeof(c_type))) {
     snprintf(declaration, sizeof(declaration), "%s_t %s;", type ? type : "unknown", c_name);
     tbe_compiler_set_string(field, "typed_declaration", declaration);
     return;
@@ -1101,11 +1029,11 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "native_type_symbol", "salts_uuid_cmeta_type");
       tbe_compiler_set_string(field, "native_external", "1");
       tbe_compiler_set_string(field, "native_c_type", c_type);
-    } else if (strcmp(kind, "TBE_TYPED_ENUM") == 0) {
+    } else if (tbe_compiler_find_record(root, "enums", type) != NULL) {
       if (tbe_compiler_set_enum_symbol(field, "native_data_symbol", type, "Data") == 0 &&
           tbe_compiler_set_enum_symbol(field, "native_type_symbol", type, "Type") == 0)
         tbe_compiler_set_string(field, "native_c_type", c_type);
-    } else if (strcmp(kind, "TBE_TYPED_OBJECT") == 0) {
+    } else if (semantic && semantic->kind == CMETA_DATA_STRUCT) {
       snprintf(symbol, sizeof(symbol), "%s_CMETA_DATA", type);
       tbe_compiler_set_string(field, "native_data_symbol", symbol);
       snprintf(symbol, sizeof(symbol), "%s_CMETA_TYPE", type);
@@ -1113,10 +1041,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "native_c_type", c_type);
     }
   }
-  tbe_compiler_set_string(field, "typed_kind", kind);
-  tbe_compiler_set_string(field, "typed_wire_kind",
-                          tbe_compiler_typed_wire_kind(root, type, kind));
-  if (descriptor[0]) tbe_compiler_set_string(field, "typed_object_descriptor", descriptor);
   tbe_compiler_set_string(field, "typed_declaration", declaration);
 }
 
@@ -1310,7 +1234,6 @@ static void tbe_compiler_annotate_enum_types(Node *root) {
       if (storage->data->kind == CMETA_DATA_SINT)
         tbe_compiler_set_string(enum_node, "native_enum_signed", "1");
       tbe_compiler_set_string(enum_node, "native_enum_supported", "1");
-      tbe_compiler_set_string(enum_node, "typed_cmeta_runtime_supported", "1");
     }
 
     tbe_compiler_set_string(enum_node, "go_underlying_type",
@@ -1343,7 +1266,6 @@ typedef struct tbe_compiler_cmeta_classify_context_s {
   size_t *native_depths;
   size_t *native_nodes;
   size_t count;
-  int runtime;
   int lifecycle;
 } tbe_compiler_cmeta_classify_context_t;
 
@@ -1371,7 +1293,7 @@ static int tbe_compiler_cmeta_classify_record(
   size_t native_depth = 1u;
   size_t native_nodes = 1u;
   const int native_budget =
-      context != NULL && !context->runtime && !context->lifecycle;
+      context != NULL && !context->lifecycle;
   size_t i;
 
   if (!context || index >= context->count) return 0;
@@ -1395,7 +1317,7 @@ static int tbe_compiler_cmeta_classify_record(
     size_t target_index;
 
     if (!type ||
-        ((context->runtime || context->lifecycle) &&
+        (context->lifecycle &&
          (tbe_compiler_has_child(field, "is_optional") ||
           tbe_compiler_has_child(field, "is_nullable"))) ||
         (is_set && !tbe_compiler_has_child(field, "native_cstl_set")) ||
@@ -1416,18 +1338,12 @@ static int tbe_compiler_cmeta_classify_record(
           tbe_compiler_string_value(field, "native_element_type_ref") == NULL)
         goto unsupported;
 
-      /* Keep the historical typed-descriptor matrix unchanged. Generated
-       * sequence execution is a MessagePlan/CMeta lifecycle capability, not a
-       * reason to widen the legacy TbeTypedDescriptor surface. */
-      if (context->runtime) goto unsupported;
-
       /*
        * Canonical typed-CSTL sequence storage owns its element semantics
        * directly through the generated *_collection_data descriptor. Graph
        * and lifecycle qualification therefore stop at the container provider
        * for the builtin scalar/string slice. Do not recurse into a synthetic
-       * element record and do not widen legacy TbeTypedDescriptor runtime
-       * admission.
+       * element record.
        */
       if (tbe_compiler_has_child(field, "native_cstl_sequence")) {
         scalar = tbe_compiler_scalar_projection(inner_type);
@@ -1513,10 +1429,6 @@ static int tbe_compiler_cmeta_classify_record(
           !tbe_compiler_has_child(field, "native_cstl_set"))
         goto unsupported;
 
-      /* Canonical CSTL Set is a graph/lifecycle provider. Keep the historical
-       * TbeTypedDescriptor runtime matrix closed over the old storage model. */
-      if (context->runtime) goto unsupported;
-
       scalar = tbe_compiler_scalar_projection(inner_type);
       if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
           strcmp(inner_type, "string") == 0) {
@@ -1548,10 +1460,6 @@ static int tbe_compiler_cmeta_classify_record(
             tbe_compiler_string_value(field, "native_map_value_type_ref") == NULL ||
             tbe_compiler_string_value(field, "native_map_value_data_ref") == NULL)
           goto unsupported;
-        /* Canonical CSTL Map owns key/value metadata and transactional
-         * lifecycle. Legacy TbeTypedDescriptor runtime remains closed over the
-         * historical vector-entry storage model. */
-        if (context->runtime) goto unsupported;
         scalar = tbe_compiler_scalar_projection(value_type);
         if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
             strcmp(value_type, "string") == 0) {
@@ -1588,10 +1496,9 @@ static int tbe_compiler_cmeta_classify_record(
         continue;
       }
 
-      /* The historical vector-map graph remains read-only. Its mixed
-       * typed-descriptor lifecycle stays unavailable until that storage path
-       * is removed; do not advertise partial mutation. */
-      if (context->runtime || context->lifecycle) goto unsupported;
+      /* An unpromoted vector-map graph has no canonical mutable provider;
+       * reflection alone does not authorize lifecycle operations. */
+      if (context->lifecycle) goto unsupported;
       scalar = tbe_compiler_scalar_projection(value_type);
       if ((scalar && scalar->native_data_symbol) ||
           strcmp(value_type, "string") == 0 ||
@@ -1605,9 +1512,8 @@ static int tbe_compiler_cmeta_classify_record(
       }
       target = tbe_compiler_find_record(context->root, "enums", value_type);
       if (target) {
-        const char *marker = context->runtime ? "typed_cmeta_runtime_supported"
-                                              : "native_enum_supported";
-        if (!tbe_compiler_has_child(target, marker)) goto unsupported;
+        if (!tbe_compiler_has_child(target, "native_enum_supported"))
+          goto unsupported;
         if (native_budget) {
           if (native_nodes > SIZE_MAX - 3u) goto unsupported;
           native_nodes += 3u;
@@ -1644,11 +1550,6 @@ static int tbe_compiler_cmeta_classify_record(
     if (scalar) {
       if (!scalar->native_data_symbol || !scalar->native_type_symbol)
         goto unsupported;
-      if (context->runtime && scalar->data->kind != CMETA_DATA_BOOL &&
-          scalar->data->kind != CMETA_DATA_SINT &&
-          scalar->data->kind != CMETA_DATA_UINT &&
-          scalar->data->kind != CMETA_DATA_FLOAT)
-        goto unsupported;
       if (native_budget) {
         if (native_nodes == SIZE_MAX) goto unsupported;
         ++native_nodes;
@@ -1657,13 +1558,9 @@ static int tbe_compiler_cmeta_classify_record(
       continue;
     }
 
-    /*
-     * Native capability admission is owned by the canonical requirement plus
-     * concrete CMeta provider refs. Historical typed-kind strings are output
-     * metadata for the retiring descriptor path and must not be semantic
-     * authority for CMeta/native classification.
-     */
-    if ((context->runtime || context->lifecycle) &&
+    /* Native lifecycle admission requires the canonical requirement and
+     * concrete CMeta provider refs. */
+    if (context->lifecycle &&
         tbe_compiler_string_value(field, "cmeta_native_requirement") != NULL &&
         strcmp(tbe_compiler_string_value(field, "cmeta_native_requirement"),
                "fixed_value") == 0 &&
@@ -1693,9 +1590,7 @@ static int tbe_compiler_cmeta_classify_record(
 
     target = tbe_compiler_find_record(context->root, "enums", type);
     if (target) {
-      const char *marker = context->runtime ? "typed_cmeta_runtime_supported"
-                                            : "native_enum_supported";
-      if (!tbe_compiler_has_child(target, marker))
+      if (!tbe_compiler_has_child(target, "native_enum_supported"))
         goto unsupported;
       if (native_budget) {
         if (native_nodes == SIZE_MAX) goto unsupported;
@@ -1729,7 +1624,7 @@ static int tbe_compiler_cmeta_classify_record(
       continue;
     }
 
-    if (!context->runtime && !context->lifecycle &&
+    if (!context->lifecycle &&
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL) {
       if (native_budget) {
@@ -1745,25 +1640,9 @@ static int tbe_compiler_cmeta_classify_record(
   if (tbe_compiler_set_string(
           record, context->lifecycle
                       ? "cmeta_lifecycle_supported"
-                      : (context->runtime ? "typed_cmeta_runtime_supported"
-                                          : "cmeta_graph_supported"),
+                      : "cmeta_graph_supported",
           "1") != 0)
     goto unsupported;
-  if (context->runtime) {
-    for (i = 0; i < fields->data.list.count; ++i) {
-      Node *field = fields->data.list.items[i];
-      const char *type = tbe_compiler_string_value(field, "type");
-      Node *target = tbe_compiler_find_any_record(context->root, type);
-      if (tbe_compiler_set_string(field, "typed_cmeta_runtime_supported", "1") != 0)
-        goto unsupported;
-      if (target) {
-        const char *overlay = tbe_compiler_string_value(field, "typed_object_descriptor");
-        if (!overlay ||
-            tbe_compiler_set_string(field, "typed_nested_overlay", overlay) != 0)
-          goto unsupported;
-      }
-    }
-  }
   context->depths[index] = max_depth;
   if (native_budget) {
     char depth_text[32];
@@ -1787,8 +1666,7 @@ unsupported:
   tbe_compiler_remove_children(
       record, context->lifecycle
                   ? "cmeta_lifecycle_supported"
-                  : (context->runtime ? "typed_cmeta_runtime_supported"
-                                      : "cmeta_graph_supported"));
+                  : "cmeta_graph_supported");
   if (native_budget) {
     tbe_compiler_remove_children(record, "cmeta_native_descriptor_depth");
     tbe_compiler_remove_children(record, "cmeta_native_descriptor_nodes");
@@ -1807,36 +1685,25 @@ static void tbe_compiler_collect_cmeta_records(
   if (!list || list->type != NODE_LIST) return;
   for (i = 0; i < list->data.list.count; ++i) {
     Node *record = list->data.list.items[i];
-    Node *fields = tbe_compiler_find_child(record, "fields");
-    size_t j;
     tbe_compiler_remove_children(
         record, context->lifecycle
                     ? "cmeta_lifecycle_supported"
-                    : (context->runtime ? "typed_cmeta_runtime_supported"
-                                        : "cmeta_graph_supported"));
-    if (!context->runtime && !context->lifecycle) {
+                    : "cmeta_graph_supported");
+    if (!context->lifecycle) {
       tbe_compiler_remove_children(record, "cmeta_native_descriptor_depth");
       tbe_compiler_remove_children(record, "cmeta_native_descriptor_nodes");
     }
-    if (context->runtime && fields && fields->type == NODE_LIST)
-      for (j = 0; j < fields->data.list.count; ++j) {
-        tbe_compiler_remove_children(fields->data.list.items[j],
-                                     "typed_cmeta_runtime_supported");
-        tbe_compiler_remove_children(fields->data.list.items[j],
-                                     "typed_nested_overlay");
-      }
     context->records[(*offset)++] = record;
   }
 }
 
-static void tbe_compiler_annotate_cmeta_support(Node *root, int runtime) {
+static void tbe_compiler_annotate_cmeta_support(Node *root) {
   static const char *const lists[] = {"composites", "groups", "messages"};
   tbe_compiler_cmeta_classify_context_t context = {0};
   size_t i;
   size_t offset = 0;
 
   context.root = root;
-  context.runtime = runtime;
   for (i = 0; i < sizeof(lists) / sizeof(lists[0]); ++i) {
     Node *list = tbe_compiler_find_child(root, lists[i]);
     if (list && list->type == NODE_LIST) context.count += list->data.list.count;
@@ -2387,7 +2254,6 @@ static int tbe_compiler_has_local_overlay_lifecycle(Node *root, Node *record) {
     const int native_enum =
         enum_record != NULL &&
         tbe_compiler_has_child(enum_record, "native_enum_supported") &&
-        tbe_compiler_has_child(enum_record, "typed_cmeta_runtime_supported") &&
         native_data != NULL &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL;
     const int native_uuid =
@@ -2590,12 +2456,11 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_record_list_types(root, contract, "groups");
   tbe_compiler_annotate_record_list_types(root, contract, "messages");
   tbe_compiler_annotate_record_list_types(root, contract, "unions");
-  tbe_compiler_annotate_cmeta_support(root, 1);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_promote_record_cstl_containers(root);
   tbe_compiler_annotate_cmeta_declared_generics(root);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
-  tbe_compiler_annotate_cmeta_support(root, 0);
+  tbe_compiler_annotate_cmeta_support(root);
   tbe_compiler_annotate_local_overlay_lifecycle(root);
   tbe_compiler_annotate_member_lifecycle(root);
   tbe_compiler_annotate_xml_flat_messages(root);
@@ -2672,6 +2537,22 @@ static int tbe_compiler_native_lifecycle_supported(Node *record) {
            tbe_compiler_has_child(record, "native_cstl_storage")));
 }
 
+static int tbe_compiler_native_field_type_supported(Node *root, Node *field) {
+  const char *type = tbe_compiler_string_value(field, "type");
+  char c_type[256];
+  if (tbe_compiler_has_child(field, "is_group_field")) return 1;
+  if (tbe_compiler_has_child(field, "is_collection")) {
+    if (tbe_compiler_has_child(field, "is_map")) {
+      const char *key = tbe_compiler_string_value(field, "key_type");
+      if (!key || strcmp(key, "string") != 0) return 0;
+      type = tbe_compiler_string_value(field, "value_type");
+    } else {
+      type = tbe_compiler_string_value(field, "inner_type");
+    }
+  }
+  return tbe_compiler_native_named_c_type(root, type, c_type, sizeof(c_type));
+}
+
 static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) {
   Node *list = tbe_compiler_find_child(root, list_name);
   size_t i;
@@ -2689,7 +2570,7 @@ static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) 
       Node *field = fields->data.list.items[j];
       const char *c_name = tbe_compiler_string_value(field, "c_name");
       size_t k;
-      if (!tbe_compiler_string_value(field, "typed_kind")) {
+      if (!tbe_compiler_native_field_type_supported(root, field)) {
         fprintf(stderr, "Typed C serde does not support field %s.%s of type %s\n",
                 tbe_compiler_string_value(field, "owner_name"),
                 tbe_compiler_string_value(field, "name"),
