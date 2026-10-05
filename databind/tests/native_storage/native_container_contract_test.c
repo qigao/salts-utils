@@ -15,7 +15,8 @@ enum {
   CONTAINER_MAX_DEPTH = 12,
   CONTAINER_MAX_ITEMS = 128,
   CONTAINER_MAX_OWNED_BYTES = 256,
-  CONTAINER_MAX_TOKENS = 64
+  CONTAINER_MAX_TOKENS = 64,
+  CONTAINER_SENTINEL = 0xa5
 };
 
 typedef struct ContainerWorkspace {
@@ -62,10 +63,59 @@ static const cmeta_data_struct_shape NATIVE_TEXT_RECORD_SHAPE = {
 typed(Vec, NativeTextRecordVec, NativeTextRecord,
       &NATIVE_TEXT_RECORD_TYPE, &NATIVE_TEXT_RECORD_DATA);
 
+typed(Set, NativeTextSet, tstr,
+      SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_DATA_REF);
+typed(Map, NativeTextRecordMap, tstr, NativeTextRecord,
+      SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_DATA_REF,
+      &NATIVE_TEXT_RECORD_TYPE, &NATIVE_TEXT_RECORD_DATA);
+
+enum { COMPOSITE_FIELD_COUNT = 4, INLINE_BYTES_EXTENT = 4 };
+typedef unsigned char InlineBytes[INLINE_BYTES_EXTENT];
+CMETA_DEFINE_FIXED_BYTES(inline_bytes, InlineBytes, INLINE_BYTES_EXTENT,
+                        "test.databind.InlineBytes", "InlineBytes");
+
+typedef struct NativeComposite {
+  NativeTextRecord child;
+  NativeTextRecordVec children;
+  NativeTextSet unique_names;
+  NativeTextRecordMap children_by_name;
+  uint8_t presence;
+  uint8_t nulls;
+} NativeComposite;
+
+static const cmeta_type_identity COMPOSITE_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.databind.NativeComposite");
+static const cmeta_type_desc COMPOSITE_TYPE = {
+    "NativeComposite", sizeof(NativeComposite), _Alignof(NativeComposite),
+    CMETA_T_OBJECT, NULL, NULL, &COMPOSITE_ID};
+static cmeta_field_desc composite_layout_fields[COMPOSITE_FIELD_COUNT];
+static cmeta_data_field_desc composite_fields[COMPOSITE_FIELD_COUNT];
+static const cmeta_struct_desc COMPOSITE_LAYOUT = {
+    "NativeComposite", sizeof(NativeComposite), _Alignof(NativeComposite),
+    composite_layout_fields, COMPOSITE_FIELD_COUNT};
+static const cmeta_data_struct_shape COMPOSITE_SHAPE = {
+    &COMPOSITE_LAYOUT, composite_fields, COMPOSITE_FIELD_COUNT};
+static const cmeta_data_desc COMPOSITE_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.databind.NativeComposite.data",
+    .display_name = "NativeComposite", .kind = CMETA_DATA_STRUCT,
+    .storage_type = &COMPOSITE_TYPE, .shape = &COMPOSITE_SHAPE};
+
+static void composite_field(size_t index, const char *name, size_t offset,
+                            const cmeta_data_desc *data) {
+  composite_layout_fields[index] = (cmeta_field_desc){
+      name, data->storage_type->name, offset, data->storage_type->size,
+      data->storage_type->align, data->storage_type, NULL};
+  composite_fields[index] = (cmeta_data_field_desc){name, name, offset, data};
+}
+
 static ContainerWorkspace workspace;
 static DataBindNativeOptions options;
 static DataBindNativeDiagnostic diagnostic;
 static size_t element_callback_calls;
+static const char COMPOSITE_TEXT[] = "alpha";
+static const char COMPOSITE_KEY[] = "key";
 
 static cserde_status sink_write(void *context, const cserde_token *token) {
   TokenSink *sink = (TokenSink *)context;
@@ -127,6 +177,14 @@ static void reset_native(void) {
       .kind = CMETA_DATA_STRUCT,
       .storage_type = &NATIVE_TEXT_RECORD_TYPE,
       .shape = &NATIVE_TEXT_RECORD_SHAPE};
+  composite_field(0u, "child", offsetof(NativeComposite, child),
+                  &NATIVE_TEXT_RECORD_DATA);
+  composite_field(1u, "children", offsetof(NativeComposite, children),
+                  &NativeTextRecordVec_collection_data);
+  composite_field(2u, "unique_names", offsetof(NativeComposite, unique_names),
+                  &NativeTextSet_collection_data);
+  composite_field(3u, "children_by_name", offsetof(NativeComposite, children_by_name),
+                  &NativeTextRecordMap_map_data);
 }
 
 static void open_writer(TokenSink *sink, cserde_writer *writer) {
@@ -188,11 +246,153 @@ static const cmeta_data_desc *counting_element(const void *object) {
   return &cmeta_data_int;
 }
 
+/* Single-threaded fixtures own bounded containers and independent copied text.
+ * Sink views borrow source owners until decode completes. Clear requires no
+ * active iterator and restores the complete envelope, including state bytes. */
+static void populate_composite(NativeComposite *object) {
+  NativeTextRecord value = {0};
+  tstr key = NULL;
+  check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &value.text,
+              (const unsigned char *)COMPOSITE_TEXT,
+              sizeof(COMPOSITE_TEXT) - 1u, sizeof(COMPOSITE_TEXT) - 1u), CMETA_OK);
+  check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &key,
+              (const unsigned char *)COMPOSITE_KEY,
+              sizeof(COMPOSITE_KEY) - 1u, sizeof(COMPOSITE_KEY) - 1u), CMETA_OK);
+  check_true(cmeta_data_trait_copy_construct(&NATIVE_TEXT_RECORD_DATA,
+                                            &object->child, &value));
+  check_equal(NativeTextRecordVec_init(&object->children, CONTAINER_MAX_ITEMS), STL_OK);
+  check_equal(NativeTextSet_init(&object->unique_names, CONTAINER_MAX_ITEMS), STL_OK);
+  check_equal(NativeTextRecordMap_init(&object->children_by_name, CONTAINER_MAX_ITEMS), STL_OK);
+  check_equal(NativeTextRecordVec_push(&object->children, value), STL_OK);
+  check_equal(NativeTextSet_add(&object->unique_names, key), STL_OK);
+  check_equal(NativeTextRecordMap_put(&object->children_by_name, key, value), STL_OK);
+  cmeta_data_value_destroy(&NATIVE_TEXT_RECORD_DATA, &value);
+  cmeta_data_value_destroy(&salts_tstr_cmeta_data, &key);
+}
+
+static void check_composite_zero(const NativeComposite *object) {
+  check_null(object->child.text);
+  check_equal(NativeTextRecordVec_size(&object->children), (size_t)0u);
+  check_equal(NativeTextSet_size(&object->unique_names), (size_t)0u);
+  check_equal(NativeTextRecordMap_size(&object->children_by_name), (size_t)0u);
+  check_equal(object->presence, 0u);
+  check_equal(object->nulls, 0u);
+}
+
 spec("DataBind canonical CSTL native containers") {
   (void)ttest_config__;
 
   before_each() {
     reset_native();
+  }
+
+  it("rejects missing composite ownership providers before touching poisoned storage") {
+    NativeComposite object;
+    unsigned char before[sizeof(object)];
+    cmeta_data_collection_ops ops = NativeTextRecordVec_collection_ops;
+    cmeta_data_desc missing_owner = NativeTextRecordVec_collection_data;
+    ops.collector = NULL;
+    missing_owner.collection_ops = &ops;
+    composite_fields[1].value = &missing_owner;
+    memset(&object, CONTAINER_SENTINEL, sizeof(object));
+    memcpy(before, &object, sizeof(before));
+    check_equal(native_init(&COMPOSITE_DATA, &object), DATA_BIND_ERR_SCHEMA);
+    check_equal(memcmp(&object, before, sizeof(before)), 0);
+    check_equal(native_clear(&COMPOSITE_DATA, &object), DATA_BIND_ERR_SCHEMA);
+    check_equal(memcmp(&object, before, sizeof(before)), 0);
+  }
+
+  it("releases populated composite owners, resets state and permits reuse") {
+    NativeComposite object;
+    memset(&object, CONTAINER_SENTINEL, sizeof(object));
+    check_equal(native_init(&COMPOSITE_DATA, &object), DATA_BIND_OK);
+    check_composite_zero(&object);
+    populate_composite(&object);
+    object.presence = UINT8_MAX;
+    object.nulls = UINT8_MAX;
+    check_equal(native_clear(&COMPOSITE_DATA, &object), DATA_BIND_OK);
+    check_composite_zero(&object);
+    check_equal(native_clear(&COMPOSITE_DATA, &object), DATA_BIND_OK);
+    populate_composite(&object);
+    check_equal(native_clear(&COMPOSITE_DATA, &object), DATA_BIND_OK);
+    check_composite_zero(&object);
+  }
+
+  it("copies composite owners independently of temporary and source owners") {
+    NativeComposite source, destination;
+    TokenSink sink;
+    const NativeTextRecord *value;
+    tstr key = NULL;
+    check_equal(native_init(&COMPOSITE_DATA, &source), DATA_BIND_OK);
+    check_equal(native_init(&COMPOSITE_DATA, &destination), DATA_BIND_OK);
+    populate_composite(&source);
+    check_equal(roundtrip(&COMPOSITE_DATA, &source, &destination, &sink), DATA_BIND_OK);
+    check_true(source.child.text != destination.child.text);
+    value = NativeTextRecordVec_at_const(&destination.children, 0u);
+    check_not_null(value);
+    check_true(value->text != source.child.text);
+    check_true(value->text != destination.child.text);
+    check_equal(native_clear(&COMPOSITE_DATA, &source), DATA_BIND_OK);
+    check_equal(memcmp(value->text, COMPOSITE_TEXT, sizeof(COMPOSITE_TEXT) - 1u), 0);
+    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &key,
+                (const unsigned char *)COMPOSITE_KEY,
+                sizeof(COMPOSITE_KEY) - 1u, sizeof(COMPOSITE_KEY) - 1u), CMETA_OK);
+    check_true(NativeTextSet_contains(&destination.unique_names, key));
+    value = NativeTextRecordMap_get_const(&destination.children_by_name, key);
+    check_not_null(value);
+    check_equal(memcmp(value->text, COMPOSITE_TEXT, sizeof(COMPOSITE_TEXT) - 1u), 0);
+    check_equal(memcmp(destination.child.text, COMPOSITE_TEXT, sizeof(COMPOSITE_TEXT) - 1u), 0);
+    cmeta_data_value_destroy(&salts_tstr_cmeta_data, &key);
+    check_equal(native_clear(&COMPOSITE_DATA, &destination), DATA_BIND_OK);
+  }
+
+  it("cleans partially decoded composite owners on an owned byte limit") {
+    NativeComposite source, destination;
+    TokenSink sink;
+    cserde_writer writer;
+    cserde_reader reader;
+    NativeContainerTokenSource token_source;
+    /* Child + list + set + map key fit; the map value exceeds this budget. */
+    const size_t partial_owned_bytes = 16u;
+    check_equal(native_init(&COMPOSITE_DATA, &source), DATA_BIND_OK);
+    check_equal(native_init(&COMPOSITE_DATA, &destination), DATA_BIND_OK);
+    populate_composite(&source);
+    open_writer(&sink, &writer);
+    check_equal(data_bind_native_encode(&options, &COMPOSITE_DATA, &source,
+                sizeof(source), &writer, &diagnostic), DATA_BIND_OK);
+    open_reader(&sink, &token_source, &reader);
+    options.max_owned_bytes = partial_owned_bytes;
+    check_equal(data_bind_native_decode(&options, &COMPOSITE_DATA, &reader,
+                &destination, sizeof(destination), &diagnostic), DATA_BIND_ERR_LIMIT);
+    check_contains(diagnostic.error.path, "children_by_name.text");
+    check_true(token_source.index > 1u);
+    check_composite_zero(&destination);
+    check_equal(native_clear(&COMPOSITE_DATA, &destination), DATA_BIND_OK);
+    options.max_owned_bytes = CONTAINER_MAX_OWNED_BYTES;
+    check_equal(roundtrip(&COMPOSITE_DATA, &source, &destination, &sink), DATA_BIND_OK);
+    check_equal(native_clear(&COMPOSITE_DATA, &destination), DATA_BIND_OK);
+    check_equal(native_clear(&COMPOSITE_DATA, &source), DATA_BIND_OK);
+  }
+
+  it("uses exact fixed byte lifecycle while rejecting missing native buffer semantics") {
+    InlineBytes source = {1u, 2u, 3u, 4u};
+    InlineBytes destination;
+    InlineBytes before;
+    memset(destination, CONTAINER_SENTINEL, sizeof(destination));
+    memcpy(before, destination, sizeof(before));
+    check_true(cmeta_data_desc_valid(&inline_bytes_cmeta_data));
+    check_equal(native_init(&inline_bytes_cmeta_data, destination), DATA_BIND_ERR_SCHEMA);
+    check_equal(native_clear(&inline_bytes_cmeta_data, destination), DATA_BIND_ERR_SCHEMA);
+    check_equal(memcmp(destination, before, sizeof(before)), 0);
+    check_equal(cmeta_data_value_init_zero(&inline_bytes_cmeta_data, destination), CMETA_OK);
+    check_true(inline_bytes_cmeta_is_zero(destination));
+    check_equal(cmeta_data_fixed_copy(&inline_bytes_cmeta_data, destination,
+                                      source, sizeof(source)), CMETA_OK);
+    check_equal(memcmp(destination, source, sizeof(source)), 0);
+    check_equal(cmeta_data_value_restore_zero(&inline_bytes_cmeta_data, destination), CMETA_OK);
+    check_true(inline_bytes_cmeta_is_zero(destination));
+    check_equal(cmeta_data_value_restore_zero(&inline_bytes_cmeta_data, destination), CMETA_OK);
+    check_true(inline_bytes_cmeta_is_zero(destination));
   }
 
   it("measures collection graphs only from static member metadata") {

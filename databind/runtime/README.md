@@ -14,6 +14,13 @@ canonical value reader。剩余 descriptor 解码只暴露显式
 `tbe_typed_descriptor_parse_binary`，与 Binary 专用序列化入口一起等待
 [#489](https://github.com/qigao/salts-utils/issues/489) 切换；raw lifecycle 的清理仍属 #488。
 
+通用组合生命周期测试使用 CMeta Struct 与 CSTL 的受管 Vec、Set、Map provider，
+覆盖嵌套 owner 的独立复制、释放、重复 clear、状态位复位和解码中途超限后的清理。
+固定字节使用 CMeta exact fixed provider 的 init/copy/restore-zero；当前 native 路径
+要求 owned buffer provider，因此对只有 fixed provider 的形状在修改宿主前返回 schema 错误。
+固定数组尚无 canonical sequence provider，保留显式 Binary 回归覆盖，
+不借用 raw composite init/clear 模拟 canonical 所有权。
+
 DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
 运行时也不要求 C/C++ 编译器。

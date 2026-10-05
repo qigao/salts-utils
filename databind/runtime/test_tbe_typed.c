@@ -111,48 +111,6 @@ static const TbeTypedType TEST_WIDE_ENUM_TYPE = {
     .fixed_block_size = 8,
 };
 
-typedef struct MacroChild {
-  uint16_t code;
-} MacroChild;
-
-TBE_TYPED_DEFINE_STRUCT(
-    MACRO_CHILD_BINDING, MacroChild, "MacroChild",
-    TBE_TYPED_FIELD(MacroChild, code, "code", TBE_TYPED_U16, TBE_TYPED_REQUIRED));
-
-TBE_TYPED_VEC_DEFINE(macro_child_vec_t, MacroChild)
-
-typedef struct MacroChildMapEntry {
-  tstr key;
-  MacroChild value;
-} MacroChildMapEntry;
-
-TBE_TYPED_VEC_DEFINE(macro_child_map_vec_t, MacroChildMapEntry)
-
-typedef struct MacroCollections {
-  MacroChild child;
-  uint16_t fixed_values[2];
-  uint8_t fixed_bytes[4];
-  macro_child_vec_t children;
-  macro_child_vec_t unique_children;
-  macro_child_map_vec_t children_by_name;
-} MacroCollections;
-
-TBE_TYPED_DEFINE_STRUCT(
-    MACRO_COLLECTIONS_BINDING, MacroCollections, "MacroCollections",
-    TBE_TYPED_OBJECT_FIELD(MacroCollections, child, "child", &MACRO_CHILD_BINDING,
-                           TBE_TYPED_REQUIRED),
-    TBE_TYPED_FIXED_ARRAY_FIELD(MacroCollections, fixed_values, "fixed_values", TBE_TYPED_U16,
-                                uint16_t, NULL, TBE_TYPED_REQUIRED),
-    TBE_TYPED_FIXED_BYTES_FIELD(MacroCollections, fixed_bytes, "fixed_bytes",
-                                TBE_TYPED_REQUIRED),
-    TBE_TYPED_LIST_FIELD(MacroCollections, children, "children", TBE_TYPED_OBJECT, MacroChild,
-                         &MACRO_CHILD_BINDING, TBE_TYPED_REQUIRED),
-    TBE_TYPED_SET_FIELD(MacroCollections, unique_children, "unique_children", TBE_TYPED_OBJECT,
-                        MacroChild, &MACRO_CHILD_BINDING, TBE_TYPED_REQUIRED),
-    TBE_TYPED_MAP_FIELD(MacroCollections, children_by_name, "children_by_name",
-                        MacroChildMapEntry, key, value, TBE_TYPED_OBJECT, &MACRO_CHILD_BINDING,
-                        TBE_TYPED_REQUIRED));
-
 typedef struct MacroWire {
   uint32_t id;
 } MacroWire;
@@ -347,20 +305,6 @@ spec("typed DataBind binary") {
                  DATA_BIND_OK);
     check_equal(text.text, "abc");
     tbe_typed_clear(&TEST_TEXT_TYPE, &text);
-  }
-
-  it("validates all composite macro field families") {
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    MacroCollections collections;
-
-    check_equal(tbe_typed_validate_descriptor(&MACRO_COLLECTIONS_BINDING, &error),
-                 DATA_BIND_OK);
-    check_equal(TBE_TYPED_BIND_INIT(MACRO_COLLECTIONS_BINDING, &collections, &error),
-                 DATA_BIND_OK);
-    check_equal(macro_child_vec_t_size(&collections.children), 0u);
-    check_equal(macro_child_vec_t_size(&collections.unique_children), 0u);
-    check_equal(macro_child_map_vec_t_size(&collections.children_by_name), 0u);
-    TBE_TYPED_BIND_CLEAR(MACRO_COLLECTIONS_BINDING, &collections);
   }
 
   it("uses explicit macro metadata for direct binary layout") {
