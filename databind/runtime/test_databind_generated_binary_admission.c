@@ -84,6 +84,10 @@ spec("generated canonical Binary admission") {
     }
     LoginMessage_clear(&decoded);
     LoginMessage_clear(&source);
+    check_null(source.username);
+    check_equal(source.header.seq_num, 0u);
+    check_equal(source.pass_hash, (uint8_t[sizeof(source.pass_hash)]){0}, sizeof(source.pass_hash));
+    LoginMessage_clear(&source);
     data_bind_free(codec);
   }
 }

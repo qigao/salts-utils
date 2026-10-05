@@ -2905,7 +2905,8 @@ spec("tbe_compiler") {
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(OwnedState)");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(OwnedBytesState)");
         check_contains(source, "DATABIND_DEFINE_CANONICAL_CSTL_RECORD(MapState)");
-        check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(FixedBytesState)");
+        check_contains(source, "void FixedBytesState_clear(FixedBytesState_t *object)");
+        check_contains(source, "cmeta_data_value_restore_zero(&tbe_fixed_bytes_15_FixedBytesState_7_payload_cmeta_data, &object->payload)");
         check_contains(source, "DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(NestedOwnedState)");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(EnumState)");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(UuidState)");

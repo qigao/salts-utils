@@ -142,6 +142,11 @@ CMeta/native provider 是结构和所有权的事实源；MessagePlan 负责 pre
 default 和校验；FormatPlan 与 BinaryLayoutIR/provider 负责格式和线布局。
 格式准入独立于生命周期，不支持的格式返回明确错误，不改走历史 typed 引擎。
 
+固定字节 provider 提供精确 zero/release，但不授予聚合 move 能力。包含该字段
+及其嵌套父记录的 init/clear 使用既有逐成员生成路径，直接调用 canonical provider；
+不向要求完整 move 的聚合生命周期请求释放。公开图与格式准入保持独立，释放
+不受 presence/null 状态门控；全部成员释放后才复位宿主与状态位。
+
 `test_tbe_compiler` 验证缺少生命周期的固定数组 composite/group/message 及
 混合 CSTL 记录在覆盖已有文件前失败；`test_databind_generated_cmeta_graph`、
 `test_optional_scalar_lifecycle`、`test_databind_generated_owned_buffers` 和
