@@ -59,7 +59,7 @@ static void native_copy_text(char *destination, size_t capacity, const char *sou
 static void native_reset_diagnostic(DataBindNativeDiagnostic *diagnostic) {
   if (diagnostic == NULL) return;
   diagnostic->error = (DataBindError)DATA_BIND_ERROR_INIT;
-  diagnostic->source_status = CSERDE_OK;
+  diagnostic->endpoint_status = CSERDE_OK;
 }
 
 static DataBindStatus native_fail(DataBindNativeDiagnostic *diagnostic,
@@ -67,7 +67,7 @@ static DataBindStatus native_fail(DataBindNativeDiagnostic *diagnostic,
                                   const char *path, const char *message) {
   if (diagnostic != NULL) {
     diagnostic->error.code = status;
-    diagnostic->source_status = source_status;
+    diagnostic->endpoint_status = source_status;
     native_copy_text(diagnostic->error.path, sizeof(diagnostic->error.path), path);
     native_copy_text(diagnostic->error.message, sizeof(diagnostic->error.message), message);
   }
@@ -1728,10 +1728,7 @@ static DataBindStatus native_decode_value(NativeDecode *decode,
 
 static int native_diagnostic_header_valid(const DataBindNativeDiagnostic *diagnostic) {
   if (diagnostic == NULL) return 1;
-  if (diagnostic->size < offsetof(DataBindNativeDiagnostic, abi_version) +
-                             sizeof(diagnostic->abi_version))
-    return 0;
-  return diagnostic->size >= sizeof(DataBindNativeDiagnostic) &&
+  return diagnostic->size == sizeof(DataBindNativeDiagnostic) &&
          diagnostic->abi_version == DATA_BIND_NATIVE_ABI_VERSION;
 }
 
@@ -1760,9 +1757,9 @@ DataBindStatus data_bind_native_measure(
   DataBindStatus status;
 
   if (!native_diagnostic_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
-  if (requirements == NULL || requirements->size < sizeof(*requirements) ||
+  if (requirements == NULL || requirements->size != sizeof(*requirements) ||
       requirements->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
-      options == NULL || options->size < sizeof(*options) ||
+      options == NULL || options->size != sizeof(*options) ||
       options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
     return DATA_BIND_ERR_INVALID_ARG;
   /* Do not even write a diagnostic when outputs alias inputs or one another. */
@@ -1838,8 +1835,6 @@ DataBindStatus data_bind_native_measure(
       !native_size_add(aligned, plan.scratch_peak, &measured.decode_bytes))
     return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
                        "Native measured workspace size overflow");
-  /* Preserve a caller's larger size header for forward-compatible records. */
-  measured.size = requirements->size;
   *requirements = measured;
   native_reset_diagnostic(diagnostic);
   return DATA_BIND_OK;
@@ -1873,7 +1868,7 @@ static DataBindStatus native_plan_options_preflight(
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
                        root_path,
                        "Native options record is missing its ABI header");
-  if (options->size < sizeof(DataBindNativeOptions) ||
+  if (options->size != sizeof(DataBindNativeOptions) ||
       options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
                        root_path, "Native options ABI is incompatible");
@@ -2035,7 +2030,7 @@ DataBindStatus data_bind_native_plan_compile(
         native_ranges_overlap(diagnostic, sizeof(*diagnostic),
                               shape, sizeof(*shape)))))
     return DATA_BIND_ERR_INVALID_ARG;
-  if (options != NULL && options->size >= sizeof(*options) &&
+  if (options != NULL && options->size == sizeof(*options) &&
       options->abi_version == DATA_BIND_NATIVE_ABI_VERSION &&
       native_ranges_overlap(out_plan, sizeof(*out_plan),
                             options->workspace, options->workspace_bytes))
@@ -2209,7 +2204,7 @@ static DataBindStatus native_lifecycle_preflight(
                           sizeof(options->abi_version))
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
                        "Native options record is missing its ABI header");
-  if (options->size < sizeof(DataBindNativeOptions) ||
+  if (options->size != sizeof(DataBindNativeOptions) ||
       options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
                        "Native options ABI is incompatible");
@@ -2335,7 +2330,7 @@ static DataBindStatus native_decode_bounded(
                           sizeof(options->abi_version))
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
                        "Native options record is missing its ABI header");
-  if (options->size < sizeof(DataBindNativeOptions) ||
+  if (options->size != sizeof(DataBindNativeOptions) ||
       options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
                        "Native options ABI is incompatible");
@@ -2999,7 +2994,7 @@ DataBindStatus data_bind_native_encode(
                           sizeof(options->abi_version))
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
                        "Native options record is missing its ABI header");
-  if (options->size < sizeof(DataBindNativeOptions) ||
+  if (options->size != sizeof(DataBindNativeOptions) ||
       options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
                        "Native options ABI is incompatible");

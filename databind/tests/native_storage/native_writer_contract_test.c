@@ -418,7 +418,7 @@ spec("DataBind native writer contract") {
     check_equal(source.id, 9);
     check_equal(tstr_len(source.name), 4u);
     check_equal(memcmp(source.name, "Safe", 4u), 0);
-    check_equal(diagnostic.source_status, CSERDE_SINK_ERROR);
+    check_equal(diagnostic.endpoint_status, CSERDE_SINK_ERROR);
     check_true(writer.state == CSERDE_WRITER_FAILED);
     check_equal(sink.finish_calls, 0u);
 

@@ -1784,7 +1784,7 @@ static DataBindStatus message_decode_native_impl(
       plan->native->data == NULL ||
       native_options == NULL || reader == NULL ||
       destination == NULL ||
-      native_options->size < sizeof(*native_options) ||
+      native_options->size != sizeof(*native_options) ||
       native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
       native_options->workspace == NULL)
     return message_fail(
@@ -2462,7 +2462,7 @@ static DataBindStatus message_decode_object_impl(
 
   if (!message_object_compatible(plan, object) ||
       native_options == NULL || reader == NULL ||
-      native_options->size < sizeof(*native_options) ||
+      native_options->size != sizeof(*native_options) ||
       native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
       native_options->workspace == NULL)
     return message_fail(
@@ -2655,7 +2655,7 @@ DataBindStatus data_bind_message_plan_encode_native(
       plan->native == NULL || plan->native->data == NULL ||
       plan->native->data->storage_type == NULL ||
       native_options == NULL || source == NULL || writer == NULL ||
-      native_options->size < sizeof(*native_options) ||
+      native_options->size != sizeof(*native_options) ||
       native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
       required_bytes == 0u || source_bytes < required_bytes)
     return message_fail(
@@ -2762,7 +2762,7 @@ DataBindStatus data_bind_message_plan_encode_object(
 
   if (!message_object_compatible(plan, object) ||
       native_options == NULL || writer == NULL ||
-      native_options->size < sizeof(*native_options) ||
+      native_options->size != sizeof(*native_options) ||
       native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
     return message_fail(
         diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,

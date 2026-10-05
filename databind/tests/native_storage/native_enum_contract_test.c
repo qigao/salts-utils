@@ -498,7 +498,7 @@ spec("DataBind canonical enum-bits native reader") {
     check_equal(decode_enum(&signed_enum_data, &value, sizeof(value)),
                 DATA_BIND_ERR_TYPE_MISMATCH);
     check_true(canonical_enum_is_zero(&value));
-    check_equal(diagnostic.source_status, CSERDE_OK);
+    check_equal(diagnostic.endpoint_status, CSERDE_OK);
   }
 
   it("rejects an unknown enum string without calling the provider") {
@@ -659,7 +659,7 @@ spec("DataBind canonical enum-bits native reader") {
     reader = (cserde_reader){0};
     open_enum_source(failed, sizeof(failed) / sizeof(failed[0]));
     check_equal(decode_enum(&wide_flag_data, &value, sizeof(value)), DATA_BIND_ERR_IO);
-    check_equal(diagnostic.source_status, CSERDE_SOURCE_ERROR);
+    check_equal(diagnostic.endpoint_status, CSERDE_SOURCE_ERROR);
     check_equal(canonical_assign_calls, 0u);
     check_true(canonical_enum_is_zero(&value));
   }

@@ -12,11 +12,12 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_NATIVE_ABI_VERSION = 1u };
+enum { DATA_BIND_NATIVE_ABI_VERSION = 2u };
 enum { DATA_BIND_NATIVE_PLAN_ABI_VERSION = 1u };
 
 typedef struct DataBindNativePlan DataBindNativePlan;
 
+/** Control records require their exact current size and ABI; use the INIT macros. */
 typedef struct DataBindNativeOptions {
   size_t size;
   uint32_t abi_version;
@@ -31,12 +32,8 @@ typedef struct DataBindNativeDiagnostic {
   size_t size;
   uint32_t abi_version;
   DataBindError error;
-  /**
-   * CSerde endpoint status associated with the failure. Historical field name
-   * is retained for ABI/source compatibility: decode records reader/source
-   * status; encode records writer/sink status.
-   */
-  cserde_status source_status;
+  /** CSerde reader or writer status associated with the failure. */
+  cserde_status endpoint_status;
 } DataBindNativeDiagnostic;
 
 #define DATA_BIND_NATIVE_OPTIONS_INIT                                                   \
@@ -50,7 +47,7 @@ typedef struct DataBindNativeDiagnostic {
         DATA_BIND_ERROR_INIT, CSERDE_OK                                                 \
   }
 
-/** Measured requirements for the existing native v1 policy, not ORM limits. */
+/** Measured requirements for native storage admission, not ORM limits. */
 typedef struct DataBindNativeRequirements {
   size_t size;
   uint32_t abi_version;
@@ -100,9 +97,9 @@ DATA_BIND_API DataBindStatus data_bind_native_probe_workspace_size(
  * MAP; zero for scalar/enum/buffer roots). field_tracking_bytes counts only
  * active Struct field bitmaps; container temporaries are included in
  * decode_bytes. The requirements
- * record is evolving within this unreleased feature; callers must use its INIT.
+ * record requires the exact current size and ABI; callers must use its INIT.
  * This does not translate caller-defined scratch/container/per-value budgets:
- * v1 max_depth includes scalar descriptor leaves; max_items is a whole-graph
+ * max_depth includes scalar descriptor leaves; max_items is a whole-graph
  * node budget; max_owned_bytes is aggregate logical payload, not heap capacity.
  * Zero depth/items and arithmetic overflow return LIMIT; unsupported or invalid
  * graphs return SCHEMA; invalid records/ranges return INVALID_ARG. Insufficient
