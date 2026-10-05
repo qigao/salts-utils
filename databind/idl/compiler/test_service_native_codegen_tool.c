@@ -7,12 +7,12 @@
 
 static int generated_source_has_raii_cleanup(const char *path) {
   static const char expected[] =
-      "native_status != 0)\\n"
-      "    goto cleanup;\\n"
-      "  return true;\\n"
-      "cleanup:\\n"
-      "  (void)cmeta_data_value_restore_zero(response_data, out);\\n"
-      "  return false;\\n";
+      "native_status != 0)\n"
+      "    goto cleanup;\n"
+      "  return true;\n"
+      "cleanup:\n"
+      "  (void)cmeta_data_value_restore_zero(response_data, out);\n"
+      "  return false;\n";
   FILE *file = NULL;
   char *text = NULL;
   long end;
