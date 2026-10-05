@@ -54,7 +54,7 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | decimal/money/bigint | `CMETA_DATA_CUSTOM` domain classification | canonical numeric/domain provider required | semantic classification only; native mapping gated | Do not approximate with platform integers/floats or create private canonical identities. |
 | null | no standalone native storage type | n/a | not a standalone schema type | Null is a value/presence token; a concrete target type must define how it is represented. |
 
-Scalar helper regression coverage is in `databind/schema/test/test_schema_cmeta.c`. Production acceptance adds `test_tbe_cmeta_acceptance.c` and `test_tbe_typed_cmeta_graph.c`, using the real parser/compiler CLI fixture `test_cmeta_graph.schema`, not test-only lowering. Public C/C++ consumers link the generated C implementation as a static archive; installed consumers repeat that boundary with installed targets and compiler.
+Scalar helper regression coverage is in `databind/schema/test/test_schema_cmeta.c`. Production acceptance adds `test_tbe_cmeta_acceptance.c` and `test_databind_generated_cmeta_graph.c`, using the real parser/compiler CLI fixture `test_cmeta_graph.schema`, not test-only lowering. Public C/C++ consumers link the generated C implementation as a static archive; installed consumers repeat that boundary with installed targets and compiler.
 
 ## Production shared scalar profiles
 
@@ -116,7 +116,7 @@ the graph depth limit is separate from local lifecycle admission.
 逐成员代码不引入分配、复制、转移或新的容量策略；资源分配与限制仍由
 叶节点 provider 负责。生命周期调用遇到不符合生成时契约的 provider
 错误立即终止（现有 void 接口无法返回错误），不会把释放失败伪装成清零成功。
-`test_tbe_typed_cmeta_graph` 覆盖 33 层标量、34 层受管资源、状态位、重复
+`test_databind_generated_cmeta_graph` 覆盖 33 层标量、34 层受管资源、状态位、重复
 clear 和复用；公开 C/C++ fixture 保持相同 ABI，格式转换仍按原准入规则拒绝。
 
 已发布图内的嵌套 optional/nullable 记录也按依赖闭包准入本地生命周期：
@@ -133,7 +133,7 @@ CSTL 存储，或已准入的逐成员生命周期。单个容器字段的 provi
 记录已经获准。未准入时编译器报告记录名称并失败，保留已有输出文件；不会
 生成缺少释放语义的 void API。仅生成 wire view/builder 的头文件不受此检查影响。
 
-生成模板不再包含 `tbe_typed.h`、历史 typed 表、descriptor 或 raw 生命周期宏。
+生成模板不再包含历史 typed 头文件、类型表、descriptor 或 raw 生命周期宏。
 编译器不再发出 `typed_kind`、wire-kind、descriptor 引用和
 `typed_cmeta_runtime_supported` 注解，也不再执行历史 runtime 分类遍历。
 C 声明使用既有标量投影和 schema 命名类型；枚举操作使用 `native_enum_supported`，
@@ -142,11 +142,17 @@ CMeta/native provider 是结构和所有权的事实源；MessagePlan 负责 pre
 default 和校验；FormatPlan 与 BinaryLayoutIR/provider 负责格式和线布局。
 格式准入独立于生命周期，不支持的格式返回明确错误，不改走历史 typed 引擎。
 
+固定字节 provider 提供精确 zero/release，但不授予聚合 move 能力。包含该字段
+及其嵌套父记录的 init/clear 使用既有逐成员生成路径，直接调用 canonical provider；
+不向要求完整 move 的聚合生命周期请求释放。公开图与格式准入保持独立，释放
+不受 presence/null 状态门控；全部成员释放后才复位宿主与状态位。
+
 `test_tbe_compiler` 验证缺少生命周期的固定数组 composite/group/message 及
-混合 CSTL 记录在覆盖已有文件前失败；`test_tbe_typed_cmeta_graph`、
+混合 CSTL 记录在覆盖已有文件前失败；`test_databind_generated_cmeta_graph`、
 `test_optional_scalar_lifecycle`、`test_databind_generated_owned_buffers` 和
 公开 C/C++ fixture 验证已准入的标量、枚举、字符串、字节缓冲区、容器、
-嵌套状态和超深本地生命周期。历史 runtime 与其测试仍由 #488—#490 后续清理。
+嵌套状态和超深本地生命周期。历史 runtime 与专用测试已删除；Binary 回归使用
+`test_data_bind_binary_native` 与规范 reader/writer、生成 provider 测试。
 
 ## Shared field semantics and public DataBind reflection
 
@@ -165,8 +171,9 @@ The append-only `DataBindSchemaField.has_cmeta_kind`, `.cmeta_kind`, and
 labels such as group/composite/message remain schema presentation metadata, not
 new structural identities. Unknown names have no canonical kind or descriptor.
 The original size-prefix protocol is unchanged. `DataBindSchemaType` still
-describes schema declarations. `TbeTypedDescriptor` ABI v2 requires both the
-schema overlay and canonical native CMeta root; ABI-v1 or graphless values fail.
+describes schema declarations. Native binding requires a canonical native CMeta
+root; MessagePlan compilation validates that graph against the schema overlay.
+Binary wire layout is independently admitted through BinaryLayoutIR/providers.
 
 Canonical sequence/set/map descriptors are valid kind-only metadata with NULL
 storage and shape. Their publication does not claim element/key/value identity or

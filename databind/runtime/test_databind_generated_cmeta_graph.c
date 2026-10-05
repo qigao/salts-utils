@@ -217,6 +217,32 @@ static DataBindStatus parse_sample_count(
 }
 
 spec("generated native CMeta graph") {
+  it("releases nested fixed providers and owners independently of presence state") {
+    enum { FIXED_OWNER_POISON = 0xa5, FIXED_OWNER_PAYLOAD_BYTES = 16 };
+    FixedOwnedEnvelope_t value;
+    const FixedOwnedEnvelope_t zero = {0};
+    memset(&value, FIXED_OWNER_POISON, sizeof(value));
+    FixedOwnedEnvelope_init(&value);
+    check_null(value.child.label);
+    check_equal(value.child.digest, zero.child.digest, sizeof(value.child.digest));
+    check_equal(stl_byte_buffer_size(&value.payload), (size_t)0u);
+    check_equal(value._presence[0], 0u);
+    value.child.label = tstr_dup("fixed and owned");
+    check_not_null(value.child.label);
+    memset(value.child.digest, FIXED_OWNER_POISON, sizeof(value.child.digest));
+    check_equal(stl_byte_buffer_resize(&value.payload, FIXED_OWNER_PAYLOAD_BYTES), STL_OK);
+    check_equal(value._presence[0], 0u);
+    FixedOwnedEnvelope_clear(&value);
+    check_equal(&value, &zero, sizeof(value));
+    FixedOwnedEnvelope_clear(&value);
+    check_equal(&value, &zero, sizeof(value));
+    value.child.label = tstr_dup("reuse fixed owner");
+    check_not_null(value.child.label);
+    value._presence[0] = 1u;
+    FixedOwnedEnvelope_clear(&value);
+    check_equal(&value, &zero, sizeof(value));
+  }
+
   it("initializes and clears a scalar record beyond the published graph limit") {
     Depth33_t value;
     Depth33_t zero;

@@ -321,7 +321,7 @@ static cserde_status binary_writer_value(
 
   if (owner == NULL || token == NULL ||
       owner->current_field >= owner->plan->field_count)
-    return CSERDE_INVALID_STATE;
+    return CSERDE_UNSUPPORTED;
   field = &owner->plan->fields[owner->current_field];
 
   if (binary_writer_optional(field))
@@ -370,7 +370,7 @@ static cserde_status binary_writer_write(
   size_t field_index;
 
   if (owner == NULL || token == NULL || owner->committed)
-    return CSERDE_INVALID_STATE;
+    return CSERDE_UNSUPPORTED;
 
   switch (owner->stage) {
   case DATA_BIND_BINARY_WRITER_ROOT:
@@ -384,14 +384,14 @@ static cserde_status binary_writer_write(
       while (owner->next_field < owner->plan->field_count) {
         if (!binary_writer_skip_field(
                 owner, &owner->plan->fields[owner->next_field]))
-          return CSERDE_INVALID_STATE;
+          return CSERDE_UNSUPPORTED;
         ++owner->next_field;
       }
       owner->stage = DATA_BIND_BINARY_WRITER_DONE;
       return CSERDE_OK;
     }
     if (!binary_writer_find_field(owner, token, &field_index))
-      return CSERDE_INVALID_STATE;
+      return CSERDE_UNSUPPORTED;
     owner->current_field = field_index;
     owner->stage = DATA_BIND_BINARY_WRITER_VALUE;
     return CSERDE_OK;
@@ -401,19 +401,19 @@ static cserde_status binary_writer_write(
 
   case DATA_BIND_BINARY_WRITER_DONE:
   default:
-    return CSERDE_INVALID_STATE;
+    return CSERDE_UNSUPPORTED;
   }
 }
 
 static cserde_status binary_writer_finish(void *opaque) {
   DataBindBinaryWriterOwner *owner =
       (DataBindBinaryWriterOwner *)opaque;
-  if (owner == NULL) return CSERDE_INVALID_STATE;
+  if (owner == NULL) return CSERDE_UNSUPPORTED;
   if (owner->finish_attempted) return owner->finish_status;
   owner->finish_attempted = 1;
   if (owner->write == NULL ||
       owner->stage != DATA_BIND_BINARY_WRITER_DONE) {
-    owner->finish_status = CSERDE_INVALID_STATE;
+    owner->finish_status = CSERDE_UNSUPPORTED;
     return owner->finish_status;
   }
   if (owner->write(owner->buffer, owner->length, owner->write_user) != 0) {

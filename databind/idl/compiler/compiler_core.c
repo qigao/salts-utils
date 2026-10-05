@@ -2351,6 +2351,21 @@ static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {
            tbe_compiler_has_child(field, "native_fixed_bytes_name")));
 }
 
+static int tbe_compiler_requires_member_lifecycle(Node *root, Node *fields) {
+  size_t i;
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    Node *field = fields->data.list.items[i];
+    Node *nested = tbe_compiler_find_any_record(
+        root, tbe_compiler_string_value(field, "type"));
+    /* Fixed providers own zero/release but do not grant aggregate move.
+     * Preserve those exact lifecycle calls without requesting extra traits. */
+    if (tbe_compiler_string_value(field, "native_fixed_bytes_name") != NULL ||
+        (nested != NULL && tbe_compiler_has_child(nested, "cmeta_member_lifecycle")))
+      return 1;
+  }
+  return 0;
+}
+
 static void tbe_compiler_annotate_member_lifecycle(Node *root) {
   static const char *const sections[] = {"composites", "groups", "messages"};
   size_t section_index;
@@ -2377,9 +2392,11 @@ static void tbe_compiler_annotate_member_lifecycle(Node *root) {
         Node *record = records->data.list.items[i];
         Node *fields = tbe_compiler_find_child(record, "fields");
         size_t j;
-        if (tbe_compiler_has_child(record, "cmeta_graph_supported") ||
-            tbe_compiler_has_child(record, "cmeta_member_lifecycle") ||
+        if (tbe_compiler_has_child(record, "cmeta_member_lifecycle") ||
             fields == NULL || fields->type != NODE_LIST)
+          continue;
+        if (tbe_compiler_has_child(record, "cmeta_graph_supported") &&
+            !tbe_compiler_requires_member_lifecycle(root, fields))
           continue;
         for (j = 0u; j < fields->data.list.count; ++j)
           if (!tbe_compiler_member_lifecycle_field(root, fields->data.list.items[j]))

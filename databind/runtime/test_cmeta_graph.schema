@@ -25,6 +25,8 @@ message Signed64Storage { Signed64Domain value; }
 message BoolStorage { bool value; }
 message IntegerBoolDefaults { uint8 enabled default true; int32 debug default false; }
 message FixedValues { bool enabled; uuid id; bytes(16) digest; }
+message FixedOwnedFields { bytes(16) digest; string label; }
+message FixedOwnedEnvelope { optional FixedOwnedFields child; bytes payload; }
 message WideEnumStorage { WideDomain value; }
 message UuidStorage { uuid value; }
 message BytesStorage { bytes value; }

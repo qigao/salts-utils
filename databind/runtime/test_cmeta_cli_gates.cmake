@@ -106,8 +106,6 @@ foreach(required "typed(Vec" "typed(Set" "typed(Map")
   endif()
 endforeach()
 foreach(forbidden
-    "TBE_TYPED_VEC_DEFINE"
-    "TBE_TYPED_MANAGED_VEC_DEFINE"
     "DATABIND_GENERATED_SEQUENCE_PROVIDER"
     "DATABIND_GENERATED_MAP_PROVIDER"
     "databindCmetaSequence"
