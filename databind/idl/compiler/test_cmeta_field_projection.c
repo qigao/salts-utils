@@ -22,7 +22,6 @@ typedef enum ExpectedRuntimeRequirement {
 typedef struct ExpectedRuntimeCapability {
     const char *schema;
     const char *generated_storage;
-    cmeta_data_kind semantic_kind;
     ExpectedRuntimeRequirement requirement;
 } ExpectedRuntimeCapability;
 
@@ -37,19 +36,19 @@ static void annotate_language_types_from_tree(Node *root) {
 }
 
 static const ExpectedRuntimeCapability EXPECTED[] = {
-    { "bool", "uint8_t", CMETA_DATA_BOOL, EXPECT_EXPLICIT_ADAPTER },
-    { "uuid", "salts_uuid_t", CMETA_DATA_CUSTOM, EXPECT_EXPLICIT_ADAPTER },
-    { "bytes[16]", "uint8_t[16]", CMETA_DATA_BYTES, EXPECT_BOUNDED_ADAPTER },
-    { "string", "tstr", CMETA_DATA_STRING, EXPECT_LIFECYCLE },
-    { "bytes", "stl_byte_buffer", CMETA_DATA_BYTES, EXPECT_LIFECYCLE },
-    { "optional int32", "presence + int32_t", CMETA_DATA_SINT, EXPECT_OVERLAY_PRESENCE },
-    { "nullable int32", "null + int32_t", CMETA_DATA_SINT, EXPECT_OVERLAY_NULL },
-    { "optional nullable int32", "presence + null + int32_t", CMETA_DATA_SINT,
+    { "bool", "uint8_t", EXPECT_EXPLICIT_ADAPTER },
+    { "uuid", "salts_uuid_t", EXPECT_EXPLICIT_ADAPTER },
+    { "bytes[16]", "uint8_t[16]", EXPECT_BOUNDED_ADAPTER },
+    { "string", "tstr", EXPECT_LIFECYCLE },
+    { "bytes", "stl_byte_buffer", EXPECT_LIFECYCLE },
+    { "optional int32", "presence + int32_t", EXPECT_OVERLAY_PRESENCE },
+    { "nullable int32", "null + int32_t", EXPECT_OVERLAY_NULL },
+    { "optional nullable int32", "presence + null + int32_t",
       EXPECT_OVERLAY_PRESENCE_NULL },
-    { "map<string,int32>", "typed CSTL Map", CMETA_DATA_MAP,
+    { "map<string,int32>", "typed CSTL Map",
       EXPECT_MAP_PROVIDER },
-    { "list<int32>", "typed CSTL Vec", CMETA_DATA_SEQUENCE, EXPECT_SEQUENCE_PROVIDER },
-    { "set<int32>", "typed CSTL Set", CMETA_DATA_SET, EXPECT_SET_PROVIDER },
+    { "list<int32>", "typed CSTL Vec", EXPECT_SEQUENCE_PROVIDER },
+    { "set<int32>", "typed CSTL Set", EXPECT_SET_PROVIDER },
 };
 
 static const char *expected_native_requirement(ExpectedRuntimeRequirement requirement) {
@@ -164,7 +163,8 @@ static int field_projection_has_legacy_metadata(const Node *node) {
         "typed_element_wire_kind", "typed_map_value_kind",
         "typed_map_value_wire_kind", "typed_object_descriptor",
         "typed_map_value_descriptor", "typed_nested_overlay",
-        "typed_cmeta_runtime_supported"
+        "typed_cmeta_runtime_supported",
+        "cmeta_kind", "cmeta_schema_kind", "cmeta_data_id"
     };
     size_t i;
     if (node == NULL) return 0;
@@ -184,23 +184,22 @@ static int field_projection_has_legacy_metadata(const Node *node) {
  * element, causing the C/other-language projection to disagree with CMeta. */
 suite("compiler_cmeta_field_projection") {
     it("annotates real backend projections from the shared field semantic rule") {
-        static const struct { const char *type; const char *flag; cmeta_data_kind kind; const char *label; const char *cpp; const char *native; const char *id; } cases[] = {
-            {"int32", NULL, CMETA_DATA_SINT, "scalar", "std::int32_t", "cmeta_data_int32", "cmeta.int32.data"},
-            {"f32", "is_optional", CMETA_DATA_FLOAT, "scalar", "float", "cmeta_data_float", "cmeta.float.data"},
-            {"bool", NULL, CMETA_DATA_BOOL, "scalar", "bool", "salts_bool8_cmeta_data", "cmeta.bool.data"},
-            {"uuid", NULL, CMETA_DATA_CUSTOM, "custom", "salts_uuid_t", "salts_uuid_cmeta_data", "salts.uuid.data"},
-            {"string", NULL, CMETA_DATA_STRING, "string", "std::string", "salts_tstr_cmeta_data", NULL},
-            {"bytes", NULL, CMETA_DATA_BYTES, "bytes", "std::vector<std::uint8_t>", "stl_byte_buffer_cmeta_data", NULL},
-            {"list", "is_list", CMETA_DATA_SEQUENCE, "list", "std::vector<std::int32_t>", "Shape_value_vec_t_collection_data", "cmeta.data.sequence"},
-            {"set", "is_set", CMETA_DATA_SET, "set", "std::set<std::int32_t>", "Shape_value_set_t_collection_data", "cmeta.data.set"},
-            {"map", "is_map", CMETA_DATA_MAP, "map", "std::map<std::string, std::int32_t>", "Shape_value_map_t_map_data", "cmeta.data.map"}
+        static const struct { const char *type; const char *flag; const char *cpp; const char *native; } cases[] = {
+            {"int32", NULL, "std::int32_t", "cmeta_data_int32"},
+            {"f32", "is_optional", "float", "cmeta_data_float"},
+            {"bool", NULL, "bool", "salts_bool8_cmeta_data"},
+            {"uuid", NULL, "salts_uuid_t", "salts_uuid_cmeta_data"},
+            {"string", NULL, "std::string", "salts_tstr_cmeta_data"},
+            {"bytes", NULL, "std::vector<std::uint8_t>", "stl_byte_buffer_cmeta_data"},
+            {"list", "is_list", "std::vector<std::int32_t>", "Shape_value_vec_t_collection_data"},
+            {"set", "is_set", "std::set<std::int32_t>", "Shape_value_set_t_collection_data"},
+            {"map", "is_map", "std::map<std::string, std::int32_t>", "Shape_value_map_t_map_data"}
         };
         size_t i;
         for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
             Node *root = create_node_map("root"), *messages = create_node_list("messages");
             Node *record = create_node_map(NULL), *fields = create_node_list("fields");
             Node *field = create_node_map(NULL);
-            const char *kind;
             map_add(root, messages); list_add(messages, record);
             map_add(record, create_node_string("name", "Shape")); map_add(record, fields); list_add(fields, field);
             map_add(field, create_node_string("name", "value"));
@@ -212,14 +211,8 @@ suite("compiler_cmeta_field_projection") {
             if (cases[i].flag) map_add(field, create_node_string(cases[i].flag, "1"));
             annotate_language_types_from_tree(root);
             check_false(field_projection_has_legacy_metadata(root));
-            kind = field_projection_text(field, "cmeta_kind");
-            check_not_null(kind);
-            if (kind) check_equal(atoi(kind), cases[i].kind);
-            check_equal(field_projection_text(field, "cmeta_schema_kind"), cases[i].label);
             check_equal(field_projection_text(field, "cpp_type"), cases[i].cpp);
             check_equal(field_projection_text(field, "native_data_symbol"), cases[i].native);
-            if (cases[i].id) check_equal(field_projection_text(field, "cmeta_data_id"), cases[i].id);
-            else check_null(field_projection_text(field, "cmeta_data_id"));
             check_equal(field_projection_text(field, "type"), cases[i].type);
             if (strcmp(cases[i].type, "string") == 0) {
                 check_equal(field_projection_text(field, "native_data_symbol"),
@@ -238,7 +231,7 @@ suite("compiler_cmeta_field_projection") {
                             "stl_byte_buffer");
                 check_not_null(field_projection_child(field, "native_external"));
             }
-            if (cases[i].kind == CMETA_DATA_MAP) {
+            if (strcmp(cases[i].type, "map") == 0) {
                 check_equal(field_projection_text(field, "native_data_symbol"),
                             "Shape_value_map_t_map_data");
                 check_equal(field_projection_text(field, "native_type_symbol"),
@@ -286,7 +279,7 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(field_projection_text(
                                 field, "native_generic_arg1_type_ref"),
                             "&cmeta_type_int32");
-            } else if (cases[i].kind == CMETA_DATA_SEQUENCE) {
+            } else if (strcmp(cases[i].type, "list") == 0) {
                 check_equal(field_projection_text(field, "native_data_symbol"),
                             "Shape_value_vec_t_collection_data");
                 check_equal(field_projection_text(field, "native_type_symbol"),
@@ -310,7 +303,7 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(field_projection_text(
                                 field, "native_generic_arg0_type_ref"),
                             "&cmeta_type_int32");
-            } else if (cases[i].kind == CMETA_DATA_SET) {
+            } else if (strcmp(cases[i].type, "set") == 0) {
                 check_equal(field_projection_text(field, "native_data_symbol"),
                             "Shape_value_set_t_collection_data");
                 check_equal(field_projection_text(field, "native_type_symbol"),
@@ -488,12 +481,9 @@ suite("compiler_cmeta_field_projection") {
             Node *field = fields && fields->type == NODE_LIST && fields->data.list.count == 1u
                               ? fields->data.list.items[0]
                               : NULL;
-            const char *kind = field_projection_text(field, "cmeta_kind");
             info("schema=%s storage=%s", EXPECTED[i].schema,
                  EXPECTED[i].generated_storage);
             check_not_null(field);
-            check_not_null(kind);
-            if (kind) check_equal(atoi(kind), EXPECTED[i].semantic_kind);
             check_equal(field_projection_text(field, "cmeta_native_requirement"),
                         expected_native_requirement(EXPECTED[i].requirement));
             if (i < 3u)

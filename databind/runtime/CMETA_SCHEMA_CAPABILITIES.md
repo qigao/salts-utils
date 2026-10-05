@@ -156,6 +156,18 @@ default 和校验；FormatPlan 与 BinaryLayoutIR/provider 负责格式和线布
 
 ## Shared field semantics and public DataBind reflection
 
+编译器控制面直接消费 canonical 描述符及语义查询：标量语义相等使用
+`cmeta_data_desc_equal()`，泛型声明使用 `cmeta_field_desc.declared_type`，
+函数参数检查使用 `cmeta_function_param()` 与 FunctionAbi 查询。集合元素和
+map key/value 由 CMeta provider accessors 提供；不可变描述符字段仍可直接读取。
+不另建逐字段 getter 或 DataBind metadata 类型系统，UNKNOWN ownership 不授予执行能力。
+
+语言模板树只保留后端声明、provider 符号、schema overlay 与准入结果；
+不把 CMeta kind、schema label 或 DataDesc stable ID 复制为字符串事实源。
+公开 `DataBindSchemaField` 查询仍从共享 resolver 推导规范语义，并保持尺寸前缀协议。
+BindingPlan/MessagePlan 在构建时验证并保存执行计划；执行适配器、宿主布局准入和
+生成 Service 的 pointer/pointee 约定仍归 DataBind，不从指针拼写推断所有权。
+
 `schema_cmeta_field_resolve` is the Schema-library source for parsed field
 semantics. Ordinary scalar kinds are derived from `schema_cmeta_builtin_data`,
 not a second scalar alias/kind table. Named records/enums and parsed collection
