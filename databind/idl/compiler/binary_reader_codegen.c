@@ -69,13 +69,20 @@ static const char *binary_codegen_child_type(
     const databind_binary_field_layout *field) {
   const IdlDataDecl *record = idl_contract_find_data(contract, type_name);
   size_t i;
-  if (record == NULL || field->kind != DATABIND_BINARY_FIELD_FIXED ||
+  if (record == NULL ||
+      (field->kind != DATABIND_BINARY_FIELD_FIXED &&
+       field->kind != DATABIND_BINARY_FIELD_GROUP) ||
       field->scalar_kind != DATABIND_BINARY_SCALAR_NONE)
     return NULL;
   for (i = 0u; i < record->field_count; ++i) {
     const IdlField *member = &record->fields[i];
     const IdlDataDecl *child;
     if (strcmp(member->name, field->field_id) != 0) continue;
+    if (field->kind == DATABIND_BINARY_FIELD_GROUP) {
+      if (member->collection_kind != IDL_COLLECTION_GROUP) return NULL;
+      child = idl_contract_find_data(contract, member->inner_type);
+      return child != NULL && child->kind == IDL_DATA_GROUP ? child->name : NULL;
+    }
     if (member->collection_kind != IDL_COLLECTION_NONE || member->length != NULL)
       return NULL;
     child = idl_contract_find_data(contract, member->type_name);
@@ -90,7 +97,7 @@ static int binary_codegen_layout_admitted(
     const IdlContract *contract, const databind_binary_format_plan *format_plan,
     const databind_binary_type_layout *layout, size_t depth, int fixed_only) {
   size_t i;
-  int has_var_data = 0;
+  int has_tail = 0;
   if (layout == NULL || layout->type_id == NULL || depth >= BINARY_CODEGEN_MAX_DEPTH)
     return 0;
 
@@ -114,8 +121,21 @@ static int binary_codegen_layout_admitted(
       } else if (field->scalar_bits == 0u ||
           field->wire_extent != (size_t)(field->scalar_bits / 8u))
         return 0;
+    } else if (field->kind == DATABIND_BINARY_FIELD_GROUP) {
+      databind_binary_type_layout child = {0};
+      int admitted = !fixed_only && child_type != NULL &&
+          field->tail_prefix_bytes == 2u * sizeof(uint16_t) &&
+          databind_binary_layout_build(contract, format_plan, child_type,
+                                       &child, NULL) == DATABIND_BINARY_LAYOUT_OK &&
+          child.fixed_block_size == field->child_fixed_block_size &&
+          child.fixed_block_size != 0u && child.fixed_block_size <= UINT16_MAX &&
+          child.wire_big_endian == layout->wire_big_endian &&
+          binary_codegen_layout_admitted(contract, format_plan, &child, depth + 2u, 1);
+      databind_binary_layout_destroy(&child);
+      if (!admitted) return 0;
+      has_tail = 1;
     } else if (field->kind == DATABIND_BINARY_FIELD_VAR_DATA) {
-      has_var_data = 1;
+      has_tail = 1;
       if (fixed_only || (field->scalar_kind != DATABIND_BINARY_SCALAR_STRING &&
            field->scalar_kind != DATABIND_BINARY_SCALAR_BYTES) ||
           field->scalar_bits != 0u ||
@@ -125,7 +145,7 @@ static int binary_codegen_layout_admitted(
       return 0;
     }
   }
-  return layout->fixed_block_size != 0u || has_var_data;
+  return layout->fixed_block_size != 0u || has_tail;
 }
 
 int databind_compiler_binary_reader_admit(
@@ -165,6 +185,8 @@ static const char *binary_codegen_representation(
     return "DATA_BIND_BINARY_REP_FIXED";
   if (field->kind == DATABIND_BINARY_FIELD_VAR_DATA)
     return "DATA_BIND_BINARY_REP_VAR_DATA";
+  if (field->kind == DATABIND_BINARY_FIELD_GROUP)
+    return "DATA_BIND_BINARY_REP_GROUP";
   return NULL;
 }
 
@@ -257,7 +279,9 @@ int databind_compiler_binary_reader_emit(
       const char *representation = binary_codegen_representation(field);
       const char *child_type = binary_codegen_child_type(contract, type_name, field);
       unsigned flags = binary_codegen_flags(field);
-      if (child_type != NULL) token = "CSERDE_MAP_BEGIN";
+      if (child_type != NULL)
+        token = field->kind == DATABIND_BINARY_FIELD_GROUP
+                    ? "CSERDE_ARRAY_BEGIN" : "CSERDE_MAP_BEGIN";
 
       if (token == NULL || representation == NULL ||
           fputs("  {sizeof(DataBindBinaryFieldPlan), ", file) == EOF ||
@@ -293,7 +317,7 @@ int databind_compiler_binary_reader_emit(
       if (fprintf(
               file, "%s, %zuu},\n",
               representation,
-              field->kind == DATABIND_BINARY_FIELD_VAR_DATA
+              field->kind != DATABIND_BINARY_FIELD_FIXED
                   ? field->tail_prefix_bytes
                   : 0u) < 0)
         goto cleanup;

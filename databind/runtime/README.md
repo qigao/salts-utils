@@ -12,21 +12,32 @@ typed runtime、公开头文件与宏已物理删除，没有转发兼容入口�
 JSON/YAML/XML/CSV 原生路径使用 FormatPlan 和 MessagePlan/native，动态值转换使用
 canonical value reader。BinaryLayoutIR 经验证后生成 BinaryLayoutPlan provider；
 Binary reader/writer 通过 CSerde 与 MessagePlan/native 交互，不持有宿主字段偏移
-或生命周期。当前准入 FIXED scalar、递归固定 record 与 VAR_DATA string/bytes。
+或生命周期。当前准入 FIXED scalar、递归固定 record、GROUP 与 VAR_DATA string/bytes。
 子 record 的范围必须与其固定块完全一致，拥有独立状态位并输出嵌套 MAP token；
 child plan 表以 size-versioned tail 追加到 layout plan，field struct 步长保持不变。
 旧尺寸 scalar/VAR_DATA 计划继续有效。新增 record provider 需要支持此 tail 的运行时；
-旧运行时仍拒绝 MAP 字段。不支持的 group、固定 bytes/数组与含可变 tail 的子 record
+旧运行时仍拒绝 MAP/GROUP 字段。不支持的固定 bytes/数组与含可变 tail 的子 record
 在修改对象或发布输出前返回明确错误。
 
 Binary lease 由单线程持有，借用不可变 plan graph 与输入 wire 到 close，
-record 栈硬上限为 `DATA_BIND_BINARY_LAYOUT_MAX_DEPTH`（32，含根 MAP）；
+容器栈硬上限为 `DATA_BIND_BINARY_LAYOUT_MAX_DEPTH`（32，含根 MAP）；
 `max_depth` 可进一步缩小，0 选用该上限。reader 在发布前验证整个布局图与
-active child 状态；writer 在消费 token 时限制 active MAP 深度。writer 子块复用
+active child 状态；writer 在消费 token 时限制 active MAP/ARRAY 深度。writer 子块复用
 整条消息的 buffer，不为 child 分配 lease 或 buffer；token/容量错误阻止 sink 调用，
 sink 失败明确返回错误，生成的有界 sink 保留完整旧输出。
 布局校验复杂度为各次 record 访问的字段数平方之和（含重叠检查）；
 读写遍历使用固定有界栈，保留既有按序字段查找与 positional VAR_DATA 规则。
+
+GROUP 使用 canonical typed CSTL Vec 保存具备完整生命周期的 record，元素复制与释放
+由 CMeta provider 负责，optional/nullable 状态归 MessagePlan 所有；该局部状态不授予
+整个 record 的容器 move/copy 权限。Binary GROUP entry 必须完全固定，header 为
+两个 `uint16`（stride、count），条数与单条固定块均不超过 `UINT16_MAX`。
+读取允许 stride 大于已知固定块并跳过扩展字节；ABSENT 消耗完整 positional entry，
+NULL 要求 count 为零，所有状态仍要求有效 stride。reader 在发布前检查乘法、截断及
+active entry 状态，随后借用 wire 输出 ARRAY/MAP token；writer 在同一 buffer 中追加
+entry，仅在 ARRAY_END 提交 count，在整条消息完成后发布一次。GROUP 占一个 ARRAY
+和一个 entry MAP 深度，额外预检成本为所有 active entry 的固定字段访问总数。
+可变 entry 的 Vec 所有权可用于文本绑定，Binary 在修改对象或发布输出前拒绝。
 
 通用组合生命周期测试使用 CMeta Struct 与 CSTL 的受管 Vec、Set、Map provider，
 覆盖嵌套 owner 的独立复制、释放、重复 clear、状态位复位和解码中途超限后的清理。

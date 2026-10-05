@@ -789,6 +789,12 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     tbe_compiler_set_string(field, "typed_needs_vector", "1");
     tbe_compiler_set_string(field, "typed_is_group", "1");
     tbe_compiler_set_string(field, "typed_declaration", declaration);
+    (void)databind_compiler_annotate_named_native_semantic(
+        root, field, group_type, "native_element_type_symbol",
+        "native_element_data_symbol");
+    (void)databind_compiler_annotate_named_native_refs(
+        root, field, group_type, "native_element_type_ref",
+        "native_element_data_ref");
     return;
   }
   if (semantic && semantic->kind == CMETA_DATA_BYTES) {
@@ -1313,10 +1319,12 @@ static int tbe_compiler_cmeta_classify_record(
          (tbe_compiler_has_child(field, "is_optional") ||
           tbe_compiler_has_child(field, "is_nullable"))) ||
         (is_set && !tbe_compiler_has_child(field, "native_cstl_set")) ||
-        tbe_compiler_has_child(field, "is_group_field"))
+        (tbe_compiler_has_child(field, "is_group_field") &&
+         !tbe_compiler_has_child(field, "native_cstl_sequence")))
       goto unsupported;
 
-    if (tbe_compiler_has_child(field, "is_list")) {
+    if (tbe_compiler_has_child(field, "is_list") ||
+        tbe_compiler_has_child(field, "is_group_field")) {
       const char *inner_type =
           tbe_compiler_string_value(field, "inner_type");
       const char *requirement =
@@ -1862,9 +1870,11 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
           }
         }
 
-        if (!tbe_compiler_has_child(field, "is_list") ||
-            tbe_compiler_has_child(field, "is_optional") ||
-            tbe_compiler_has_child(field, "is_nullable") ||
+        if ((!tbe_compiler_has_child(field, "is_list") &&
+             !tbe_compiler_has_child(field, "is_group_field")) ||
+            (!tbe_compiler_has_child(field, "is_group_field") &&
+             (tbe_compiler_has_child(field, "is_optional") ||
+              tbe_compiler_has_child(field, "is_nullable"))) ||
             tbe_compiler_has_child(field, "native_cstl_sequence"))
           continue;
 
@@ -2127,11 +2137,16 @@ static void tbe_compiler_annotate_binary_reader_messages(
     Node *record = messages->data.list.items[i];
     const char *name = tbe_compiler_string_value(record, "name");
     tbe_compiler_remove_children(record, "binary_reader_supported");
+    tbe_compiler_remove_children(record, "binary_overlay_supported");
     if (name != NULL &&
         databind_compiler_binary_reader_admit(
-            contract, binary_format, name) == 0)
+            contract, binary_format, name) == 0) {
       (void)tbe_compiler_set_string(
           record, "binary_reader_supported", "1");
+      if (tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle") &&
+          tbe_compiler_has_child(record, "native_cstl_storage"))
+        (void)tbe_compiler_set_string(record, "binary_overlay_supported", "1");
+    }
   }
 }
 
@@ -2271,12 +2286,17 @@ static int tbe_compiler_has_local_overlay_lifecycle(Node *root, Node *record) {
           strcmp(native_data, "salts_tstr_cmeta_data") == 0) ||
          (strcmp(type, "bytes") == 0 &&
           strcmp(native_data, "stl_byte_buffer_cmeta_data") == 0));
+    const int owned_group =
+        tbe_compiler_has_child(field, "is_group_field") &&
+        tbe_compiler_has_child(field, "native_cstl_sequence") &&
+        native_data != NULL &&
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL;
     if (type == NULL ||
         tbe_compiler_has_child(field, "is_collection") ||
-        tbe_compiler_has_child(field, "is_group_field") ||
+        (tbe_compiler_has_child(field, "is_group_field") && !owned_group) ||
         (tbe_compiler_scalar_projection(type) == NULL && !owned_storage &&
          !fixed_bytes && !nested_lifecycle && !nested_overlay && !native_enum &&
-         !native_uuid)) {
+         !native_uuid && !owned_group)) {
       return 0;
     }
     if (tbe_compiler_has_child(field, "is_optional") ||
@@ -2315,8 +2335,7 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
 static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {
   const char *type = tbe_compiler_string_value(field, "type");
   Node *record;
-  if (type == NULL || tbe_compiler_has_child(field, "is_group_field"))
-    return 0;
+  if (type == NULL) return 0;
   /* Storage promotion has already proved the exact element/key/value traits.
    * A semantic overlay may keep the parent graph unpublished without taking
    * away the individual container provider's owning lifecycle. */
@@ -2325,7 +2344,8 @@ static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {
       tbe_compiler_has_child(field, "native_cstl_map"))
     return tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
            tbe_compiler_string_value(field, "native_type_symbol") != NULL;
-  if (tbe_compiler_has_child(field, "is_collection")) return 0;
+  if (tbe_compiler_has_child(field, "is_collection") ||
+      tbe_compiler_has_child(field, "is_group_field")) return 0;
   record = tbe_compiler_find_any_record(root, type);
   if (record != NULL)
     return tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||

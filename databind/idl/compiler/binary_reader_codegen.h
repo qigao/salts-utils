@@ -11,8 +11,10 @@ extern "C" {
 #endif
 
 /*
- * Return zero only when BinaryLayoutIR can be lowered to the current flat
- * fixed-scalar runtime reader plan.
+ * Return zero only when BinaryLayoutIR lowers to canonical fixed scalar/record,
+ * fixed-entry GROUP and VAR_DATA plans within the bounded container depth.
+ * GROUP entry extents must fit the uint16 wire stride; variable child entries
+ * and fixed bytes/arrays are rejected before emission.
  */
 int databind_compiler_binary_reader_admit(
     const IdlContract *contract,

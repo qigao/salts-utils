@@ -19,8 +19,10 @@ extern "C" {
  * on finish. This preserves all-or-nothing publication for bounded generated
  * sinks such as *_to_bin_into.
  * Fixed child MAPs write into their exact ranges in the same buffer, without
- * additional allocations. Access is single-threaded; all reachable plan storage
- * stays immutable and alive until close. max_depth bounds active record MAPs
+ * additional allocations. GROUP appends at most UINT16_MAX fixed entries to the
+ * same buffer with checked growth and commits its count on ARRAY_END.
+ * Access is single-threaded; all reachable plan storage
+ * stays immutable and alive until close. max_depth bounds active MAPs/ARRAYs
  * including the root; zero selects MAX_DEPTH. Schema/token errors and depth
  * exhaustion prevent publication, and close releases the complete writer lease.
  */

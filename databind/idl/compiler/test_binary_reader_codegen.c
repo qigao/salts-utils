@@ -60,6 +60,42 @@ static char *emit_to_text(
 }
 
 spec("DataBind compiler Binary reader codegen") {
+  it("lowers fixed GROUP entry plans and rejects variable entries without output") {
+    Node *root = NULL;
+    IdlContract *contract = NULL;
+    char *schema_data = NULL;
+    databind_binary_format_plan format_plan = {0};
+    tbe_error_t format_error;
+    FILE *file = tmpfile();
+    char *text = NULL;
+    check_equal(databind_compiler_parse_contract_file(
+                    BINARY_GROUP_SCHEMA, &root, &contract, &schema_data), 0);
+    check_not_null(contract);
+    check_not_null(file);
+    if (contract != NULL && file != NULL) {
+      tbe_error_init(&format_error);
+      check(databind_binary_format_plan_build(contract, root, &format_plan, &format_error));
+      check_equal(databind_compiler_binary_reader_admit(contract, &format_plan, "GroupWire"), 0);
+      check_equal(databind_compiler_binary_reader_admit(contract, &format_plan, "NullableGroupWire"), 0);
+      text = emit_to_text(contract, &format_plan, "GroupWire", "group_fixture");
+      check_not_null(text);
+      if (text != NULL) {
+        check_contains(text, "\"entries\", CSERDE_ARRAY_BEGIN, 0u, 0u, 0u");
+        check_contains(text, "DATA_BIND_BINARY_REP_GROUP, 4u");
+        check_contains(text, "&group_fixture_binary_WireEntry_plan");
+      }
+      check_equal(databind_compiler_binary_reader_admit(contract, &format_plan, "OwnedGroup"), -1);
+      check_equal(databind_compiler_binary_reader_emit(file, contract, &format_plan, "OwnedGroup", "owned_fixture"), -1);
+      check_equal(ftell(file), 0L);
+    }
+    free(text);
+    if (file != NULL) fclose(file);
+    databind_binary_format_plan_destroy(&format_plan);
+    idl_contract_destroy(contract);
+    node_free(root);
+    free(schema_data);
+  }
+
   it("lowers canonical scalar BinaryLayoutIR to one type-level provider") {
     Node *root = NULL;
     IdlContract *contract = NULL;

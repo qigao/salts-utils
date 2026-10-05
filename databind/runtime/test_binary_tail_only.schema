@@ -33,3 +33,42 @@ message NestedWire {
     WireRecord record;
     string text;
 }
+
+group WireEntry {
+    uint16 code;
+    uint32 amount;
+}
+
+[id(4)]
+message GroupWire {
+    uint16 id;
+    group<WireEntry> entries;
+    string text;
+}
+
+[id(5)]
+message NullableGroupWire {
+    optional nullable group<WireEntry> entries;
+    string text;
+}
+
+group OwnedEntry {
+    string label;
+}
+
+[id(6)]
+message OwnedGroup {
+    group<OwnedEntry> entries;
+}
+
+group NestedEntry {
+    WirePoint point;
+    uint16 code;
+}
+
+[id(7)]
+message MultiGroupWire {
+    group<NestedEntry> first;
+    group<WireEntry> second;
+    string text;
+}

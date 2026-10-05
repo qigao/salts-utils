@@ -205,4 +205,228 @@ spec("generated and generic canonical Binary wire parity") {
     NestedWire_clear(&decoded);
     data_bind_free(codec);
   }
+
+  it("owns GROUP entries and matches generic allocated and bounded Binary wire") {
+    static const char json[] =
+        "{\"id\":513,\"entries\":[{\"code\":4660,\"amount\":4294967295},"
+        "{\"code\":22136,\"amount\":1}],\"text\":\"cat\"}";
+    static const uint8_t expected[] = {
+        1u, 2u, 6u, 0u, 2u, 0u,
+        0x34u, 0x12u, 0xffu, 0xffu, 0xffu, 0xffu,
+        0x78u, 0x56u, 1u, 0u, 0u, 0u, 3u, 0u, 0u, 0u, 'c', 'a', 't'};
+    static const uint8_t extended[] = {
+        1u, 2u, 8u, 0u, 2u, 0u,
+        0x34u, 0x12u, 0xffu, 0xffu, 0xffu, 0xffu, 0xa5u, 0xa5u,
+        0x78u, 0x56u, 1u, 0u, 0u, 0u, 0xa5u, 0xa5u,
+        3u, 0u, 0u, 0u, 'c', 'a', 't'};
+    DataBind *codec = NULL;
+    DataBindObject *dynamic = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    GroupWire_t source, decoded, copied;
+    uint8_t *wire = NULL, *dynamic_wire = NULL;
+    uint8_t bounded[sizeof(expected) + 1u];
+    size_t len = 0u, dynamic_len = 0u, bounded_len = 0u;
+    const WireEntry_t *old_entries;
+    tstr old_text;
+    GroupWire_init(&source);
+    GroupWire_init(&decoded);
+    GroupWire_init(&copied);
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(data_bind_object_from_json(codec, "GroupWire", json, sizeof(json) - 1u,
+                &dynamic, &error), DATA_BIND_OK);
+    check_equal(GroupWire_from_json(codec, &source, json, sizeof(json) - 1u, &error), DATA_BIND_OK);
+    check_equal(GroupWire_entries_vec_t_size(&source.entries), (size_t)2u);
+    check_equal(data_bind_object_serialize_bin(codec, dynamic, &dynamic_wire, &dynamic_len, &error), DATA_BIND_OK);
+    check_equal(GroupWire_to_bin(codec, &source, &wire, &len, &error), DATA_BIND_OK);
+    check_equal(len, sizeof(expected));
+    check_equal(dynamic_len, len);
+    check_equal(wire, expected, sizeof(expected));
+    check_equal(dynamic_wire, expected, sizeof(expected));
+    check_equal(GroupWire_to_bin_into(codec, &source, bounded, sizeof(bounded), &bounded_len, &error), DATA_BIND_OK);
+    check_equal(bounded_len, sizeof(expected));
+    check_equal(bounded, expected, sizeof(expected));
+    check_equal(GroupWire_from_bin(codec, &decoded, extended, sizeof(extended), &error), DATA_BIND_OK);
+    check_equal(GroupWire_entries_vec_t_size(&decoded.entries), (size_t)2u);
+    old_entries = GroupWire_entries_vec_t_at_const(&decoded.entries, 0u);
+    old_text = decoded.text;
+    check_equal(GroupWire_from_bin(codec, &decoded, expected, sizeof(expected) - 1u, &error), DATA_BIND_ERR_PARSE);
+    check_true(GroupWire_entries_vec_t_at_const(&decoded.entries, 0u) == old_entries);
+    check_true(decoded.text == old_text);
+    check_equal(GroupWire_from_bin(codec, &decoded, bounded, sizeof(expected) + 1u, &error), DATA_BIND_ERR_PARSE);
+    check_true(decoded.text == old_text);
+    check_equal(cmeta_data_value_copy(&GroupWire_CMETA_DATA, &copied, &decoded), CMETA_OK);
+    check_true(GroupWire_entries_vec_t_at_const(&copied.entries, 0u) != old_entries);
+    memset(bounded, 0xa5, sizeof(bounded));
+    check_equal(GroupWire_to_bin_into(codec, &source, bounded, sizeof(expected) - 1u,
+                &bounded_len, &error), DATA_BIND_ERR_LIMIT);
+    check_equal(bounded_len, (size_t)0u);
+    for (size_t i = 0u; i < sizeof(bounded); ++i) check_equal(bounded[i], (uint8_t)0xa5u);
+    data_bind_object_free(dynamic);
+    data_bind_binary_free(dynamic_wire);
+    data_bind_binary_free(wire);
+    GroupWire_clear(&source);
+    GroupWire_clear(&decoded);
+    check_equal(copied.id, UINT16_C(513));
+    check_equal(copied.text, BINARY_TEXT);
+    old_entries = GroupWire_entries_vec_t_at_const(&copied.entries, 0u);
+    check_not_null(old_entries);
+    if (old_entries != NULL) {
+      check_equal(old_entries->code, UINT16_C(0x1234));
+      check_equal(old_entries->amount, UINT32_MAX);
+    }
+    GroupWire_clear(&copied);
+    GroupWire_clear(&copied);
+    check_equal(GroupWire_entries_vec_t_size(&copied.entries), (size_t)0u);
+    data_bind_free(codec);
+  }
+
+  it("aligns consecutive GROUPs with nested records before a variable tail") {
+    static const char json[] =
+        "{\"first\":[{\"point\":{\"delta\":-32768,\"number\":18446744073709551615},\"code\":4660}],"
+        "\"second\":[{\"code\":2,\"amount\":1}],\"text\":\"cat\"}";
+    static const uint8_t expected[] = {
+        12u, 0u, 1u, 0u, 0u, 0x80u,
+        0xffu, 0xffu, 0xffu, 0xffu, 0xffu, 0xffu, 0xffu, 0xffu, 0x34u, 0x12u,
+        6u, 0u, 1u, 0u, 2u, 0u, 1u, 0u, 0u, 0u, 3u, 0u, 0u, 0u, 'c', 'a', 't'};
+    DataBind *codec = NULL;
+    DataBindObject *dynamic = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    MultiGroupWire_t source, decoded;
+    uint8_t *wire = NULL, *generic = NULL;
+    size_t len = 0u, generic_len = 0u;
+    MultiGroupWire_init(&source);
+    MultiGroupWire_init(&decoded);
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(MultiGroupWire_from_json(codec, &source, json, sizeof(json) - 1u, &error), DATA_BIND_OK);
+    check_equal(data_bind_object_from_json(codec, "MultiGroupWire", json, sizeof(json) - 1u, &dynamic, &error), DATA_BIND_OK);
+    check_equal(data_bind_object_serialize_bin(codec, dynamic, &generic, &generic_len, &error), DATA_BIND_OK);
+    check_equal(MultiGroupWire_to_bin(codec, &source, &wire, &len, &error), DATA_BIND_OK);
+    check_equal(len, sizeof(expected));
+    check_equal(generic_len, len);
+    check_equal(wire, expected, sizeof(expected));
+    check_equal(generic, expected, sizeof(expected));
+    check_equal(MultiGroupWire_from_bin(codec, &decoded, wire, len, &error), DATA_BIND_OK);
+    data_bind_object_free(dynamic);
+    data_bind_binary_free(generic);
+    data_bind_binary_free(wire);
+    MultiGroupWire_clear(&source);
+    check_equal(MultiGroupWire_first_vec_t_size(&decoded.first), (size_t)1u);
+    check_equal(MultiGroupWire_second_vec_t_size(&decoded.second), (size_t)1u);
+    {
+      const NestedEntry_t *entry = MultiGroupWire_first_vec_t_at_const(&decoded.first, 0u);
+      check_not_null(entry);
+      if (entry != NULL) {
+        check_equal(entry->point.delta, INT16_MIN);
+        check_equal(entry->point.number, UINT64_MAX);
+      }
+    }
+    check_equal(decoded.text, BINARY_TEXT);
+    MultiGroupWire_clear(&decoded);
+    data_bind_free(codec);
+  }
+
+  it("keeps ABSENT NULL and empty GROUP distinct and rolls back invalid headers") {
+    static const char *const json[] = {
+        "{\"text\":\"cat\"}", "{\"entries\":null,\"text\":\"cat\"}",
+        "{\"entries\":[],\"text\":\"cat\"}"};
+    static const uint8_t absent_nonempty[] = {
+        0u, 0u, 6u, 0u, 1u, 0u, 1u, 0u, 2u, 0u, 0u, 0u,
+        3u, 0u, 0u, 0u, 'c', 'a', 't'};
+    uint8_t expected[] = {0u, 0u, 6u, 0u, 0u, 0u, 3u, 0u, 0u, 0u, 'c', 'a', 't'};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    NullableGroupWire_t source, decoded;
+    NullableGroupWire_init(&source);
+    NullableGroupWire_init(&decoded);
+    check_null(NullableGroupWire_CMETA_TYPE.traits);
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    for (size_t state = 0u; state < sizeof(json) / sizeof(json[0]); ++state) {
+      uint8_t *wire = NULL;
+      size_t len = 0u;
+      expected[0] = state != 0u;
+      expected[1] = state == 1u;
+      check_equal(NullableGroupWire_from_json(codec, &source, json[state], strlen(json[state]), &error), DATA_BIND_OK);
+      check_equal(NullableGroupWire_to_bin(codec, &source, &wire, &len, &error), DATA_BIND_OK);
+      check_equal(len, sizeof(expected));
+      check_equal(wire, expected, sizeof(expected));
+      check_equal(NullableGroupWire_from_bin(codec, &decoded, expected, sizeof(expected), &error), DATA_BIND_OK);
+      check_equal(decoded._presence[0], expected[0]);
+      check_equal(decoded._nulls[0], expected[1]);
+      check_equal(NullableGroupWire_entries_vec_t_size(&decoded.entries), (size_t)0u);
+      data_bind_binary_free(wire);
+    }
+    check_equal(NullableGroupWire_from_bin(codec, &decoded, absent_nonempty, sizeof(absent_nonempty), &error), DATA_BIND_OK);
+    check_equal(decoded._presence[0], (uint8_t)0u);
+    check_equal(decoded.text, BINARY_TEXT);
+    {
+      static const char value[] = "{\"entries\":[{\"code\":1,\"amount\":2}],\"text\":\"cat\"}";
+      uint8_t nonempty[sizeof(absent_nonempty)];
+      uint8_t *wire = NULL;
+      size_t len = 0u;
+      memcpy(nonempty, absent_nonempty, sizeof(nonempty));
+      nonempty[0] = 1u;
+      check_equal(NullableGroupWire_from_json(codec, &source, value, sizeof(value) - 1u, &error), DATA_BIND_OK);
+      check_equal(NullableGroupWire_to_bin(codec, &source, &wire, &len, &error), DATA_BIND_OK);
+      check_equal(len, sizeof(nonempty));
+      check_equal(wire, nonempty, sizeof(nonempty));
+      check_equal(NullableGroupWire_from_bin(codec, &decoded, wire, len, &error), DATA_BIND_OK);
+      check_equal(NullableGroupWire_entries_vec_t_size(&decoded.entries), (size_t)1u);
+      data_bind_binary_free(wire);
+    }
+    {
+      tstr old_text = decoded.text;
+      expected[0] = 1u;
+      expected[1] = 1u;
+      expected[4] = 1u;
+      check_equal(NullableGroupWire_from_bin(codec, &decoded, expected, sizeof(expected), &error), DATA_BIND_ERR_PARSE);
+      check_true(decoded.text == old_text);
+      expected[4] = 0u;
+      expected[2] = 5u;
+      check_equal(NullableGroupWire_from_bin(codec, &decoded, expected, sizeof(expected), &error), DATA_BIND_ERR_PARSE);
+      check_true(decoded.text == old_text);
+    }
+    NullableGroupWire_clear(&source);
+    NullableGroupWire_clear(&decoded);
+    check_equal(NullableGroupWire_entries_vec_t_size(&decoded.entries), (size_t)0u);
+    NullableGroupWire_clear(&decoded);
+    check_equal(decoded._presence[0], (uint8_t)0u);
+    check_equal(decoded._nulls[0], (uint8_t)0u);
+    data_bind_free(codec);
+  }
+
+  it("copies and releases GROUP element owners while rejecting variable Binary entries") {
+    static const char json[] = "{\"entries\":[{\"label\":\"cat\"},{\"label\":\"raw\"}]}";
+    static const char invalid[] = "{\"entries\":[{\"label\":\"replacement\"},{\"label\":{}}]}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    OwnedGroup_t source, copied;
+    uint8_t *wire = NULL;
+    size_t len = 0u;
+    const OwnedEntry_t *old_entry;
+    OwnedGroup_init(&source);
+    OwnedGroup_init(&copied);
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(OwnedGroup_from_json(codec, &source, json, sizeof(json) - 1u, &error), DATA_BIND_OK);
+    check_equal(OwnedGroup_entries_vec_t_size(&source.entries), (size_t)2u);
+    old_entry = OwnedGroup_entries_vec_t_at_const(&source.entries, 0u);
+    check_not_null(old_entry);
+    check(OwnedGroup_from_json(codec, &source, invalid, sizeof(invalid) - 1u, &error) != DATA_BIND_OK);
+    check_true(OwnedGroup_entries_vec_t_at_const(&source.entries, 0u) == old_entry);
+    check_equal(cmeta_data_value_copy(&OwnedGroup_CMETA_DATA, &copied, &source), CMETA_OK);
+    if (old_entry != NULL) {
+      const OwnedEntry_t *copy = OwnedGroup_entries_vec_t_at_const(&copied.entries, 0u);
+      check_not_null(copy);
+      if (copy != NULL) check_true(copy->label != old_entry->label);
+    }
+    check_equal(OwnedGroup_to_bin(codec, &source, &wire, &len, &error), DATA_BIND_ERR_SCHEMA);
+    check_null(wire);
+    check_equal(len, (size_t)0u);
+    OwnedGroup_clear(&source);
+    old_entry = OwnedGroup_entries_vec_t_at_const(&copied.entries, 0u);
+    check_not_null(old_entry);
+    if (old_entry != NULL) check_equal(old_entry->label, BINARY_TEXT);
+    OwnedGroup_clear(&copied);
+    OwnedGroup_clear(&copied);
+    data_bind_free(codec);
+  }
 }

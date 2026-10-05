@@ -1,4 +1,5 @@
 #include "generated_owned_buffers.h"
+#include "binary_tail_only_generated.h"
 #include "data_bind_native_binding.h"
 
 #include <cstring>
@@ -18,8 +19,40 @@ static_assert(std::is_standard_layout_v<NativeHeaderMap_headers_map_t>,
               "generated record Map declaration must remain C-compatible");
 static_assert(sizeof(NativeHeaderMap_headers_map_t) > sizeof(map_t),
               "record Map storage must not preserve raw map_t ABI");
+static_assert(std::is_standard_layout_v<GroupWire_entries_vec_t> &&
+              std::is_standard_layout_v<NullableGroupWire_t>,
+              "generated GROUP storage and state must remain C-compatible");
+static_assert(sizeof(GroupWire_entries_vec_t) > sizeof(vec_t),
+              "GROUP must own canonical element semantics");
+
+static bool group_owner_contract() {
+  static const char json[] =
+      "{\"id\":513,\"entries\":[{\"code\":4660,\"amount\":1}],\"text\":\"cat\"}";
+  static const uint8_t expected[] = {
+      1u, 2u, 6u, 0u, 1u, 0u, 0x34u, 0x12u, 1u, 0u, 0u, 0u,
+      3u, 0u, 0u, 0u, 'c', 'a', 't'};
+  DataBind *codec = nullptr;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  bool valid = false;
+  if (Tail_codec_create(&codec, &error) != DATA_BIND_OK) return false;
+  {
+    Tail_typed::GroupWireOwner source, copy;
+    uint8_t wire[sizeof(expected)]{};
+    size_t len = 0u;
+    valid = source.from_json(codec, json, sizeof(json) - 1u, &error) == DATA_BIND_OK &&
+            cmeta_data_value_copy(&GroupWire_CMETA_DATA, copy.get(), source.get()) == CMETA_OK &&
+            vec_at_const(&copy->entries.raw, 0u) != vec_at_const(&source->entries.raw, 0u) &&
+            copy->text != source->text &&
+            GroupWire_to_bin_into(codec, copy.get(), wire, sizeof(wire), &len, &error) == DATA_BIND_OK &&
+            len == sizeof(expected) && std::memcmp(wire, expected, sizeof(expected)) == 0;
+  }
+  data_bind_free(codec);
+  return valid;
+}
 
 int main() {
+  enum { GROUP_CONTRACT_FAILURE = 11 };
+  if (!group_owner_contract()) return GROUP_CONTRACT_FAILURE;
   NativeHeaderPolicy_t value{};
   NativeHeaderMap_t map_owner{};
   const DataBindMessageNativeArtifact *artifact =

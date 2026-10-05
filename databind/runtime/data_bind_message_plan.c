@@ -370,9 +370,10 @@ static int message_logical_sequence_matches_native(
 
   if (codec == NULL || schema_field == NULL || native_data == NULL ||
       depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH ||
-      !schema_field->is_collection ||
+      (!schema_field->is_collection && !schema_field->is_group) ||
       schema_field->collection_kind == NULL ||
-      strcmp(schema_field->collection_kind, "list") != 0 ||
+      strcmp(schema_field->collection_kind,
+             schema_field->is_group ? "group" : "list") != 0 ||
       schema_field->inner_type == NULL ||
       schema_field->inner_type[0] == '\0' ||
       !schema_field->has_cmeta_kind ||
@@ -392,6 +393,7 @@ static int message_logical_sequence_matches_native(
     return 0;
 
   if (element->kind != CMETA_DATA_STRUCT) {
+    if (schema_field->is_group) return 0;
     builtin = schema_cmeta_builtin_data(schema_field->inner_type);
     return builtin != NULL && cmeta_data_desc_equal(builtin, element);
   }
@@ -547,9 +549,10 @@ static int message_schema_field_matches_native(
       depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH)
     return 0;
 
-  if (schema_field->is_collection) {
+  if (schema_field->is_collection || schema_field->is_group) {
     if (schema_field->collection_kind != NULL &&
-        strcmp(schema_field->collection_kind, "list") == 0)
+        (strcmp(schema_field->collection_kind, "list") == 0 ||
+         schema_field->is_group))
       return message_logical_sequence_matches_native(
           codec, schema_field, native_data, depth);
     if (schema_field->collection_kind != NULL &&

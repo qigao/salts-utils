@@ -705,8 +705,10 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     SOURCES test_generated_sequence_public_cpp.cpp
             "${DATABIND_OWNED_BUFFER_HEADER}"
             "${DATABIND_OWNED_BUFFER_SOURCE}"
+            "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.h"
+            "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.c"
     LIBS ${DATA_BIND_TEST_LIBS}
-    INCLUDES "${DATABIND_OWNED_BUFFER_DIR}"
+    INCLUDES "${DATABIND_OWNED_BUFFER_DIR}" "${BINARY_TAIL_ONLY_DIR}"
     FOLDER "databind/runtime/tests")
   set_target_properties(test_databind_generated_sequence_public_cpp PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
