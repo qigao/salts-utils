@@ -113,6 +113,14 @@ buffers/containers, uint64-wide enums, cycles and depth 33 remain unavailable.
 `test_tbe_typed_cmeta_graph` 覆盖 33 层标量、34 层受管资源、状态位、重复
 clear 和复用；公开 C/C++ fixture 保持相同 ABI，格式转换仍按原准入规则拒绝。
 
+已发布图内的嵌套 optional/nullable 记录也按依赖闭包准入本地生命周期：
+父记录可以复用子记录已验证的结构 provider，即使父记录自身没有状态位。
+`test_optional_scalar_lifecycle` 覆盖两层外部记录持有带状态的字符串和
+字节缓冲区、ABSENT/NULL 下释放、重复 clear、复用以及格式拒绝后保留所有权。
+对象及其全部成员仍由调用方独占，clear 使借用失效；先释放成员，再复位
+所有嵌套状态位。该准入不授予容器 move 能力，不改变公开布局、格式、
+资源容量或分配策略。未具备完整元素生命周期的容器继续保留原有拒绝边界。
+
 The stricter `typed_cmeta_runtime_supported` classifier emits a public
 `Record_typed_descriptor` only when the entire transitive graph contains
 non-optional fixed-width integers/floats, adapter-backed non-flags enums, and nested
