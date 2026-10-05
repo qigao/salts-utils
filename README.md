@@ -161,6 +161,51 @@ cmake --build --preset install-linux-release-user
 
 Windows uses the corresponding `win-*` presets. The `databind/` subtree is a component, not an alternative standalone configure/install entry point.
 
+### Installed consumer validation
+
+The existing package consumers have their own configure/build/test presets and
+vcpkg manifests. On Windows, run these commands from a Visual Studio developer
+PowerShell at the repository root:
+
+```powershell
+cmake --preset win-sdk-package-user
+cmake --build --preset install-win-sdk-package-user
+$env:SALTS_UTILS_ROOT = "$PWD/stage/sdk/windows-x64"
+Push-Location databind/idl/compiler/package_config/databind_target
+cmake --preset win-release-user
+cmake --build --preset win-release-user
+ctest --preset win-release-user
+Pop-Location
+```
+
+The eight CTest entries exercise installed generated messages, services and
+FlowMQ projections. The Binary consumer checks literal wire bytes, bounded
+output and decoded byte-buffer ownership after input reuse and codec destruction.
+The Producer, Plugin and public CMeta consumer projects also expose these presets.
+CI uses `ci-native-release-user` with explicit `SALTS_ROOT`, `SALTS_UTILS_ROOT`,
+`QIGAO_TARGET_TRIPLET` and `QIGAO_VCPKG_TOOLCHAIN_FILE` inputs. Each consumer selects
+that exact SDK; a cached package directory cannot select another installation.
+
+### Cross-compilation host tools
+
+Cross-compilation requires an existing host Lemon executable through
+`SALTS_UTILS_HOST_LEMON_EXECUTABLE`. The build fails immediately when that input is
+missing; it does not create a separate host build or select another compiler.
+Before configuring a local Windows-hosted Android preset, prepare the host tool:
+
+```sh
+cmake --preset win-release-user
+cmake --build --preset win-release-user --target lemon
+cmake --preset android-arm64-v8a-release-win
+cmake --build --preset android-arm64-v8a-release-win
+```
+
+The Android Windows presets reference `build/Msvc-Release/bin/lemon.exe` explicitly.
+Android/iOS CI builds `lemon` and `salts_idlc` with `ci-host-release-user` before
+configuring the target SDK and passes the completed host compiler to installed
+consumer generation. This removes the former implicit host-build path; callers
+of other cross-compilation profiles must supply the completed host executable.
+
 ## Design rules
 
 - Reuse Salts semantic/runtime contracts instead of introducing parallel ones.

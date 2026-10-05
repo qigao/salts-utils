@@ -1,7 +1,14 @@
 cmake_minimum_required(VERSION 3.27)
 project(DataBindTargetInstalledConsumer LANGUAGES C CXX)
 
-find_package(SaltsUtils CONFIG REQUIRED)
+enable_testing()
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+if(NOT IS_DIRECTORY "$ENV{SALTS_UTILS_ROOT}")
+  message(FATAL_ERROR "SALTS_UTILS_ROOT must name the installed SaltsUtils SDK")
+endif()
+unset(SaltsUtils_DIR CACHE)
+find_package(SaltsUtils CONFIG REQUIRED PATHS "$ENV{SALTS_UTILS_ROOT}"
+             NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 if(NOT TARGET Salts::DataBind)
   message(FATAL_ERROR "missing canonical Salts::DataBind")
@@ -89,6 +96,7 @@ add_dependencies(installed_socket_consumer
   installed_socket_idl_codegen)
 add_dependencies(installed_socket
   installed_socket_consumer)
+add_test(NAME installed_socket_consumer COMMAND installed_socket_consumer)
 add_dependencies(installed_image
   installed_socket)
 
@@ -129,31 +137,23 @@ target_include_directories(installed_message_consumer_cpp PRIVATE
 add_dependencies(installed_message_consumer_cpp
   installed_message_idl_codegen)
 
-if(WIN32)
-  add_custom_target(installed_message_verify
-    COMMAND "${CMAKE_COMMAND}" -E env
-      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_message_consumer>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
-      $<TARGET_FILE:installed_message_consumer>
-    COMMAND "${CMAKE_COMMAND}" -E env
-      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_message_consumer_cpp>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
-      $<TARGET_FILE:installed_message_consumer_cpp>
-    DEPENDS
-      installed_message_consumer
-      installed_message_consumer_cpp
-    VERBATIM)
-else()
-  add_custom_target(installed_message_verify
-    COMMAND $<TARGET_FILE:installed_message_consumer>
-    COMMAND $<TARGET_FILE:installed_message_consumer_cpp>
-    DEPENDS
-      installed_message_consumer
-      installed_message_consumer_cpp
-    VERBATIM)
-endif()
+add_executable(installed_binary_consumer binary_consumer.c)
+target_compile_features(installed_binary_consumer PRIVATE c_std_11)
+target_link_libraries(installed_binary_consumer PRIVATE
+  Salts::TinyTest Salts::DataBind ${installed_message_NATIVE_TARGET})
+target_include_directories(installed_binary_consumer PRIVATE
+  "${installed_message_GENERATED_DIR}")
+add_dependencies(installed_binary_consumer installed_message_idl_codegen)
+add_dependencies(installed_message installed_binary_consumer)
+add_test(NAME installed_binary_consumer COMMAND installed_binary_consumer)
+set_tests_properties(installed_binary_consumer PROPERTIES
+  LABELS "databind;binary;installed;ownership")
+
+add_test(NAME installed_message_consumer COMMAND installed_message_consumer)
+add_test(NAME installed_message_consumer_cpp COMMAND installed_message_consumer_cpp)
 add_dependencies(installed_message
   installed_message_consumer
-  installed_message_consumer_cpp
-  installed_message_verify)
+  installed_message_consumer_cpp)
 add_dependencies(installed_image
   installed_message)
 
@@ -207,33 +207,12 @@ target_include_directories(installed_service_consumer_cpp PRIVATE
 add_dependencies(installed_service_consumer_cpp
   installed_service_idl_codegen)
 
-if(WIN32)
-  # Run installed consumers with the runtime DLL closure derived from their
-  # imported target graph. Do not rely on the invoking workflow to pre-seed
-  # PATH; this package-config project must be independently executable.
-  add_custom_target(installed_service_verify
-    COMMAND "${CMAKE_COMMAND}" -E env
-      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_service_consumer>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
-      $<TARGET_FILE:installed_service_consumer>
-    COMMAND "${CMAKE_COMMAND}" -E env
-      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_service_consumer_cpp>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
-      $<TARGET_FILE:installed_service_consumer_cpp>
-    DEPENDS
-      installed_service_consumer
-      installed_service_consumer_cpp
-    VERBATIM)
-else()
-  add_custom_target(installed_service_verify
-    COMMAND $<TARGET_FILE:installed_service_consumer>
-    COMMAND $<TARGET_FILE:installed_service_consumer_cpp>
-    DEPENDS
-      installed_service_consumer
-      installed_service_consumer_cpp
-    VERBATIM)
-endif()
+add_dependencies(installed_service
+  installed_service_consumer installed_service_consumer_cpp)
+add_test(NAME installed_service_consumer COMMAND installed_service_consumer)
+add_test(NAME installed_service_consumer_cpp COMMAND installed_service_consumer_cpp)
 add_dependencies(installed_image
-  installed_service
-  installed_service_verify)
+  installed_service)
 
 
 salts_idl_target(
@@ -287,6 +266,7 @@ add_dependencies(installed_flowmq_consumer
   installed_flow_idl_codegen)
 add_dependencies(installed_flow
   installed_flowmq_consumer)
+add_test(NAME installed_flowmq_consumer COMMAND installed_flowmq_consumer)
 add_dependencies(installed_image
   installed_flow)
 
@@ -310,22 +290,9 @@ target_include_directories(installed_flowmq_service_consumer PRIVATE
 add_dependencies(installed_flowmq_service_consumer
   installed_flow_service_idl_codegen)
 
-if(WIN32)
-  add_custom_target(installed_flow_service_verify
-    COMMAND "${CMAKE_COMMAND}" -E env
-      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_flowmq_service_consumer>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
-      $<TARGET_FILE:installed_flowmq_service_consumer>
-    DEPENDS installed_flowmq_service_consumer
-    VERBATIM)
-else()
-  add_custom_target(installed_flow_service_verify
-    COMMAND $<TARGET_FILE:installed_flowmq_service_consumer>
-    DEPENDS installed_flowmq_service_consumer
-    VERBATIM)
-endif()
+add_test(NAME installed_flowmq_service_consumer COMMAND installed_flowmq_service_consumer)
 
 add_dependencies(installed_flow_service
-  installed_flowmq_service_consumer
-  installed_flow_service_verify)
+  installed_flowmq_service_consumer)
 add_dependencies(installed_image
   installed_flow_service)

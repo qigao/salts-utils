@@ -1,4 +1,4 @@
-schema InstalledMessage [version(1)];
+schema InstalledMessage [version(1), byte_order(little)];
 
 message Config {
   @Min(1) @Max(65535) uint32 port;
@@ -13,4 +13,9 @@ message Header {
 message HeaderPolicy {
   uint32 id;
   list<Header> headers;
+}
+
+message BinaryOwned {
+  uint32 id;
+  bytes payload;
 }

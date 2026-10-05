@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(databind_wasm_execution_consumer C)
 
-if(NOT DEFINED SALTS_UTILS_ROOT OR SALTS_UTILS_ROOT STREQUAL "")
-  message(FATAL_ERROR "SALTS_UTILS_ROOT is required")
+enable_testing()
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+if(NOT IS_DIRECTORY "$ENV{SALTS_UTILS_ROOT}")
+  message(FATAL_ERROR "SALTS_UTILS_ROOT must name the installed SaltsUtils SDK")
 endif()
 if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
   message(FATAL_ERROR "SALTS_ROOT is required")
@@ -11,13 +13,15 @@ if(NOT DEFINED ENV{TURBOWASM_ROOT} OR "$ENV{TURBOWASM_ROOT}" STREQUAL "")
   message(FATAL_ERROR "TURBOWASM_ROOT is required")
 endif()
 
-file(TO_CMAKE_PATH "${SALTS_UTILS_ROOT}" _salts_utils_root)
+file(TO_CMAKE_PATH "$ENV{SALTS_UTILS_ROOT}" _salts_utils_root)
 file(TO_CMAKE_PATH "$ENV{TURBOWASM_ROOT}" _turbowasm_root)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+unset(SaltsUtils_DIR CACHE)
 find_package(SaltsUtils CONFIG REQUIRED
   PATHS "${_salts_utils_root}"
   NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+unset(TurboWasm_DIR CACHE)
 find_package(TurboWasm CONFIG REQUIRED
   PATHS "${_turbowasm_root}"
   NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
@@ -60,3 +64,4 @@ target_link_libraries(wasm_execution_consumer PRIVATE
   wasm_execution_fixture_wasm)
 add_dependencies(wasm_execution_consumer
   wasm_execution_fixture_plugin)
+add_test(NAME wasm_execution_consumer COMMAND wasm_execution_consumer)
