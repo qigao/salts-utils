@@ -1115,24 +1115,69 @@ static DataBindStatus native_enum_bits_from_token(
                      "Expected integer or string token for canonical enum");
 }
 
+static DataBindStatus native_decode_admit(
+    NativeDecode *decode, size_t depth, const char *path);
+
+/* Flags OR is associative: nested arrays need only a depth counter, not a
+ * recursive call or temporary native values. Domain lookup is O(items *
+ * domain entries), scratch space is O(1); all nodes use the decoder budgets. */
+static DataBindStatus native_enum_bits_from_reader(
+    NativeDecode *decode, const cmeta_data_desc *data,
+    const cserde_token *token, size_t depth, uint64_t *out, const char *path) {
+  const cmeta_data_enum_bits_ops *ops = cmeta_data_enum_bits_ops_of(data);
+  uint64_t accumulated = 0u;
+  size_t nesting = 1u;
+
+  if (token->kind != CSERDE_ARRAY_BEGIN || ops == NULL || ops->domain == NULL ||
+      ops->domain->kind != CMETA_ENUM_FLAGS)
+    return native_enum_bits_from_token(decode->diagnostic, data, token, out, path);
+
+  while (nesting != 0u) {
+    cserde_token item;
+    uint64_t bits;
+    DataBindStatus status = native_next(decode, &item, path);
+    if (status != DATA_BIND_OK) return status;
+    if (item.kind == CSERDE_ARRAY_END) {
+      --nesting;
+      continue;
+    }
+    /* Root depth was admitted before this call. Subtraction keeps the child
+     * depth checked even when the caller configured SIZE_MAX as its limit. */
+    if (nesting > decode->options->max_depth - depth)
+      return native_fail(decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+                         "Flags array depth exceeds configured limit");
+    status = native_decode_admit(decode, depth + nesting, path);
+    if (status != DATA_BIND_OK) return status;
+    if (item.kind == CSERDE_ARRAY_BEGIN) {
+      ++nesting;
+      continue;
+    }
+    status = native_enum_bits_from_token(decode->diagnostic, data, &item, &bits, path);
+    if (status != DATA_BIND_OK) return status;
+    accumulated |= bits;
+  }
+  *out = accumulated;
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus native_assign_enum(
-    DataBindNativeDiagnostic *diagnostic, const cmeta_data_desc *data,
-    const cserde_token *token, void *storage, const char *path) {
+    NativeDecode *decode, const cmeta_data_desc *data,
+    const cserde_token *token, void *storage, size_t depth, const char *path) {
   uint64_t bits = 0u;
   cmeta_status status;
   DataBindStatus converted =
-      native_enum_bits_from_token(diagnostic, data, token, &bits, path);
+      native_enum_bits_from_reader(decode, data, token, depth, &bits, path);
   if (converted != DATA_BIND_OK) return converted;
 
   status = cmeta_data_enum_assign_bits(data, storage, bits);
   if (status == CMETA_OK) return DATA_BIND_OK;
   if (status == CMETA_INVALID_ARGUMENT)
-    return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
                        "Enum value is not declared by the canonical domain");
   if (status == CMETA_CALLBACK_ERROR)
-    return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
                        "Enum provider failed canonical assignment");
-  return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+  return native_fail(decode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
                      "Enum provider rejected canonical assignment");
 }
 
@@ -1593,7 +1638,7 @@ static DataBindStatus native_decode_value_admitted(
     return native_assign_scalar(decode->diagnostic, data, token, storage, path);
 
   if (data->kind == CMETA_DATA_ENUM)
-    return native_assign_enum(decode->diagnostic, data, token, storage, path);
+    return native_assign_enum(decode, data, token, storage, depth, path);
 
   if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
     cmeta_status buffer_status;
