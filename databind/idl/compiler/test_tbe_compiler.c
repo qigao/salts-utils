@@ -2766,8 +2766,7 @@ spec("tbe_compiler") {
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(FlagStorage,");
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(WideEnumStorage,");
-        check(strstr(
-            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(Sample,") == NULL);
+        check_contains(source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(Sample,");
         check_contains(source, "LoginMessage_binary_LoginMessage_databind_binary_provider(void)");
         check_contains(source, "FlagStorage_binary_FlagStorage_databind_binary_provider(void)");
         check_contains(source, "WideEnumStorage_binary_WideEnumStorage_databind_binary_provider(void)");
@@ -2781,7 +2780,7 @@ spec("tbe_compiler") {
         check_contains(
             source,
             "DATA_BIND_FORMAT_PROVIDER_WITH_SELECTION_AND_WRITER_INIT(");
-        check(strstr(source, "Sample_binary_Sample_databind_binary_provider(void)") == NULL);
+        check_contains(source, "Sample_binary_Sample_databind_binary_provider(void)");
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(Sample,");
         check_contains(

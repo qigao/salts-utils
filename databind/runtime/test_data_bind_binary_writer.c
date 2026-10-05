@@ -1,4 +1,5 @@
 #include "data_bind_binary_writer.h"
+#include "data_bind_binary_reader.h"
 #include "data_bind_binary_wire.h"
 #include "tinytest.h"
 
@@ -177,7 +178,137 @@ static void write_required_scalars(cserde_writer *writer) {
   check_true(write_token(writer, floating(1.5)));
 }
 
-spec("DataBind flat Binary canonical writer") {
+spec("DataBind canonical Binary writer") {
+  it("preserves parent and child state independently in both wire orders") {
+    for (int big_endian = 0; big_endian <= 1; ++big_endian) {
+      for (unsigned state = 0u; state < 3u; ++state) {
+        DataBindBinaryLayoutPlan child = scalar_plan(big_endian);
+        const DataBindBinaryLayoutPlan *children[] = {&child};
+        const DataBindBinaryFieldPlan fields[] = {
+            {sizeof(DataBindBinaryFieldPlan), "child", CSERDE_MAP_BEGIN,
+             0u, 2u, 15u, 0u, 0u,
+             DATA_BIND_BINARY_FIELD_OPTIONAL | DATA_BIND_BINARY_FIELD_NULLABLE,
+             DATA_BIND_BINARY_REP_FIXED, 0u}};
+        DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+        unsigned char wire[17] = {0};
+        unsigned char expected[sizeof(wire)] = {0};
+        BinarySink sink = {wire, sizeof(wire), 0u, 0u};
+        cserde_writer *writer = NULL;
+        cserde_reader *reader = NULL;
+        void *owner = NULL;
+        void *reader_owner = NULL;
+        DataBindError error = DATA_BIND_ERROR_INIT;
+        plan.type_name = "NestedStates";
+        plan.wire_big_endian = big_endian;
+        plan.fixed_block_size = sizeof(wire);
+        plan.presence_size = 1u;
+        plan.null_offset = 1u;
+        plan.null_size = 1u;
+        plan.fields = fields;
+        plan.field_count = 1u;
+        plan.child_plans = children;
+        check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink, 2u,
+                    &writer, &owner, &error), DATA_BIND_OK);
+        check_true(write_token(writer, map_begin()));
+        if (state != 0u) {
+          expected[0] = 1u;
+          check_true(write_token(writer, key("child")));
+          if (state == 1u) {
+            expected[1] = 1u;
+            check_true(write_token(writer, null_value()));
+          } else {
+            expected[2] = 1u;
+            expected[3] = 1u;
+            data_bind_binary_wire_write_u8(expected + 4u, big_endian, 1u);
+            data_bind_binary_wire_write_i16(expected + 5u, big_endian, -1234);
+            data_bind_binary_wire_write_u32(expected + 7u, big_endian, UINT32_C(0x11223344));
+            data_bind_binary_wire_write_f32(expected + 11u, big_endian, 1.5f);
+            check_true(write_token(writer, map_begin()));
+            write_required_scalars(writer);
+            check_true(write_token(writer, key("maybe")));
+            check_true(write_token(writer, null_value()));
+            check_true(write_token(writer, map_end()));
+          }
+        }
+        check_true(write_token(writer, map_end()));
+        check_equal(sink.calls, 0u);
+        check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_OK);
+        check_equal(sink.calls, 1u);
+        check_equal(sink.size, sizeof(expected));
+        check_equal(wire, expected, sizeof(expected));
+        check_equal(data_bind_binary_reader_open(&plan, wire, sizeof(wire), 2u,
+                    &reader, &reader_owner, &error), DATA_BIND_OK);
+        {
+          cserde_token token = {0};
+          size_t maps = 0u;
+          size_t nulls = 0u;
+          size_t integers = 0u;
+          cserde_status status;
+          while ((status = cserde_reader_next(reader, &token)) == CSERDE_OK) {
+            if (token.kind == CSERDE_MAP_BEGIN) ++maps;
+            if (token.kind == CSERDE_NULL) ++nulls;
+            if (token.kind == CSERDE_SINT) {
+              ++integers;
+              check_equal(token.value.sint, (int64_t)-1234);
+            }
+          }
+          check_equal(status, CSERDE_DONE);
+          check_equal(maps, state == 2u ? (size_t)2u : (size_t)1u);
+          check_equal(nulls, state == 0u ? (size_t)0u : (size_t)1u);
+          check_equal(integers, state == 2u ? (size_t)1u : (size_t)0u);
+        }
+        data_bind_binary_reader_close(reader, reader_owner);
+        /* Child state is unobservable while its parent is ABSENT or NULL. */
+        wire[2] = 0u;
+        wire[3] = 1u;
+        reader = NULL;
+        reader_owner = NULL;
+        check_equal(data_bind_binary_reader_open(&plan, wire, sizeof(wire), 2u,
+                    &reader, &reader_owner, &error),
+                    state == 2u ? DATA_BIND_ERR_PARSE : DATA_BIND_OK);
+        data_bind_binary_reader_close(reader, reader_owner);
+      }
+    }
+  }
+
+  it("rejects incomplete child records and depth exhaustion before sink publication") {
+    DataBindBinaryLayoutPlan child = scalar_plan(0);
+    const DataBindBinaryLayoutPlan *children[] = {&child};
+    const DataBindBinaryFieldPlan fields[] = {
+        {sizeof(DataBindBinaryFieldPlan), "child", CSERDE_MAP_BEGIN,
+         0u, 0u, 15u, 0u, 0u, 0u, DATA_BIND_BINARY_REP_FIXED, 0u}};
+    DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+    unsigned char wire[15] = {0};
+    BinarySink sink = {wire, sizeof(wire), 0u, 0u};
+    plan.type_name = "RequiredChild";
+    plan.fixed_block_size = sizeof(wire);
+    plan.fields = fields;
+    plan.field_count = 1u;
+    plan.child_plans = children;
+    for (size_t max_depth = 1u; max_depth <= 2u; ++max_depth) {
+      cserde_writer *writer = NULL;
+      void *owner = NULL;
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      cserde_token token = map_begin();
+      check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink, max_depth,
+                  &writer, &owner, &error), DATA_BIND_OK);
+      check_true(write_token(writer, map_begin()));
+      check_true(write_token(writer, key("child")));
+      if (max_depth == 1u) {
+        check_equal(cserde_writer_write(writer, &token), CSERDE_LIMIT_EXCEEDED);
+      } else {
+        check_true(write_token(writer, token));
+        check_true(write_token(writer, key("flag")));
+        check_true(write_token(writer, boolean(1)));
+        token = map_end();
+        check_equal(cserde_writer_write(writer, &token), CSERDE_UNSUPPORTED);
+      }
+      check_equal(data_bind_binary_writer_close(writer, owner, &error),
+                  max_depth == 1u ? DATA_BIND_ERR_LIMIT : DATA_BIND_ERR_SCHEMA);
+      check_equal(sink.calls, 0u);
+      check_equal(sink.size, (size_t)0u);
+    }
+  }
   it("writes VAR_DATA without a fixed block in both wire orders") {
     int big_endian;
     for (big_endian = 0; big_endian <= 1; ++big_endian) {

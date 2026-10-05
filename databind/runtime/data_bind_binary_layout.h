@@ -13,6 +13,7 @@ extern "C" {
 #endif
 
 enum { DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION = 1u };
+enum { DATA_BIND_BINARY_LAYOUT_MAX_DEPTH = 32u };
 
 enum {
   DATA_BIND_BINARY_FIELD_OPTIONAL = 1u << 0,
@@ -28,7 +29,8 @@ typedef enum DataBindBinaryRepresentation {
  * One field in an immutable generated Binary wire-layout plan.
  *
  * token_kind is the canonical CSerde semantic token class, not a second
- * DataBind/Binary type enum. FIXED fields admit BOOL/SINT/UINT/FLOAT.
+ * DataBind/Binary type enum. FIXED fields admit BOOL/SINT/UINT/FLOAT, or
+ * MAP_BEGIN with an exact fixed child plan.
  * VAR_DATA fields admit STRING/BYTES and use a uint32 tail length prefix.
  * Enum/flags FIXED fields use SINT/UINT according to canonical underlying
  * CMeta storage semantics.
@@ -78,17 +80,29 @@ typedef struct DataBindBinaryLayoutPlan {
   size_t null_size;
   const DataBindBinaryFieldPlan *fields;
   size_t field_count;
+
+  /* Append-only record lowering tail. If non-NULL, this borrowed table has
+   * field_count entries: MAP_BEGIN fields have an immutable fixed child plan;
+   * other entries are NULL. Keeping field records unchanged preserves their
+   * array stride for released scalar/VAR_DATA providers. */
+  const struct DataBindBinaryLayoutPlan *const *child_plans;
 } DataBindBinaryLayoutPlan;
+
+#define DATA_BIND_BINARY_LAYOUT_PLAN_V1_SIZE \
+  offsetof(DataBindBinaryLayoutPlan, child_plans)
 
 #define DATA_BIND_BINARY_LAYOUT_PLAN_INIT \
   { sizeof(DataBindBinaryLayoutPlan), DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION, \
-    NULL, 0, 0u, 0u, 0u, 0u, 0u, NULL, 0u }
+    NULL, 0, 0u, 0u, 0u, 0u, 0u, NULL, 0u, NULL }
 
 /*
- * Validate one generated flat Binary wire-layout plan.
+ * Validate one generated Binary wire-layout plan.
  *
- * FIXED scalar plus VAR_DATA STRING/BYTES fields are admitted. GROUP and
- * unsupported representations remain fail-closed.
+ * FIXED scalar/record plus VAR_DATA STRING/BYTES fields are admitted. Child
+ * records contain only FIXED fields and use their own state bitmaps. Cycles,
+ * depth beyond MAX_DEPTH, GROUP and unsupported shapes fail closed. The plan,
+ * field array and reachable child tables must remain immutable and alive until
+ * the reader/writer closes; validation does not retain them.
  */
 DATA_BIND_API DataBindStatus data_bind_binary_layout_plan_validate(
     const DataBindBinaryLayoutPlan *plan,

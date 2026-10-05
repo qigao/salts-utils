@@ -7,7 +7,11 @@
 enum { GENERATED_WIRE_CAPACITY = 128, GENERATED_WIRE_SENTINEL = 0xa5 };
 
 spec("generated canonical Binary admission") {
-  it("fails closed for generated nested Binary layouts without canonical admission") {
+  it("round-trips the original nested Header wire through the canonical provider") {
+    static const uint8_t expected[] = {
+        3u, 0x78u, 0x56u, 0x34u, 0x12u,
+        0xefu, 0xcdu, 0xabu, 0x89u, 0x67u, 0x45u, 0x23u, 0x01u,
+        73u, 0u, 0u, 0u};
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     Heartbeat_t source = {0};
@@ -28,19 +32,31 @@ spec("generated canonical Binary admission") {
     memset(wire, GENERATED_WIRE_SENTINEL, sizeof(wire));
     memset(expected_wire, GENERATED_WIRE_SENTINEL, sizeof(expected_wire));
     if (codec != NULL) {
-      status = Heartbeat_from_bin(codec, &decoded, wire, sizeof(wire), &error);
-      check_equal(status, DATA_BIND_ERR_SCHEMA);
-      check_equal(decoded.header.seq_num, source.header.seq_num);
-      length = sizeof(wire);
       status = Heartbeat_to_bin(codec, &source, &allocated_wire, &length, &error);
-      check_equal(status, DATA_BIND_ERR_SCHEMA);
-      check_null(allocated_wire);
-      check_equal(length, (size_t)0u);
+      check_equal(status, DATA_BIND_OK);
+      check_equal(length, sizeof(expected));
+      check_equal(allocated_wire, expected, sizeof(expected));
       status = Heartbeat_to_bin_into(codec, &source, wire, sizeof(wire), &length, &error);
-      check_equal(status, DATA_BIND_ERR_SCHEMA);
+      check_equal(status, DATA_BIND_OK);
+      check_equal(length, sizeof(expected));
+      check_equal(wire, expected, sizeof(expected));
+      status = Heartbeat_from_bin(codec, &decoded, wire, length, &error);
+      check_equal(status, DATA_BIND_OK);
+      check_equal(decoded.header.type, source.header.type);
+      check_equal(decoded.header.seq_num, source.header.seq_num);
+      check_equal(decoded.header.timestamp, source.header.timestamp);
+      check_equal(decoded.load, source.load);
+      check_equal(Heartbeat_from_bin(codec, &decoded, wire, length - 1u, &error),
+                  DATA_BIND_ERR_PARSE);
+      check_equal(decoded.header.seq_num, source.header.seq_num);
+      check_equal(decoded.load, source.load);
+      memset(wire, GENERATED_WIRE_SENTINEL, sizeof(wire));
+      status = Heartbeat_to_bin_into(codec, &source, wire, sizeof(expected) - 1u, &length, &error);
+      check_equal(status, DATA_BIND_ERR_LIMIT);
       check_equal(length, (size_t)0u);
       check_equal(memcmp(wire, expected_wire, sizeof(wire)), 0);
     }
+    data_bind_binary_free(allocated_wire);
     Heartbeat_clear(&decoded);
     Heartbeat_clear(&source);
     data_bind_free(codec);

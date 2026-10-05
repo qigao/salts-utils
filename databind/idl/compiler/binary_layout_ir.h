@@ -28,10 +28,10 @@ typedef enum databind_binary_field_layout_kind {
  * Binary-private scalar token representation derived from canonical Contract /
  * CMeta semantics. This is not a second public DataBind type system.
  *
- * NONE means the field is not a scalar admitted by the first generic Binary
- * reader slice (for example an inline fixed record/bytes value). Its existing
- * Binary wire layout remains valid and may be consumed by a later specialized
- * lowering.
+ * NONE means the field is not a scalar (for example an inline fixed record or
+ * bytes value). Fixed record lowering resolves the canonical Contract child
+ * and validates its independent BinaryLayoutIR; unsupported structural forms
+ * remain fail-closed without guessing scalar semantics from their extent.
  */
 typedef enum databind_binary_scalar_kind {
   DATABIND_BINARY_SCALAR_NONE = 0,

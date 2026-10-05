@@ -15,6 +15,14 @@ typedef enum DataBindBinaryWriterStage {
   DATA_BIND_BINARY_WRITER_DONE
 } DataBindBinaryWriterStage;
 
+typedef struct DataBindBinaryWriterFrame {
+  const DataBindBinaryLayoutPlan *plan;
+  size_t base_offset;
+  size_t next_field;
+  size_t current_field;
+  DataBindBinaryWriterStage stage;
+} DataBindBinaryWriterFrame;
+
 typedef struct DataBindBinaryWriterOwner {
   cserde_writer writer;
   const DataBindBinaryLayoutPlan *plan;
@@ -23,13 +31,19 @@ typedef struct DataBindBinaryWriterOwner {
   unsigned char *buffer;
   size_t length;
   size_t capacity;
-  size_t next_field;
-  size_t current_field;
-  DataBindBinaryWriterStage stage;
+  size_t depth;
+  size_t max_depth;
+  DataBindBinaryWriterFrame frames[DATA_BIND_BINARY_LAYOUT_MAX_DEPTH];
   int committed;
   int finish_attempted;
   cserde_status finish_status;
 } DataBindBinaryWriterOwner;
+
+static DataBindBinaryWriterFrame *binary_writer_frame(
+    DataBindBinaryWriterOwner *owner) {
+  return owner != NULL && owner->depth != 0u
+             ? &owner->frames[owner->depth - 1u] : NULL;
+}
 
 static void binary_writer_error_clear(DataBindError *error) {
   size_t size;
@@ -92,7 +106,8 @@ static int binary_writer_nullable(
 static void binary_writer_state_bit(
     DataBindBinaryWriterOwner *owner,
     size_t offset, unsigned bit, int value) {
-  unsigned char *state = owner->buffer + offset + bit / 8u;
+  unsigned char *state = owner->buffer + binary_writer_frame(owner)->base_offset +
+                         offset + bit / 8u;
   const unsigned char mask = (unsigned char)(1u << (bit % 8u));
   if (value)
     *state |= mask;
@@ -145,12 +160,13 @@ static int binary_writer_append_var_data(
 static int binary_writer_skip_field(
     DataBindBinaryWriterOwner *owner,
     const DataBindBinaryFieldPlan *field) {
+  DataBindBinaryWriterFrame *frame = binary_writer_frame(owner);
   if (!binary_writer_optional(field)) return 0;
   binary_writer_state_bit(
-      owner, owner->plan->presence_offset, field->optional_bit, 0);
+      owner, frame->plan->presence_offset, field->optional_bit, 0);
   if (binary_writer_nullable(field))
     binary_writer_state_bit(
-        owner, owner->plan->null_offset, field->nullable_bit, 0);
+        owner, frame->plan->null_offset, field->nullable_bit, 0);
   if (binary_writer_representation(field) == DATA_BIND_BINARY_REP_VAR_DATA)
     return binary_writer_append_var_data(owner, NULL, 0u);
   return 1;
@@ -174,14 +190,15 @@ static int binary_writer_find_field(
     DataBindBinaryWriterOwner *owner,
     const cserde_token *token,
     size_t *out_index) {
+  DataBindBinaryWriterFrame *frame = binary_writer_frame(owner);
   size_t i;
-  if (owner == NULL || token == NULL || out_index == NULL) return 0;
-  for (i = owner->next_field; i < owner->plan->field_count; ++i) {
-    const DataBindBinaryFieldPlan *field = &owner->plan->fields[i];
+  if (frame == NULL || token == NULL || out_index == NULL) return 0;
+  for (i = frame->next_field; i < frame->plan->field_count; ++i) {
+    const DataBindBinaryFieldPlan *field = &frame->plan->fields[i];
     if (binary_writer_key_equal(token, field->field_name)) {
       size_t skipped;
-      for (skipped = owner->next_field; skipped < i; ++skipped)
-        if (!binary_writer_skip_field(owner, &owner->plan->fields[skipped]))
+      for (skipped = frame->next_field; skipped < i; ++skipped)
+        if (!binary_writer_skip_field(owner, &frame->plan->fields[skipped]))
           return 0;
       *out_index = i;
       return 1;
@@ -215,20 +232,21 @@ static int binary_writer_fixed_value(
     DataBindBinaryWriterOwner *owner,
     const DataBindBinaryFieldPlan *field,
     const cserde_token *token) {
+  DataBindBinaryWriterFrame *frame = binary_writer_frame(owner);
   unsigned char *destination;
-  if (owner == NULL || field == NULL || token == NULL ||
-      field->wire_offset > owner->plan->fixed_block_size ||
+  if (frame == NULL || field == NULL || token == NULL ||
+      field->wire_offset > frame->plan->fixed_block_size ||
       field->wire_extent >
-          owner->plan->fixed_block_size - field->wire_offset)
+          frame->plan->fixed_block_size - field->wire_offset)
     return 0;
-  destination = owner->buffer + field->wire_offset;
+  destination = owner->buffer + frame->base_offset + field->wire_offset;
 
   if (token->kind != field->token_kind) return 0;
   switch (field->token_kind) {
   case CSERDE_BOOL:
     if (field->scalar_bits != 8u) return 0;
     data_bind_binary_wire_write_u8(
-        destination, owner->plan->wire_big_endian,
+        destination, frame->plan->wire_big_endian,
         token->value.boolean ? 1u : 0u);
     return 1;
   case CSERDE_SINT:
@@ -238,22 +256,22 @@ static int binary_writer_fixed_value(
     switch (field->scalar_bits) {
     case 8u:
       data_bind_binary_wire_write_i8(
-          destination, owner->plan->wire_big_endian,
+          destination, frame->plan->wire_big_endian,
           (int8_t)token->value.sint);
       return 1;
     case 16u:
       data_bind_binary_wire_write_i16(
-          destination, owner->plan->wire_big_endian,
+          destination, frame->plan->wire_big_endian,
           (int16_t)token->value.sint);
       return 1;
     case 32u:
       data_bind_binary_wire_write_i32(
-          destination, owner->plan->wire_big_endian,
+          destination, frame->plan->wire_big_endian,
           (int32_t)token->value.sint);
       return 1;
     case 64u:
       data_bind_binary_wire_write_i64(
-          destination, owner->plan->wire_big_endian,
+          destination, frame->plan->wire_big_endian,
           token->value.sint);
       return 1;
     default:
@@ -266,22 +284,22 @@ static int binary_writer_fixed_value(
     switch (field->scalar_bits) {
     case 8u:
       data_bind_binary_wire_write_u8(
-          destination, owner->plan->wire_big_endian,
+          destination, frame->plan->wire_big_endian,
           (uint8_t)token->value.uint);
       return 1;
     case 16u:
       data_bind_binary_wire_write_u16(
-          destination, owner->plan->wire_big_endian,
+          destination, frame->plan->wire_big_endian,
           (uint16_t)token->value.uint);
       return 1;
     case 32u:
       data_bind_binary_wire_write_u32(
-          destination, owner->plan->wire_big_endian,
+          destination, frame->plan->wire_big_endian,
           (uint32_t)token->value.uint);
       return 1;
     case 64u:
       data_bind_binary_wire_write_u64(
-          destination, owner->plan->wire_big_endian,
+          destination, frame->plan->wire_big_endian,
           token->value.uint);
       return 1;
     default:
@@ -294,12 +312,12 @@ static int binary_writer_fixed_value(
           token->value.floating < -(double)FLT_MAX)
         return 0;
       data_bind_binary_wire_write_f32(
-          destination, owner->plan->wire_big_endian, value);
+          destination, frame->plan->wire_big_endian, value);
       return 1;
     }
     if (field->scalar_bits == 64u) {
       data_bind_binary_wire_write_f64(
-          destination, owner->plan->wire_big_endian,
+          destination, frame->plan->wire_big_endian,
           token->value.floating);
       return 1;
     }
@@ -312,33 +330,45 @@ static int binary_writer_fixed_value(
 static cserde_status binary_writer_value(
     DataBindBinaryWriterOwner *owner,
     const cserde_token *token) {
+  DataBindBinaryWriterFrame *frame = binary_writer_frame(owner);
   const DataBindBinaryFieldPlan *field;
   const size_t representation =
-      owner != NULL && owner->current_field < owner->plan->field_count
+      frame != NULL && frame->current_field < frame->plan->field_count
           ? binary_writer_representation(
-                &owner->plan->fields[owner->current_field])
+                &frame->plan->fields[frame->current_field])
           : SIZE_MAX;
 
-  if (owner == NULL || token == NULL ||
-      owner->current_field >= owner->plan->field_count)
+  if (frame == NULL || token == NULL ||
+      frame->current_field >= frame->plan->field_count)
     return CSERDE_UNSUPPORTED;
-  field = &owner->plan->fields[owner->current_field];
+  field = &frame->plan->fields[frame->current_field];
 
   if (binary_writer_optional(field))
     binary_writer_state_bit(
-        owner, owner->plan->presence_offset, field->optional_bit, 1);
+        owner, frame->plan->presence_offset, field->optional_bit, 1);
 
   if (token->kind == CSERDE_NULL) {
     if (!binary_writer_nullable(field)) return CSERDE_UNSUPPORTED;
     binary_writer_state_bit(
-        owner, owner->plan->null_offset, field->nullable_bit, 1);
+        owner, frame->plan->null_offset, field->nullable_bit, 1);
     if (representation == DATA_BIND_BINARY_REP_VAR_DATA &&
         !binary_writer_append_var_data(owner, NULL, 0u))
       return CSERDE_LIMIT_EXCEEDED;
   } else {
     if (binary_writer_nullable(field))
       binary_writer_state_bit(
-          owner, owner->plan->null_offset, field->nullable_bit, 0);
+          owner, frame->plan->null_offset, field->nullable_bit, 0);
+    if (field->token_kind == CSERDE_MAP_BEGIN) {
+      DataBindBinaryWriterFrame *child;
+      if (token->kind != CSERDE_MAP_BEGIN) return CSERDE_UNSUPPORTED;
+      if (owner->depth >= owner->max_depth) return CSERDE_LIMIT_EXCEEDED;
+      child = &owner->frames[owner->depth++];
+      memset(child, 0, sizeof(*child));
+      child->plan = frame->plan->child_plans[frame->current_field];
+      child->base_offset = frame->base_offset + field->wire_offset;
+      child->stage = DATA_BIND_BINARY_WRITER_KEY;
+      return CSERDE_OK;
+    }
     if (representation == DATA_BIND_BINARY_REP_FIXED) {
       if (!binary_writer_fixed_value(owner, field, token))
         return CSERDE_UNSUPPORTED;
@@ -358,8 +388,8 @@ static cserde_status binary_writer_value(
     }
   }
 
-  owner->next_field = owner->current_field + 1u;
-  owner->stage = DATA_BIND_BINARY_WRITER_KEY;
+  frame->next_field = frame->current_field + 1u;
+  frame->stage = DATA_BIND_BINARY_WRITER_KEY;
   return CSERDE_OK;
 }
 
@@ -367,33 +397,40 @@ static cserde_status binary_writer_write(
     void *opaque, const cserde_token *token) {
   DataBindBinaryWriterOwner *owner =
       (DataBindBinaryWriterOwner *)opaque;
+  DataBindBinaryWriterFrame *frame = binary_writer_frame(owner);
   size_t field_index;
 
-  if (owner == NULL || token == NULL || owner->committed)
+  if (frame == NULL || token == NULL || owner->committed)
     return CSERDE_UNSUPPORTED;
 
-  switch (owner->stage) {
+  switch (frame->stage) {
   case DATA_BIND_BINARY_WRITER_ROOT:
     if (token->kind != CSERDE_MAP_BEGIN)
       return CSERDE_UNSUPPORTED;
-    owner->stage = DATA_BIND_BINARY_WRITER_KEY;
+    frame->stage = DATA_BIND_BINARY_WRITER_KEY;
     return CSERDE_OK;
 
   case DATA_BIND_BINARY_WRITER_KEY:
     if (token->kind == CSERDE_MAP_END) {
-      while (owner->next_field < owner->plan->field_count) {
+      while (frame->next_field < frame->plan->field_count) {
         if (!binary_writer_skip_field(
-                owner, &owner->plan->fields[owner->next_field]))
+                owner, &frame->plan->fields[frame->next_field]))
           return CSERDE_UNSUPPORTED;
-        ++owner->next_field;
+        ++frame->next_field;
       }
-      owner->stage = DATA_BIND_BINARY_WRITER_DONE;
+      frame->stage = DATA_BIND_BINARY_WRITER_DONE;
+      if (owner->depth > 1u) {
+        --owner->depth;
+        frame = binary_writer_frame(owner);
+        frame->next_field = frame->current_field + 1u;
+        frame->stage = DATA_BIND_BINARY_WRITER_KEY;
+      }
       return CSERDE_OK;
     }
     if (!binary_writer_find_field(owner, token, &field_index))
       return CSERDE_UNSUPPORTED;
-    owner->current_field = field_index;
-    owner->stage = DATA_BIND_BINARY_WRITER_VALUE;
+    frame->current_field = field_index;
+    frame->stage = DATA_BIND_BINARY_WRITER_VALUE;
     return CSERDE_OK;
 
   case DATA_BIND_BINARY_WRITER_VALUE:
@@ -412,7 +449,8 @@ static cserde_status binary_writer_finish(void *opaque) {
   if (owner->finish_attempted) return owner->finish_status;
   owner->finish_attempted = 1;
   if (owner->write == NULL ||
-      owner->stage != DATA_BIND_BINARY_WRITER_DONE) {
+      owner->depth != 1u ||
+      owner->frames[0].stage != DATA_BIND_BINARY_WRITER_DONE) {
     owner->finish_status = CSERDE_UNSUPPORTED;
     return owner->finish_status;
   }
@@ -474,7 +512,8 @@ DataBindStatus data_bind_binary_writer_open(
   DataBindBinaryWriterOwner *owner;
   DataBindStatus status;
   size_t capacity;
-  (void)max_depth;
+  if (max_depth == 0u || max_depth > DATA_BIND_BINARY_LAYOUT_MAX_DEPTH)
+    max_depth = DATA_BIND_BINARY_LAYOUT_MAX_DEPTH;
 
   if (out_writer == NULL || out_owner == NULL || write == NULL)
     return binary_writer_fail(
@@ -509,7 +548,10 @@ DataBindStatus data_bind_binary_writer_open(
   owner->write_user = write_user;
   owner->length = plan->fixed_block_size;
   owner->capacity = capacity;
-  owner->stage = DATA_BIND_BINARY_WRITER_ROOT;
+  owner->depth = 1u;
+  owner->max_depth = max_depth;
+  owner->frames[0].plan = plan;
+  owner->frames[0].stage = DATA_BIND_BINARY_WRITER_ROOT;
 
   if (cserde_writer_init(
           &owner->writer, &BINARY_WRITER_OPS, owner) != CSERDE_OK) {

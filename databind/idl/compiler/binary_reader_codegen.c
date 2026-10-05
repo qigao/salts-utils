@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+enum { BINARY_CODEGEN_MAX_DEPTH = 32u };
+
 static int binary_codegen_identifier_valid(const char *text) {
   size_t i;
   if (text == NULL || text[0] == '\0' ||
@@ -62,25 +64,59 @@ static const char *binary_codegen_token_kind(
   }
 }
 
+static const char *binary_codegen_child_type(
+    const IdlContract *contract, const char *type_name,
+    const databind_binary_field_layout *field) {
+  const IdlDataDecl *record = idl_contract_find_data(contract, type_name);
+  size_t i;
+  if (record == NULL || field->kind != DATABIND_BINARY_FIELD_FIXED ||
+      field->scalar_kind != DATABIND_BINARY_SCALAR_NONE)
+    return NULL;
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *member = &record->fields[i];
+    const IdlDataDecl *child;
+    if (strcmp(member->name, field->field_id) != 0) continue;
+    if (member->collection_kind != IDL_COLLECTION_NONE || member->length != NULL)
+      return NULL;
+    child = idl_contract_find_data(contract, member->type_name);
+    return child != NULL &&
+                   (child->kind == IDL_DATA_COMPOSITE || child->kind == IDL_DATA_MESSAGE)
+               ? child->name : NULL;
+  }
+  return NULL;
+}
+
 static int binary_codegen_layout_admitted(
-    const databind_binary_type_layout *layout) {
+    const IdlContract *contract, const databind_binary_format_plan *format_plan,
+    const databind_binary_type_layout *layout, size_t depth, int fixed_only) {
   size_t i;
   int has_var_data = 0;
-  if (layout == NULL || layout->type_id == NULL)
+  if (layout == NULL || layout->type_id == NULL || depth >= BINARY_CODEGEN_MAX_DEPTH)
     return 0;
 
   for (i = 0u; i < layout->field_count; ++i) {
     const databind_binary_field_layout *field = &layout->fields[i];
     const char *token = binary_codegen_token_kind(field->scalar_kind);
-    if (field->field_id == NULL || token == NULL)
+    const char *child_type = binary_codegen_child_type(contract, layout->type_id, field);
+    if (field->field_id == NULL || (token == NULL && child_type == NULL))
       return 0;
     if (field->kind == DATABIND_BINARY_FIELD_FIXED) {
-      if (field->scalar_bits == 0u ||
+      if (child_type != NULL) {
+        databind_binary_type_layout child = {0};
+        int admitted =
+            databind_binary_layout_build(contract, format_plan, child_type,
+                                         &child, NULL) == DATABIND_BINARY_LAYOUT_OK &&
+            child.fixed_block_size == field->wire_extent &&
+            child.wire_big_endian == layout->wire_big_endian &&
+            binary_codegen_layout_admitted(contract, format_plan, &child, depth + 1u, 1);
+        databind_binary_layout_destroy(&child);
+        if (!admitted) return 0;
+      } else if (field->scalar_bits == 0u ||
           field->wire_extent != (size_t)(field->scalar_bits / 8u))
         return 0;
     } else if (field->kind == DATABIND_BINARY_FIELD_VAR_DATA) {
       has_var_data = 1;
-      if ((field->scalar_kind != DATABIND_BINARY_SCALAR_STRING &&
+      if (fixed_only || (field->scalar_kind != DATABIND_BINARY_SCALAR_STRING &&
            field->scalar_kind != DATABIND_BINARY_SCALAR_BYTES) ||
           field->scalar_bits != 0u ||
           field->tail_prefix_bytes != sizeof(uint32_t))
@@ -107,7 +143,7 @@ int databind_compiler_binary_reader_admit(
   status = databind_binary_layout_build(
       contract, format_plan, type_name, &layout, &diagnostic);
   if (status != DATABIND_BINARY_LAYOUT_OK) return -1;
-  admitted = binary_codegen_layout_admitted(&layout);
+  admitted = binary_codegen_layout_admitted(contract, format_plan, &layout, 0u, 0);
   databind_binary_layout_destroy(&layout);
   return admitted ? 0 : -1;
 }
@@ -156,6 +192,7 @@ int databind_compiler_binary_reader_emit(
   databind_binary_layout_status status;
   char symbol[512];
   size_t i;
+  int has_children = 0;
   int result = -1;
 
   if (file == NULL || contract == NULL || format_plan == NULL ||
@@ -167,7 +204,7 @@ int databind_compiler_binary_reader_emit(
   status = databind_binary_layout_build(
       contract, format_plan, type_name, &layout, &diagnostic);
   if (status != DATABIND_BINARY_LAYOUT_OK ||
-      !binary_codegen_layout_admitted(&layout))
+      !binary_codegen_layout_admitted(contract, format_plan, &layout, 0u, 0))
     goto cleanup;
 
   if (fprintf(
@@ -179,6 +216,32 @@ int databind_compiler_binary_reader_emit(
           "#include <data_bind_format_provider.h>\n\n",
           symbol, symbol) < 0)
     goto cleanup;
+
+  for (i = 0u; i < layout.field_count; ++i) {
+    const char *child_type = binary_codegen_child_type(contract, type_name, &layout.fields[i]);
+    if (child_type != NULL) has_children = 1;
+    if (child_type != NULL &&
+        databind_compiler_binary_reader_emit(file, contract, format_plan,
+                                             child_type, symbol_prefix) != 0)
+      goto cleanup;
+  }
+
+  if (has_children) {
+    if (fprintf(file, "static const DataBindBinaryLayoutPlan *const %s_children[] = {\n", symbol) < 0)
+      goto cleanup;
+    for (i = 0u; i < layout.field_count; ++i) {
+      const char *child_type = binary_codegen_child_type(contract, type_name, &layout.fields[i]);
+      if (child_type != NULL) {
+        char child_symbol[512];
+        if (!binary_codegen_symbol(child_symbol, sizeof(child_symbol), symbol_prefix, child_type) ||
+            fprintf(file, "  &%s_plan,\n", child_symbol) < 0)
+          goto cleanup;
+      } else if (fputs("  NULL,\n", file) == EOF) {
+        goto cleanup;
+      }
+    }
+    if (fputs("};\n\n", file) == EOF) goto cleanup;
+  }
 
   if (layout.field_count != 0u) {
     if (fprintf(
@@ -192,7 +255,9 @@ int databind_compiler_binary_reader_emit(
       const databind_binary_field_layout *field = &layout.fields[i];
       const char *token = binary_codegen_token_kind(field->scalar_kind);
       const char *representation = binary_codegen_representation(field);
+      const char *child_type = binary_codegen_child_type(contract, type_name, field);
       unsigned flags = binary_codegen_flags(field);
+      if (child_type != NULL) token = "CSERDE_MAP_BEGIN";
 
       if (token == NULL || representation == NULL ||
           fputs("  {sizeof(DataBindBinaryFieldPlan), ", file) == EOF ||
@@ -255,12 +320,17 @@ int databind_compiler_binary_reader_emit(
 
   if (layout.field_count != 0u) {
     if (fprintf(
-            file, "%s_fields, %zuu\n};\n\n",
+            file, "%s_fields, %zuu, ",
             symbol, layout.field_count) < 0)
       goto cleanup;
   } else {
-    if (fputs("NULL, 0u\n};\n\n", file) == EOF)
+    if (fputs("NULL, 0u, ", file) == EOF)
       goto cleanup;
+  }
+  if (has_children) {
+    if (fprintf(file, "%s_children\n};\n\n", symbol) < 0) goto cleanup;
+  } else if (fputs("NULL\n};\n\n", file) == EOF) {
+    goto cleanup;
   }
 
   if (fprintf(

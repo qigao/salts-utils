@@ -204,6 +204,17 @@ spec("DataBind compiler Binary reader codegen") {
       tbe_error_init(&format_error);
       check(databind_binary_format_plan_build(
           contract, root, &format_plan, &format_error));
+      check_equal(databind_compiler_binary_reader_admit(contract, &format_plan, "Heartbeat"), 0);
+      {
+        char *text = emit_to_text(contract, &format_plan, "Heartbeat", "databind_heartbeat");
+        check_not_null(text);
+        if (text != NULL) {
+          check_contains(text, "\"header\", CSERDE_MAP_BEGIN, 0u, 0u, 13u");
+          check_contains(text, "\"timestamp\", CSERDE_UINT, 64u, 5u, 8u");
+          check_contains(text, "&databind_heartbeat_binary_Header_plan");
+        }
+        free(text);
+      }
       check_equal(
           databind_compiler_binary_reader_admit(
               contract, &format_plan, "LoginMessage"),

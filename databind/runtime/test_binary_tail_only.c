@@ -142,4 +142,67 @@ spec("generated and generic canonical Binary wire parity") {
     MixedWire_clear(&decoded);
     data_bind_free(codec);
   }
+
+  it("matches generic wire for two nested fixed records and preserves owners on decode failure") {
+    static const char json[] =
+        "{\"record\":{\"point\":{\"delta\":-32768,\"number\":18446744073709551615},"
+        "\"code\":4660},\"text\":\"cat\"}";
+    static const uint8_t expected[] = {
+        0u, 0x80u, 0xffu, 0xffu, 0xffu, 0xffu, 0xffu, 0xffu, 0xffu, 0xffu,
+        0x34u, 0x12u, 3u, 0u, 0u, 0u, 'c', 'a', 't'};
+    DataBind *codec = NULL;
+    DataBindObject *dynamic = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    NestedWire_t source;
+    NestedWire_t decoded;
+    uint8_t *dynamic_wire = NULL;
+    uint8_t *generated_wire = NULL;
+    uint8_t bounded[sizeof(expected) + 1u] = {0};
+    size_t dynamic_len = 0u;
+    size_t generated_len = 0u;
+    size_t bounded_len = 0u;
+    tstr old_text;
+    NestedWire_init(&source);
+    NestedWire_init(&decoded);
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(data_bind_object_from_json(codec, "NestedWire", json, sizeof(json) - 1u,
+                &dynamic, &error), DATA_BIND_OK);
+    check_equal(NestedWire_from_json(codec, &source, json, sizeof(json) - 1u, &error), DATA_BIND_OK);
+    check_equal(data_bind_object_serialize_bin(codec, dynamic, &dynamic_wire,
+                &dynamic_len, &error), DATA_BIND_OK);
+    check_equal(NestedWire_to_bin(codec, &source, &generated_wire, &generated_len, &error), DATA_BIND_OK);
+    check_equal(dynamic_len, sizeof(expected));
+    check_equal(generated_len, sizeof(expected));
+    check_equal(dynamic_wire, expected, sizeof(expected));
+    check_equal(generated_wire, expected, sizeof(expected));
+    check_equal(NestedWire_to_bin_into(codec, &source, bounded, sizeof(bounded),
+                &bounded_len, &error), DATA_BIND_OK);
+    check_equal(bounded_len, sizeof(expected));
+    check_equal(bounded, expected, sizeof(expected));
+    check_equal(NestedWire_from_bin(codec, &decoded, dynamic_wire, dynamic_len, &error), DATA_BIND_OK);
+    old_text = decoded.text;
+    check_equal(NestedWire_from_bin(codec, &decoded, bounded, bounded_len - 1u, &error), DATA_BIND_ERR_PARSE);
+    check_true(decoded.text == old_text);
+    check_equal(NestedWire_from_bin(codec, &decoded, bounded, bounded_len + 1u, &error), DATA_BIND_ERR_PARSE);
+    check_true(decoded.text == old_text);
+    memset(bounded, 0xa5, sizeof(bounded));
+    check_equal(NestedWire_to_bin_into(codec, &source, bounded, sizeof(expected) - 1u,
+                &bounded_len, &error), DATA_BIND_ERR_LIMIT);
+    check_equal(bounded_len, (size_t)0u);
+    for (size_t i = 0u; i < sizeof(bounded); ++i)
+      check_equal(bounded[i], (uint8_t)0xa5u);
+    data_bind_object_free(dynamic);
+    data_bind_binary_free(dynamic_wire);
+    data_bind_binary_free(generated_wire);
+    NestedWire_clear(&source);
+    check_equal(decoded.record.point.delta, INT16_MIN);
+    check_equal(decoded.record.point.number, UINT64_MAX);
+    check_equal(decoded.record.code, UINT16_C(0x1234));
+    check_equal(decoded.text, BINARY_TEXT);
+    NestedWire_clear(&decoded);
+    check_null(decoded.text);
+    check_equal(decoded.record.point.number, UINT64_C(0));
+    NestedWire_clear(&decoded);
+    data_bind_free(codec);
+  }
 }

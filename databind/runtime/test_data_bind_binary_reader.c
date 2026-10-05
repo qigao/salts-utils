@@ -1,9 +1,11 @@
 #include "data_bind_binary_reader.h"
+#include "data_bind_binary_writer.h"
 #include "data_bind_binary_wire.h"
 #include "tinytest.h"
 
 #include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const DataBindBinaryFieldPlan BINARY_FIELDS[] = {
@@ -52,6 +54,15 @@ static void write_payload(
 
 static int next_token(cserde_reader *reader, cserde_token *out) {
   return cserde_reader_next(reader, out) == CSERDE_OK;
+}
+
+static int accept_zero_wire(const void *data, size_t len, void *user) {
+  static const unsigned char expected[sizeof(uint32_t)] = {0};
+  if (data == NULL || user == NULL || len != sizeof(expected) ||
+      memcmp(data, expected, sizeof(expected)) != 0)
+    return -1;
+  ++*(unsigned *)user;
+  return 0;
 }
 
 static int token_key_is(const cserde_token *token, const char *text) {
@@ -225,7 +236,87 @@ static void expect_var_data_message(
   check_equal(cserde_reader_next(reader, &token), CSERDE_DONE);
 }
 
-spec("DataBind flat Binary canonical reader") {
+spec("DataBind canonical Binary reader") {
+  it("validates exact fixed child extents, cycles, tails and depth before opening") {
+    enum { RECORD_CHAIN_LENGTH = DATA_BIND_BINARY_LAYOUT_MAX_DEPTH + 1u };
+    DataBindBinaryLayoutPlan plans[RECORD_CHAIN_LENGTH];
+    DataBindBinaryFieldPlan fields[RECORD_CHAIN_LENGTH];
+    const DataBindBinaryLayoutPlan *children[RECORD_CHAIN_LENGTH];
+    unsigned char wire[sizeof(uint32_t)] = {0};
+    cserde_reader *reader = NULL;
+    void *owner = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    for (size_t i = 0u; i < RECORD_CHAIN_LENGTH; ++i) {
+      plans[i] = (DataBindBinaryLayoutPlan)DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+      fields[i] = (DataBindBinaryFieldPlan)DATA_BIND_BINARY_FIELD_PLAN_INIT;
+      plans[i].type_name = "FixedRecord";
+      plans[i].fixed_block_size = sizeof(wire);
+      plans[i].fields = &fields[i];
+      plans[i].field_count = 1u;
+      plans[i].child_plans = &children[i];
+      fields[i].field_name = "value";
+      fields[i].wire_extent = sizeof(wire);
+      if (i + 1u < RECORD_CHAIN_LENGTH) {
+        fields[i].token_kind = CSERDE_MAP_BEGIN;
+        children[i] = &plans[i + 1u];
+      } else {
+        fields[i].token_kind = CSERDE_UINT;
+        fields[i].scalar_bits = sizeof(uint32_t) * 8u;
+        children[i] = NULL;
+      }
+    }
+    check_equal(data_bind_binary_layout_plan_validate(&plans[1], &error), DATA_BIND_OK);
+    check_equal(data_bind_binary_reader_open(&plans[1], wire, sizeof(wire), 0u,
+                &reader, &owner, &error), DATA_BIND_OK);
+    {
+      cserde_token token = {0};
+      cserde_writer *writer = NULL;
+      void *writer_owner = NULL;
+      unsigned publications = 0u;
+      size_t maps = 0u;
+      cserde_status status;
+      check_equal(data_bind_binary_writer_open(&plans[1], accept_zero_wire, &publications, 0u,
+                  &writer, &writer_owner, &error), DATA_BIND_OK);
+      while ((status = cserde_reader_next(reader, &token)) == CSERDE_OK) {
+        if (token.kind == CSERDE_MAP_BEGIN) ++maps;
+        check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+      }
+      check_equal(status, CSERDE_DONE);
+      check_equal(maps, (size_t)DATA_BIND_BINARY_LAYOUT_MAX_DEPTH);
+      check_equal(publications, 0u);
+      check_equal(data_bind_binary_writer_close(writer, writer_owner, &error), DATA_BIND_OK);
+      check_equal(publications, 1u);
+    }
+    data_bind_binary_reader_close(reader, owner);
+    reader = NULL;
+    owner = NULL;
+    check_equal(data_bind_binary_reader_open(&plans[0], wire, sizeof(wire), 0u,
+                &reader, &owner, &error), DATA_BIND_ERR_LIMIT);
+    check_null(reader);
+    check_null(owner);
+    check_equal(data_bind_binary_reader_open(&plans[1], wire, sizeof(wire), 1u,
+                &reader, &owner, &error), DATA_BIND_ERR_LIMIT);
+    children[0] = &plans[0];
+    check_equal(data_bind_binary_layout_plan_validate(&plans[0], &error), DATA_BIND_ERR_SCHEMA);
+    children[0] = &plans[RECORD_CHAIN_LENGTH - 1u];
+    fields[0].wire_extent = sizeof(wire) - 1u;
+    check_equal(data_bind_binary_layout_plan_validate(&plans[0], &error), DATA_BIND_ERR_SCHEMA);
+    fields[0].wire_extent = sizeof(wire);
+    plans[RECORD_CHAIN_LENGTH - 1u].wire_big_endian = 1;
+    check_equal(data_bind_binary_layout_plan_validate(&plans[0], &error), DATA_BIND_ERR_SCHEMA);
+    plans[RECORD_CHAIN_LENGTH - 1u].wire_big_endian = 0;
+    children[0] = NULL;
+    check_equal(data_bind_binary_layout_plan_validate(&plans[0], &error), DATA_BIND_ERR_SCHEMA);
+    children[0] = &plans[RECORD_CHAIN_LENGTH - 1u];
+    plans[0].size = DATA_BIND_BINARY_LAYOUT_PLAN_V1_SIZE;
+    check_equal(data_bind_binary_layout_plan_validate(&plans[0], &error), DATA_BIND_ERR_SCHEMA);
+    plans[0].size = sizeof(plans[0]);
+    {
+      DataBindBinaryLayoutPlan tail = tail_only_plan(0);
+      children[0] = &tail;
+      check_equal(data_bind_binary_layout_plan_validate(&plans[0], &error), DATA_BIND_ERR_SCHEMA);
+    }
+  }
   it("reads VAR_DATA without a fixed block in both wire orders") {
     int big_endian;
     for (big_endian = 0; big_endian <= 1; ++big_endian) {
@@ -544,23 +635,30 @@ spec("DataBind flat Binary canonical reader") {
     void *owner = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     size_t i;
+    DataBindBinaryLayoutPlan *released;
 
     memcpy(fields, BINARY_FIELDS, sizeof(fields));
     for (i = 0u; i < sizeof(fields) / sizeof(fields[0]); ++i)
       fields[i].size = DATA_BIND_BINARY_FIELD_PLAN_V1_SIZE;
     plan.fields = fields;
+    plan.size = DATA_BIND_BINARY_LAYOUT_PLAN_V1_SIZE;
+    released = (DataBindBinaryLayoutPlan *)malloc(plan.size);
+    check_not_null(released);
+    if (released == NULL) return;
+    memcpy(released, &plan, plan.size);
 
     write_payload(wire, 0, 1, 0);
     check_equal(
-        data_bind_binary_layout_plan_validate(&plan, &error),
+        data_bind_binary_layout_plan_validate(released, &error),
         DATA_BIND_OK);
     check_equal(
         data_bind_binary_reader_open(
-            &plan, wire, sizeof(wire), 8u,
+            released, wire, sizeof(wire), 8u,
             &reader, &owner, &error),
         DATA_BIND_OK);
     if (reader != NULL) expect_required_prefix(reader, 1, 0);
     data_bind_binary_reader_close(reader, owner);
+    free(released);
   }
 
   it("fails closed on unsupported or overlapping runtime plans") {
