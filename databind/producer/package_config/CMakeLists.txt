@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project(DataBindProducerInstalledConsumer LANGUAGES C CXX)
+project(DataBindProducerInstalledConsumer LANGUAGES C)
 
 enable_testing()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

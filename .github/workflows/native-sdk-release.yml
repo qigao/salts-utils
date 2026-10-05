@@ -467,6 +467,18 @@ jobs:
           profile=release
           EOF
 
+      - name: Preserve failed arm64 dependency admission evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: salts-utils-arm64-vcpkg-admission
+          path: |
+            vcpkg_installed/arm64-linux/share/simde/vcpkg_abi_info.txt
+            ${{ env.VCPKG_ROOT }}/buildtrees/simde/*vcpkg_abi_info.txt
+            databind/producer/package_config/build/native/vcpkg-manifest-install.log
+          if-no-files-found: error
+          retention-days: 3
+
       - uses: actions/upload-artifact@v4
         with:
           name: salts-utils-sdk-linux-arm64

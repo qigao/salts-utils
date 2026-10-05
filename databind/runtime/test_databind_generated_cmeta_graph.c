@@ -874,7 +874,9 @@ spec("generated native CMeta graph") {
     check_equal(signed64_storage, INT64_MIN);
   }
 
-  it("preserves UINT64_MAX in canonical bits while Binary remains unavailable") {
+  it("preserves UINT64_MAX through canonical bits and Binary wire bytes") {
+    static const uint8_t expected_wire[] = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     DataBind *codec = NULL;
     const cmeta_data_desc *data = NULL;
     const cmeta_data_desc *enum_data;
@@ -912,13 +914,19 @@ spec("generated native CMeta graph") {
 
     check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
     check_not_null(codec);
-    if (codec != NULL)
+    if (codec != NULL) {
       check_equal(WideEnumStorage_to_bin(
                       codec, &object, &wire, &wire_len, &error),
-                  DATA_BIND_ERR_SCHEMA);
-    check_null(wire);
-    check_equal(wire_len, (size_t)0u);
-    check_equal(decoded.value, (WideDomain_t)0);
+                  DATA_BIND_OK);
+      check_not_null(wire);
+      check_equal(wire_len, sizeof(expected_wire));
+      if (wire != NULL && wire_len == sizeof(expected_wire)) {
+        check_equal(wire, expected_wire, sizeof(expected_wire));
+        check_equal(WideEnumStorage_from_bin(
+            codec, &decoded, wire, wire_len, &error), DATA_BIND_OK);
+        check(decoded.value == UINT64_MAX);
+      }
+    }
     data_bind_binary_free(wire);
     WideEnumStorage_clear(&decoded);
     WideEnumStorage_clear(&object);
