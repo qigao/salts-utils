@@ -767,46 +767,6 @@ DataBindStatus tbe_typed_descriptor_validate(const TbeTypedDescriptor *descripto
   return typed_error(error, DATA_BIND_OK, NULL, NULL);
 }
 
-DataBindStatus tbe_typed_descriptor_init(const TbeTypedDescriptor *descriptor, void *object,
-                                         DataBindError *error) {
-  TypedNativeRecord native;
-  DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
-  if (status != DATA_BIND_OK) return status;
-  if (object == NULL)
-    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, native.overlay->name,
-                       "Invalid typed object");
-  status = typed_native_init_value(native.data, object, native.overlay->name, error);
-  if (status == DATA_BIND_OK) {
-    if (native.overlay->presence_size != 0u)
-      memset((uint8_t *)object + native.overlay->presence_offset, 0,
-             native.overlay->presence_size);
-    if (native.overlay->null_size != 0u)
-      memset((uint8_t *)object + native.overlay->null_offset, 0,
-             native.overlay->null_size);
-  }
-  return status == DATA_BIND_OK ? typed_error(error, DATA_BIND_OK, NULL, NULL) : status;
-}
-
-DataBindStatus tbe_typed_descriptor_clear(const TbeTypedDescriptor *descriptor, void *object,
-                                          DataBindError *error) {
-  TypedNativeRecord native;
-  DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
-  if (status != DATA_BIND_OK) return status;
-  if (object == NULL)
-    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, native.overlay->name,
-                       "Invalid typed object");
-  status = typed_native_clear_value(native.data, object, native.overlay->name, error);
-  if (status == DATA_BIND_OK) {
-    if (native.overlay->presence_size != 0u)
-      memset((uint8_t *)object + native.overlay->presence_offset, 0,
-             native.overlay->presence_size);
-    if (native.overlay->null_size != 0u)
-      memset((uint8_t *)object + native.overlay->null_offset, 0,
-             native.overlay->null_size);
-  }
-  return status == DATA_BIND_OK ? typed_error(error, DATA_BIND_OK, NULL, NULL) : status;
-}
-
 static DataBindStatus typed_validate_layout_at(const TbeTypedType *type, unsigned depth,
                                                DataBindError *error) {
   size_t i;

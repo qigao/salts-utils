@@ -436,11 +436,6 @@ typedef struct TbeTypedDescriptor {
       BINDING, C_TYPE, SCHEMA_NAME, FIXED_BLOCK_SIZE, PRESENCE_OFFSET, PRESENCE_SIZE,      \
       WIRE_BIG_ENDIAN, NULL_OFFSET, NULL_SIZE, __VA_ARGS__)
 
-/** Convenience calls using the schema/type name stored in a macro descriptor. */
-#define TBE_TYPED_BIND_INIT(BINDING, OBJECT, ERROR)                                         \
-  tbe_typed_init(&(BINDING), (OBJECT), (ERROR))
-#define TBE_TYPED_BIND_CLEAR(BINDING, OBJECT) tbe_typed_clear(&(BINDING), (OBJECT))
-
 TBE_TYPED_VEC_DEFINE(tbe_bytes_t, uint8_t)
 
 /**
@@ -467,14 +462,6 @@ DATA_BIND_API DataBindStatus tbe_typed_validate_descriptor(const TbeTypedType *t
 /** Validate ABI-v3 and its complete canonical native CMeta graph/state overlay. */
 DATA_BIND_API DataBindStatus tbe_typed_descriptor_validate(
     const TbeTypedDescriptor *descriptor, DataBindError *error);
-
-/** Initialize canonical native storage after complete descriptor preflight. */
-DATA_BIND_API DataBindStatus tbe_typed_descriptor_init(
-    const TbeTypedDescriptor *descriptor, void *object, DataBindError *error);
-
-/** Restore canonical native storage to semantic zero after complete preflight. */
-DATA_BIND_API DataBindStatus tbe_typed_descriptor_clear(
-    const TbeTypedDescriptor *descriptor, void *object, DataBindError *error);
 
 /**
  * Verify that a generated native descriptor matches a type in @p codec.
