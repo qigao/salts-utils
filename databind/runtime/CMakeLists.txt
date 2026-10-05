@@ -805,7 +805,13 @@ cmake_add_benchmark(benchmark_data_bind_json_path
   SOURCES benchmark_data_bind_json_path.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/benchmarks")
-cmake_add_benchmark(benchmark_tbe_typed
-  SOURCES benchmark_tbe_typed.c
+cmake_add_benchmark(benchmark_data_bind_native
+  SOURCES benchmark_data_bind_native.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/benchmarks")
+
+if(BUILD_TESTS AND TARGET benchmark_data_bind_native)
+  add_test(NAME benchmark_data_bind_native COMMAND benchmark_data_bind_native)
+  cmake_set_test_runtime_path(benchmark_data_bind_native benchmark_data_bind_native)
+  set_tests_properties(benchmark_data_bind_native PROPERTIES LABELS "databind;cmeta;benchmark")
+endif()

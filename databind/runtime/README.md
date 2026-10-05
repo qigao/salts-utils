@@ -5,16 +5,16 @@ DataBind 是 SaltsUtils 的组成部分，源码、构建、测试、安装和�
 不使用独立 DataBind package/root，也不组装内部目标或补造兼容 alias。
 生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
 DataBind 私有的 owning dynamic-container compatibility engine、storage fallback、第二 binder
-或格式 fallback。仍受支持的 `TBE_TYPED_*` raw typed 路线直接绑定调用方拥有的 C struct，
-它是下文所述的独立 typed API，不是动态容器兼容引擎或 fallback。
+或格式 fallback。原生对象使用 canonical CMeta graph 与 DataBind plans；历史
+`TBE_TYPED_*` runtime 的移除由 [#488](https://github.com/qigao/salts-utils/issues/488) 跟踪。
 
 DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
 运行时也不要求 C/C++ 编译器。
 
-`databindc` 与 DataBind 是两个不同层次：
+`salts-idlc` 与 DataBind 是两个不同层次：
 
-- `databindc`：构建期工具，把 schema 渲染为 `.h/.c`。
+- `salts-idlc`：构建期工具，把 schema 渲染为 `.h/.c`。
 - `DataBind`：运行时库，为动态对象、现有 C struct 映射和生成代码提供公共
   bind/serialization 引擎。
 
@@ -67,23 +67,21 @@ DataBind 只保留转换后的领域值；流式 XML 的增量词法解析属于
 DataBind 3.0 defines two strongly typed routes:
 
 1. schema 生成 `.h/.c`，自动 bind、序列化和反序列化。
-2. schema 映射现有 C struct，通过 `TBE_TYPED_*` 宏声明 raw typed metadata，自动
-   bind、序列化和反序列化。
+2. schema 映射现有 C struct，通过 canonical `cmeta_data_desc` 声明结构与生命周期，
+   由 MessagePlan 绑定逻辑字段、FormatPlan 处理外部名称与格式能力。
 
 动态 `DataBindObject` / `DataBindValue` 是显式的宿主程序集成与 runtime-schema 路线，
-不是第三套 schema 契约，也不是原生 descriptor 路线的格式中间层。受支持的原生
-descriptor JSON/YAML/CSV/XML 路径直接在格式 AST/DOM、canonical native CMeta graph 与
-schema overlay 之间转换，不分配动态 owning root。字段结构和语义类型以 CMeta 为准；
+不是第三套 schema 契约，也不是原生路线的格式中间层。生成式文本路径通过格式 provider
+提供的 CSerde tokens、MessagePlan 与 canonical native CMeta graph 进行绑定，
+不分配动态 owning root。字段结构和语义类型以 CMeta 为准；
 wire layout、外部名称、presence、defaults、validation 与 fingerprint 只存在于 schema overlay。
 
 ### 公开 API 分层
 
-- 新生成代码：使用 schema 生成的 `Type_from_*` / `Type_to_*`；生成实现通过
-  `TbeTypedDescriptor` 校验 descriptor ABI。
-- 已有 C struct：deferred storage 使用 `TBE_TYPED_*` raw metadata 和 enum-based
-  `TBE_TYPED_BIND_PARSE_EX` / `TBE_TYPED_BIND_SERIALIZE_EX`。
-- ABI-v2 native descriptor：调用方必须同时提供显式 schema overlay 与通过校验的
-  canonical CMeta graph；graphless descriptor 与 ABI-v1 一律返回 schema error。
+- 新生成代码：使用 schema 生成的 `Type_from_*` / `Type_to_*`；文本实现通过
+  MessagePlan、FormatPlan 与格式 provider 读写原生对象。
+- 已有 C struct：提供 canonical `cmeta_data_desc` 和 `DataBindNativeTypeBinding`，
+  编译 MessagePlan 与对应 FormatPlan，使用原生 token decode/encode。
 - 未知 schema、脚本与插件宿主：使用 owning `DataBindObject` 或动态
   `DataBindValue`，数值读取优先使用返回 `DataBindStatus` 的 `get_*`。
 - 大批量输入：使用 `DataBindStreamConfig` + `data_bind_stream_create()`。
@@ -91,9 +89,9 @@ wire layout、外部名称、presence、defaults、validation 与 fingerprint �
 
 这里的所有权不可混用：`DataBindObject` / `DataBindValue` / `DataBindRecord` 的 owning
 dynamic object 由 DataBind 创建，并用对应 DataBind release API 释放；existing/generated
-typed struct 的 storage 始终由调用方拥有。typed destination 必须先按 descriptor 协议
-（生成代码即 `Type_init()`）初始化至 semantic zero，并在成功或失败后的统一 cleanup 中按
-同一 descriptor 协议（生成代码即 `Type_clear()`）清理。
+typed struct 的 storage 始终由调用方拥有。原生 staging 必须为空且不含存活资源；
+解码成功并关闭 reader 后才能发布，失败时保留原对象。释放由同一 CMeta 生命周期负责；
+生成代码通过 `Type_init()` / `Type_clear()` 管理对象，清理不依赖字段 presence 位。
 
 字符串格式参数、格式专用 stream 构造器、`DataBindRecord` facade 和 `as_*`
 便捷读取函数作为源码兼容入口保留。新代码使用 `DataBindFormat`、配置式 stream 和
@@ -223,13 +221,14 @@ message Order {
 }
 ```
 
-调用普通 `data_bind_object_serialize_*()` 或 `tbe_typed_serialize()` 即应用映射，
-不再存在单独的 `_mapped` 序列化入口。
+动态对象的 `data_bind_object_serialize_*()` 与生成代码的文本输出入口均应用映射。
+手工绑定原生 struct 时，将 FormatPlan 的 canonical writer 传给 MessagePlan，
+由前者将 canonical 字段名转换为外部名称；alias 仅用于输入。
 
 ## 路线一：生成 `.h/.c`
 
 ```powershell
-databindc order.schema --lang c `
+salts-idlc order.schema --lang c `
   --output generated/order.h `
   --source-output generated/order.c
 ```
@@ -282,52 +281,35 @@ symbol visibility。静态库不定义这两个宏。
 
 ## 路线二：映射现有 C struct
 
-```c
-#include "tbe_typed.h"
+这条路线不运行 `salts-idlc`，也不生成业务头文件。完整可运行示例见
+[`benchmark_data_bind_native.c`](benchmark_data_bind_native.c)，nullable 状态与释放回归见
+[`test_data_bind_native_nullable.c`](test_data_bind_native_nullable.c)。
 
-typedef struct Order {
-  uint64_t order_id;
-  tstr symbol;
-} Order;
+1. 用 CMeta layout 和 `cmeta_data_desc` 声明原生成员。拥有字符串的 `tstr` 使用
+   `salts_tstr_cmeta_data`；该 provider 负责初始化、移动与释放。图中保留 canonical
+   字段名，schema 的 name/alias 等格式属性由 overlay 表达。
+2. 加载 schema，使用 `DataBindNativeTypeBinding` 编译 MessagePlan，再为所选格式
+   编译 FormatPlan。plans 借用的 codec 与 native metadata 必须存活到 plans 释放后。
+3. 配置对齐的 workspace、最大深度、项目数量与 owned bytes 预算。workspace 由一次
+   调用独占；并发调用需要各自的 workspace、对象和 reader/writer lease。
+4. 输入经格式 provider 和 canonical reader 进入 MessagePlan 的 fresh staging。
+   成功后关闭 reader，再释放旧对象并用 CMeta move 发布 staging；失败则清理 staging，
+   原对象保持不变。provider 的 borrowed token view 不可跨 reader close 保留。
+5. 输出通过 canonical writer 与格式 provider 写入调用方拥有的 sink。完成 canonical
+   writer 后关闭 provider writer；两者的错误都必须检查。容量不足返回错误，已写出的
+   前缀不能视为完整文档；调用方丢弃它后可使用新的 lease 重试。
+6. 统一 cleanup 通过 CMeta 生命周期释放对象，再释放 FormatPlan、MessagePlan 和 codec。
+   不按 presence 位跳过已拥有的字符串，也不以清零内存代替释放。
 
-TBE_TYPED_DEFINE_STRUCT(
-    ORDER_BINDING, Order, "Order",
-    TBE_TYPED_FIELD(Order, order_id, "id", TBE_TYPED_U64, TBE_TYPED_REQUIRED),
-    TBE_TYPED_FIELD(Order, symbol, "symbol", TBE_TYPED_STRING, TBE_TYPED_REQUIRED));
-```
+公共契约见 [`data_bind_message_plan.h`](data_bind_message_plan.h)、
+[`data_bind_projection_plan.h`](data_bind_projection_plan.h) 和
+[`data_bind_format_provider.h`](data_bind_format_provider.h)。完整 FormatPlan 编译用于输出
+能力准入；不支持的逻辑状态必须显式失败，不能隐式降级为其他格式或旧 typed 路径。
 
-应用先加载同一 schema，再验证 descriptor 并操作对象：
-
-```c
-DataBind *codec = NULL;
-DataBindError error = DATA_BIND_ERROR_INIT;
-Order order;
-char *json = NULL;
-
-if (data_bind_create("order.schema", &codec, &error) != DATA_BIND_OK) return 1;
-if (tbe_typed_validate_schema(codec, "Order", &ORDER_BINDING, &error) != DATA_BIND_OK) return 1;
-if (TBE_TYPED_BIND_INIT(ORDER_BINDING, &order, &error) != DATA_BIND_OK) return 1;
-if (TBE_TYPED_BIND_PARSE_EX(codec, ORDER_BINDING, DATA_BIND_FORMAT_JSON,
-                            input, input_len, 0, &order, &error) != DATA_BIND_OK) return 1;
-
-printf("%llu\n", (unsigned long long)order.order_id);
-
-if (TBE_TYPED_BIND_SERIALIZE_EX(codec, ORDER_BINDING, &order,
-                                DATA_BIND_FORMAT_JSON, &json, NULL,
-                                &error) != DATA_BIND_OK) return 1;
-tbe_typed_serialized_free(json);
-TBE_TYPED_BIND_CLEAR(ORDER_BINDING, &order);
-data_bind_free(codec);
-```
-
-这条路线不运行 `databindc`，也不生成业务头文件。宏生成的 raw typed metadata 将
-`offsetof()`、成员类型、可选位和 wire 属性固化进普通 C 常量。
-
-这些宏不会合成 ABI-v2 descriptor。若现有 struct 要进入 CMeta-authoritative
-descriptor 路线，必须显式提供 canonical `cmeta_data_desc` 根，并使用
-`TBE_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`。ABI-v1 或缺少 native graph
-直接失败；不会转入 raw 路线。当前自动 descriptor slice 只覆盖固定宽度整数、
-F32/F64、带完整 CMeta operations 的非 flags enum，以及非 optional 的嵌套 Struct。
+benchmark 的计划编译与正确性检查位于计时外。每个 decode 样本包含 provider 的开关、
+staging 解码、旧值释放与移动发布；每个 encode 样本包含 provider 的开关及有界 sink
+写入。字节数按单份 JSON 文档计算，不含结尾 NUL。此口径不同于旧版分配输出字符串的
+benchmark，结果不能直接作为迁移前后的性能比较。
 
 ## RulesForge/TurboScript 如何使用
 
@@ -352,7 +334,7 @@ schema text/file
 
 ```text
 CI/构建阶段:
-schema -> databindc -> order.h/order.c -> static/shared schema library
+schema -> salts-idlc -> order.h/order.c -> static/shared schema library
 
 运行阶段:
 RulesForge/TurboScript host -> 已编译 schema library -> DataBind runtime

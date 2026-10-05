@@ -295,18 +295,19 @@ Typed C generation rejects duplicate `[c(...)]` member names and the reserved `_
 member. Multiple `[alias(...)]` attributes are accepted in declaration order. Union variants
 accept the same `[name(...)]` and `[alias(...)]` annotations as record fields.
 
-DataBind has two typed routes: generate owning `.h/.c` from schema, or map the same schema
-to an existing C struct. Code generation is optional for the second route. Include
-`tbe_typed.h`, declare fields with `TBE_TYPED_FIELD` and related collection/object macros,
-then create static raw typed metadata with `TBE_TYPED_DEFINE_STRUCT` or
-`TBE_TYPED_DEFINE_STRUCT_WITH_PRESENCE`. `TBE_TYPED_BIND_PARSE` and
-`TBE_TYPED_BIND_SERIALIZE` use that metadata and apply schema names automatically.
-These macros do not create an ABI-v2 descriptor. A descriptor-routed existing struct must
-provide an explicit canonical CMeta graph and initialize
-`TBE_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`. ABI-v1 and graphless descriptors fail;
-they never fall back to the raw route. Raw convenience metadata does not infer a binary wire
-layout; use the explicit `_EX` macros or generated code when direct TBE binary encoding is
-required. #47 remains open while deferred native families still require this raw route.
+DataBind supports generated owning `.h/.c` and schema bindings for existing C structs.
+The latter needs no code generation: provide a canonical `cmeta_data_desc` graph and
+`DataBindNativeTypeBinding`, compile a MessagePlan and a FormatPlan, then bind through
+CSerde readers/writers. CMeta providers own initialization, move and release. Decode into
+fresh staging and publish only after successful decoding and reader close; failure must
+leave the previous object intact. Text field aliases and output names belong to the
+FormatPlan, not to a second native metadata table.
+
+See the [native binding guide](../../runtime/README.md#路线二映射现有-c-struct) and the
+[executable native benchmark](../../runtime/benchmark_data_bind_native.c) for ownership,
+capacity limits and cleanup. Legacy `TBE_TYPED_*` runtime removal is tracked by
+[#488](https://github.com/qigao/salts-utils/issues/488); Binary backend separation is
+tracked by [#489](https://github.com/qigao/salts-utils/issues/489).
 
 `Orders_schema_codec()` exposes a schema-specific dispatch table for trusted host providers.
 Its `text_to_binary_into` operation binds JSON/YAML/CSV/XML directly into caller-owned,
