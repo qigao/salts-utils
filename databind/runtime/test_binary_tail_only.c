@@ -1,4 +1,5 @@
 #include "binary_tail_only_generated.h"
+#include "binary_array_big_generated.h"
 #include "data_bind_binary_layout.h"
 #include "tinytest.h"
 
@@ -9,8 +10,422 @@
 
 static const char BINARY_TEXT[] = "cat";
 static const char BINARY_PAYLOAD[] = "raw";
+enum { BINARY_ARRAY_GENERIC_BUFFER_BYTES = 64u };
+
+static int binary_array_check_generic(
+    DataBind *codec, const char *type, const char *json,
+    const uint8_t *expected, size_t expected_size) {
+  DataBindObject *object = NULL;
+  DataBindObject *decoded = NULL;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
+  uint8_t *wire = NULL;
+  size_t size = 0u;
+  uint8_t bounded[BINARY_ARRAY_GENERIC_BUFFER_BYTES];
+  size_t bounded_size = 0u;
+  char *source_json = NULL, *decoded_json = NULL;
+  size_t source_json_size = 0u, decoded_json_size = 0u;
+  int matches;
+  status = data_bind_object_from_json(codec, type, json, strlen(json), &object, &error);
+  matches = status == DATA_BIND_OK && object != NULL;
+  check_equal_warn(status, DATA_BIND_OK);
+  if (status == DATA_BIND_OK) {
+    check_not_null_warn(object);
+  }
+  if (status == DATA_BIND_OK && object != NULL) {
+    status = data_bind_object_serialize_bin(codec, object, &wire, &size, &error);
+    /* Warnings retain diagnostics; the caller asserts the accumulated result
+     * after native lifecycle checks and cleanup finish. */
+    check_equal_warn(status, DATA_BIND_OK);
+    matches = status == DATA_BIND_OK && wire != NULL && size == expected_size;
+    if (status == DATA_BIND_OK) {
+      check_equal_warn(size, expected_size);
+      check_not_null_warn(wire);
+      if (wire != NULL && size == expected_size) {
+        matches = memcmp(wire, expected, size) == 0;
+        check_equal_warn(wire, expected, size);
+      }
+    }
+    check_less_equal_warn(expected_size, sizeof(bounded));
+    if (expected_size <= sizeof(bounded)) {
+      status = data_bind_object_serialize_bin_into(
+          codec, object, bounded, expected_size, &bounded_size, &error);
+      check_equal_warn(status, DATA_BIND_OK);
+      matches &= status == DATA_BIND_OK && bounded_size == expected_size;
+      if (status == DATA_BIND_OK) check_equal_warn(bounded_size, expected_size);
+      if (status == DATA_BIND_OK && bounded_size == expected_size) {
+        matches &= memcmp(bounded, expected, expected_size) == 0;
+        check_equal_warn(bounded, expected, expected_size);
+      }
+    } else {
+      matches = 0;
+    }
+  }
+  data_bind_binary_free(wire);
+  wire = NULL;
+  size = 0u;
+  status = data_bind_object_from_bin(codec, type, expected, expected_size, &decoded, &error);
+  check_equal_warn(status, DATA_BIND_OK);
+  matches &= status == DATA_BIND_OK && decoded != NULL;
+  if (status == DATA_BIND_OK && decoded != NULL) {
+    status = data_bind_object_serialize_bin(codec, decoded, &wire, &size, &error);
+    check_equal_warn(status, DATA_BIND_OK);
+    matches &= status == DATA_BIND_OK && wire != NULL && size == expected_size;
+    if (status == DATA_BIND_OK && wire != NULL && size == expected_size) {
+      matches &= memcmp(wire, expected, size) == 0;
+      check_equal_warn(wire, expected, size);
+    }
+    if (object != NULL) {
+      DataBindStatus source_status = data_bind_object_serialize_json(
+          codec, object, &source_json, &source_json_size, &error);
+      DataBindStatus decoded_status = data_bind_object_serialize_json(
+          codec, decoded, &decoded_json, &decoded_json_size, &error);
+      check_equal_warn(source_status, DATA_BIND_OK);
+      check_equal_warn(decoded_status, DATA_BIND_OK);
+      matches &= source_status == DATA_BIND_OK && decoded_status == DATA_BIND_OK &&
+                 source_json != NULL && decoded_json != NULL && source_json_size == decoded_json_size;
+      if (source_status == DATA_BIND_OK && decoded_status == DATA_BIND_OK &&
+          source_json != NULL && decoded_json != NULL) {
+        /* Symmetric endian mistakes can round-trip identical bytes. Compare
+         * logical output independently against the object bound from JSON. */
+        matches &= strcmp(source_json, decoded_json) == 0;
+        check_equal_warn(decoded_json, source_json);
+      }
+    }
+  }
+  data_bind_serialized_free(source_json);
+  data_bind_serialized_free(decoded_json);
+  data_bind_binary_free(wire);
+  data_bind_object_free(decoded);
+  data_bind_object_free(object);
+  return matches;
+}
 
 spec("generated and generic canonical Binary wire parity") {
+  group("unsupported nested wire shape") {
+    static DataBind *codec;
+    static DataBindError error;
+    static UnavailableNested_t source;
+    static DataBindValue *value;
+    static uint8_t *wire;
+    static size_t wire_len;
+    before_each() {
+      codec = NULL;
+      value = NULL;
+      wire = NULL;
+      wire_len = 0u;
+      error = (DataBindError)DATA_BIND_ERROR_INIT;
+      UnavailableNested_init(&source);
+      check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+      static const char child_json[] = "{\"text\":\"stable\"}";
+      check_equal(TailOnly_from_json(codec, &source.child, child_json, sizeof(child_json) - 1u, &error), DATA_BIND_OK);
+    }
+    after_each() {
+      data_bind_binary_free(wire);
+      data_bind_value_free(value);
+      UnavailableNested_clear(&source);
+      data_bind_free(codec);
+    }
+    it("rejects generated and generic Binary decode while preserving native owners") {
+      static const uint8_t payload[] = {0u};
+      tstr owner = source.child.text;
+      check_not_null(owner);
+      check_equal(UnavailableNested_to_bin(codec, &source, &wire, &wire_len, &error), DATA_BIND_ERR_SCHEMA);
+      check_null(wire);
+      check_equal(wire_len, 0u);
+      check_equal(UnavailableNested_from_bin(codec, &source, payload, sizeof(payload), &error), DATA_BIND_ERR_SCHEMA);
+      check(source.child.text == owner);
+      check_equal(source.child.text, "stable");
+      check_equal(data_bind_parse(codec, "UnavailableNested", payload, sizeof(payload),
+                                  &value, &error), DATA_BIND_ERR_SCHEMA);
+      check_null(value);
+    }
+  }
+
+  it("uses canonical owned list set and map storage for counted wire") {
+    static const char json[] =
+        "{\"prefix\":4660,\"values\":[258,515],\"tags\":[\"cat\"],"
+        "\"labels\":{\"k\":\"raw\"},\"last\":17185}";
+    static const uint8_t expected[] = {
+        0x34u, 0x12u,
+        2u, 0u, 0u, 0u, 2u, 1u, 3u, 2u,
+        1u, 0u, 0u, 0u, 3u, 0u, 0u, 0u, 'c', 'a', 't',
+        1u, 0u, 0u, 0u, 1u, 0u, 0u, 0u, 'k',
+        3u, 0u, 0u, 0u, 'r', 'a', 'w', 0x21u, 0x43u};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    CountedWire_t source, decoded;
+    uint8_t *wire = NULL;
+    uint8_t bounded[sizeof(expected)];
+    uint8_t unchanged[sizeof(expected)];
+    size_t size = 0u, bounded_size = 0u;
+    int generic_matches;
+    CountedWire_init(&source);
+    CountedWire_init(&decoded);
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    generic_matches = binary_array_check_generic(codec, "CountedWire", json, expected, sizeof(expected));
+    check(CountedWire_from_json(codec, &source, json, sizeof(json) - 1u, &error) == DATA_BIND_OK,
+          "%s [%s]", error.message, error.path);
+    check_equal(CountedWire_to_bin(codec, &source, &wire, &size, &error), DATA_BIND_OK);
+    check_equal(size, sizeof(expected));
+    if (wire != NULL && size == sizeof(expected)) check_equal(wire, expected, size);
+    check_equal(CountedWire_to_bin_into(codec, &source, bounded, sizeof(bounded), &bounded_size, &error), DATA_BIND_OK);
+    check_equal(bounded_size, sizeof(expected));
+    check_equal(bounded, expected, sizeof(expected));
+    memcpy(unchanged, bounded, sizeof(unchanged));
+    check_equal(CountedWire_to_bin_into(codec, &source, bounded, sizeof(bounded) - 1u, &bounded_size, &error), DATA_BIND_ERR_LIMIT);
+    check_equal(bounded_size, sizeof(expected));
+    check_equal(bounded, unchanged, sizeof(bounded));
+    check_equal(CountedWire_from_bin(codec, &decoded, expected, sizeof(expected), &error), DATA_BIND_OK);
+    check_equal(CountedWire_values_vec_t_size(&decoded.values), (size_t)2u);
+    check_equal(CountedWire_tags_set_t_size(&decoded.tags), (size_t)1u);
+    check_equal(CountedWire_labels_map_t_size(&decoded.labels), (size_t)1u);
+    {
+      const CountedWire_t previous = decoded;
+      check_equal(CountedWire_from_bin(codec, &decoded, expected, sizeof(expected) - 1u, &error), DATA_BIND_ERR_PARSE);
+      check_equal(&decoded, &previous, sizeof(previous));
+    }
+    CountedWire_clear(&source);
+    data_bind_binary_free(wire);
+    wire = NULL;
+    check_equal(CountedWire_to_bin(codec, &decoded, &wire, &size, &error), DATA_BIND_OK);
+    check_equal(size, sizeof(expected));
+    if (wire != NULL && size == sizeof(expected)) check_equal(wire, expected, size);
+    CountedWire_clear(&decoded);
+    CountedWire_clear(&decoded);
+    data_bind_binary_free(wire);
+    data_bind_free(codec);
+    check_true(generic_matches);
+  }
+
+  it("copies counted fixed records through their canonical element provider") {
+    static const char json[] =
+        "{\"records\":[{\"point\":{\"delta\":-2,\"number\":72623859790382856},"
+        "\"code\":4660}],\"last\":17185}";
+    static const uint8_t expected[] = {
+        1u, 0u, 0u, 0u, 0xfeu, 0xffu,
+        8u, 7u, 6u, 5u, 4u, 3u, 2u, 1u,
+        0x34u, 0x12u, 0x21u, 0x43u};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    CountedRecordWire_t source, decoded;
+    uint8_t *wire = NULL;
+    size_t size = 0u;
+    int generic_matches;
+    CountedRecordWire_init(&source);
+    CountedRecordWire_init(&decoded);
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    generic_matches = binary_array_check_generic(codec, "CountedRecordWire", json, expected, sizeof(expected));
+    check_equal(CountedRecordWire_from_json(codec, &source, json, sizeof(json) - 1u, &error), DATA_BIND_OK);
+    check_equal(CountedRecordWire_to_bin(codec, &source, &wire, &size, &error), DATA_BIND_OK);
+    check_equal(size, sizeof(expected));
+    if (wire != NULL && size == sizeof(expected)) check_equal(wire, expected, size);
+    check_equal(CountedRecordWire_from_bin(codec, &decoded, expected, sizeof(expected), &error), DATA_BIND_OK);
+    check_equal(CountedRecordWire_records_vec_t_size(&decoded.records), (size_t)1u);
+    {
+      const CountedRecordWire_t previous = decoded;
+      check_equal(CountedRecordWire_from_bin(codec, &decoded, expected, sizeof(expected) - 1u, &error), DATA_BIND_ERR_PARSE);
+      check_equal(&decoded, &previous, sizeof(previous));
+    }
+    CountedRecordWire_clear(&source);
+    data_bind_binary_free(wire);
+    wire = NULL;
+    check_equal(CountedRecordWire_to_bin(codec, &decoded, &wire, &size, &error), DATA_BIND_OK);
+    check_equal(size, sizeof(expected));
+    if (wire != NULL && size == sizeof(expected)) check_equal(wire, expected, size);
+    CountedRecordWire_clear(&decoded);
+    CountedRecordWire_clear(&decoded);
+    data_bind_binary_free(wire);
+    data_bind_free(codec);
+    check_true(generic_matches);
+  }
+
+  it("preserves scalar array state and exact little-endian historical wire") {
+    static const char *const json[] = {
+        "{\"ready\":[true,false],\"deltas\":[-2,4660,7],\"ratios\":[1.5,-2.0]}",
+        "{\"ready\":[true,false],\"deltas\":[-2,4660,7],\"ratios\":[1.5,-2.0],\"samples\":null}",
+        "{\"ready\":[true,false],\"deltas\":[-2,4660,7],\"ratios\":[1.5,-2.0],\"samples\":[1,515,65535]}"};
+    static const uint8_t value_wire[] = {
+        1u, 0u, 1u, 0u, 0xfeu, 0xffu, 0x34u, 0x12u, 7u, 0u,
+        0u, 0u, 0xc0u, 0x3fu, 0u, 0u, 0u, 0xc0u, 1u, 0u, 3u, 2u, 0xffu, 0xffu};
+    enum { SAMPLE_OFFSET = 18u };
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    size_t scenario;
+    int generic_matches = 1;
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    for (scenario = 0u; scenario < sizeof(json) / sizeof(json[0]); ++scenario) {
+      ScalarArrayWire_t source, decoded;
+      uint8_t expected[sizeof(value_wire)];
+      uint8_t bounded[sizeof(value_wire)] = {0};
+      uint8_t *wire = NULL;
+      size_t size = 0u, bounded_size = 0u;
+      ScalarArrayWire_init(&source);
+      ScalarArrayWire_init(&decoded);
+      memcpy(expected, value_wire, sizeof(expected));
+      expected[0] = scenario == 0u ? 0u : 1u;
+      expected[1] = scenario == 1u ? 1u : 0u;
+      if (scenario != 2u) memset(expected + SAMPLE_OFFSET, 0, sizeof(expected) - SAMPLE_OFFSET);
+      check_equal(ScalarArrayWire_from_json(codec, &source, json[scenario], strlen(json[scenario]), &error), DATA_BIND_OK);
+      check_equal(ScalarArrayWire_to_bin(codec, &source, &wire, &size, &error), DATA_BIND_OK);
+      check_equal(size, sizeof(expected));
+      if (wire != NULL && size == sizeof(expected)) check_equal(wire, expected, size);
+      generic_matches &= binary_array_check_generic(codec, "ScalarArrayWire", json[scenario], expected, sizeof(expected));
+      check_equal(ScalarArrayWire_to_bin_into(codec, &source, bounded, sizeof(bounded), &bounded_size, &error), DATA_BIND_OK);
+      check_equal(bounded_size, sizeof(expected));
+      check_equal(bounded, expected, sizeof(expected));
+      check_equal(ScalarArrayWire_from_bin(codec, &decoded, expected, sizeof(expected), &error), DATA_BIND_OK);
+      check_equal(decoded._presence[0], expected[0]);
+      check_equal(decoded._nulls[0], expected[1]);
+      check_equal(decoded.ready[0], true);
+      check_equal(decoded.deltas[0], (int16_t)-2);
+      check_equal(decoded.ratios[1], -2.0f);
+      check_equal(decoded.samples[1], scenario == 2u ? (uint16_t)515u : (uint16_t)0u);
+      {
+        const ScalarArrayWire_t previous = decoded;
+        static const char short_array[] = "{\"ready\":[true],\"deltas\":[1,2,3],\"ratios\":[0,0]}";
+        check(ScalarArrayWire_from_json(codec, &decoded, short_array, sizeof(short_array) - 1u, &error) != DATA_BIND_OK);
+        check_equal(&decoded, &previous, sizeof(previous));
+        check_equal(ScalarArrayWire_from_bin(codec, &decoded, expected, sizeof(expected) - 1u, &error), DATA_BIND_ERR_PARSE);
+        check_equal(&decoded, &previous, sizeof(previous));
+      }
+      data_bind_binary_free(wire);
+      ScalarArrayWire_clear(&source);
+      ScalarArrayWire_clear(&decoded);
+      ScalarArrayWire_clear(&decoded);
+    }
+    data_bind_free(codec);
+    check_true(generic_matches);
+  }
+
+  it("matches big-endian scalar and enum arrays with generic Binary") {
+    static const char json[] =
+        "{\"ready\":[true,false],\"deltas\":[-2,4660,7],\"ratios\":[1.5,-2.0],\"samples\":[1,515,65535],\"codes\":[-2,1]}";
+    static const uint8_t expected[] = {
+        1u, 0u, 1u, 0u, 0xffu, 0xfeu, 0x12u, 0x34u, 0u, 7u,
+        0x3fu, 0xc0u, 0u, 0u, 0xc0u, 0u, 0u, 0u, 0u, 1u, 2u, 3u, 0xffu, 0xffu,
+        0xffu, 0xfeu, 0u, 1u};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    BigScalarArrayWire_t source, decoded;
+    uint8_t *wire = NULL;
+    size_t size = 0u;
+    int generic_matches;
+    BigScalarArrayWire_init(&source);
+    BigScalarArrayWire_init(&decoded);
+    check_equal(BigArray_codec_create(&codec, &error), DATA_BIND_OK);
+    {
+      DataBindStatus status = BigScalarArrayWire_from_json(
+          codec, &source, json, sizeof(json) - 1u, &error);
+      check(status == DATA_BIND_OK, "Big array decode (%d) %s: %s",
+            (int)status, error.path, error.message);
+    }
+    {
+      DataBindStatus status = BigScalarArrayWire_to_bin(codec, &source, &wire, &size, &error);
+      check(status == DATA_BIND_OK, "Big array encode (%d) %s: %s",
+            (int)status, error.path, error.message);
+    }
+    check_equal(size, sizeof(expected));
+    if (wire != NULL && size == sizeof(expected)) check_equal(wire, expected, size);
+    generic_matches = binary_array_check_generic(codec, "BigScalarArrayWire", json, expected, sizeof(expected));
+    check_equal(BigScalarArrayWire_from_bin(codec, &decoded, expected, sizeof(expected), &error), DATA_BIND_OK);
+    check_equal(decoded.codes[0], (BigArrayCode_t)BigArrayCode_Negative);
+    check_equal(decoded.samples[1], (uint16_t)515u);
+    check_equal(decoded.deltas[0], (int16_t)-2);
+    data_bind_binary_free(wire);
+    BigScalarArrayWire_clear(&source);
+    BigScalarArrayWire_clear(&decoded);
+    data_bind_free(codec);
+    check_true(generic_matches);
+  }
+
+  it("round trips recursive record arrays and keeps their native C array ABI") {
+    static const char json[] =
+        "{\"records\":[{\"digest\":\"abcdef\",\"code\":4660},{\"digest\":\"ghijkl\",\"code\":7}],\"blocks\":[{\"values\":[1,515]},{\"values\":[3,4]}],\"text\":\"cat\"}";
+    static const uint8_t expected[] = {
+        1u, 0u, 'a','b','c','d','e','f', 0x34u,0x12u, 'g','h','i','j','k','l',7u,0u,
+        1u,0u,3u,2u, 3u,0u,4u,0u, 3u,0u,0u,0u,'c','a','t'};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    RecordArrayWire_t source, copied, decoded;
+    uint8_t *wire = NULL;
+    size_t size = 0u;
+    int generic_matches;
+    RecordArrayWire_init(&source);
+    RecordArrayWire_init(&copied);
+    RecordArrayWire_init(&decoded);
+    check_equal(sizeof(source.records), (size_t)2u * sizeof(FixedByteRecord_t));
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    /* Text strings have no BYTES tokens; fixed byte members are decoded from
+     * Binary while the dynamic route independently verifies the old wire. */
+    generic_matches = binary_array_check_generic(codec, "RecordArrayWire", json, expected, sizeof(expected));
+    check_equal(RecordArrayWire_from_bin(codec, &source, expected, sizeof(expected), &error), DATA_BIND_OK);
+    check_equal(RecordArrayWire_to_bin(codec, &source, &wire, &size, &error), DATA_BIND_OK);
+    check_equal(size, sizeof(expected));
+    if (wire != NULL && size == sizeof(expected)) check_equal(wire, expected, size);
+    check_equal(RecordArrayWire_from_bin(codec, &copied, expected, sizeof(expected), &error), DATA_BIND_OK);
+    check_true(copied.text != source.text);
+    check_equal(copied.blocks[0].values[1], (uint16_t)515u);
+    check_equal(copied.records[1].digest, expected + 10u, sizeof(copied.records[1].digest));
+    {
+      tstr previous_text = copied.text;
+      uint8_t previous_records[sizeof(copied.records)];
+      memcpy(previous_records, copied.records, sizeof(previous_records));
+      check_equal(RecordArrayWire_from_bin(codec, &copied, expected, sizeof(expected) - 1u, &error), DATA_BIND_ERR_PARSE);
+      check_true(copied.text == previous_text);
+      check_equal(copied.records, previous_records, sizeof(previous_records));
+    }
+    RecordArrayWire_clear(&source);
+    check_equal(copied.text, BINARY_TEXT);
+    check_equal(RecordArrayWire_from_bin(codec, &decoded, expected, sizeof(expected), &error), DATA_BIND_OK);
+    data_bind_binary_free(wire);
+    RecordArrayWire_clear(&copied);
+    RecordArrayWire_clear(&decoded);
+    RecordArrayWire_clear(&decoded);
+    data_bind_free(codec);
+    check_true(generic_matches);
+  }
+
+  it("executes big-endian nested arrays and fixed arrays inside GROUP entries") {
+    static const char big_json[] = "{\"entries\":[{\"code\":4660,\"tags\":[1,2]},{\"code\":43981,\"tags\":[3,4]}]}";
+    static const uint8_t big_expected[] = {0x12u,0x34u,1u,2u,0xabu,0xcdu,3u,4u};
+    static const char group_json[] = "{\"entries\":[{\"values\":[1,515]},{\"values\":[3,4]}],\"text\":\"cat\"}";
+    static const uint8_t group_expected[] = {4u,0u,2u,0u,1u,0u,3u,2u,3u,0u,4u,0u,3u,0u,0u,0u,'c','a','t'};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    BigRecordArrayWire_t big;
+    ArrayGroupWire_t group;
+    uint8_t *wire = NULL;
+    size_t size = 0u;
+    int generic_matches;
+    BigRecordArrayWire_init(&big);
+    ArrayGroupWire_init(&group);
+    check_equal(BigArray_codec_create(&codec, &error), DATA_BIND_OK);
+    generic_matches = binary_array_check_generic(codec, "BigRecordArrayWire", big_json, big_expected, sizeof(big_expected));
+    check_equal(BigRecordArrayWire_from_json(codec, &big, big_json, sizeof(big_json) - 1u, &error), DATA_BIND_OK);
+    check_equal(BigRecordArrayWire_to_bin(codec, &big, &wire, &size, &error), DATA_BIND_OK);
+    check_equal(size, sizeof(big_expected));
+    if (wire != NULL && size == sizeof(big_expected)) check_equal(wire, big_expected, size);
+    data_bind_binary_free(wire);
+    wire = NULL;
+    data_bind_free(codec);
+    codec = NULL;
+    check_equal(Tail_codec_create(&codec, &error), DATA_BIND_OK);
+    generic_matches &= binary_array_check_generic(codec, "ArrayGroupWire", group_json, group_expected, sizeof(group_expected));
+    check_equal(ArrayGroupWire_from_json(codec, &group, group_json, sizeof(group_json) - 1u, &error), DATA_BIND_OK);
+    check_equal(ArrayGroupWire_to_bin(codec, &group, &wire, &size, &error), DATA_BIND_OK);
+    check_equal(size, sizeof(group_expected));
+    if (wire != NULL && size == sizeof(group_expected)) check_equal(wire, group_expected, size);
+    ArrayGroupWire_clear(&group);
+    check_equal(ArrayGroupWire_from_bin(codec, &group, group_expected, sizeof(group_expected), &error), DATA_BIND_OK);
+    check_equal(ArrayGroupWire_entries_vec_t_size(&group.entries), (size_t)2u);
+    data_bind_binary_free(wire);
+    ArrayGroupWire_clear(&group);
+    BigRecordArrayWire_clear(&big);
+    data_bind_free(codec);
+    check_true(generic_matches);
+  }
+
   it("matches fixed inline byte records with generic wire and preserves destination on failure") {
     static const char json[] = "{\"record\":{\"digest\":\"abcdef\",\"code\":4660},\"text\":\"cat\"}";
     static const uint8_t expected[] = {'a', 'b', 'c', 'd', 'e', 'f', 0x34u, 0x12u,
@@ -45,7 +460,7 @@ spec("generated and generic canonical Binary wire parity") {
     check_equal(bounded, expected, sizeof(expected));
     memset(too_small, 0xa5, sizeof(too_small));
     check_equal(FixedByteWire_to_bin_into(codec, &source, too_small, sizeof(too_small), &bounded_len, &error), DATA_BIND_ERR_LIMIT);
-    check_equal(bounded_len, (size_t)0u);
+    check_equal(bounded_len, sizeof(expected));
     for (size_t i = 0u; i < sizeof(too_small); ++i)
       check_equal(too_small[i], (uint8_t)0xa5u);
     check_equal(FixedByteWire_from_bin(codec, &decoded, wire, wire_len, &error), DATA_BIND_OK);
@@ -258,7 +673,7 @@ spec("generated and generic canonical Binary wire parity") {
                       codec, &source, too_small, sizeof(too_small),
                       &fixed_len, &error),
                   DATA_BIND_ERR_LIMIT);
-      check_equal(fixed_len, (size_t)0u);
+      check_equal(fixed_len, sizeof(expected));
       for (size_t i = 0u; i < sizeof(too_small); ++i)
         check_equal(too_small[i], (uint8_t)0xa5u);
     }
@@ -372,7 +787,7 @@ spec("generated and generic canonical Binary wire parity") {
     memset(bounded, 0xa5, sizeof(bounded));
     check_equal(NestedWire_to_bin_into(codec, &source, bounded, sizeof(expected) - 1u,
                 &bounded_len, &error), DATA_BIND_ERR_LIMIT);
-    check_equal(bounded_len, (size_t)0u);
+    check_equal(bounded_len, sizeof(expected));
     for (size_t i = 0u; i < sizeof(bounded); ++i)
       check_equal(bounded[i], (uint8_t)0xa5u);
     data_bind_object_free(dynamic);
@@ -443,7 +858,7 @@ spec("generated and generic canonical Binary wire parity") {
     memset(bounded, 0xa5, sizeof(bounded));
     check_equal(GroupWire_to_bin_into(codec, &source, bounded, sizeof(expected) - 1u,
                 &bounded_len, &error), DATA_BIND_ERR_LIMIT);
-    check_equal(bounded_len, (size_t)0u);
+    check_equal(bounded_len, sizeof(expected));
     for (size_t i = 0u; i < sizeof(bounded); ++i) check_equal(bounded[i], (uint8_t)0xa5u);
     data_bind_object_free(dynamic);
     data_bind_binary_free(dynamic_wire);

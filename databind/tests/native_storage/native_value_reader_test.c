@@ -1,4 +1,6 @@
 #include "data_bind_value_reader.h"
+#include "data_bind_value_reader_internal.h"
+#include "data_bind_value_internal.h"
 #include "data_bind_message_plan.h"
 #include "native_test_alignment.h"
 
@@ -66,7 +68,9 @@ static const char SCHEMA[] =
     " uuid uid; duration span; list<uint32> values; set<uint32> unique_values;"
     " map<string,string> labels; nullable string nil; }"
     "message Domains { datetime at; date day; time clock; duration span; decimal price; bigint count; money cost; }"
-    "message Child { uint32 id; } message Nested { list<Child> children; }";
+    "message Child { uint32 id; } message Nested { list<Child> children; }"
+    "message TypedNumbers { uint8 byte; uint16 word; int8 signed_byte; int16 signed_word;"
+    " map<string,uint16> pairs; }";
 static const char SEED[] = "{\"id\":1,\"text\":\"stable\",\"blob\":\"seed\"}";
 static const char TOKENS[] =
     "{\"signed_value\":-9223372036854775808,\"unsigned_value\":18446744073709551615,"
@@ -198,9 +202,132 @@ spec("DataBind borrowed canonical dynamic value reader") {
     data_bind_free(codec);
   }
 
+  group("internal canonical integer tokens") {
+    static DataBindValue *owned;
+    static cserde_reader *reader;
+    before_each() {
+      owned = NULL;
+      reader = NULL;
+    }
+    after_each() {
+      data_bind_value_reader_close(reader);
+      data_bind_value_free(owned);
+    }
+
+    it("normalizes schema builtin identity while preserving public storage tokens") {
+      static const char json[] =
+          "{\"byte\":255,\"word\":65535,\"signed_byte\":-128,\"signed_word\":-32768,"
+          "\"pairs\":{\"word\":65535}}";
+      static const char *const names[] = {"byte", "word", "signed_byte", "signed_word"};
+      static const int64_t expected[] = {UINT8_MAX, UINT16_MAX, INT8_MIN, INT16_MIN};
+      owned = parse("TypedNumbers", json);
+      for (size_t i = 0u; i < sizeof(names) / sizeof(names[0]); ++i) {
+        const DataBindValue *value = data_bind_value_get(owned, names[i]);
+        check_equal(data_bind_value_reader_open(value, &limits, &reader, &error), DATA_BIND_OK);
+        check_equal(next_kind(reader, CSERDE_SINT).value.sint, expected[i]);
+        data_bind_value_reader_close(reader);
+        reader = NULL;
+        check_equal(data_bind_internal_value_reader_open_typed(value, &limits, &reader, &error), DATA_BIND_OK);
+        if (expected[i] >= 0)
+          check_equal(next_kind(reader, CSERDE_UINT).value.uint, (uint64_t)expected[i]);
+        else
+          check_equal(next_kind(reader, CSERDE_SINT).value.sint, expected[i]);
+        end_reader(reader);
+        reader = NULL;
+      }
+      check_equal(data_bind_internal_value_reader_open_typed(
+                      data_bind_value_get(owned, "pairs"), &limits, &reader, &error), DATA_BIND_OK);
+      next_kind(reader, CSERDE_MAP_BEGIN);
+      cserde_token key = next_kind(reader, CSERDE_STRING);
+      check_equal(key.value.slice.data, "word", key.value.slice.size);
+      check_equal(next_kind(reader, CSERDE_UINT).value.uint, (uint64_t)UINT16_MAX);
+      next_kind(reader, CSERDE_MAP_END);
+      end_reader(reader);
+      reader = NULL;
+    }
+
+    it("normalizes list and ordered set items without changing order or uniqueness") {
+      static const char *const names[] = {"values", "unique_values"};
+      owned = parse("Tokens", TOKENS);
+      for (size_t i = 0u; i < sizeof(names) / sizeof(names[0]); ++i) {
+        check_equal(data_bind_internal_value_reader_open_typed(
+                        data_bind_value_get(owned, names[i]), &limits, &reader, &error), DATA_BIND_OK);
+        next_kind(reader, CSERDE_ARRAY_BEGIN);
+        check_equal(next_kind(reader, CSERDE_UINT).value.uint, UINT64_C(3));
+        check_equal(next_kind(reader, CSERDE_UINT).value.uint, UINT64_C(4));
+        next_kind(reader, CSERDE_ARRAY_END);
+        end_reader(reader);
+        reader = NULL;
+      }
+      check_equal(data_bind_internal_value_reader_open_typed(
+                      data_bind_value_get(owned, "signed_value"), &limits, &reader, &error), DATA_BIND_OK);
+      check_equal(next_kind(reader, CSERDE_SINT).value.sint, INT64_MIN);
+      end_reader(reader);
+      reader = NULL;
+      check_equal(data_bind_internal_value_reader_open_typed(
+                      data_bind_value_get(owned, "unsigned_value"), &limits, &reader, &error), DATA_BIND_OK);
+      check_equal(next_kind(reader, CSERDE_UINT).value.uint, UINT64_MAX);
+      end_reader(reader);
+      reader = NULL;
+    }
+
+    it("rejects unbound and out of range integer sources with a sticky error") {
+      static const struct {
+        const cmeta_type_desc *type;
+        int64_t number;
+      } rejected[] = {
+          {NULL, 0}, {&cmeta_type_uint8, -1}, {&cmeta_type_uint8, (int64_t)UINT8_MAX + 1},
+          {&cmeta_type_uint16, (int64_t)UINT16_MAX + 1},
+          {&cmeta_type_int8, (int64_t)INT8_MIN - 1}, {&cmeta_type_int8, (int64_t)INT8_MAX + 1},
+          {&cmeta_type_int16, (int64_t)INT16_MIN - 1},
+          {&cmeta_type_int32, (int64_t)INT32_MAX + 1}};
+      cserde_token token;
+      for (size_t i = 0u; i < sizeof(rejected) / sizeof(rejected[0]); ++i) {
+        const DataBindValue source = {
+            .type_identity = rejected[i].type == NULL ? NULL : rejected[i].type->identity,
+            .kind = DATA_BIND_VALUE_INT64, .data.int64_val = rejected[i].number};
+        check_equal(data_bind_internal_value_reader_open_typed(&source, &limits, &reader, &error), DATA_BIND_OK);
+        check_equal(cserde_reader_next(reader, &token), CSERDE_SOURCE_ERROR);
+        check_equal(cserde_reader_next(reader, &token), CSERDE_SOURCE_ERROR);
+        data_bind_value_reader_close(reader);
+        reader = NULL;
+      }
+      const DataBindValue unsigned_source = {
+          .type_identity = cmeta_type_int64.identity,
+          .kind = DATA_BIND_VALUE_UINT64, .data.uint64_val = UINT64_MAX};
+      check_equal(data_bind_internal_value_reader_open_typed(
+                      &unsigned_source, &limits, &reader, &error), DATA_BIND_OK);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_SOURCE_ERROR);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_SOURCE_ERROR);
+    }
+
+    it("shares the public reader item budget and permits a fresh bounded retry") {
+      cserde_token token;
+      owned = parse("Tokens", TOKENS);
+      limits.max_items = 1u;
+      check_equal(data_bind_internal_value_reader_open_typed(
+                      data_bind_value_get(owned, "values"), &limits, &reader, &error), DATA_BIND_OK);
+      next_kind(reader, CSERDE_ARRAY_BEGIN);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_LIMIT_EXCEEDED);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_LIMIT_EXCEEDED);
+      data_bind_value_reader_close(reader);
+      reader = NULL;
+      limits.max_items = VALUE_ITEMS;
+      check_equal(data_bind_internal_value_reader_open_typed(
+                      data_bind_value_get(owned, "values"), &limits, &reader, &error), DATA_BIND_OK);
+      next_kind(reader, CSERDE_ARRAY_BEGIN);
+      check_equal(next_kind(reader, CSERDE_UINT).value.uint, UINT64_C(3));
+      check_equal(next_kind(reader, CSERDE_UINT).value.uint, UINT64_C(4));
+      next_kind(reader, CSERDE_ARRAY_END);
+      end_reader(reader);
+      reader = NULL;
+    }
+  }
+
   it("preserves legacy Binary list wire values through canonical owner publication") {
     DataBindValue *root = NULL;
-    check_equal(data_bind_parse(codec, "Values", LIST_WIRE, sizeof(LIST_WIRE), &root, &error), DATA_BIND_OK);
+    check(data_bind_parse(codec, "Values", LIST_WIRE, sizeof(LIST_WIRE), &root, &error) == DATA_BIND_OK,
+          "%s [%s]", error.message, error.path);
     check_equal(replace_list(root), DATA_BIND_OK);
     data_bind_value_free(root);
     check_equal(ValueList_size(&list_published.values), 2u);
@@ -209,7 +336,8 @@ spec("DataBind borrowed canonical dynamic value reader") {
   }
   it("retains list ownership on bounded conversion failure and permits retry") {
     DataBindValue *root = NULL;
-    check_equal(data_bind_parse(codec, "Values", LIST_WIRE, sizeof(LIST_WIRE), &root, &error), DATA_BIND_OK);
+    check(data_bind_parse(codec, "Values", LIST_WIRE, sizeof(LIST_WIRE), &root, &error) == DATA_BIND_OK,
+          "%s [%s]", error.message, error.path);
     check_equal(replace_list(root), DATA_BIND_OK);
     const uint32_t *owner = ValueList_data_const(&list_published.values);
     native_options.max_items = LIST_FAILURE_MAX_ITEMS;

@@ -12,19 +12,34 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION = 1u };
+/* Element flags are mandatory even when they occupy former record padding.
+ * Providers from an earlier plan ABI must be regenerated, not adapted. */
+enum { DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION = 2u };
 enum { DATA_BIND_BINARY_LAYOUT_MAX_DEPTH = 32u };
 enum { DATA_BIND_BINARY_GROUP_HEADER_SIZE = 2u * sizeof(uint16_t) };
 
+#ifndef DATA_BIND_BINARY_LAYOUT_MAX_PAYLOAD_BYTES
+#define DATA_BIND_BINARY_LAYOUT_MAX_PAYLOAD_BYTES (16u * 1024u * 1024u)
+#endif
+#ifndef DATA_BIND_BINARY_LAYOUT_MAX_ITEMS
+#define DATA_BIND_BINARY_LAYOUT_MAX_ITEMS 65536u
+#endif
+
 enum {
   DATA_BIND_BINARY_FIELD_OPTIONAL = 1u << 0,
-  DATA_BIND_BINARY_FIELD_NULLABLE = 1u << 1
+  DATA_BIND_BINARY_FIELD_NULLABLE = 1u << 1,
+  /* Canonical native enum providers emit UINT bits, including signed enums.
+   * The validated layout marks this explicitly; ordinary integers retain
+   * strict signed/unsigned token admission. */
+  DATA_BIND_BINARY_FIELD_ENUM_BITS = 1u << 2
 };
 
 typedef enum DataBindBinaryRepresentation {
   DATA_BIND_BINARY_REP_FIXED = 0,
   DATA_BIND_BINARY_REP_VAR_DATA = 1,
-  DATA_BIND_BINARY_REP_GROUP = 2
+  DATA_BIND_BINARY_REP_GROUP = 2,
+  DATA_BIND_BINARY_REP_COUNTED = 3,
+  DATA_BIND_BINARY_REP_CURSOR_FIXED = 4
 } DataBindBinaryRepresentation;
 
 /*
@@ -54,15 +69,13 @@ typedef struct DataBindBinaryFieldPlan {
   unsigned nullable_bit;
   unsigned flags;
 
-  /*
-   * Append-only v2 representation tail. A record whose size ends before
-   * representation is a released v1 FIXED scalar record.
-   */
   size_t representation;
   size_t tail_prefix_bytes;
 } DataBindBinaryFieldPlan;
 
-/* Fixed sequence wire facts. No count/length header is present on the wire.
+/* Sequence/value wire facts. FIXED sequences have a nonzero exact count;
+ * COUNTED collections have count zero and read their u32 count from the wire.
+ * COUNTED MAP fields have u32-length-prefixed STRING keys.
  * MAP elements use the owner's corresponding child_plans entry. Scalar and
  * exact BYTES elements have no child record. */
 typedef struct DataBindBinaryArrayPlan {
@@ -71,10 +84,14 @@ typedef struct DataBindBinaryArrayPlan {
   size_t element_extent;
   cserde_token_kind element_token_kind;
   unsigned element_scalar_bits;
+  /* Uses DATA_BIND_BINARY_FIELD_ENUM_BITS only. */
+  unsigned element_flags;
 } DataBindBinaryArrayPlan;
 
-#define DATA_BIND_BINARY_FIELD_PLAN_V1_SIZE \
-  offsetof(DataBindBinaryFieldPlan, representation)
+static inline unsigned data_bind_binary_array_element_flags(
+    const DataBindBinaryArrayPlan *array) {
+  return array->element_flags;
+}
 
 #define DATA_BIND_BINARY_FIELD_PLAN_INIT \
   { sizeof(DataBindBinaryFieldPlan), NULL, CSERDE_UINT, 0u, \
@@ -100,21 +117,12 @@ typedef struct DataBindBinaryLayoutPlan {
   const DataBindBinaryFieldPlan *fields;
   size_t field_count;
 
-  /* Append-only record lowering tail. If non-NULL, this borrowed table has
-   * field_count entries: MAP_BEGIN/SEQ_BEGIN fields have a fixed child plan;
-   * other entries are NULL. Keeping field records unchanged preserves their
-   * array stride for released scalar/VAR_DATA providers. */
+  /* If non-NULL, this borrowed table has field_count entries: fixed records
+   * and record collections have child plans; other entries are NULL. */
   const struct DataBindBinaryLayoutPlan *const *child_plans;
-  /* Optional field_count-entry sparse table for FIXED ARRAY_BEGIN fields.
-   * Keeping element metadata separate preserves released field-array stride. */
+  /* Optional field_count-entry sparse table for fixed arrays and COUNTED values. */
   const DataBindBinaryArrayPlan *const *array_plans;
 } DataBindBinaryLayoutPlan;
-
-#define DATA_BIND_BINARY_LAYOUT_PLAN_V1_SIZE \
-  offsetof(DataBindBinaryLayoutPlan, child_plans)
-
-#define DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE \
-  offsetof(DataBindBinaryLayoutPlan, array_plans)
 
 #define DATA_BIND_BINARY_LAYOUT_PLAN_INIT \
   { sizeof(DataBindBinaryLayoutPlan), DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION, \
@@ -122,17 +130,20 @@ typedef struct DataBindBinaryLayoutPlan {
 
 static inline const DataBindBinaryArrayPlan *data_bind_binary_array_plan_at(
     const DataBindBinaryLayoutPlan *plan, size_t field_index) {
-  return plan != NULL && plan->size >= sizeof(*plan) &&
-                 field_index < plan->field_count && plan->array_plans != NULL
+  return field_index < plan->field_count && plan->array_plans != NULL
              ? plan->array_plans[field_index] : NULL;
 }
 
 /*
  * Validate one generated Binary wire-layout plan.
  *
- * FIXED scalar/record/array, GROUP records and VAR_DATA STRING/BYTES are admitted. Child
+ * FIXED/CURSOR_FIXED scalar/record/array, GROUP fixed records, COUNTED
+ * scalar/STRING/BYTES/fixed-record collections and VAR_DATA STRING/BYTES are
+ * admitted. COUNTED MAP keys are length-prefixed STRING tokens. Child
  * records contain only FIXED fields and use their own state bitmaps. Cycles,
- * depth beyond MAX_DEPTH and unsupported shapes fail closed. GROUP consumes
+ * depth beyond MAX_DEPTH and unsupported shapes fail closed. Truncated layout,
+ * field and element records are rejected before their contents are read.
+ * GROUP consumes
  * one sequence frame plus one entry record frame and has a UINT16_MAX count.
  * A fixed array uses one sequence frame, plus a record frame for MAP elements;
  * count times element_extent must equal the owning field's wire_extent.

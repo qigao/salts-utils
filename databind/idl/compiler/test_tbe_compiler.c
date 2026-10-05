@@ -2814,10 +2814,10 @@ spec("tbe_compiler") {
         check_contains(source, "data_bind_xml_writer_open_root(");
         check_contains(source, "_message_to_xml(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(NullableFlat)");
-        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_TEXT(NullableFlat)");
-        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(NullableFlat)");
-        check(strstr(
-            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(NullableFlat,") == NULL);
+        check_contains(source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(NullableFlat,");
+        check_contains(source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(NullableFlat,");
+        check(strstr(source, "DATABIND_DEFINE_RAW_MESSAGE_TEXT(NullableFlat)") == NULL);
+        check(strstr(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(NullableFlat)") == NULL);
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML(Sample)");
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(Sample,") == NULL);
@@ -2836,8 +2836,7 @@ spec("tbe_compiler") {
         check_contains(
             source,
             "DATA_BIND_FORMAT_YAML, (size_t)(depth_), (size_t)(nodes_)");
-        check_contains(
-            source, "DATABIND_DEFINE_RAW_MESSAGE_YAML(NullableFlat)");
+        check(strstr(source, "DATABIND_DEFINE_RAW_MESSAGE_YAML(NullableFlat)") == NULL);
         check_contains(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_CSV(CsvFlat,");
         check(strstr(
@@ -2919,10 +2918,10 @@ spec("tbe_compiler") {
 
     it("rejects native source without canonical lifecycle before replacing outputs") {
       static const char *const schemas[] = {
-          "schema Unowned; composite Record { uint32[4] values; }",
-          "schema Unowned; group Record { uint32[4] values; }",
-          "schema Unowned; message Record { uint32[4] values; }",
-          "schema Unowned; message Record { list<uint32> items; uint32[4] values; }"
+          "schema Unowned; composite Leaf { optional uint32 state; } composite Record { Leaf[4] values; }",
+          "schema Unowned; composite Leaf { optional uint32 state; } group Record { Leaf[4] values; }",
+          "schema Unowned; composite Leaf { optional uint32 state; } message Record { Leaf[4] values; }",
+          "schema Unowned; composite Leaf { optional uint32 state; } message Record { list<uint32> items; Leaf[4] values; }"
       };
       static const char original_header[] = "existing header\n";
       static const char original_source[] = "existing source\n";

@@ -32,7 +32,7 @@
   (DATA_BIND_VERSION_MAJOR * 10000 + DATA_BIND_VERSION_MINOR * 100 + DATA_BIND_VERSION_PATCH)
 
 /* Increment when the public C ABI changes incompatibly. */
-#define DATA_BIND_ABI_VERSION 9
+#define DATA_BIND_ABI_VERSION 10
 
 #ifdef __cplusplus
 extern "C" {

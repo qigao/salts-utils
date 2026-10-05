@@ -195,71 +195,147 @@ static void write_required_scalars(cserde_writer *writer) {
 }
 
 spec("DataBind canonical Binary writer") {
-  it("retains released child-layout prefixes without reading the new array tail") {
-    const DataBindBinaryFieldPlan child_fields[] = {
-        {sizeof(DataBindBinaryFieldPlan), BINARY_ARRAY_ITEM_FIELD_NAME, CSERDE_UINT, 16u,
-         0u, 2u, 0u, 0u, 0u, DATA_BIND_BINARY_REP_FIXED, 0u}};
-    const DataBindBinaryFieldPlan fields[] = {
-        {sizeof(DataBindBinaryFieldPlan), "child", CSERDE_MAP_BEGIN, 0u,
-         0u, 2u, 0u, 0u, 0u, DATA_BIND_BINARY_REP_FIXED, 0u}};
-    DataBindBinaryLayoutPlan child = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
-    DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
-    DataBindBinaryLayoutPlan *old_child = (DataBindBinaryLayoutPlan *)malloc(DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE);
-    DataBindBinaryLayoutPlan *old_plan = (DataBindBinaryLayoutPlan *)malloc(DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE);
-    const DataBindBinaryLayoutPlan *children[] = {old_child};
-    unsigned char wire[2] = {0};
+  it("rejects obsolete root and child plan ABIs even with complete record sizes") {
+    enum { OBSOLETE_PLAN_ABI = 1u, SCENARIO_COUNT = 2u };
+    DataBindBinaryLayoutPlan child = scalar_plan(0);
+    DataBindBinaryFieldPlan field = DATA_BIND_BINARY_FIELD_PLAN_INIT;
+    const DataBindBinaryLayoutPlan *children[] = {&child};
+    DataBindBinaryLayoutPlan root = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+    unsigned char wire[15u] = {0};
     BinarySink sink = {wire, sizeof(wire), 0u, 0u};
-    cserde_writer *writer = NULL;
-    cserde_reader *reader = NULL;
-    void *owner = NULL;
-    void *reader_owner = NULL;
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    cserde_token token = {0};
-    cserde_status status;
-    size_t seen = 0u;
-    check_not_null(old_child);
-    check_not_null(old_plan);
-    child.size = DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE;
-    child.type_name = "ReleasedChild";
-    child.fixed_block_size = sizeof(wire);
-    child.fields = child_fields;
-    child.field_count = 1u;
-    plan.size = DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE;
-    plan.type_name = "ReleasedParent";
-    plan.fixed_block_size = sizeof(wire);
-    plan.fields = fields;
-    plan.field_count = 1u;
-    plan.child_plans = children;
-    memcpy(old_child, &child, DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE);
-    memcpy(old_plan, &plan, DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE);
-    check_equal(data_bind_binary_writer_open(old_plan, binary_sink_write, &sink,
-                2u, &writer, &owner, &error), DATA_BIND_OK);
-    check_true(write_token(writer, map_begin()));
-    check_true(write_token(writer, key("child")));
-    check_true(write_token(writer, map_begin()));
-    check_true(write_token(writer, key(BINARY_ARRAY_ITEM_FIELD_NAME)));
-    check_true(write_token(writer, uint_value(UINT16_C(0x1234))));
-    check_true(write_token(writer, map_end()));
-    check_true(write_token(writer, map_end()));
-    check_equal(cserde_writer_finish(writer), CSERDE_OK);
-    check_equal(sink.size, sizeof(wire));
-    check_equal(wire[0], 0x34u);
-    check_equal(wire[1], 0x12u);
-    check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_OK);
-    check_equal(data_bind_binary_reader_open(old_plan, wire, sizeof(wire), 2u,
-                &reader, &reader_owner, &error), DATA_BIND_OK);
-    while ((status = cserde_reader_next(reader, &token)) == CSERDE_OK)
-      if (token.kind == CSERDE_UINT) {
-        check_equal(token.value.uint, UINT64_C(0x1234));
-        ++seen;
-      }
-    check_equal(status, CSERDE_DONE);
-    check_equal(seen, 1u);
-    data_bind_binary_reader_close(reader, reader_owner);
-    free(old_plan);
-    free(old_child);
+    field.field_name = "child";
+    field.token_kind = CSERDE_MAP_BEGIN;
+    field.wire_extent = sizeof(wire);
+    root.type_name = "ObsoletePlan";
+    root.fixed_block_size = sizeof(wire);
+    root.fields = &field;
+    root.field_count = 1u;
+    root.child_plans = children;
+    for (unsigned scenario = 0u; scenario < SCENARIO_COUNT; ++scenario) {
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      cserde_writer *writer = NULL;
+      cserde_reader *reader = NULL;
+      void *owner = NULL, *reader_owner = NULL;
+      root.abi_version = scenario == 0u ? OBSOLETE_PLAN_ABI :
+          DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION;
+      child.abi_version = scenario == 0u ? DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION :
+          OBSOLETE_PLAN_ABI;
+      check_equal(data_bind_binary_writer_open(&root, binary_sink_write, &sink,
+                  0u, &writer, &owner, &error), DATA_BIND_ERR_INVALID_ARG);
+      check_null(writer);
+      check_null(owner);
+      check_equal(data_bind_binary_reader_open(&root, wire, sizeof(wire), 0u,
+                  &reader, &reader_owner, &error), DATA_BIND_ERR_INVALID_ARG);
+      check_null(reader);
+      check_null(reader_owner);
+      check_equal(sink.calls, 0u);
+      check_equal(sink.size, 0u);
+    }
   }
 
+  it("rejects an excessive requested depth before allocating or calling the sink") {
+    DataBindBinaryLayoutPlan plan = scalar_plan(0);
+    BinarySink sink = {0};
+    cserde_writer *writer = NULL;
+    void *owner = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink,
+                    DATA_BIND_BINARY_LAYOUT_MAX_DEPTH + 1u, &writer, &owner, &error),
+                DATA_BIND_ERR_INVALID_ARG);
+    check_null(writer);
+    check_null(owner);
+    check_equal(sink.calls, 0u);
+  }
+
+  it("rejects payload and counted item budget exhaustion before publishing bytes") {
+    DataBindBinaryFieldPlan field = DATA_BIND_BINARY_FIELD_PLAN_INIT;
+    const DataBindBinaryArrayPlan array = {
+        sizeof(DataBindBinaryArrayPlan), 0u, sizeof(uint8_t), CSERDE_UINT, 8u, 0u};
+    const DataBindBinaryArrayPlan *arrays[] = {&array};
+    DataBindBinaryLayoutPlan plan = tail_only_plan(0);
+    unsigned char unchanged[sizeof(uint32_t)] = {0};
+    BinarySink sink = {unchanged, sizeof(unchanged), 0u, 0u};
+    cserde_writer *writer = NULL;
+    void *owner = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    cserde_token token;
+    check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink,
+                2u, &writer, &owner, &error), DATA_BIND_OK);
+    check_true(write_token(writer, map_begin()));
+    check_true(write_token(writer, key("text")));
+    /* The complete prefix-plus-payload exceeds the budget, so no source byte
+     * is read and no large fixture allocation is needed. */
+    token = slice_value(CSERDE_STRING, "", DATA_BIND_BINARY_LAYOUT_MAX_PAYLOAD_BYTES);
+    check_equal(cserde_writer_write(writer, &token), CSERDE_LIMIT_EXCEEDED);
+    check_equal(cserde_writer_finish(writer), CSERDE_LIMIT_EXCEEDED);
+    check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_ERR_LIMIT);
+    check_equal(sink.calls, 0u);
+    field.field_name = BINARY_ARRAY_FIELD_NAME;
+    field.token_kind = CSERDE_ARRAY_BEGIN;
+    field.representation = DATA_BIND_BINARY_REP_COUNTED;
+    field.tail_prefix_bytes = sizeof(uint32_t);
+    plan.fields = &field;
+    plan.array_plans = arrays;
+    check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink,
+                2u, &writer, &owner, &error), DATA_BIND_OK);
+    check_true(write_token(writer, map_begin()));
+    check_true(write_token(writer, key(BINARY_ARRAY_FIELD_NAME)));
+    check_true(write_token(writer, array_begin()));
+    token = uint_value(0u);
+    for (size_t index = 0u; index < DATA_BIND_BINARY_LAYOUT_MAX_ITEMS; ++index)
+      check_true(write_token(writer, token));
+    check_equal(cserde_writer_write(writer, &token), CSERDE_LIMIT_EXCEEDED);
+    check_equal(cserde_writer_finish(writer), CSERDE_LIMIT_EXCEEDED);
+    check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_ERR_LIMIT);
+    check_equal(sink.calls, 0u);
+    {
+      unsigned char prefix[sizeof(uint32_t)] = {0};
+      cserde_reader *reader = NULL;
+      void *reader_owner = NULL;
+      data_bind_binary_wire_write_u32(prefix, 0, DATA_BIND_BINARY_LAYOUT_MAX_ITEMS + 1u);
+      check_equal(data_bind_binary_reader_open(&plan, prefix, sizeof(prefix), 2u,
+                  &reader, &reader_owner, &error), DATA_BIND_ERR_LIMIT);
+      check_null(reader);
+      check_null(reader_owner);
+    }
+  }
+
+  it("rejects truncated layout and element records before creating a lease") {
+    DataBindBinaryFieldPlan field = DATA_BIND_BINARY_FIELD_PLAN_INIT;
+    DataBindBinaryArrayPlan array = {
+        sizeof(DataBindBinaryArrayPlan), 1u, 2u, CSERDE_UINT, 16u, 0u};
+    const DataBindBinaryArrayPlan *arrays[] = {&array};
+    DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+    unsigned char wire[sizeof(uint16_t)] = {0};
+    BinarySink sink = {wire, sizeof(wire), 0u, 0u};
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    field.field_name = BINARY_ARRAY_FIELD_NAME;
+    field.token_kind = CSERDE_ARRAY_BEGIN;
+    field.wire_extent = sizeof(wire);
+    plan.type_name = "TruncatedPlan";
+    plan.fixed_block_size = sizeof(wire);
+    plan.fields = &field;
+    plan.field_count = 1u;
+    plan.array_plans = arrays;
+    for (unsigned scenario = 0u; scenario < 2u; ++scenario) {
+      cserde_writer *writer = NULL;
+      cserde_reader *reader = NULL;
+      void *owner = NULL, *reader_owner = NULL;
+      if (scenario == 0u) plan.size = offsetof(DataBindBinaryLayoutPlan, array_plans);
+      else { plan.size = sizeof(plan); array.size = offsetof(DataBindBinaryArrayPlan, element_flags); }
+      check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink,
+                  2u, &writer, &owner, &error),
+                  scenario == 0u ? DATA_BIND_ERR_INVALID_ARG : DATA_BIND_ERR_SCHEMA);
+      check_null(writer);
+      check_null(owner);
+      check_equal(data_bind_binary_reader_open(&plan, wire, sizeof(wire), 2u,
+                  &reader, &reader_owner, &error),
+                  scenario == 0u ? DATA_BIND_ERR_INVALID_ARG : DATA_BIND_ERR_SCHEMA);
+      check_null(reader);
+      check_null(reader_owner);
+      check_equal(sink.calls, 0u);
+    }
+  }
   it("fails closed on malformed or missing fixed array representation metadata") {
     enum { ELEMENT_COUNT = 2, ELEMENT_BYTES = 2, WIRE_BYTES = ELEMENT_COUNT * ELEMENT_BYTES };
     for (unsigned scenario = 0u; scenario < 9u; ++scenario) {
@@ -303,6 +379,65 @@ spec("DataBind canonical Binary writer") {
       check_null(reader);
       check_null(reader_owner);
       check_equal(sink.calls, 0u);
+    }
+  }
+
+  it("encodes signed enum array bits while preserving integer token admission") {
+    enum { COUNT = 2u, ELEMENT_BYTES = 2u, WIRE_BYTES = COUNT * ELEMENT_BYTES };
+    for (unsigned scenario = 0u; scenario < 3u; ++scenario) {
+      DataBindBinaryFieldPlan field = DATA_BIND_BINARY_FIELD_PLAN_INIT;
+      DataBindBinaryArrayPlan array = {
+          sizeof(DataBindBinaryArrayPlan), COUNT, ELEMENT_BYTES, CSERDE_SINT, 16u,
+          DATA_BIND_BINARY_FIELD_ENUM_BITS};
+      const DataBindBinaryArrayPlan *arrays[] = {&array};
+      DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+      unsigned char wire[WIRE_BYTES] = {0};
+      BinarySink sink = {wire, sizeof(wire), 0u, 0u};
+      cserde_writer *writer = NULL;
+      cserde_reader *reader = NULL;
+      void *owner = NULL, *reader_owner = NULL;
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      cserde_token token = uint_value(UINT16_C(0xfffe));
+      field.field_name = BINARY_ARRAY_FIELD_NAME;
+      field.token_kind = CSERDE_ARRAY_BEGIN;
+      field.wire_extent = WIRE_BYTES;
+      plan.type_name = "EnumArrayBits";
+      plan.wire_big_endian = scenario == 1u;
+      plan.fixed_block_size = WIRE_BYTES;
+      plan.fields = &field;
+      plan.field_count = 1u;
+      plan.array_plans = arrays;
+      if (scenario == 2u) token.value.uint = UINT16_MAX + UINT64_C(1);
+      check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink,
+                  2u, &writer, &owner, &error), DATA_BIND_OK);
+      check_true(write_token(writer, map_begin()));
+      check_true(write_token(writer, key(BINARY_ARRAY_FIELD_NAME)));
+      check_true(write_token(writer, array_begin()));
+      if (scenario >= 2u) {
+        check_equal(cserde_writer_write(writer, &token), CSERDE_UNSUPPORTED);
+        check_equal(cserde_writer_finish(writer), CSERDE_UNSUPPORTED);
+        check_equal(sink.calls, 0u);
+        check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_ERR_SCHEMA);
+      } else {
+        check_true(write_token(writer, token));
+        token = (cserde_token){.kind = CSERDE_SINT, .value.sint = 1};
+        check_true(write_token(writer, token));
+        check_true(write_token(writer, array_end()));
+        check_true(write_token(writer, map_end()));
+        check_equal(cserde_writer_finish(writer), CSERDE_OK);
+        check_equal(data_bind_binary_writer_close(writer, owner, &error), DATA_BIND_OK);
+        check_equal(data_bind_binary_wire_read_i16(wire, plan.wire_big_endian), (int16_t)-2);
+        check_equal(data_bind_binary_wire_read_i16(wire + ELEMENT_BYTES, plan.wire_big_endian), (int16_t)1);
+        check_equal(sink.calls, 1u);
+        check_equal(data_bind_binary_reader_open(&plan, wire, sizeof(wire), 2u,
+                    &reader, &reader_owner, &error), DATA_BIND_OK);
+        for (size_t index = 0u; index < 3u; ++index)
+          check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+        check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+        check_equal(token.kind, CSERDE_SINT);
+        check_equal(token.value.sint, INT64_C(-2));
+        data_bind_binary_reader_close(reader, reader_owner);
+      }
     }
   }
 

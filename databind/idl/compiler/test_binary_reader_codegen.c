@@ -19,6 +19,8 @@
 #error "SCHEMA_EXAMPLE_FILE is required"
 #endif
 
+static const char ARRAY_FIXTURE_PREFIX[] = "array_fixture";
+
 static char *emit_to_text(
     const IdlContract *contract,
     const databind_binary_format_plan *format_plan,
@@ -60,6 +62,63 @@ static char *emit_to_text(
 }
 
 spec("DataBind compiler Binary reader codegen") {
+  it("lowers scalar and recursive record arrays without inferring native layout") {
+    Node *root = NULL;
+    IdlContract *contract = NULL;
+    char *schema_data = NULL;
+    databind_binary_format_plan format_plan = {0};
+    tbe_error_t format_error;
+    char *text = NULL;
+    check_equal(databind_compiler_parse_contract_file(
+                    BINARY_ARRAY_SCHEMA, &root, &contract, &schema_data), 0);
+    check_not_null(contract);
+    if (contract != NULL) {
+      tbe_error_init(&format_error);
+      check(databind_binary_format_plan_build(contract, root, &format_plan, &format_error));
+      check_equal(databind_compiler_binary_reader_admit(contract, &format_plan, "ArrayScalars"), 0);
+      text = emit_to_text(contract, &format_plan, "ArrayScalars", ARRAY_FIXTURE_PREFIX);
+      check_not_null(text);
+      if (text != NULL) {
+        check_contains(text, "sizeof(DataBindBinaryArrayPlan), 2u, 1u, CSERDE_BOOL, 8u");
+        check_contains(text, "sizeof(DataBindBinaryArrayPlan), 3u, 2u, CSERDE_SINT, 16u");
+        check_contains(text, "sizeof(DataBindBinaryArrayPlan), 2u, 4u, CSERDE_FLOAT, 32u");
+        check_contains(text, "sizeof(DataBindBinaryArrayPlan), 3u, 2u, CSERDE_UINT, 16u");
+        check_contains(text, "sizeof(DataBindBinaryArrayPlan), 2u, 1u, CSERDE_UINT, 8u");
+        check_contains(text, "\"samples\", CSERDE_ARRAY_BEGIN, 0u");
+        check_contains(text, "array_fixture_binary_ArrayScalars_arrays\n};");
+      }
+      free(text);
+      text = emit_to_text(contract, &format_plan, "ArrayRecords", ARRAY_FIXTURE_PREFIX);
+      check_not_null(text);
+      if (text != NULL) {
+        check_contains(text, "sizeof(DataBindBinaryArrayPlan), 2u, 5u, CSERDE_MAP_BEGIN, 0u");
+        check_contains(text, "&array_fixture_binary_ArrayEntry_plan");
+        check_contains(text, "&array_fixture_binary_ArrayBlock_plan");
+        check_contains(text, "sizeof(DataBindBinaryArrayPlan), 2u, 2u, CSERDE_UINT, 16u");
+        check_contains(text, "\"label\", CSERDE_STRING, 0u");
+      }
+    }
+    if (contract != NULL) {
+      FILE *file = tmpfile();
+      check_not_null(file);
+      if (file != NULL) {
+        /* Historical fixed composite extents do not include message state
+         * blocks. Reject an incompatible child before emitting any plan. */
+        check_equal(databind_compiler_binary_reader_admit(
+                        contract, &format_plan, "UnsupportedOverlayArray"), -1);
+        check_equal(databind_compiler_binary_reader_emit(
+                        file, contract, &format_plan, "UnsupportedOverlayArray", ARRAY_FIXTURE_PREFIX), -1);
+        check_equal(ftell(file), 0L);
+        fclose(file);
+      }
+    }
+    free(text);
+    databind_binary_format_plan_destroy(&format_plan);
+    idl_contract_destroy(contract);
+    node_free(root);
+    free(schema_data);
+  }
+
   it("lowers fixed GROUP entry plans and rejects variable entries without output") {
     Node *root = NULL;
     IdlContract *contract = NULL;
@@ -74,9 +133,8 @@ spec("DataBind compiler Binary reader codegen") {
     check_not_null(file);
     if (contract != NULL && file != NULL) {
       tbe_error_init(&format_error);
-      check(databind_binary_format_plan_build(contract, root, &format_plan, &format_error));
+      check(databind_binary_format_plan_build_root(contract, root, "GroupWire", &format_plan, &format_error));
       check_equal(databind_compiler_binary_reader_admit(contract, &format_plan, "GroupWire"), 0);
-      check_equal(databind_compiler_binary_reader_admit(contract, &format_plan, "NullableGroupWire"), 0);
       text = emit_to_text(contract, &format_plan, "GroupWire", "group_fixture");
       check_not_null(text);
       if (text != NULL) {
@@ -84,6 +142,11 @@ spec("DataBind compiler Binary reader codegen") {
         check_contains(text, "DATA_BIND_BINARY_REP_GROUP, 4u");
         check_contains(text, "&group_fixture_binary_WireEntry_plan");
       }
+      databind_binary_format_plan_destroy(&format_plan);
+      check(databind_binary_format_plan_build_root(contract, root, "NullableGroupWire", &format_plan, &format_error));
+      check_equal(databind_compiler_binary_reader_admit(contract, &format_plan, "NullableGroupWire"), 0);
+      databind_binary_format_plan_destroy(&format_plan);
+      check(databind_binary_format_plan_build_root(contract, root, "OwnedGroup", &format_plan, &format_error));
       check_equal(databind_compiler_binary_reader_admit(contract, &format_plan, "OwnedGroup"), -1);
       check_equal(databind_compiler_binary_reader_emit(file, contract, &format_plan, "OwnedGroup", "owned_fixture"), -1);
       check_equal(ftell(file), 0L);

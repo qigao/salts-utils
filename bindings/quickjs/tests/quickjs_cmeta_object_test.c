@@ -134,7 +134,7 @@ static const cmeta_receiver_method_set quickjs_object_method_set = {
     .receiver_type = &quickjs_object_box_type,
     .methods = quickjs_object_methods,
     .method_count = 1u,
-    .owner_name = "QuickJSObjectBox"
+    .owner = NULL
 };
 
 static const cmeta_param_desc quickjs_object_add_projected_params[] = {

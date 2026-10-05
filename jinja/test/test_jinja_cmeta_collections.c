@@ -123,6 +123,7 @@ spec("Jinja CMeta collections and runtime: collections 2") {
     check_equal(JinjaCanonicalMultiMap_init(&root.multi, 2u), STL_OK);
     check_equal(JinjaCanonicalMultiMap_put(&root.multi, 1, 10), STL_OK);
     check_equal(JinjaCanonicalMultiMap_put(&root.multi, 1, 11), STL_OK);
+    check_equal(JinjaCanonicalMultiMap_size(&root.multi), (size_t)2u);
 
     templ = jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
     check_not_null(templ);
@@ -131,7 +132,7 @@ spec("Jinja CMeta collections and runtime: collections 2") {
                     NULL, &output, &error), JINJA_CMETA_OK);
     check_equal(output,
                 "2|2:34|2:56|2:78|2:12:True|2:True|2:20:12:True|"
-                "2:11:11:True|True:False:True:True:True");
+                "1:11:1:True|True:False:True:True:True");
 
     free(output);
     jinja_cmeta_release(templ);

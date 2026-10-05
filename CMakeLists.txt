@@ -56,7 +56,8 @@ endif()
 
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
+set(SALTS_UTILS_MINIMUM_SALTS_VERSION 1.8.25)
+find_package(Salts ${SALTS_UTILS_MINIMUM_SALTS_VERSION} CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
  
@@ -102,6 +103,8 @@ endif()
 include(CMakePackageConfigHelpers)
 
 # Generate the config file
+configure_file("${CMAKE_SOURCE_DIR}/cmake/IDL.cmake"
+               "${CMAKE_BINARY_DIR}/IDL.cmake" COPYONLY)
 configure_package_config_file(
   "${CMAKE_SOURCE_DIR}/cmake/SaltsUtilsConfig.cmake.in"
   "${CMAKE_BINARY_DIR}/SaltsUtilsConfig.cmake"

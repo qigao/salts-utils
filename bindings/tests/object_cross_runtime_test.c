@@ -137,7 +137,7 @@ static const cmeta_receiver_method_set cross_runtime_method_set = {
     .receiver_type = &cross_runtime_box_type,
     .methods = cross_runtime_methods,
     .method_count = 1u,
-    .owner_name = "CrossRuntimeBox"
+    .owner = NULL
 };
 
 static const cmeta_param_desc cross_runtime_projected_params[] = {

@@ -23,9 +23,15 @@ extern "C" {
  * same buffer with checked growth and commits its count on ARRAY_END.
  * Fixed arrays write the declared element count into their prevalidated inline
  * range. A short ARRAY_END or excess input prevents all publication.
+ * COUNTED list/set/map entries commit a u32 count at collection end; following
+ * CURSOR_FIXED fields append exact extents in declaration order. Counted MAP
+ * keys are u32-length-prefixed STRING values. Checked buffer growth stops at
+ * DATA_BIND_BINARY_LAYOUT_MAX_PAYLOAD_BYTES and collection admission stops at
+ * MAX_ITEMS (library build definitions); exhaustion prevents sink publication.
  * Access is single-threaded; all reachable plan storage
  * stays immutable and alive until close. max_depth bounds active MAPs/ARRAYs
- * including the root; zero selects MAX_DEPTH. Schema/token errors and depth
+ * including the root; zero selects MAX_DEPTH. A value above MAX_DEPTH returns
+ * INVALID_ARG without opening a lease. Schema/token errors and depth
  * exhaustion prevent publication, and close releases the complete writer lease.
  */
 DATA_BIND_API DataBindStatus data_bind_binary_writer_open(

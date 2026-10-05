@@ -14,10 +14,12 @@ static const IdlDataDecl TEST_DATA[] = {
 };
 
 static const IdlContract TEST_CONTRACT = {
-    sizeof(IdlContract), IDL_CONTRACT_ABI_VERSION,
-    "SchemaCMeta", "1",
-    sizeof(TEST_DATA) / sizeof(TEST_DATA[0]), TEST_DATA,
-    0u, NULL, 0u, NULL, 0u, NULL};
+    .size = sizeof(IdlContract),
+    .abi_version = IDL_CONTRACT_ABI_VERSION,
+    .name = "SchemaCMeta",
+    .version = "1",
+    .data_count = sizeof(TEST_DATA) / sizeof(TEST_DATA[0]),
+    .data = TEST_DATA};
 
 static IdlField field_of(const char *type, IdlCollectionKind collection) {
     IdlField field = {0};

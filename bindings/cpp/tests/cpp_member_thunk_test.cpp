@@ -170,7 +170,7 @@ static const cmeta_receiver_method_set member_counter_method_set = {
     &member_counter_type,
     member_counter_methods,
     2u,
-    "member_counter"
+    nullptr
 };
 
 static const cmeta_param_desc member_add_projected_params[] = {
@@ -321,7 +321,7 @@ static const cmeta_receiver_method_set member_scale_method_set = {
     &member_virtual_base_type,
     member_scale_methods,
     1u,
-    "member_virtual_base"
+    nullptr
 };
 
 static const cmeta_param_desc member_scale_projected_params[] = {

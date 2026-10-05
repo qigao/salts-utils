@@ -77,7 +77,7 @@ execution.
 
 ## CMake
 
-Build SaltsUtils against a matching installed Salts profile through `SALTS_ROOT`. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
+Build SaltsUtils against a matching installed Salts 1.8.25 or newer profile through `SALTS_ROOT`. Generated fixed arrays use its canonical CMeta array provider and element lifecycle traits. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED

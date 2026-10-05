@@ -437,7 +437,10 @@ static int native_collection_contract(
       ops->struct_size <
           offsetof(cmeta_data_collection_ops, collector) +
               sizeof(((cmeta_data_collection_ops *)0)->collector) ||
-      ops->collector == NULL || ops->borrow == NULL)
+      (ops->collector == NULL &&
+       (ops->struct_size < offsetof(cmeta_data_collection_ops, collector_init) +
+                               sizeof(ops->collector_init) ||
+        ops->collector_init == NULL)) || ops->borrow == NULL)
     return 0;
 
   borrow = ops->borrow;
@@ -859,11 +862,31 @@ static int native_value_is_zero(const cmeta_data_desc *data, const void *storage
     return 1;
   }
   if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET) {
+    const cmeta_data_collection_ops *ops = cmeta_data_collection_ops_of(data);
+    const cmeta_data_desc *element = cmeta_data_collection_element_data(data);
     cmeta_data_collection_borrow_cursor cursor = {0};
     size_t count = 0u;
-    return cmeta_data_collection_borrow_begin(data, storage, &cursor) == CMETA_OK &&
-           cmeta_data_collection_borrow_size(&cursor, &count) == CMETA_OK &&
-           count == 0u;
+    bool zero = false;
+    if (cmeta_data_collection_borrow_begin(data, storage, &cursor) != CMETA_OK ||
+        cmeta_data_collection_borrow_size(&cursor, &count) != CMETA_OK)
+      return 0;
+    if (count == 0u) return 1;
+    if (ops == NULL || element == NULL ||
+        ops->struct_size < offsetof(cmeta_data_collection_ops, is_zero) + sizeof(ops->is_zero) ||
+        ops->is_zero == NULL ||
+        cmeta_data_value_is_zero(data, storage, &zero) != CMETA_OK || !zero)
+      return 0;
+    /* A fixed array is nonempty at semantic zero. Check borrowed elements as
+     * well: native state overlays belong to DataBind, outside CMeta fields. */
+    for (i = 0u; i < count; ++i) {
+      const void *value = NULL;
+      cmeta_gen_status generated = cmeta_data_collection_borrow_next(&cursor, &value);
+      if ((generated != CMETA_GEN_VALUE && generated != CMETA_GEN_VALUE_AND_DONE) ||
+          (generated == CMETA_GEN_VALUE_AND_DONE && i + 1u != count) ||
+          value == NULL || !native_value_is_zero(element, value))
+        return 0;
+    }
+    return 1;
   }
   if (data->kind == CMETA_DATA_MAP) {
     cmeta_data_map_borrow_cursor cursor = {0};

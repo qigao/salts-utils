@@ -237,6 +237,20 @@ static void expect_var_data_message(
 }
 
 spec("DataBind canonical Binary reader") {
+  it("rejects an excessive requested depth without silently clamping it") {
+    DataBindBinaryLayoutPlan plan = binary_plan(0);
+    unsigned char wire[15u];
+    cserde_reader *reader = NULL;
+    void *owner = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    write_payload(wire, 0, 1, 0);
+    check_equal(data_bind_binary_reader_open(&plan, wire, sizeof(wire),
+                    DATA_BIND_BINARY_LAYOUT_MAX_DEPTH + 1u, &reader, &owner, &error),
+                DATA_BIND_ERR_INVALID_ARG);
+    check_null(reader);
+    check_null(owner);
+  }
+
   it("borrows exact fixed bytes without endian conversion and rejects malformed metadata") {
     enum { BYTE_EXTENT = 6 };
     static const unsigned char wire[BYTE_EXTENT] = {0u, 1u, 0x80u, 0xffu, 2u, 3u};
@@ -471,8 +485,8 @@ spec("DataBind canonical Binary reader") {
     children[0] = NULL;
     check_equal(data_bind_binary_layout_plan_validate(&plans[0], &error), DATA_BIND_ERR_SCHEMA);
     children[0] = &plans[RECORD_CHAIN_LENGTH - 1u];
-    plans[0].size = DATA_BIND_BINARY_LAYOUT_PLAN_V1_SIZE;
-    check_equal(data_bind_binary_layout_plan_validate(&plans[0], &error), DATA_BIND_ERR_SCHEMA);
+    plans[0].size = offsetof(DataBindBinaryLayoutPlan, child_plans);
+    check_equal(data_bind_binary_layout_plan_validate(&plans[0], &error), DATA_BIND_ERR_INVALID_ARG);
     plans[0].size = sizeof(plans[0]);
     {
       DataBindBinaryLayoutPlan tail = tail_only_plan(0);
@@ -790,38 +804,39 @@ spec("DataBind canonical Binary reader") {
     check_contains(error.message, "trailing");
   }
 
-  it("continues to admit released v1 fixed-scalar field records") {
+  it("rejects truncated field and layout records without creating a reader") {
     DataBindBinaryLayoutPlan plan = binary_plan(0);
     DataBindBinaryFieldPlan fields[5];
     unsigned char wire[15];
     cserde_reader *reader = NULL;
     void *owner = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
-    size_t i;
-    DataBindBinaryLayoutPlan *released;
+    DataBindBinaryFieldPlan *truncated;
 
     memcpy(fields, BINARY_FIELDS, sizeof(fields));
-    for (i = 0u; i < sizeof(fields) / sizeof(fields[0]); ++i)
-      fields[i].size = DATA_BIND_BINARY_FIELD_PLAN_V1_SIZE;
-    plan.fields = fields;
-    plan.size = DATA_BIND_BINARY_LAYOUT_PLAN_V1_SIZE;
-    released = (DataBindBinaryLayoutPlan *)malloc(plan.size);
-    check_not_null(released);
-    if (released == NULL) return;
-    memcpy(released, &plan, plan.size);
+    fields[0].size = offsetof(DataBindBinaryFieldPlan, representation);
+    truncated = (DataBindBinaryFieldPlan *)malloc(fields[0].size);
+    check_not_null(truncated);
+    if (truncated == NULL) return;
+    memcpy(truncated, fields, fields[0].size);
+    plan.fields = truncated;
+    plan.field_count = 1u;
 
     write_payload(wire, 0, 1, 0);
     check_equal(
-        data_bind_binary_layout_plan_validate(released, &error),
-        DATA_BIND_OK);
+        data_bind_binary_layout_plan_validate(&plan, &error),
+        DATA_BIND_ERR_SCHEMA);
     check_equal(
         data_bind_binary_reader_open(
-            released, wire, sizeof(wire), 8u,
+            &plan, wire, sizeof(wire), 8u,
             &reader, &owner, &error),
-        DATA_BIND_OK);
-    if (reader != NULL) expect_required_prefix(reader, 1, 0);
-    data_bind_binary_reader_close(reader, owner);
-    free(released);
+        DATA_BIND_ERR_SCHEMA);
+    check_null(reader);
+    check_null(owner);
+    free(truncated);
+    plan.fields = fields;
+    plan.size = offsetof(DataBindBinaryLayoutPlan, child_plans);
+    check_equal(data_bind_binary_layout_plan_validate(&plan, &error), DATA_BIND_ERR_INVALID_ARG);
   }
 
   it("fails closed on unsupported or overlapping runtime plans") {

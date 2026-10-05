@@ -1,5 +1,5 @@
-#ifndef DATABIND_COMPILER_BINARY_LAYOUT_IR_H
-#define DATABIND_COMPILER_BINARY_LAYOUT_IR_H
+#ifndef DATABIND_BINARY_LAYOUT_IR_H
+#define DATABIND_BINARY_LAYOUT_IR_H
 
 #include "binary_format_plan.h"
 #include "idl_contract.h"
@@ -21,7 +21,9 @@ typedef enum databind_binary_layout_status {
 typedef enum databind_binary_field_layout_kind {
   DATABIND_BINARY_FIELD_FIXED = 0,
   DATABIND_BINARY_FIELD_GROUP = 1,
-  DATABIND_BINARY_FIELD_VAR_DATA = 2
+  DATABIND_BINARY_FIELD_VAR_DATA = 2,
+  DATABIND_BINARY_FIELD_COUNTED = 3,
+  DATABIND_BINARY_FIELD_CURSOR_FIXED = 4
 } databind_binary_field_layout_kind;
 
 /*
@@ -77,6 +79,18 @@ typedef struct databind_binary_field_layout {
   unsigned optional_bit;
   unsigned nullable_bit;
   unsigned flags;
+
+  /* FIXED array only. Element semantics are resolved independently from the
+   * total wire extent; zero count means this field is not an array. */
+  size_t array_count;
+  size_t element_extent;
+  databind_binary_scalar_kind element_scalar_kind;
+  unsigned element_scalar_bits;
+  /* COUNTED only: map keys have canonical scalar semantics; NONE denotes a
+   * list/set sequence. Numeric element widths are independent of the prefix.
+   * STRING/BYTES elements carry their own u32 length prefix, not fixed extents. */
+  databind_binary_scalar_kind key_scalar_kind;
+  unsigned key_scalar_bits;
 } databind_binary_field_layout;
 
 typedef struct databind_binary_type_layout {

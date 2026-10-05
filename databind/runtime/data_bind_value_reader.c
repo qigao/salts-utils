@@ -1,5 +1,8 @@
 #include "data_bind_value_reader.h"
+#include "data_bind_value_reader_internal.h"
 #include "data_bind_value_internal.h"
+
+#include <salts_cmeta_data.h>
 
 #include <stddef.h>
 #include <stdio.h>
@@ -18,6 +21,7 @@ typedef struct ValueReader {
   size_t depth;
   size_t items;
   size_t view_bytes;
+  int typed_integers;
   ValueReaderFrame frames[];
 } ValueReader;
 
@@ -48,6 +52,45 @@ static cserde_status reader_slice(ValueReader *state, cserde_token *out,
   out->value.slice = (cserde_slice){data, size, CSERDE_VIEW_STABLE};
   return CSERDE_OK;
 }
+
+static cserde_status reader_integer(
+    const ValueReader *state, const DataBindValue *value, cserde_token *out) {
+  static const cmeta_data_desc *const types[] = {
+      &cmeta_data_int8, &cmeta_data_int16, &cmeta_data_int32, &cmeta_data_int64,
+      &cmeta_data_uint8, &cmeta_data_uint16, &cmeta_data_uint32, &cmeta_data_uint64};
+  const int source_signed = value->kind != DATA_BIND_VALUE_UINT64;
+  const int64_t signed_value = value->kind == DATA_BIND_VALUE_INT ? value->data.int_val :
+                              (source_signed ? value->data.int64_val : 0);
+  const uint64_t unsigned_value = source_signed ? (uint64_t)signed_value : value->data.uint64_val;
+  size_t i;
+  out->kind = source_signed ? CSERDE_SINT : CSERDE_UINT;
+  if (source_signed) out->value.sint = signed_value;
+  else out->value.uint = unsigned_value;
+  if (!state->typed_integers) return CSERDE_OK;
+  if (value->type_identity == NULL) return CSERDE_SOURCE_ERROR;
+  for (i = 0u; i < sizeof(types) / sizeof(types[0]); ++i) {
+    const cmeta_data_desc *data = types[i];
+    const cmeta_data_integer_shape *shape = (const cmeta_data_integer_shape *)data->shape;
+    const unsigned bits = shape->bits;
+    if (!cmeta_type_identity_equal(value->type_identity, data->storage_type->identity)) continue;
+    if (data->kind == CMETA_DATA_UINT) {
+      const uint64_t maximum = bits == 64u ? UINT64_MAX : (UINT64_C(1) << bits) - 1u;
+      if ((source_signed && signed_value < 0) || unsigned_value > maximum) return CSERDE_SOURCE_ERROR;
+      out->kind = CSERDE_UINT;
+      out->value.uint = unsigned_value;
+    } else {
+      const int64_t maximum = bits == 64u ? INT64_MAX : (int64_t)((UINT64_C(1) << (bits - 1u)) - 1u);
+      const int64_t minimum = bits == 64u ? INT64_MIN : -(int64_t)(UINT64_C(1) << (bits - 1u));
+      if ((source_signed && (signed_value < minimum || signed_value > maximum)) ||
+          (!source_signed && unsigned_value > (uint64_t)maximum)) return CSERDE_SOURCE_ERROR;
+      out->kind = CSERDE_SINT;
+      out->value.sint = source_signed ? signed_value : (int64_t)unsigned_value;
+    }
+    break;
+  }
+  return CSERDE_OK;
+}
+
 static cserde_status reader_value(ValueReader *state, const DataBindValue *value,
                                   cserde_token *out) {
   ValueReaderFrame *frame;
@@ -60,11 +103,9 @@ static cserde_status reader_value(ValueReader *state, const DataBindValue *value
     out->kind = CSERDE_BOOL; out->value.boolean = value->data.bool_val != 0;
     return CSERDE_OK;
   case DATA_BIND_VALUE_INT:
-    out->kind = CSERDE_SINT; out->value.sint = value->data.int_val; return CSERDE_OK;
   case DATA_BIND_VALUE_INT64:
-    out->kind = CSERDE_SINT; out->value.sint = value->data.int64_val; return CSERDE_OK;
   case DATA_BIND_VALUE_UINT64:
-    out->kind = CSERDE_UINT; out->value.uint = value->data.uint64_val; return CSERDE_OK;
+    return reader_integer(state, value, out);
   case DATA_BIND_VALUE_DOUBLE:
     out->kind = CSERDE_FLOAT; out->value.floating = value->data.double_val;
     return CSERDE_OK;
@@ -144,9 +185,9 @@ static cserde_status reader_next(void *context, cserde_token *out) {
 static const cserde_reader_ops READER_OPS = {
     sizeof(cserde_reader_ops), CSERDE_READER_OPS_ABI_VERSION, reader_next};
 
-DataBindStatus data_bind_value_reader_open(
+static DataBindStatus value_reader_open(
     const DataBindValue *value, const DataBindValueReaderLimits *limits,
-    cserde_reader **out_reader, DataBindError *error) {
+    cserde_reader **out_reader, DataBindError *error, int typed_integers) {
   const DataBindValueReaderLimits defaults = DATA_BIND_VALUE_READER_LIMITS_INIT;
   ValueReader *state;
   if (out_reader == NULL)
@@ -163,12 +204,23 @@ DataBindStatus data_bind_value_reader_open(
     return reader_error(error, DATA_BIND_ERR_OOM, "Unable to allocate bounded value reader stack");
   state->root = value;
   state->limits = *limits;
+  state->typed_integers = typed_integers;
   if (cserde_reader_init(&state->reader, &READER_OPS, state) != CSERDE_OK) {
     free(state);
     return reader_error(error, DATA_BIND_ERR_RUNTIME, "Unable to initialize value reader");
   }
   *out_reader = &state->reader;
   return reader_error(error, DATA_BIND_OK, "");
+}
+DataBindStatus data_bind_value_reader_open(
+    const DataBindValue *value, const DataBindValueReaderLimits *limits,
+    cserde_reader **out_reader, DataBindError *error) {
+  return value_reader_open(value, limits, out_reader, error, 0);
+}
+DataBindStatus data_bind_internal_value_reader_open_typed(
+    const DataBindValue *value, const DataBindValueReaderLimits *limits,
+    cserde_reader **out_reader, DataBindError *error) {
+  return value_reader_open(value, limits, out_reader, error, 1);
 }
 void data_bind_value_reader_close(cserde_reader *reader) {
   if (reader != NULL) free(reader->context);

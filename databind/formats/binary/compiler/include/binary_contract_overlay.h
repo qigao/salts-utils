@@ -21,6 +21,13 @@ int databind_binary_format_plan_build(
     databind_binary_format_plan *out,
     tbe_error_t *error);
 
+/* Project only the requested record and its transitive record dependencies.
+ * Unsupported unrelated declarations do not change this root's admission.
+ * Every selected declaration is validated; failure publishes no plan. */
+int databind_binary_format_plan_build_root(
+    const IdlContract *contract, const Node *wire_ir, const char *type_name,
+    databind_binary_format_plan *out, tbe_error_t *error);
+
 #ifdef __cplusplus
 }
 #endif

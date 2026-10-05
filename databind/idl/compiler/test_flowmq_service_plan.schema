@@ -11,7 +11,7 @@ message AddResponse {
 }
 
 message CalcError {
-  string message;
+  string detail;
 }
 
 service Calc {

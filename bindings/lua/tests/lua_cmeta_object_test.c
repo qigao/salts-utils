@@ -135,7 +135,7 @@ static const cmeta_receiver_method_set lua_object_method_set = {
     .receiver_type = &lua_object_box_type,
     .methods = lua_object_methods,
     .method_count = 1u,
-    .owner_name = "LuaObjectBox"
+    .owner = NULL
 };
 
 static const cmeta_param_desc lua_object_add_projected_params[] = {

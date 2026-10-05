@@ -20,6 +20,13 @@ enum { DATA_BIND_MESSAGE_PLAN_ABI_VERSION = 1u };
 
 typedef struct DataBindMessagePlan DataBindMessagePlan;
 
+#ifndef DATA_BIND_MESSAGE_PLAN_MAX_PREPARED
+#define DATA_BIND_MESSAGE_PLAN_MAX_PREPARED 4096u
+#endif
+#ifndef DATA_BIND_MESSAGE_PLAN_MAX_PREPARED_FIELDS
+#define DATA_BIND_MESSAGE_PLAN_MAX_PREPARED_FIELDS 65536u
+#endif
+
 typedef enum DataBindMessageObjectFieldState {
   DATA_BIND_MESSAGE_OBJECT_ABSENT = 0,
   DATA_BIND_MESSAGE_OBJECT_VALUE = 1,
@@ -69,8 +76,8 @@ typedef struct DataBindMessagePlanDiagnostic {
  * binding.
  *
  * The plan owns DataBind presence/null/default/constraint facts and a compiled
- * ValidationPlan. It borrows only immutable generated CMeta/native binding
- * metadata. It owns no FunctionDesc, Service operation, format or transport.
+ * ValidationPlan. It copies the native binding record and borrows its immutable
+ * CMeta/state metadata. It owns no FunctionDesc, Service operation, format or transport.
  *
  * Native validation executes the compiled ValidationPlan directly. Admitted
  * nested Struct/list/set/map bindings traverse canonical CMeta field and borrow
@@ -82,6 +89,41 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_compile(
     const DataBindNativeTypeBinding *native,
     DataBindMessagePlan **out_plan,
     DataBindMessagePlanDiagnostic *diagnostic);
+
+/**
+ * Prepare or borrow one codec-owned generated MessagePlan.
+ *
+ * artifact and its CMeta/state metadata must remain immutable and alive until
+ * data_bind_free(codec). The artifact address is a preparation key, not a CMeta
+ * type identity. A cold acquisition resolves and compiles that exact binding;
+ * a warm acquisition compares only artifact addresses and performs no schema
+ * lookup, resolver call or plan allocation. Call before starting the data path
+ * to prepare explicitly. A failed candidate publishes nothing and has no
+ * alternative execution path.
+ *
+ * The codec owns the returned plan; never call data_bind_message_plan_free on
+ * it. Its address remains stable until codec destruction, which requires all
+ * acquisitions and executions to be quiescent. Concurrent acquisition is MPMC:
+ * candidates compile outside the codec mutex, and one complete candidate is
+ * published per artifact. Duplicate candidates are destroyed outside the lock.
+ * Execution can share the immutable plan with separate per-call workspaces.
+ *
+ * Each codec admits at most MAX_PREPARED plans and MAX_PREPARED_FIELDS total
+ * field records. Full returns LIMIT; allocation failure returns OOM. Existing
+ * plans remain available at capacity. out_plan is NULL on failure.
+ *
+ * codec and out_plan must be non-NULL. artifact must contain the complete
+ * current ABI record, a non-empty type name and a binding resolver; invalid
+ * arguments return INVALID_ARG. Binding and schema failures propagate their
+ * status. error is optional and receives the preparation diagnostic.
+ * See test_generated_message_plan.c for executable acquisition, concurrent
+ * use, ownership and codec-destruction examples.
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_acquire_generated(
+    DataBind *codec,
+    const DataBindMessageNativeArtifact *artifact,
+    const DataBindMessagePlan **out_plan,
+    DataBindError *error);
 
 /**
  * Compile one canonical DataBind record against a provider-backed CMeta object
@@ -160,10 +202,10 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_validate_object(
  * native decoders use the remaining workspace. No runtime heap allocation is
  * performed by MessagePlan.
  *
- * Lists admit builtin elements with canonical schema storage descriptors (exact
- * semantic identity, including integer width/signedness), or admitted nested
- * Struct descriptors. String/bytes elements require a separate owned-buffer
- * contract and remain outside this list admission.
+ * Lists, fixed arrays and sets admit exact builtin and enum semantics,
+ * owned STRING/BYTES providers, or admitted nested Struct descriptors.
+ * String-key maps admit the same value contracts. Integer width/signedness
+ * and fixed-array cardinality must match the canonical Contract.
  * CSTL/provider collectors own their bounded element storage and cleanup.
  */
 DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native(

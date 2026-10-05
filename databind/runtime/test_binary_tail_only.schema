@@ -100,3 +100,47 @@ message FixedByteGroupWire {
     group<FixedByteEntry> entries;
     string text;
 }
+
+message ScalarArrayWire {
+    bool[2] ready;
+    int16[3] deltas;
+    float[2] ratios;
+    optional nullable uint16[3] samples;
+}
+
+composite ArrayWireBlock {
+    uint16[2] values;
+}
+
+message RecordArrayWire {
+    optional nullable FixedByteRecord[2] records;
+    ArrayWireBlock[2] blocks;
+    string text;
+}
+
+group ArrayGroupEntry {
+    uint16[2] values;
+}
+
+message ArrayGroupWire {
+    group<ArrayGroupEntry> entries;
+    string text;
+}
+
+message CountedWire {
+    uint16 prefix;
+    list<uint16> values;
+    set<string> tags;
+    map<string,string> labels;
+    uint16 last;
+}
+
+message CountedRecordWire {
+    list<WireRecord> records;
+    uint16 last;
+}
+
+// A variable nested record has no admitted fixed inline Binary representation.
+message UnavailableNested {
+    TailOnly child;
+}

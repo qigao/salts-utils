@@ -1,0 +1,42 @@
+schema BinaryArray [version(1), byte_order(little)];
+
+enum ArrayCode <int16> {
+  Zero = 0;
+  One = 1;
+}
+
+flags ArrayPermissions <uint8> {
+  Read = 1;
+  Write = 2;
+}
+
+message ArrayScalars {
+  bool[2] ready;
+  ArrayCode[3] codes;
+  float[2] ratios;
+  optional nullable uint16[3] samples;
+  ArrayPermissions[2] permissions;
+}
+
+composite ArrayEntry {
+  uint16 code;
+  bytes(3) digest;
+}
+
+composite ArrayBlock {
+  uint16[2] values;
+}
+
+message ArrayRecords {
+  optional nullable ArrayEntry[2] entries;
+  ArrayBlock[2] blocks;
+  string label;
+}
+
+composite OverlayArrayEntry {
+  optional nullable uint16 code;
+}
+
+message UnsupportedOverlayArray {
+  OverlayArrayEntry[2] entries;
+}

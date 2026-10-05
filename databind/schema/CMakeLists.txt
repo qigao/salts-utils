@@ -39,7 +39,7 @@ install(
 # Tests
 # =============================================================================
 
-set(DATABIND_SCHEMA_TEST_LIBS databind_binary_contract Salts::TinyTest)
+set(DATABIND_SCHEMA_TEST_LIBS Salts::Schema databind_binary_contract Salts::TinyTest)
 if(BUILD_TESTS)
 foreach(test_name
         test_tbe_parser
@@ -62,8 +62,7 @@ endforeach()
 
 
 if(TARGET test_tbe_robustness)
-  target_sources(test_tbe_robustness PRIVATE
-    $<TARGET_OBJECTS:databind_binary_format_objects>)
+  target_link_libraries(test_tbe_robustness PRIVATE databind_binary_format_objects)
 endif()
 
 cmake_add_test(test_schema_cmeta_public_cpp
@@ -90,8 +89,7 @@ cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
   LIBS databind_binary_contract
   FOLDER databind/schema/tests)
-target_sources(verify_fixes PRIVATE
-  $<TARGET_OBJECTS:databind_binary_format_objects>)
+target_link_libraries(verify_fixes PRIVATE databind_binary_format_objects)
 
 # =============================================================================
 # 枚举增强功能测试：生成头文件

@@ -1723,8 +1723,12 @@ spec("DataBind canonical Service BindingPlan") {
         DATA_BIND_OK);
     check_not_null(plan);
     check_equal(data_bind_message_plan_type_name(plan), "AddRequest");
-    check_true(data_bind_message_plan_native_binding(plan) ==
+    check_true(data_bind_message_plan_native_binding(plan) !=
                &ADD_REQUEST_NATIVE);
+    check_equal(data_bind_message_plan_native_binding(plan)->idl_type_name,
+                ADD_REQUEST_NATIVE.idl_type_name);
+    check_true(cmeta_data_desc_equal(
+        data_bind_message_plan_native_binding(plan)->data, ADD_REQUEST_NATIVE.data));
     check_equal(data_bind_message_plan_field_count(plan), (size_t)3u);
 
     value.left = 2u;

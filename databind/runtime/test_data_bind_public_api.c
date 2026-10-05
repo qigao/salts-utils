@@ -799,11 +799,12 @@ spec("data_bind public API") {
     size_t serialized_len = 0;
     serialized_output output = {0};
 
-    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check(data_bind_create_from_text(schema, strlen(schema), &codec, &err) == DATA_BIND_OK,
+          "%s", err.message);
     check_not_null(codec);
     if (codec) {
-      check_equal(data_bind_object_from_json(codec, "Payload", json, strlen(json), &object, &err),
-                   DATA_BIND_OK);
+      check(data_bind_object_from_json(codec, "Payload", json, strlen(json), &object, &err) ==
+                DATA_BIND_OK, "%s", err.message);
       check_not_null(object);
     }
     if (object) {
@@ -876,10 +877,11 @@ spec("data_bind public API") {
     uint64_t unsigned_value = 0;
     int64_t signed_value = 0;
 
-    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check(data_bind_create_from_text(schema, strlen(schema), &codec, &err) == DATA_BIND_OK,
+          "%s", err.message);
     if (codec) {
-      check_equal(data_bind_object_from_json(codec, "CsvRow", json, strlen(json), &object, &err),
-                   DATA_BIND_OK);
+      check(data_bind_object_from_json(codec, "CsvRow", json, strlen(json), &object, &err) ==
+                DATA_BIND_OK, "%s", err.message);
       check_not_null(object);
     }
     if (object) {
@@ -1450,6 +1452,76 @@ spec("data_bind public API") {
     }
   }
 
+  group("Binary root admission") {
+    static const char schema[] =
+        "message Unrelated { decimal price; }"
+        "message Child { uint16 id; }"
+        "message Parent { list<Child> children; uint16 last; }"
+        "message ReachesBad { Unrelated broken; }";
+    static const char json[] = "{\"children\":[{\"id\":4660}],\"last\":22136}";
+    static const uint8_t expected[] = {1u, 0u, 0u, 0u, 0x34u, 0x12u, 0x78u, 0x56u};
+    static DataBind *codec;
+    static DataBindObject *object;
+    static DataBindObject *roundtrip;
+    static DataBindValue *value;
+    static uint8_t *wire;
+    static size_t wire_len;
+    static DataBindError error;
+
+    before_each() {
+      codec = NULL;
+      object = NULL;
+      roundtrip = NULL;
+      value = NULL;
+      wire = NULL;
+      wire_len = 0u;
+      error = (DataBindError)DATA_BIND_ERROR_INIT;
+      check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1u, &codec, &error), DATA_BIND_OK);
+    }
+    after_each() {
+      data_bind_binary_free(wire);
+      data_bind_value_free(value);
+      data_bind_object_free(roundtrip);
+      data_bind_object_free(object);
+      data_bind_free(codec);
+    }
+
+    it("projects reachable records without unrelated unsupported Binary declarations") {
+      check_equal(data_bind_object_from_json(codec, "Parent", json, sizeof(json) - 1u,
+                                              &object, &error), DATA_BIND_OK);
+      check_equal(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &error), DATA_BIND_OK);
+      check_equal(wire_len, sizeof(expected));
+      check_equal(wire, expected, sizeof(expected));
+      check_equal(data_bind_object_from_bin(codec, "Parent", expected, sizeof(expected),
+                                             &roundtrip, &error), DATA_BIND_OK);
+      const DataBindValue *root = data_bind_object_value(roundtrip);
+      const DataBindValue *child = data_bind_value_at(data_bind_value_get(root, "children"), 0u);
+      check_equal(data_bind_value_as_int(data_bind_value_get(child, "id")), 4660);
+      check_equal(data_bind_value_as_int(data_bind_value_get(root, "last")), 22136);
+    }
+    it("rejects unsupported selected roots and reachable children without publication") {
+      check_equal(data_bind_parse(codec, "Unrelated", expected, sizeof(expected), &value, &error),
+                  DATA_BIND_ERR_SCHEMA);
+      check_null(value);
+      check_contains(error.message, "Unrelated");
+      check_equal(data_bind_parse(codec, "ReachesBad", expected, sizeof(expected), &value, &error),
+                  DATA_BIND_ERR_SCHEMA);
+      check_null(value);
+      static const char unsupported_json[] = "{\"price\":\"12.34\"}";
+      check_equal(data_bind_object_from_json(codec, "Unrelated", unsupported_json,
+                                              sizeof(unsupported_json) - 1u, &object, &error), DATA_BIND_OK);
+      check_equal(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &error),
+                  DATA_BIND_ERR_SCHEMA);
+      check_null(wire);
+      check_equal(wire_len, 0u);
+    }
+    it("reports a missing root distinctly from an unsupported wire representation") {
+      check_equal(data_bind_parse(codec, "Missing", expected, sizeof(expected), &value, &error),
+                  DATA_BIND_ERR_TYPE_NOT_FOUND);
+      check_null(value);
+    }
+  }
+
   it("should report required binary capacity without modifying a short buffer") {
     const char *schema = "message Item { uint32 id; string name; }\n";
     const char *json = "{\"id\":5,\"name\":\"bin\"}";
@@ -1484,9 +1556,10 @@ spec("data_bind public API") {
   }
 
   it("should reject binary serialization without a compatible wire schema") {
-    const char *optional_schema = "message Item { optional uint32 id; }\n";
+    const char *unsupported_schema =
+        "group Detail { string name; } message Item { group<Detail> detail; }\n";
     const char *other_schema = "message Other { uint32 id; }\n";
-    const char *json = "{\"id\":5}";
+    const char *json = "{\"detail\":[{\"name\":\"x\"}]}";
     DataBind *codec = NULL;
     DataBind *other = NULL;
     DataBindObject *object = NULL;
@@ -1494,7 +1567,7 @@ spec("data_bind public API") {
     uint8_t *wire = NULL;
     size_t wire_len = 0;
 
-    check_equal(data_bind_create_from_text(optional_schema, strlen(optional_schema), &codec, &err),
+    check_equal(data_bind_create_from_text(unsupported_schema, strlen(unsupported_schema), &codec, &err),
                  DATA_BIND_OK);
     check_equal(data_bind_create_from_text(other_schema, strlen(other_schema), &other, &err),
                  DATA_BIND_OK);
