@@ -15,8 +15,8 @@ spec("data_bind dynamic value public boundary") {
         "composite Meta { i32 seq; } "
         "message Values { i32 signed_value; i64 long_value; u64 unsigned_value; double ratio; "
         "bool active; uuid uid; datetime created; date day; time at; duration span; decimal price; "
-        "bigint total; money cost; Meta meta; string note; bytes raw; list<u32> values; "
-        "set<i8> tags; map<string,i64> attrs; }";
+        "bigint total; money cost; Meta meta; list<u32> values; "
+        "set<i8> tags; map<string,i64> attrs; string note; bytes raw; }";
     const char *json =
         "{\"signed_value\":-7,\"long_value\":-9007199254740991,"
         "\"unsigned_value\":18446744073709551615,\"ratio\":1.25,\"active\":true,"
@@ -39,7 +39,8 @@ spec("data_bind dynamic value public boundary") {
     size_t raw_len = 0;
     char text[128];
 
-    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error), DATA_BIND_OK);
+    DataBindStatus create_status = data_bind_create_from_text(schema, strlen(schema), &codec, &error);
+    check(create_status == DATA_BIND_OK, "%s", error.message);
     if (codec != NULL) {
       check_equal(data_bind_parse_json(codec, "Values", json, strlen(json), &source, &error),
                   DATA_BIND_OK);

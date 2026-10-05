@@ -43,6 +43,21 @@ identity graph；所有可达 child 借用其中与其 schema type expression �
 `DataBindValueKind` 仍是公开兼容与物理 storage union 的 discriminator，不承担另一套
 semantic type graph。
 
+动态值转换到 canonical native 对象使用 `data_bind_value_reader.h` 的
+`data_bind_value_reader_open/close` 和既有 `data_bind_message_plan_decode_native`。
+reader 借用不可变 value tree，只拥有打开时一次分配的有界遍历栈；调用方必须让
+整棵树存活到 close，所有操作由单线程执行。节点、容器深度和累计借用字节数分别
+受 `DataBindValueReaderLimits` 限制，超限通过 CSerde 返回明确失败。
+对象字段已是 canonical 名称，不再做 FormatPlan 名称映射；string/bytes 保留不同的
+token，UUID 输出 16 字节。datetime/date/time/duration/decimal/bigint/money 尚无本适配器
+的 canonical 表示，直接返回 `CSERDE_UNSUPPORTED`。map 从实际存储 key 读取，不以文本
+展示视图重建类型；现有动态构造入口仍仅接纳 string map key。
+调用方先解码到 fresh staging，close reader 后才通过 CMeta move 发布；失败由
+MessagePlan 清空 staging，原发布对象保持不变。native provider 拥有复制的 string/bytes，
+动态树在 close 后可以释放。实现不引入序列化后重解析或 TBE compatibility wrapper。
+完整调用和发布示例见 [native_value_reader_test.c](../tests/native_storage/native_value_reader_test.c)，
+C++ 公开链接示例见 [native_value_reader_cpp_test.cpp](../tests/native_storage/native_value_reader_cpp_test.cpp)。
+
 ### 原生 parser 依赖与迁移
 
 DataBind 3.0 makes the public ABI independent of parser/query implementation headers.

@@ -115,3 +115,17 @@ cmake_add_test(test_data_bind_native_bytes_json
   FOLDER "databind/tests")
 set_tests_properties(test_data_bind_native_bytes_json PROPERTIES
   LABELS "databind;cmeta;native;bytes;json" TIMEOUT 60)
+
+cmake_add_test(test_data_bind_native_value_reader
+  SOURCES native_value_reader_test.c
+  LIBS Salts::DataBind Salts::CSTL Salts::TinyTest
+  FOLDER "databind/tests")
+set_tests_properties(test_data_bind_native_value_reader PROPERTIES
+  LABELS "databind;cmeta;native;dynamic;ownership" TIMEOUT 60)
+
+cmake_add_test(test_data_bind_native_value_reader_cpp
+  SOURCES native_value_reader_cpp_test.cpp
+  LIBS Salts::DataBind Salts::TinyTest
+  FOLDER "databind/tests")
+set_tests_properties(test_data_bind_native_value_reader_cpp PROPERTIES
+  LABELS "databind;cmeta;native;dynamic;public;cpp" TIMEOUT 60)

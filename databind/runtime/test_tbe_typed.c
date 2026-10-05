@@ -314,41 +314,6 @@ spec("typed DataBind binary") {
     tbe_typed_clear(&TEST_WIDE_ENUM_TYPE, &value);
   }
 
-  it("converts dynamic values transactionally into initialized owning structs") {
-    static const char schema[] =
-        "message Text { string text; } message Number { uint32 text; }";
-    static const char valid_json[] = "{\"text\":\"replacement\"}";
-    static const char invalid_json[] = "{\"text\":7}";
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    DataBind *codec = NULL;
-    DataBindValue *valid = NULL;
-    DataBindValue *invalid = NULL;
-    TestText text;
-
-    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
-                 DATA_BIND_OK);
-    check_equal(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
-    text.text = tstr_dup("stable");
-    check_not_null(text.text);
-    if (codec != NULL && text.text != NULL) {
-      check_equal(data_bind_parse_json(codec, "Text", valid_json, sizeof(valid_json) - 1,
-                                        &valid, &error),
-                   DATA_BIND_OK);
-      check_equal(data_bind_parse_json(codec, "Number", invalid_json, sizeof(invalid_json) - 1,
-                                        &invalid, &error),
-                   DATA_BIND_OK);
-      check_equal(tbe_typed_from_value(&TEST_TEXT_TYPE, valid, &text, &error), DATA_BIND_OK);
-      check_equal(text.text, "replacement");
-      check_equal(tbe_typed_from_value(&TEST_TEXT_TYPE, invalid, &text, &error),
-                   DATA_BIND_ERR_TYPE_MISMATCH);
-      check_equal(text.text, "replacement");
-    }
-    data_bind_value_free(invalid);
-    data_bind_value_free(valid);
-    tbe_typed_clear(&TEST_TEXT_TYPE, &text);
-    data_bind_free(codec);
-  }
-
   it("validates the fixed wire layout before writing output") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     TbeTypedField fields[3];
