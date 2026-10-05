@@ -7,6 +7,36 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct native_cleanup_value {
+  const char *data_expr;
+  const char *value_expr;
+} native_cleanup_value;
+
+typedef struct native_cleanup_plan {
+  const char *label;
+  const native_cleanup_value *values;
+  size_t value_count;
+} native_cleanup_plan;
+
+static int native_emit_cleanup_plan(
+    FILE *file, const native_cleanup_plan *plan) {
+  size_t i;
+  if (file == NULL || plan == NULL || plan->label == NULL ||
+      plan->values == NULL || plan->value_count == 0u)
+    return -1;
+  if (fprintf(file, "%s:\\n", plan->label) < 0) return -1;
+  for (i = plan->value_count; i != 0u; --i) {
+    const native_cleanup_value *value = &plan->values[i - 1u];
+    if (value->data_expr == NULL || value->value_expr == NULL ||
+        fprintf(
+            file,
+            "  (void)cmeta_data_value_restore_zero(%s, %s);\\n",
+            value->data_expr, value->value_expr) < 0)
+      return -1;
+  }
+  return 0;
+}
+
 static char *native_strdup(const char *text) {
   size_t length;
   char *copy;
@@ -1180,6 +1210,12 @@ int databind_compiler_service_native_emit_execution(
 int databind_compiler_service_native_emit_cflow_projection(
     FILE *file,
     const databind_compiler_service_native_operation *operation) {
+  const native_cleanup_value cflow_cleanup_values[] = {
+      {"response_data", "out"}};
+  const native_cleanup_plan cflow_cleanup = {
+      "cleanup", cflow_cleanup_values,
+      sizeof(cflow_cleanup_values) / sizeof(cflow_cleanup_values[0])};
+
   if (file == NULL || operation == NULL ||
       operation->symbol == NULL ||
       operation->request_type == NULL ||
@@ -1193,92 +1229,97 @@ int databind_compiler_service_native_emit_cflow_projection(
       operation->response_null_count != 0u) {
     return fprintf(
                file,
-               "cflow_function_projection_status %s__databind_cflow_projection(\n"
-               "    cflow_function_typed_adapter_projection *out) {\n"
-               "  if (out == NULL)\n"
-               "    return CFLOW_FUNCTION_PROJECTION_INVALID_ARGUMENT;\n"
-               "  *out = (cflow_function_typed_adapter_projection){0};\n"
-               "  return CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE;\n"
-               "}\n\n",
+               "cflow_function_projection_status %s__databind_cflow_projection(\\n"
+               "    cflow_function_typed_adapter_projection *out) {\\n"
+               "  if (out == NULL)\\n"
+               "    return CFLOW_FUNCTION_PROJECTION_INVALID_ARGUMENT;\\n"
+               "  *out = (cflow_function_typed_adapter_projection){0};\\n"
+               "  return CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE;\\n"
+               "}\\n\\n",
                operation->symbol) < 0
                ? -1
                : 0;
   }
 
+  if (fprintf(
+          file,
+          "static bool %s__databind_cflow_invoke(\\n"
+          "    const cmeta_callable *self, void *out,\\n"
+          "    const void *const *args) {\\n"
+          "  const cmeta_data_desc *response_data = NULL;\\n"
+          "  int native_status = -1;\\n"
+          "  void *params[2];\\n"
+          "  if (self == NULL || out == NULL || args == NULL ||\\n"
+          "      args[0] == NULL ||\\n"
+          "      self->capture_size != sizeof(response_data))\\n"
+          "    return false;\\n"
+          "  memcpy(&response_data, self->capture.bytes, sizeof(response_data));\\n"
+          "  if (response_data == NULL ||\\n"
+          "      cmeta_data_value_init_zero(response_data, out) != CMETA_OK)\\n"
+          "    return false;\\n"
+          "  params[0] = (void *)args[0];\\n"
+          "  params[1] = out;\\n"
+          "  if (!%s__execution_meta.invoke(\\n"
+          "          %s__execution_meta.context, &native_status, params, 2u) ||\\n"
+          "      native_status != 0)\\n"
+          "    goto cleanup;\\n"
+          "  return true;\\n",
+          operation->symbol,
+          operation->symbol,
+          operation->symbol) < 0)
+    return -1;
+
+  if (native_emit_cleanup_plan(file, &cflow_cleanup) != 0 ||
+      fputs("  return false;\\n}\\n", file) == EOF)
+    return -1;
+
   return fprintf(
              file,
-             "static bool %s__databind_cflow_invoke(\n"
-             "    const cmeta_callable *self, void *out,\n"
-             "    const void *const *args) {\n"
-             "  const cmeta_data_desc *response_data = NULL;\n"
-             "  int native_status = -1;\n"
-             "  void *params[2];\n"
-             "  if (self == NULL || out == NULL || args == NULL ||\n"
-             "      args[0] == NULL ||\n"
-             "      self->capture_size != sizeof(response_data))\n"
-             "    return false;\n"
-             "  memcpy(&response_data, self->capture.bytes, sizeof(response_data));\n"
-             "  if (response_data == NULL ||\n"
-             "      cmeta_data_value_init_zero(response_data, out) != CMETA_OK)\n"
-             "    return false;\n"
-             "  params[0] = (void *)args[0];\n"
-             "  params[1] = out;\n"
-             "  if (!%s__execution_meta.invoke(\n"
-             "          %s__execution_meta.context, &native_status, params, 2u) ||\n"
-             "      native_status != 0) {\n"
-             "    (void)cmeta_data_value_restore_zero(response_data, out);\n"
-             "    return false;\n"
-             "  }\n"
-             "  return true;\n"
-             "}\n"
-             "cflow_function_projection_status %s__databind_cflow_projection(\n"
-             "    cflow_function_typed_adapter_projection *out) {\n"
-             "  DataBindNativeTypeBinding request = {0};\n"
-             "  DataBindNativeTypeBinding response = {0};\n"
-             "  DataBindServiceNativeBinding service = {0};\n"
-             "  DataBindError error = DATA_BIND_ERROR_INIT;\n"
-             "  cmeta_callable adapter = {0};\n"
-             "  const cmeta_function_desc *function = &%s__function_meta;\n"
-             "  const cmeta_data_desc *response_data;\n"
-             "  DataBindStatus status;\n"
-             "  if (out == NULL)\n"
-             "    return CFLOW_FUNCTION_PROJECTION_INVALID_ARGUMENT;\n"
-             "  *out = (cflow_function_typed_adapter_projection){0};\n"
-             "  if ((function->effects & CMETA_EFFECT_ASYNC) != 0u)\n"
-             "    return CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE;\n"
-             "  if (!data_bind_native_execution_valid(&%s__execution_meta))\n"
-             "    return CFLOW_FUNCTION_PROJECTION_INVALID_ADAPTER;\n"
-             "  status = %s__databind_native_binding(\n"
-             "      &request, &response, &service, &error);\n"
-             "  if (status != DATA_BIND_OK || service.function != function ||\n"
-             "      request.data == NULL || response.data == NULL ||\n"
-             "      request.data->storage_type == NULL ||\n"
-             "      response.data->storage_type == NULL ||\n"
-             "      !cmeta_data_value_traits_supported(request.data) ||\n"
-             "      !cmeta_data_value_traits_supported(response.data) ||\n"
-             "      cmeta_type_require_traits(\n"
-             "          request.data->storage_type,\n"
-             "          CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |\n"
-             "              CMETA_TRAIT_DESTROY) != CMETA_OK ||\n"
-             "      cmeta_type_require_traits(\n"
-             "          response.data->storage_type,\n"
-             "          CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |\n"
-             "              CMETA_TRAIT_DESTROY) != CMETA_OK)\n"
-             "    return CFLOW_FUNCTION_PROJECTION_TYPE_MISMATCH;\n"
-             "  response_data = response.data;\n"
-             "  adapter.meta.effects = function->effects;\n"
-             "  adapter.meta.properties = function->properties;\n"
-             "  adapter.invoke = %s__databind_cflow_invoke;\n"
-             "  adapter.dispatch = CMETA_CALLABLE_DISPATCH_ADAPTER;\n"
-             "  adapter.capture_size = sizeof(response_data);\n"
-             "  memcpy(adapter.capture.bytes, &response_data, sizeof(response_data));\n"
-             "  return cflow_function_typed_adapter_projection_admit(\n"
-             "      function, &%s__function_abi_meta, adapter,\n"
-             "      request.data->storage_type, response.data->storage_type, out);\n"
-             "}\n\n",
-             operation->symbol,
-             operation->symbol,
-             operation->symbol,
+             "cflow_function_projection_status %s__databind_cflow_projection(\\n"
+             "    cflow_function_typed_adapter_projection *out) {\\n"
+             "  DataBindNativeTypeBinding request = {0};\\n"
+             "  DataBindNativeTypeBinding response = {0};\\n"
+             "  DataBindServiceNativeBinding service = {0};\\n"
+             "  DataBindError error = DATA_BIND_ERROR_INIT;\\n"
+             "  cmeta_callable adapter = {0};\\n"
+             "  const cmeta_function_desc *function = &%s__function_meta;\\n"
+             "  const cmeta_data_desc *response_data;\\n"
+             "  DataBindStatus status;\\n"
+             "  if (out == NULL)\\n"
+             "    return CFLOW_FUNCTION_PROJECTION_INVALID_ARGUMENT;\\n"
+             "  *out = (cflow_function_typed_adapter_projection){0};\\n"
+             "  if ((function->effects & CMETA_EFFECT_ASYNC) != 0u)\\n"
+             "    return CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE;\\n"
+             "  if (!data_bind_native_execution_valid(&%s__execution_meta))\\n"
+             "    return CFLOW_FUNCTION_PROJECTION_INVALID_ADAPTER;\\n"
+             "  status = %s__databind_native_binding(\\n"
+             "      &request, &response, &service, &error);\\n"
+             "  if (status != DATA_BIND_OK || service.function != function ||\\n"
+             "      request.data == NULL || response.data == NULL ||\\n"
+             "      request.data->storage_type == NULL ||\\n"
+             "      response.data->storage_type == NULL ||\\n"
+             "      !cmeta_data_value_traits_supported(request.data) ||\\n"
+             "      !cmeta_data_value_traits_supported(response.data) ||\\n"
+             "      cmeta_type_require_traits(\\n"
+             "          request.data->storage_type,\\n"
+             "          CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |\\n"
+             "              CMETA_TRAIT_DESTROY) != CMETA_OK ||\\n"
+             "      cmeta_type_require_traits(\\n"
+             "          response.data->storage_type,\\n"
+             "          CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |\\n"
+             "              CMETA_TRAIT_DESTROY) != CMETA_OK)\\n"
+             "    return CFLOW_FUNCTION_PROJECTION_TYPE_MISMATCH;\\n"
+             "  response_data = response.data;\\n"
+             "  adapter.meta.effects = function->effects;\\n"
+             "  adapter.meta.properties = function->properties;\\n"
+             "  adapter.invoke = %s__databind_cflow_invoke;\\n"
+             "  adapter.dispatch = CMETA_CALLABLE_DISPATCH_ADAPTER;\\n"
+             "  adapter.capture_size = sizeof(response_data);\\n"
+             "  memcpy(adapter.capture.bytes, &response_data, sizeof(response_data));\\n"
+             "  return cflow_function_typed_adapter_projection_admit(\\n"
+             "      function, &%s__function_abi_meta, adapter,\\n"
+             "      request.data->storage_type, response.data->storage_type, out);\\n"
+             "}\\n\\n",
              operation->symbol,
              operation->symbol,
              operation->symbol,
