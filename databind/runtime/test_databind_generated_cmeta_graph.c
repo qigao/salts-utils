@@ -764,7 +764,7 @@ spec("generated native CMeta graph") {
     FixedValues_init(&destination);
     check_equal(FixedValues_from_json(
                     codec, &destination, json, strlen(json), &error),
-                DATA_BIND_ERR_SCHEMA);
+                DATA_BIND_ERR_TYPE_MISMATCH);
     check(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)) == 0);
     check_equal(FixedValues_to_json(
                     codec, &destination, &encoded, &encoded_len, &error),
@@ -773,9 +773,8 @@ spec("generated native CMeta graph") {
     check_equal(encoded_len, (size_t)0u);
 
     /*
-     * UUID/fixed-bytes are structural Binary SCALAR_NONE until the non-flat
-     * provider slice lands. Generated Binary must fail closed, never fall back
-     * to a historical typed descriptor.
+     * UUID still has no canonical Binary token lowering. Generated Binary must
+     * fail closed even when the neighboring fixed bytes have a complete provider.
      */
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(FixedValues_to_bin(

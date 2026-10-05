@@ -118,6 +118,8 @@ static int binary_codegen_layout_admitted(
             binary_codegen_layout_admitted(contract, format_plan, &child, depth + 1u, 1);
         databind_binary_layout_destroy(&child);
         if (!admitted) return 0;
+      } else if (field->scalar_kind == DATABIND_BINARY_SCALAR_BYTES) {
+        if (field->scalar_bits != 0u || field->wire_extent == 0u) return 0;
       } else if (field->scalar_bits == 0u ||
           field->wire_extent != (size_t)(field->scalar_bits / 8u))
         return 0;

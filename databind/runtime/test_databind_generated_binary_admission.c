@@ -62,7 +62,13 @@ spec("generated canonical Binary admission") {
     data_bind_free(codec);
   }
 
-  it("fails closed for generated mixed fixed-bytes and nested Binary layouts") {
+  it("round-trips mixed fixed bytes and nested Binary through canonical providers") {
+    static const uint8_t expected[] = {
+        1u, 37u, 0u, 0u, 0u, 99u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+        0x5au, 0x5au, 0x5au, 0x5au, 0x5au, 0x5au, 0x5au, 0x5au,
+        0x5au, 0x5au, 0x5au, 0x5au, 0x5au, 0x5au, 0x5au, 0x5au,
+        16u, 0u, 0u, 0u, 'b', 'i', 'n', 'a', 'r', 'y', '-',
+        'a', 'd', 'm', 'i', 's', 's', 'i', 'o', 'n'};
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     LoginMessage_t source = {0};
@@ -86,18 +92,32 @@ spec("generated canonical Binary admission") {
     memset(expected_wire, GENERATED_WIRE_SENTINEL, sizeof(expected_wire));
     if (codec != NULL && source.username != NULL) {
       status = LoginMessage_from_bin(codec, &decoded, wire, sizeof(wire), &error);
-      check_equal(status, DATA_BIND_ERR_SCHEMA);
+      check_equal(status, DATA_BIND_ERR_PARSE);
       check_equal(decoded.header.seq_num, source.header.seq_num);
       length = sizeof(wire);
       status = LoginMessage_to_bin(codec, &source, &allocated_wire, &length, &error);
-      check_equal(status, DATA_BIND_ERR_SCHEMA);
-      check_null(allocated_wire);
-      check_equal(length, (size_t)0u);
+      check_equal(status, DATA_BIND_OK);
+      check_not_null(allocated_wire);
+      check_equal(length, sizeof(expected));
+      check_equal(allocated_wire, expected, sizeof(expected));
+      status = LoginMessage_from_bin(codec, &decoded, allocated_wire, length, &error);
+      check_equal(status, DATA_BIND_OK);
+      check_equal(decoded.pass_hash, source.pass_hash, sizeof(source.pass_hash));
+      check_equal(decoded.username, source.username);
+      check_true(decoded.username != source.username);
+      check_equal(LoginMessage_from_bin(codec, &decoded, allocated_wire, length - 1u, &error), DATA_BIND_ERR_PARSE);
+      check_equal(decoded.username, source.username);
       status = LoginMessage_to_bin_into(codec, &source, wire, sizeof(wire), &length, &error);
-      check_equal(status, DATA_BIND_ERR_SCHEMA);
+      check_equal(status, DATA_BIND_OK);
+      check_equal(length, sizeof(expected));
+      check_equal(wire, expected, sizeof(expected));
+      memset(wire, GENERATED_WIRE_SENTINEL, sizeof(wire));
+      status = LoginMessage_to_bin_into(codec, &source, wire, sizeof(expected) - 1u, &length, &error);
+      check_equal(status, DATA_BIND_ERR_LIMIT);
       check_equal(length, (size_t)0u);
       check_equal(memcmp(wire, expected_wire, sizeof(wire)), 0);
     }
+    data_bind_binary_free(allocated_wire);
     LoginMessage_clear(&decoded);
     LoginMessage_clear(&source);
     check_null(source.username);

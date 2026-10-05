@@ -2144,7 +2144,8 @@ static void tbe_compiler_annotate_binary_reader_messages(
       (void)tbe_compiler_set_string(
           record, "binary_reader_supported", "1");
       if (tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle") &&
-          tbe_compiler_has_child(record, "native_cstl_storage"))
+          (tbe_compiler_has_child(record, "native_cstl_storage") ||
+           tbe_compiler_has_child(record, "cmeta_member_lifecycle")))
         (void)tbe_compiler_set_string(record, "binary_overlay_supported", "1");
     }
   }
@@ -2369,8 +2370,8 @@ static int tbe_compiler_requires_member_lifecycle(Node *root, Node *fields) {
     Node *field = fields->data.list.items[i];
     Node *nested = tbe_compiler_find_any_record(
         root, tbe_compiler_string_value(field, "type"));
-    /* Fixed providers own zero/release but do not grant aggregate move.
-     * Preserve those exact lifecycle calls without requesting extra traits. */
+    /* Keep generated init/clear delegated to the exact fixed provider,
+     * including records whose local presence state prevents container traits. */
     if (tbe_compiler_string_value(field, "native_fixed_bytes_name") != NULL ||
         (nested != NULL && tbe_compiler_has_child(nested, "cmeta_member_lifecycle")))
       return 1;

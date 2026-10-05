@@ -116,6 +116,8 @@ spec("DataBind BinaryLayoutIR") {
     check_equal(layout.fields[1].kind, DATABIND_BINARY_FIELD_FIXED);
     check_equal(layout.fields[1].wire_offset, (size_t)13u);
     check_equal(layout.fields[1].wire_extent, (size_t)16u);
+    check_equal(layout.fields[1].scalar_kind, DATABIND_BINARY_SCALAR_BYTES);
+    check_equal(layout.fields[1].scalar_bits, 0u);
 
     check_equal(strcmp(layout.fields[2].field_id, "username"), 0);
     check_equal(layout.fields[2].kind, DATABIND_BINARY_FIELD_VAR_DATA);

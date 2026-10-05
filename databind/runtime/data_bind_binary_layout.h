@@ -31,8 +31,10 @@ typedef enum DataBindBinaryRepresentation {
  * One field in an immutable generated Binary wire-layout plan.
  *
  * token_kind is the canonical CSerde semantic token class, not a second
- * DataBind/Binary type enum. FIXED fields admit BOOL/SINT/UINT/FLOAT, or
- * MAP_BEGIN with an exact fixed child plan.
+ * DataBind/Binary type enum. FIXED fields admit BOOL/SINT/UINT/FLOAT,
+ * BYTES with zero scalar_bits and an exact wire_extent, or MAP_BEGIN with
+ * an exact fixed child plan. Fixed bytes do not have a length prefix or endian
+ * conversion; the immutable input span is borrowed until reader close.
  * VAR_DATA fields admit STRING/BYTES and use a uint32 tail length prefix.
  * GROUP fields admit SEQ_BEGIN with a fixed entry plan and a uint16 stride/count
  * header. The wire stride may exceed the known entry extent on input.
