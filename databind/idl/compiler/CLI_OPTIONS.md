@@ -348,14 +348,18 @@ int main() {
 }
 ```
 
-Compile the companion `order.c` as C even when the application target is C++. The compiler
-emits an ABI-v2 descriptor only when the complete graph contains fixed-width integer/float,
-adapter-backed non-flags enum, and non-optional nested Struct storage. Its lifecycle, text,
-and binary paths all use that descriptor. Bool-as-`uint8_t`, flags/wide
-enum, optional, STRING/BYTES/fixed buffer/UUID/custom and sequence/set/map records receive no
-descriptor and stay on their explicit raw DataBind route. This is a generation-time partition,
-not a runtime fallback. `--lang cpp` without `--source-output` continues to generate data-only
+Compile the companion `order.c` as C even when the application target is C++.
+
+`--source-output` 会在写文件前检查所有生成记录的 canonical CMeta/native
+生命周期；缺少完整生命周期或已验证本地生命周期时，报告记录名称并失败，
+已有头文件和源文件保持不变。包含一个合法 CSTL 字段并不能使整个记录获准。
+生成代码不再引用历史 TBE typed 表、descriptor 或 raw init/clear。
+
+生命周期准入与格式准入独立：已准入的类型使用现有 CMeta/provider 释放资源，
+不支持的格式仍返回错误。仅生成 wire view/builder 的 C 头文件保留原有能力。
+`--lang cpp` without `--source-output` continues to generate data-only
 `std::string`/`std::vector` types and does not provide these serialization functions.
+
 
 ### Example 2b: Generate a Wasm Guest Adapter
 

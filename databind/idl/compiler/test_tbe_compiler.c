@@ -2955,6 +2955,46 @@ spec("tbe_compiler") {
     }
 
 
+    it("rejects native source without canonical lifecycle before replacing outputs") {
+      static const char *const schemas[] = {
+          "schema Unowned; composite Record { uint32[4] values; }",
+          "schema Unowned; group Record { uint32[4] values; }",
+          "schema Unowned; message Record { uint32[4] values; }",
+          "schema Unowned; message Record { list<uint32> items; uint32[4] values; }"
+      };
+      static const char original_header[] = "existing header\n";
+      static const char original_source[] = "existing source\n";
+      const char *schema_path = "test_native_lifecycle_admission.schema";
+      const char *header_path = "test_native_lifecycle_admission.h";
+      const char *source_path = "test_native_lifecycle_admission.c";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+      size_t i;
+      for (i = 0u; i < sizeof(schemas) / sizeof(schemas[0]); ++i) {
+        char *header;
+        char *source;
+        check_equal(write_test_file(schema_path, schemas[i]), 0);
+        check_equal(write_test_file(header_path, original_header), 0);
+        check_equal(write_test_file(source_path, original_source), 0);
+        check_not_equal(tbe_compiler_run(&options), 0);
+        header = tt_read_file(header_path, NULL);
+        source = tt_read_file(source_path, NULL);
+        check_not_null(header);
+        check_not_null(source);
+        if (header != NULL) check_equal(header, original_header);
+        if (source != NULL) check_equal(source, original_source);
+        free(header);
+        free(source);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+    }
+
     it("omits legacy tables for nested local overlay lifecycles") {
       const char *schema_path = "test_tbe_compiler_nested_legacy.tbe";
       const char *header_path = "test_tbe_compiler_nested_legacy.h";

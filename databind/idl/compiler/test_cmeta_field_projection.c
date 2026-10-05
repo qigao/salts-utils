@@ -544,7 +544,6 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(record, "cmeta_graph_supported"));
         check_not_null(field_projection_child(record,
                                               "cmeta_local_overlay_lifecycle"));
-        check_not_null(field_projection_child(record, "no_legacy_typed_table"));
         check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
         node_free(root);
     }
@@ -583,7 +582,6 @@ suite("compiler_cmeta_field_projection") {
             for (i = 0u; i < sizeof(records) / sizeof(records[0]); ++i) {
                 check_not_null(field_projection_child(records[i], "cmeta_graph_supported"));
                 check_not_null(field_projection_child(records[i], "cmeta_local_overlay_lifecycle"));
-                check_not_null(field_projection_child(records[i], "no_legacy_typed_table"));
                 check_null(field_projection_child(records[i], "cmeta_lifecycle_supported"));
                 check_null(field_projection_child(records[i], "typed_cmeta_runtime_supported"));
             }
@@ -660,7 +658,6 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(record, "native_cstl_storage"));
         check_not_null(field_projection_child(record, "cmeta_graph_supported"));
         check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
-        check_not_null(field_projection_child(record, "no_legacy_typed_table"));
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         node_free(root);
     }
@@ -694,6 +691,7 @@ suite("compiler_cmeta_field_projection") {
                     "OptionalSetStorage_value_set_t_cmeta_type");
         check_not_null(field_projection_child(record, "native_cstl_storage"));
         check_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(record, "cmeta_member_lifecycle"));
         check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         node_free(root);
@@ -738,6 +736,7 @@ suite("compiler_cmeta_field_projection") {
         check_null(field_projection_text(map, "native_map_name"));
         check_not_null(field_projection_child(record, "native_cstl_storage"));
         check_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(record, "cmeta_member_lifecycle"));
         check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
 
@@ -1140,20 +1139,8 @@ suite("compiler_cmeta_field_projection") {
             field_projection_record(root, "messages", "OptionalStorage"),
             "cmeta_graph_supported"));
         check_not_null(field_projection_child(
-            field_projection_record(root, "messages", "Sample"),
-            "no_legacy_typed_table"));
-        check_not_null(field_projection_child(
             field_projection_record(root, "messages", "OptionalNested"),
             "cmeta_local_overlay_lifecycle"));
-        check_not_null(field_projection_child(
-            field_projection_record(root, "messages", "OptionalNested"),
-            "no_legacy_typed_table"));
-        check_not_null(field_projection_child(
-            field_projection_record(root, "messages", "BoolStorage"),
-            "no_legacy_typed_table"));
-        check_not_null(field_projection_child(
-            field_projection_record(root, "messages", "OptionalStorage"),
-            "no_legacy_typed_table"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "FlagStorage"),
             "cmeta_graph_supported"));
@@ -1190,9 +1177,6 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "Depth33"),
             "cmeta_member_lifecycle"));
-        check_not_null(field_projection_child(
-            field_projection_record(root, "messages", "Depth33"),
-            "no_legacy_typed_table"));
         check_null(field_projection_child(
             field_projection_record(root, "messages", "Cycle"),
             "cmeta_member_lifecycle"));

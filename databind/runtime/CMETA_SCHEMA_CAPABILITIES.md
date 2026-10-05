@@ -93,14 +93,20 @@ Generated C always emits immutable structural CMeta metadata when the actual C
 storage graph is representable. `Record_cmeta_data` publishes that graph based on
 the compiler's structural classification; it never compares CMeta backward against
 typed-kind metadata. Optional presence is therefore not a reason to suppress an
-otherwise valid structural graph, while generated `uint8_t` Bool, storage-unselected
-buffers/containers, uint64-wide enums, cycles and depth 33 remain unavailable.
+otherwise valid structural graph. Unsupported structures and cycles remain closed;
+the graph depth limit is separate from local lifecycle admission.
 
 深层记录的本地生命周期与图发布分开准入（#487、#488）：图发布仍限制为
 32 层；超过边界的按值记录仅在每个成员均有已验证的 CMeta 生命周期，或
 引用另一个已准入的本地生命周期时生成逐成员 `init/clear`。编译期按有限
 记录集合求依赖闭包，环与未知所有权不会被准入；运行时不查找类型名称，
 不发布超深描述符，也不恢复历史 typed 表。
+
+带状态的 canonical CSTL 容器也可使用逐成员生命周期：容器生成阶段先证明
+元素、键和值的 traits，再逐字段检查具体 type/data provider。这样即使父图
+未获发布，Vec/Set/Map 仍可正确初始化和释放。单个合法容器不能替其他成员
+授予生命周期；未准入的固定数组等成员仍使整条记录生成失败。此路径不扩展
+语义图或格式支持，公开 C/C++ 容器消费测试验证状态位、受管副本释放和复用。
 
 记录及其成员由调用方独占，`init` 仅用于未初始化或已 clear 的存储，
 不可覆盖仍拥有资源的对象。成员值是唯一所有权事实源；presence/null
@@ -121,73 +127,22 @@ clear 和复用；公开 C/C++ fixture 保持相同 ABI，格式转换仍按原�
 所有嵌套状态位。该准入不授予容器 move 能力，不改变公开布局、格式、
 资源容量或分配策略。未具备完整元素生命周期的容器继续保留原有拒绝边界。
 
-The stricter `typed_cmeta_runtime_supported` classifier emits a public
-`Record_typed_descriptor` only when the entire transitive graph contains
-non-optional fixed-width integers/floats, adapter-backed non-flags enums, and nested
-Structs through depth 32. ABI-v2 joins exactly one schema overlay and one native
-graph:
+`--source-output` 在写出头文件和源文件前检查每个 composite、group 和 message：
+必须已有完整 CMeta 生命周期、已验证的本地状态生命周期、完整图内的 canonical
+CSTL 存储，或已准入的逐成员生命周期。单个容器字段的 provider 不能代表整个
+记录已经获准。未准入时编译器报告记录名称并失败，保留已有输出文件；不会
+生成缺少释放语义的 void API。仅生成 wire view/builder 的头文件不受此检查影响。
 
-```c
-TBE_TYPED_DESCRIPTOR_INIT(&Record_TYPED_TYPE, &Record_CMETA_DATA)
-```
+生成模板不再包含 `tbe_typed.h`、历史 typed 表、descriptor 或 raw 生命周期宏。
+CMeta/native provider 是结构和所有权的事实源；MessagePlan 负责 presence/null、
+default 和校验；FormatPlan 与 BinaryLayoutIR/provider 负责格式和线布局。
+格式准入独立于生命周期，不支持的格式返回明确错误，不改走历史 typed 引擎。
 
-Descriptor-routed lifecycle, text and binary wrappers all consume that same object.
-Unsupported generated records receive no descriptor symbol and use their explicit
-raw DataBind route selected by the generator. No wrapper probes support at runtime,
-delegates after failure, or constructs a graphless descriptor.
-
-| Native semantic storage | Typed descriptor | Structural authority | Overlay authority |
-| --- | --- | --- | --- |
-| Fixed-width integer, F32/F64 | supported | CMeta data/type and exact bit shape | external name, wire scalar kind/offset/width, validation |
-| Non-flags Enum with int64-representable domain | supported | CMeta enum shape, storage type and enum operations | external name, wire integer kind/offset/width, validation |
-| Nested non-optional Struct | supported | CMeta struct shape/layout/fields | external field names, wire layout and validation |
-| Bool backed by generated `uint8_t` | deferred | canonical Bool-storage ABI or provider required | wire Bool policy |
-| Flags and uint64-wide Enum | deferred | unsigned/flags-capable enum operations required | wire integer policy |
-| Optional/presence | deferred | explicit native-presence contract required | presence/default policy |
-| STRING/BYTES/fixed buffer/UUID/custom | deferred | lifecycle/adapter contract required | wire policy |
-| Sequence/set/map | deferred | A separate native-container provider slice must bind the actual generated storage to CMeta/CSTL | container wire policy |
-
-The completion contract assigns `cmeta_native_requirement` to each candidate
-leaf so later provider slices consume one executable classification instead of
-inferring support from a language projection. These requirement annotations
-describe what is missing; they are not DataBind-owned operation contracts and
-do not by themselves enable `typed_cmeta_runtime_supported`.
-
-| Schema form | Generated C storage | Schema semantic kind | Compiler requirement | Runtime status | Provider/rejection boundary |
-| --- | --- | --- | --- | --- | --- |
-| `bool` | `uint8_t` | `CMETA_DATA_BOOL` | `fixed_value` | supported | Uses canonical `salts_bool8_cmeta_data`; the `_Bool` descriptor remains invalid for this octet slot. |
-| `uuid` | `salts_uuid_t` | `CMETA_DATA_CUSTOM` | `fixed_value` | supported | Uses the canonical UUID buffer adapter plus its exact fixed-value operations. |
-| `bytes[16]` | `uint8_t[16]` | `CMETA_DATA_BYTES` | `fixed_value` | supported | Compiler emits an extent-specific provider through public `CMETA_DEFINE_FIXED_BYTES`. |
-| `string` | `tstr` | `CMETA_DATA_STRING` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
-| `bytes` | `tbe_bytes_t` | `CMETA_DATA_BYTES` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
-| optional `int32` | presence plus `int32_t` | `CMETA_DATA_SINT` | `overlay_presence` | deferred | Requires a validated composition of the CMeta value slot with overlay-owned presence/default policy. |
-| `list<int32>` | generated `vec_t` | `CMETA_DATA_SEQUENCE` | `deferred_container` | deferred | Requires a separate native-container/CSTL provider contract; #46's dynamic storage migration does not enable generated list, set or map descriptors. |
-| required `list<Record>` with admitted record lifecycle | generated `{ vec_t raw; }` wrapper | `CMETA_DATA_SEQUENCE` | `sequence_provider` | MessagePlan supported; legacy typed descriptor still deferred | Generated C publishes exact element type/data plus canonical collection borrow/collector/construct operations. Order and duplicates are preserved. |
-
-All non-owned `fixed_value` providers and the currently supported
-`enum_domain` subset are installed at this checkpoint. The executable
-characterization requires a record to be published only when every transitive
-field requirement has an installed canonical CMeta provider. In particular,
-all rows still marked deferred above lack `typed_cmeta_runtime_supported`.
-The required `list<Record>` sequence-provider slice is intentionally separate:
-it publishes canonical CMeta lifecycle and is executable through the generated
-Message native artifact plus `DataBindMessagePlan`, but it does **not** widen
-the legacy `TbeTypedDescriptor` support matrix. Scalar/string/enum lists,
-optional/nullable lists, sets, maps and unsupported nested container shapes
-remain fail-closed until their own provider slices are qualified.
-
-For supported rows, native size, alignment, semantic kind, field order, native
-name and native offset come only from CMeta. The overlay supplies external names,
-aliases, defaults, validation, presence policy and wire layout. Descriptor code
-does not read `TbeTypedType.size`, `TbeTypedField.kind`, native `offset`, or
-`object_type`; nested association uses `nested_overlay`. Semantic type comparison
-uses `cmeta_type_equal`, never descriptor address equality.
-
-`test_tbe_typed_cmeta_graph` and the public C/C++ fixture compile against the real
-CLI-generated header/archive. They cover copied semantic identities, enum
-operations, native padding versus wire offsets, supported depth 32, rejected depth
-33, generated Bool and wide-enum rejection, optional/UUID structural publication,
-and descriptor parse rollback after a CMeta layout mutation.
+`test_tbe_compiler` 验证缺少生命周期的固定数组 composite/group/message 及
+混合 CSTL 记录在覆盖已有文件前失败；`test_tbe_typed_cmeta_graph`、
+`test_optional_scalar_lifecycle`、`test_databind_generated_owned_buffers` 和
+公开 C/C++ fixture 验证已准入的标量、枚举、字符串、字节缓冲区、容器、
+嵌套状态和超深本地生命周期。历史 runtime 与其测试仍由 #488—#490 后续清理。
 
 ## Shared field semantics and public DataBind reflection
 

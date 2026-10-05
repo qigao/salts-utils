@@ -2276,177 +2276,6 @@ static void tbe_compiler_annotate_binary_reader_messages(
   }
 }
 
-static int tbe_compiler_typed_ref_matches(const char *reference,
-                                          const char *name) {
-  size_t name_len;
-  if (reference == NULL || name == NULL || reference[0] != '&') return 0;
-  name_len = strlen(name);
-  return strncmp(reference + 1, name, name_len) == 0 &&
-         strcmp(reference + 1 + name_len, "_TYPED_TYPE") == 0;
-}
-
-static int tbe_compiler_typed_type_referenced(Node *root, const char *name) {
-  /* Scan all fields for references from tables that remain live. */
-  static const char *const sections[] = {"composites", "groups", "messages"};
-  size_t section_index;
-  for (section_index = 0u;
-       section_index < sizeof(sections) / sizeof(sections[0]);
-       ++section_index) {
-    Node *records = tbe_compiler_find_child(root, sections[section_index]);
-    size_t record_index;
-    if (records == NULL || records->type != NODE_LIST) continue;
-    for (record_index = 0u; record_index < records->data.list.count;
-         ++record_index) {
-      Node *record = records->data.list.items[record_index];
-      Node *fields;
-      size_t field_index;
-      if (!tbe_compiler_has_child(record, "legacy_typed_table_required"))
-        continue;
-      fields = tbe_compiler_find_child(record, "fields");
-      if (fields == NULL || fields->type != NODE_LIST) continue;
-      for (field_index = 0u; field_index < fields->data.list.count;
-           ++field_index) {
-        Node *field = fields->data.list.items[field_index];
-        if (tbe_compiler_typed_ref_matches(
-                tbe_compiler_string_value(field, "typed_object_descriptor"), name) ||
-            tbe_compiler_typed_ref_matches(
-                tbe_compiler_string_value(field, "typed_map_value_descriptor"), name) ||
-            tbe_compiler_typed_ref_matches(
-                tbe_compiler_string_value(field, "typed_nested_overlay"), name))
-          return 1;
-      }
-    }
-  }
-  return 0;
-}
-
-static int tbe_compiler_needs_legacy_table(Node *record,
-                                           int is_message) {
-  if (tbe_compiler_has_child(record, "cmeta_member_lifecycle")) return 0;
-  if (is_message &&
-      tbe_compiler_has_child(record, "cmeta_graph_supported") &&
-      !tbe_compiler_has_child(record, "cmeta_lifecycle_supported") &&
-      tbe_compiler_has_child(record, "cmeta_native_xml_flat_supported"))
-    return !tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle");
-  return !tbe_compiler_has_child(record, "native_cstl_storage") &&
-         !tbe_compiler_has_child(record, "typed_cmeta_runtime_supported") &&
-         !tbe_compiler_has_child(record, "cmeta_lifecycle_supported") &&
-         !(is_message &&
-           tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle"));
-}
-
-static void tbe_compiler_annotate_live_legacy_tables(Node *root) {
-  static const char *const sections[] = {"composites", "groups", "messages"};
-  size_t section_index;
-  int changed;
-
-  for (section_index = 0u;
-       section_index < sizeof(sections) / sizeof(sections[0]);
-       ++section_index) {
-    Node *records = tbe_compiler_find_child(root, sections[section_index]);
-    size_t record_index;
-    if (records == NULL || records->type != NODE_LIST) continue;
-    for (record_index = 0u; record_index < records->data.list.count;
-         ++record_index) {
-      Node *record = records->data.list.items[record_index];
-      tbe_compiler_remove_children(record, "legacy_typed_table_required");
-      if (tbe_compiler_needs_legacy_table(
-              record, strcmp(sections[section_index], "messages") == 0))
-        (void)tbe_compiler_set_string(record, "legacy_typed_table_required", "1");
-    }
-  }
-
-  /* Monotone reachability: at most R passes over R names and F field refs,
-   * O(R^2 F) time and no heap state beyond the existing projection tree. */
-  do {
-    changed = 0;
-    for (section_index = 0u;
-         section_index < sizeof(sections) / sizeof(sections[0]);
-         ++section_index) {
-      Node *records = tbe_compiler_find_child(root, sections[section_index]);
-      size_t record_index;
-      if (records == NULL || records->type != NODE_LIST) continue;
-      for (record_index = 0u; record_index < records->data.list.count;
-           ++record_index) {
-        Node *record = records->data.list.items[record_index];
-        const char *name = tbe_compiler_string_value(record, "name");
-        if (name != NULL &&
-            !tbe_compiler_has_child(record, "legacy_typed_table_required") &&
-            tbe_compiler_typed_type_referenced(root, name) &&
-            tbe_compiler_set_string(record, "legacy_typed_table_required", "1") == 0)
-          changed = 1;
-      }
-    }
-  } while (changed);
-}
-
-static void tbe_compiler_annotate_messages_without_legacy_tables(Node *root) {
-  Node *messages = tbe_compiler_find_child(root, "messages");
-  size_t i;
-  if (messages == NULL || messages->type != NODE_LIST) return;
-  for (i = 0u; i < messages->data.list.count; ++i) {
-    Node *record = messages->data.list.items[i];
-    const char *name = tbe_compiler_string_value(record, "name");
-    tbe_compiler_remove_children(record, "no_legacy_typed_table");
-    if (name != NULL &&
-        !tbe_compiler_has_child(record, "legacy_typed_table_required"))
-      (void)tbe_compiler_set_string(record, "no_legacy_typed_table", "1");
-  }
-}
-
-static void tbe_compiler_annotate_canonical_records(Node *root) {
-  static const char *const sections[] = {"composites", "groups"};
-  size_t section_index;
-  for (section_index = 0u;
-       section_index < sizeof(sections) / sizeof(sections[0]);
-       ++section_index) {
-    Node *records = tbe_compiler_find_child(root, sections[section_index]);
-    size_t record_index;
-    if (records == NULL || records->type != NODE_LIST) continue;
-    for (record_index = 0u; record_index < records->data.list.count;
-         ++record_index) {
-      Node *record = records->data.list.items[record_index];
-      const char *name = tbe_compiler_string_value(record, "name");
-      tbe_compiler_remove_children(record, "cmeta_canonical_record");
-      if (name != NULL &&
-          (tbe_compiler_has_child(record, "native_cstl_storage") ||
-           tbe_compiler_has_child(record, "typed_cmeta_runtime_supported") ||
-           tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
-           tbe_compiler_has_child(record, "cmeta_member_lifecycle")) &&
-          !tbe_compiler_has_child(record, "legacy_typed_table_required"))
-        (void)tbe_compiler_set_string(record, "cmeta_canonical_record", "1");
-    }
-  }
-}
-
-static void tbe_compiler_annotate_legacy_typed_requirement(Node *root) {
-  static const char *const sections[] = {"composites", "groups"};
-  Node *messages = tbe_compiler_find_child(root, "messages");
-  size_t i;
-
-  tbe_compiler_remove_children(root, "legacy_typed_required");
-  for (i = 0u; i < sizeof(sections) / sizeof(sections[0]); ++i) {
-    Node *records = tbe_compiler_find_child(root, sections[i]);
-    size_t record_index;
-    if (records == NULL || records->type != NODE_LIST) continue;
-    for (record_index = 0u; record_index < records->data.list.count;
-         ++record_index)
-      if (!tbe_compiler_has_child(records->data.list.items[record_index],
-                                  "cmeta_canonical_record"))
-        goto required;
-  }
-  if (messages != NULL && messages->type == NODE_LIST) {
-    for (i = 0u; i < messages->data.list.count; ++i)
-      if (!tbe_compiler_has_child(messages->data.list.items[i],
-                                  "no_legacy_typed_table"))
-        goto required;
-  }
-  return;
-
-required:
-  (void)tbe_compiler_set_string(root, "legacy_typed_required", "1");
-}
-
 static int tbe_compiler_append_binary_readers(
     const char *path, Node *root, const IdlContract *contract,
     const databind_binary_format_plan *binary_format) {
@@ -2628,9 +2457,17 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
 static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {
   const char *type = tbe_compiler_string_value(field, "type");
   Node *record;
-  if (type == NULL || tbe_compiler_has_child(field, "is_collection") ||
-      tbe_compiler_has_child(field, "is_group_field"))
+  if (type == NULL || tbe_compiler_has_child(field, "is_group_field"))
     return 0;
+  /* Storage promotion has already proved the exact element/key/value traits.
+   * A semantic overlay may keep the parent graph unpublished without taking
+   * away the individual container provider's owning lifecycle. */
+  if (tbe_compiler_has_child(field, "native_cstl_sequence") ||
+      tbe_compiler_has_child(field, "native_cstl_set") ||
+      tbe_compiler_has_child(field, "native_cstl_map"))
+    return tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+           tbe_compiler_string_value(field, "native_type_symbol") != NULL;
+  if (tbe_compiler_has_child(field, "is_collection")) return 0;
   record = tbe_compiler_find_any_record(root, type);
   if (record != NULL)
     return tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
@@ -2763,10 +2600,6 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_member_lifecycle(root);
   tbe_compiler_annotate_xml_flat_messages(root);
   tbe_compiler_annotate_csv_flat_messages(root);
-  tbe_compiler_annotate_live_legacy_tables(root);
-  tbe_compiler_annotate_messages_without_legacy_tables(root);
-  tbe_compiler_annotate_canonical_records(root);
-  tbe_compiler_annotate_legacy_typed_requirement(root);
 }
 
 static const char *tbe_compiler_path_basename(const char *path) {
@@ -2829,6 +2662,16 @@ static char *tbe_compiler_escape_c_string(const char *text) {
   return out;
 }
 
+static int tbe_compiler_native_lifecycle_supported(Node *record) {
+  /* A container marker describes individual storage, not the complete record.
+   * Every exposed void lifecycle must have a proven whole-record authority. */
+  return tbe_compiler_has_child(record, "cmeta_member_lifecycle") ||
+         (tbe_compiler_has_child(record, "cmeta_graph_supported") &&
+          (tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
+           tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle") ||
+           tbe_compiler_has_child(record, "native_cstl_storage")));
+}
+
 static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) {
   Node *list = tbe_compiler_find_child(root, list_name);
   size_t i;
@@ -2837,7 +2680,11 @@ static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) 
     Node *record = list->data.list.items[i];
     Node *fields = tbe_compiler_find_child(record, "fields");
     size_t j;
-    if (!fields || fields->type != NODE_LIST) continue;
+    if (!fields || fields->type != NODE_LIST) {
+      fprintf(stderr, "Native C source record %s lacks field metadata\n",
+              tbe_compiler_string_value(record, "name"));
+      return 0;
+    }
     for (j = 0; j < fields->data.list.count; ++j) {
       Node *field = fields->data.list.items[j];
       const char *c_name = tbe_compiler_string_value(field, "c_name");
@@ -2930,6 +2777,12 @@ static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) 
           return 0;
         }
       }
+    }
+    /* Preserve specific field diagnostics before checking record ownership. */
+    if (!tbe_compiler_native_lifecycle_supported(record)) {
+      fprintf(stderr, "Native C source record %s lacks canonical lifecycle support\n",
+              tbe_compiler_string_value(record, "name"));
+      return 0;
     }
   }
   return 1;
