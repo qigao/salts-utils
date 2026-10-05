@@ -2,7 +2,6 @@
 #include "tinytest.h"
 
 #include <cmeta/data.h>
-#include <cmeta/data.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -165,12 +164,14 @@ static void expect_descriptor_rejection(const TbeTypedDescriptor *descriptor) {
 }
 
 spec("typed descriptor boundary") {
-  it("rejects owning overlap before initialization or cleanup touches storage") {
+  /* Common owner lifecycle admission is covered by the canonical native
+   * ownership test. These fixtures retain the independent Binary boundary. */
+  it("rejects owning overlap before binary IO touches storage") {
     const TbeTypedField fields[] = {
         {.name = "a", .kind = TBE_TYPED_STRING, .wire_kind = TBE_TYPED_STRING},
         {.name = "b", .kind = TBE_TYPED_STRING, .wire_kind = TBE_TYPED_STRING}};
     TbeTypedType type = boundary_type(fields, 2u);
-    expect_host_rejection(&type);
+    expect_binary_rejection(&type);
   }
 
   it("rejects scalar then owner overlap independently of declaration order") {
@@ -178,7 +179,7 @@ spec("typed descriptor boundary") {
         {.name = "bits", .kind = TBE_TYPED_U32, .wire_kind = TBE_TYPED_U32},
         {.name = "owner", .kind = TBE_TYPED_STRING, .wire_kind = TBE_TYPED_STRING}};
     TbeTypedType type = boundary_type(fields, 2u);
-    expect_host_rejection(&type);
+    expect_binary_rejection(&type);
   }
 
   it("rejects presence overlapping owning storage before lifecycle operations") {
@@ -208,7 +209,7 @@ spec("typed descriptor boundary") {
     const TbeTypedField field = {
         .name = "child", .kind = TBE_TYPED_OBJECT, .object_type = &child};
     TbeTypedType type = boundary_type(&field, 1u);
-    expect_host_rejection(&type);
+    expect_binary_rejection(&type);
   }
 
   it("rejects host offset addition overflow") {
@@ -216,7 +217,7 @@ spec("typed descriptor boundary") {
         .name = "value", .kind = TBE_TYPED_U32, .wire_kind = TBE_TYPED_U32,
         .offset = SIZE_MAX - 1u};
     TbeTypedType type = boundary_type(&field, 1u);
-    expect_host_rejection(&type);
+    expect_binary_rejection(&type);
   }
 
   it("rejects host presence addition overflow") {
@@ -325,24 +326,6 @@ spec("typed descriptor boundary") {
     type.fixed_block_size = SIZE_MAX;
     check_equal(tbe_typed_validate_descriptor(&type, &error), DATA_BIND_OK);
     expect_binary_rejection(&type);
-  }
-
-  it("keeps adjacent owning fields and host presence valid for text bindings") {
-    typedef struct AdjacentOwners { tstr owners[2]; uint8_t presence; } AdjacentOwners;
-    const TbeTypedField fields[] = {
-        {.name = "a", .kind = TBE_TYPED_STRING, .wire_kind = TBE_TYPED_STRING},
-        {.name = "b", .kind = TBE_TYPED_STRING, .wire_kind = TBE_TYPED_STRING,
-         .offset = sizeof(tstr)}};
-    TbeTypedType type = boundary_type(fields, 2u);
-    AdjacentOwners object;
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    type.size = sizeof(object);
-    type.fixed_block_size = 0u;
-    type.presence_offset = offsetof(AdjacentOwners, presence);
-    type.presence_size = 1u;
-    check_equal(tbe_typed_validate_descriptor(&type, &error), DATA_BIND_OK);
-    check_equal(tbe_typed_init(&type, &object, &error), DATA_BIND_OK);
-    tbe_typed_clear(&type, &object);
   }
 
   it("keeps empty host intervals disjoint from owning storage") {

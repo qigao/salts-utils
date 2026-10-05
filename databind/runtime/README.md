@@ -294,6 +294,12 @@ symbol visibility。静态库不定义这两个宏。
 与 UUID 生命周期见
 [`native_scalar_contract_test.c`](../tests/native_storage/native_scalar_contract_test.c)。
 
+raw storage 的 `data_bind_native_init/clear` 会先验证完整 CMeta 图，再接触 owning 字段。
+字段重叠、offset 溢出、嵌套非法布局或预算不足不会改写对象，也不会释放现有 owner。
+成功 clear 由 provider 释放每个 owning 字段，并清零结构中未反射的 overlay 字节；可以
+重复 clear 或重新赋值后重用。相邻 owner、非法布局的读写准入及失败后重试见
+[`native_ownership_boundary_test.c`](../tests/native_storage/native_ownership_boundary_test.c)。
+
 1. 用 CMeta layout 和 `cmeta_data_desc` 声明原生成员。拥有字符串的 `tstr` 使用
    `salts_tstr_cmeta_data`；该 provider 负责初始化、移动与释放。图中保留 canonical
    字段名，schema 的 name/alias 等格式属性由 overlay 表达。

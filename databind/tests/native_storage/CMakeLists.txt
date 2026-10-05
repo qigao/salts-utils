@@ -101,3 +101,10 @@ cmake_add_test(test_data_bind_native_collection_message
   FOLDER "databind/tests")
 set_tests_properties(test_data_bind_native_collection_message PROPERTIES
   LABELS "databind;cmeta;native;collection" TIMEOUT 60)
+
+cmake_add_test(test_data_bind_native_ownership_boundary
+  SOURCES native_ownership_boundary_test.c
+  LIBS Salts::DataBind Salts::TinyTest
+  FOLDER "databind/tests")
+set_tests_properties(test_data_bind_native_ownership_boundary PROPERTIES
+  LABELS "databind;cmeta;native;ownership" TIMEOUT 60)
