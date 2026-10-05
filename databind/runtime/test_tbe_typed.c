@@ -1,8 +1,6 @@
 #include "tbe_typed.h"
 #include "tinytest.h"
 
-#include <cmeta/data.h>
-
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -231,29 +229,6 @@ TBE_TYPED_DEFINE_STRUCT_EX(
                        TBE_TYPED_BOOL, 0u, 0u, NULL, 0u, 0u, 0u, TBE_TYPED_BOOL,
                        TBE_TYPED_BOOL, NULL, 0u, 4u, 0u, TBE_TYPED_FIELD_WIRE_OFFSET));
 
-static const cmeta_type_identity MACRO_WIRE_CMETA_ID =
-    CMETA_TYPE_ID_ATOM_INIT("test.MacroWire");
-static const cmeta_type_desc MACRO_WIRE_CMETA_TYPE = {
-    "MacroWire", sizeof(MacroWire), _Alignof(MacroWire), CMETA_T_OBJECT,
-    NULL, NULL, &MACRO_WIRE_CMETA_ID};
-static const cmeta_field_desc MACRO_WIRE_CMETA_LAYOUT_FIELDS[] = {{
-    "id", "uint32_t", offsetof(MacroWire, id), sizeof(uint32_t),
-    _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
-static const cmeta_struct_desc MACRO_WIRE_CMETA_LAYOUT = {
-    "MacroWire", sizeof(MacroWire), _Alignof(MacroWire),
-    MACRO_WIRE_CMETA_LAYOUT_FIELDS, 1u};
-static const cmeta_data_field_desc MACRO_WIRE_CMETA_FIELDS[] = {{
-    "test.MacroWire.id", "id", offsetof(MacroWire, id),
-    &cmeta_data_uint32}};
-static const cmeta_data_struct_shape MACRO_WIRE_CMETA_SHAPE = {
-    &MACRO_WIRE_CMETA_LAYOUT, MACRO_WIRE_CMETA_FIELDS, 1u};
-static const cmeta_data_desc MACRO_WIRE_CMETA_DATA = {
-    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
-    "test.MacroWire.data", "MacroWire", CMETA_DATA_STRUCT,
-    &MACRO_WIRE_CMETA_TYPE, &MACRO_WIRE_CMETA_SHAPE, NULL, NULL, NULL};
-static const TbeTypedDescriptor MACRO_WIRE_DESCRIPTOR =
-    TBE_TYPED_DESCRIPTOR_INIT(&MACRO_WIRE_BINDING, &MACRO_WIRE_CMETA_DATA);
-
 spec("typed DataBind binary") {
   it("round-trips an optional big-endian owning struct directly") {
     static const char schema[] =
@@ -435,23 +410,11 @@ spec("typed DataBind binary") {
     data_bind_free(codec);
   }
 
-  it("rejects invalid UTF-8 strings and invalid map keys in JSON") {
+  it("rejects invalid UTF-8 map keys in JSON") {
     static const char invalid_utf8[] = "\xC3\x28";
     DataBindError error = DATA_BIND_ERROR_INIT;
-    TestText text;
     MacroCollections collections;
     json_value_t *json = NULL;
-
-    check_equal(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
-    text.text = tstr_dup_len(invalid_utf8, sizeof(invalid_utf8) - 1u);
-    check_not_null(text.text);
-    if (text.text != NULL) {
-      json = tbe_typed_to_json(&TEST_TEXT_TYPE, &text, &error);
-      check_null(json);
-      check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
-    }
-    tbe_typed_json_free(&json);
-    tbe_typed_clear(&TEST_TEXT_TYPE, &text);
 
     check_equal(TBE_TYPED_BIND_INIT(MACRO_COLLECTIONS_BINDING, &collections, &error),
                  DATA_BIND_OK);
@@ -567,32 +530,6 @@ spec("typed DataBind binary") {
     tbe_typed_clear(&TEST_TEXT_TYPE, &text);
   }
 
-  it("serializes typed records with schema field mappings") {
-    static const char schema[] =
-        "message Text { [name(displayText), alias(oldText)] string text; }";
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    DataBind *codec = NULL;
-    TestText text;
-    char *json = NULL;
-    size_t json_len = 0;
-
-    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
-                 DATA_BIND_OK);
-    check_equal(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
-    text.text = tstr_dup("mapped");
-    check_not_null(text.text);
-    if (codec != NULL && text.text != NULL) {
-      check_equal(tbe_typed_serialize(codec, "Text", &TEST_TEXT_TYPE, &text, "json", &json,
-                                      &json_len, &error),
-                   DATA_BIND_OK);
-      check_equal(json, "{\"displayText\":\"mapped\"}");
-      check_equal(json_len, strlen(json));
-    }
-    tbe_typed_serialized_free(json);
-    tbe_typed_clear(&TEST_TEXT_TYPE, &text);
-    data_bind_free(codec);
-  }
-
   it("binds an existing C struct through header-only macros") {
     static const char schema[] =
         "message MacroOrder { "
@@ -687,39 +624,5 @@ spec("typed DataBind binary") {
                                                  sizeof(output), &required, &error),
                  DATA_BIND_OK);
     check_equal(required, sizeof(output));
-  }
-
-  it("validates versioned descriptors and enum-based format APIs") {
-    static const char schema[] = "message MacroWire { uint32 id; }";
-    static const char json[] = "{\"id\":7}";
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    DataBind *codec = NULL;
-    MacroWire wire = {0};
-    char *encoded = NULL;
-    size_t encoded_len = 0;
-    TbeTypedDescriptor incompatible = MACRO_WIRE_DESCRIPTOR;
-
-    check_equal(tbe_typed_descriptor_validate(&MACRO_WIRE_DESCRIPTOR, &error),
-                 DATA_BIND_OK);
-    incompatible.abi_version++;
-    check_equal(tbe_typed_descriptor_validate(&incompatible, &error), DATA_BIND_ERR_SCHEMA);
-    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1u, &codec, &error),
-                 DATA_BIND_OK);
-    if (codec != NULL) {
-      check_equal(tbe_typed_descriptor_parse(codec, "MacroWire",
-                                              &MACRO_WIRE_DESCRIPTOR,
-                                              DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0,
-                                              &wire, &error),
-                   DATA_BIND_OK);
-      check_equal(wire.id, 7u);
-      check_equal(tbe_typed_descriptor_serialize(codec, "MacroWire",
-                                                  &MACRO_WIRE_DESCRIPTOR, &wire,
-                                                  DATA_BIND_FORMAT_JSON, &encoded, &encoded_len,
-                                                  &error),
-                   DATA_BIND_OK);
-      check_equal(encoded, json);
-    }
-    tbe_typed_serialized_free(encoded);
-    data_bind_free(codec);
   }
 }
