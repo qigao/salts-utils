@@ -78,17 +78,18 @@ semantics.
 
 ## Format boundary
 
-TBE is one format compiler/backend, not the IDL.
+Binary is one format compiler/backend, not the IDL.
 
 ```text
 IdlContract
    +
-TbeFormatPlan
+databind_binary_format_plan
+   -> BinaryLayoutIR / BinaryLayoutPlan
    -> binary / socket / FlowMQ lowering
 ```
 
-TBE-specific field ordering, fixed/group/variable-data admission, wire sizes,
-cursor metadata, reader names and C codegen profiles are computed by the TBE
+Binary field ordering, fixed/group/variable-data admission, wire sizes,
+cursor metadata, reader names and C codegen profiles are computed by the Binary
 format pass, not by the IDL frontend.
 
 Concrete JSON/XML/YAML/CSV parsers own syntax and expose CSerde contracts.

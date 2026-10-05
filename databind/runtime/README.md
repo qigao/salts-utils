@@ -551,7 +551,9 @@ final output。
 - 已发布的 owning dynamic root 保留不可变的语义 metadata，可在创建它的
   `DataBind *codec` 释放后继续读取、clone 和释放；需要 schema overlay 的后续操作仍须
   传入匹配 codec。
-- owning object/value 必须使用对应的 DataBind/TBE typed 释放函数。
+- owning object 使用 `data_bind_object_free()`；独立 owning value 使用
+  `data_bind_value_free()`；生成的 native 对象使用对应 `*_clear()`。三者均通过
+  当前 CMeta 生命周期释放，不使用历史 TBE typed 释放入口。
 - accessor 返回的 child/string 指针以及 range/view 都借用 owning root；root 释放后其
   所有 descendants/views 立即失效。
 - `data_bind_value_clone()` 创建独立 owning storage；源与 clone 可分别释放。不可变的

@@ -35,7 +35,7 @@ Salts
   └── salts-net: protocol and network tooling
 ```
 
-SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). `Salts::IDL` owns transport-neutral contracts, `Salts::Schema` owns the Data subset, and `Salts::DataBind` owns binding. TBE is a format/backend, not the owner of IDL or Schema.
+SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). `Salts::IDL` owns transport-neutral contracts, `Salts::Schema` owns the Data subset, and `Salts::DataBind` owns binding. Binary is a format/backend, not the owner of IDL or Schema.
 
 ## Main capabilities
 
@@ -69,8 +69,9 @@ Schema   Data-only logical shape -> CMeta projection          (SaltsUtils)
 DataBind logical/native binding + BindingPlan runtime         (SaltsUtils)
 ```
 
-Compiler projections consume one typed `IdlContract`. TBE-specific wire facts
-live in `TbeFormatPlan`; transport state remains in transport runtimes.
+Compiler projections consume one typed `IdlContract`. Binary wire facts
+live in `databind_binary_format_plan` and lower through BinaryLayoutIR;
+transport state remains in transport runtimes.
 DataBind does not own parser syntax, network sessions, Plugin loading or CFlow
 execution.
 
@@ -135,9 +136,9 @@ Mustache and Jinja CMeta have independent source, tests, documentation, and inst
 
 The Unicode component uses generated data with a fixed Unicode version and exposes UTF-8 scalar and identifier/whitespace property APIs without embedding template-engine semantics.
 
-### IDL, Schema, DataBind and the TBE format compiler
+### IDL, Schema, DataBind and the Binary format compiler
 
-`Salts::IDL` defines contracts and feeds the `salts-idlc` compiler. `Salts::Schema` owns Data-only shape/CMeta projection. `Salts::DataBind` owns native/dynamic binding, immutable BindingPlan execution and rollback. TBE is a format compiler that produces typed wire facts rather than changing IDL semantics.
+`Salts::IDL` defines contracts and feeds the `salts-idlc` compiler. `Salts::Schema` owns Data-only shape/CMeta projection. `Salts::DataBind` owns native/dynamic binding, immutable BindingPlan execution and rollback. Binary is a format compiler that produces typed wire facts rather than changing IDL semantics.
 
 **CMeta owns native type identity; IDL owns logical contracts; Schema owns data shape; DataBind owns binding.**
 

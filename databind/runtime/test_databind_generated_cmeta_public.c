@@ -5,6 +5,10 @@
 #include <stdio.h>
 #include <string.h>
 
+static int exact_double(double actual, double expected) {
+  return memcmp(&actual, &expected, sizeof(actual)) == 0;
+}
+
 /* Public-only, release-build-safe checks: no private validator or generated
  * implementation include may make this consumer link accidentally. */
 static int verify_public_cmeta(void) {
@@ -33,7 +37,7 @@ static int verify_public_cmeta(void) {
     Sample_t lifecycle;
     memset(&lifecycle, 0xa5, sizeof(lifecycle));
     Sample_init(&lifecycle);
-    if (lifecycle.point.x != 0 || lifecycle.point.y != 0.0 ||
+    if (lifecycle.point.x != 0 || !exact_double(lifecycle.point.y, 0.0) ||
         lifecycle.state != 0 || lifecycle.count != 0)
       return 33;
     lifecycle.point.x = 9;
@@ -41,7 +45,7 @@ static int verify_public_cmeta(void) {
     lifecycle.state = State_Ready;
     lifecycle.count = 17;
     Sample_clear(&lifecycle);
-    if (lifecycle.point.x != 0 || lifecycle.point.y != 0.0 ||
+    if (lifecycle.point.x != 0 || !exact_double(lifecycle.point.y, 0.0) ||
         lifecycle.state != 0 || lifecycle.count != 0)
       return 34;
   }
@@ -276,7 +280,7 @@ static int verify_public_cmeta(void) {
     Sample_init(&actual);
     if (Sample_from_json(
             codec, &actual, json, sizeof(json) - 1u, &error) != DATA_BIND_OK ||
-        actual.point.x != 3 || actual.point.y != 4.5 ||
+        actual.point.x != 3 || !exact_double(actual.point.y, 4.5) ||
         actual.state != State_Ready || actual.count != 7) {
       Sample_clear(&actual);
       data_bind_free(codec);

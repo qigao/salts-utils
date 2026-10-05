@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project(DataBindProducerInstalledConsumer LANGUAGES C)
+project(DataBindProducerInstalledConsumer LANGUAGES C CXX)
 
 enable_testing()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
@@ -7,7 +7,8 @@ if(NOT IS_DIRECTORY "$ENV{SALTS_UTILS_ROOT}")
   message(FATAL_ERROR "SALTS_UTILS_ROOT must name the installed SaltsUtils SDK")
 endif()
 unset(SaltsUtils_DIR CACHE)
-find_package(SaltsUtils CONFIG REQUIRED PATHS "$ENV{SALTS_UTILS_ROOT}"
+file(TO_CMAKE_PATH "$ENV{SALTS_UTILS_ROOT}" SALTS_UTILS_SDK_PATH)
+find_package(SaltsUtils CONFIG REQUIRED PATHS "${SALTS_UTILS_SDK_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 if(NOT TARGET Salts::DataBindProducer)
