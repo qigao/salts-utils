@@ -9,3 +9,11 @@ composite UnusedPoint {
 message TailOnly {
     string text;
 }
+
+[id(2)]
+message MixedWire {
+    uint64 number;
+    int16 delta;
+    string text;
+    bytes payload;
+}
