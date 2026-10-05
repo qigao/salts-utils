@@ -132,8 +132,8 @@ static databind_binary_layout_status binary_field_scalar_representation(
   default:
     /*
      * Structural/custom/buffer semantics are intentionally not inferred into a
-     * scalar token class. Existing layout remains valid; the first generic
-     * Binary reader will fail closed on SCALAR_NONE.
+     * scalar token class. Record lowering resolves canonical Contract children;
+     * other SCALAR_NONE forms remain fail-closed.
      */
     return DATABIND_BINARY_LAYOUT_OK;
   }

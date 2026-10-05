@@ -18,6 +18,11 @@ extern "C" {
  * order/state against the immutable layout plan, and calls the byte sink once
  * on finish. This preserves all-or-nothing publication for bounded generated
  * sinks such as *_to_bin_into.
+ * Fixed child MAPs write into their exact ranges in the same buffer, without
+ * additional allocations. Access is single-threaded; all reachable plan storage
+ * stays immutable and alive until close. max_depth bounds active record MAPs
+ * including the root; zero selects MAX_DEPTH. Schema/token errors and depth
+ * exhaustion prevent publication, and close releases the complete writer lease.
  */
 DATA_BIND_API DataBindStatus data_bind_binary_writer_open(
     const DataBindBinaryLayoutPlan *plan,

@@ -17,3 +17,19 @@ message MixedWire {
     string text;
     bytes payload;
 }
+
+composite WirePoint {
+    int16 delta;
+    uint64 number;
+}
+
+composite WireRecord {
+    WirePoint point;
+    uint16 code;
+}
+
+[id(3)]
+message NestedWire {
+    WireRecord record;
+    string text;
+}

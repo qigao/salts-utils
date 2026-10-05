@@ -14,14 +14,20 @@ typedef enum DataBindBinaryReaderStage {
   DATA_BIND_BINARY_READER_DONE
 } DataBindBinaryReaderStage;
 
-typedef struct DataBindBinaryReaderOwner {
-  cserde_reader reader;
+typedef struct DataBindBinaryReaderFrame {
   const DataBindBinaryLayoutPlan *plan;
   const unsigned char *payload;
   size_t payload_bytes;
   size_t field_index;
   const DataBindBinaryFieldPlan *current;
   DataBindBinaryReaderStage stage;
+} DataBindBinaryReaderFrame;
+
+typedef struct DataBindBinaryReaderOwner {
+  cserde_reader reader;
+  size_t depth;
+  size_t max_depth;
+  DataBindBinaryReaderFrame frames[DATA_BIND_BINARY_LAYOUT_MAX_DEPTH];
 } DataBindBinaryReaderOwner;
 
 static void binary_error_clear(DataBindError *error) {
@@ -113,16 +119,27 @@ static int binary_field_has_var_data_tail(
                  sizeof(field->tail_prefix_bytes);
 }
 
-DataBindStatus data_bind_binary_layout_plan_validate(
+static DataBindStatus binary_layout_validate(
     const DataBindBinaryLayoutPlan *plan,
+    const DataBindBinaryLayoutPlan **ancestors,
+    size_t depth, size_t max_depth, int fixed_only,
     DataBindError *error) {
   size_t state_end;
   size_t i;
   int saw_var_data = 0;
 
+  if (depth >= max_depth)
+    return binary_fail(error, DATA_BIND_ERR_LIMIT, NULL,
+                       "Binary layout depth exceeds the configured limit");
+  for (i = 0u; i < depth; ++i)
+    if (ancestors[i] == plan)
+      return binary_fail(error, DATA_BIND_ERR_SCHEMA, NULL,
+                         "Binary layout contains a record cycle");
+  ancestors[depth] = plan;
+
   binary_error_clear(error);
   if (plan == NULL ||
-      plan->size < sizeof(*plan) ||
+      plan->size < DATA_BIND_BINARY_LAYOUT_PLAN_V1_SIZE ||
       plan->abi_version != DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION ||
       plan->type_name == NULL || plan->type_name[0] == '\0' ||
       (plan->field_count != 0u && plan->fields == NULL))
@@ -155,8 +172,7 @@ DataBindStatus data_bind_binary_layout_plan_validate(
 
     if (representation == DATA_BIND_BINARY_REP_FIXED) {
       if (saw_var_data ||
-          !binary_token_width_valid(field->token_kind, field->scalar_bits) ||
-          field->wire_extent != (size_t)(field->scalar_bits / 8u) ||
+          field->wire_extent == 0u ||
           !binary_size_add(field->wire_offset, field->wire_extent, &end) ||
           end > plan->fixed_block_size ||
           binary_ranges_overlap(
@@ -164,9 +180,31 @@ DataBindStatus data_bind_binary_layout_plan_validate(
         return binary_fail(
             error, DATA_BIND_ERR_SCHEMA, field->field_name,
             "Binary scalar field layout is invalid");
+      if (field->token_kind == CSERDE_MAP_BEGIN) {
+        DataBindStatus status;
+        const DataBindBinaryLayoutPlan *child;
+        if (field->size < sizeof(*field) ||
+            plan->size < sizeof(*plan) || plan->child_plans == NULL ||
+            plan->child_plans[i] == NULL ||
+            field->scalar_bits != 0u || field->tail_prefix_bytes != 0u)
+          return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                             "Binary fixed record metadata is incomplete");
+        child = plan->child_plans[i];
+        status = binary_layout_validate(child, ancestors,
+                                        depth + 1u, max_depth, 1, error);
+        if (status != DATA_BIND_OK) return status;
+        if (child->fixed_block_size != field->wire_extent ||
+            (child->wire_big_endian != 0) != (plan->wire_big_endian != 0))
+          return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                             "Binary fixed record extent or byte order disagrees");
+      } else if (!binary_token_width_valid(field->token_kind, field->scalar_bits) ||
+                 field->wire_extent != (size_t)(field->scalar_bits / 8u)) {
+        return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                           "Binary scalar width is invalid");
+      }
     } else if (representation == DATA_BIND_BINARY_REP_VAR_DATA) {
       saw_var_data = 1;
-      if (!binary_field_has_var_data_tail(field) ||
+      if (fixed_only || !binary_field_has_var_data_tail(field) ||
           (field->token_kind != CSERDE_STRING &&
            field->token_kind != CSERDE_BYTES) ||
           field->scalar_bits != 0u ||
@@ -180,6 +218,11 @@ DataBindStatus data_bind_binary_layout_plan_validate(
           error, DATA_BIND_ERR_SCHEMA, field->field_name,
           "Binary reader field representation is unsupported");
     }
+
+    if (field->token_kind != CSERDE_MAP_BEGIN && plan->size >= sizeof(*plan) &&
+        plan->child_plans != NULL && plan->child_plans[i] != NULL)
+      return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                         "Binary scalar field has unexpected child metadata");
 
     if ((field->flags & DATA_BIND_BINARY_FIELD_OPTIONAL) != 0u) {
       if (plan->presence_size == 0u ||
@@ -224,6 +267,13 @@ DataBindStatus data_bind_binary_layout_plan_validate(
   return DATA_BIND_OK;
 }
 
+DataBindStatus data_bind_binary_layout_plan_validate(
+    const DataBindBinaryLayoutPlan *plan, DataBindError *error) {
+  const DataBindBinaryLayoutPlan *ancestors[DATA_BIND_BINARY_LAYOUT_MAX_DEPTH];
+  return binary_layout_validate(plan, ancestors, 0u,
+                                DATA_BIND_BINARY_LAYOUT_MAX_DEPTH, 0, error);
+}
+
 static int binary_state_bit(
     const unsigned char *payload,
     size_t offset,
@@ -256,6 +306,11 @@ static DataBindStatus binary_wire_state_validate(
       return binary_fail(
           error, DATA_BIND_ERR_PARSE, field->field_name,
           "Binary null state is set while optional field is absent");
+    if (present && !is_null && field->token_kind == CSERDE_MAP_BEGIN) {
+      DataBindStatus status = binary_wire_state_validate(
+          plan->child_plans[i], payload + field->wire_offset, error);
+      if (status != DATA_BIND_OK) return status;
+    }
   }
   return DATA_BIND_OK;
 }
@@ -334,7 +389,7 @@ static DataBindStatus binary_tail_preflight(
 }
 
 static int binary_field_present(
-    const DataBindBinaryReaderOwner *owner,
+    const DataBindBinaryReaderFrame *owner,
     const DataBindBinaryFieldPlan *field) {
   if ((field->flags & DATA_BIND_BINARY_FIELD_OPTIONAL) == 0u)
     return 1;
@@ -343,7 +398,7 @@ static int binary_field_present(
 }
 
 static int binary_field_null(
-    const DataBindBinaryReaderOwner *owner,
+    const DataBindBinaryReaderFrame *owner,
     const DataBindBinaryFieldPlan *field) {
   if ((field->flags & DATA_BIND_BINARY_FIELD_NULLABLE) == 0u)
     return 0;
@@ -352,7 +407,7 @@ static int binary_field_null(
 }
 
 static cserde_status binary_var_data_view_at(
-    const DataBindBinaryReaderOwner *owner,
+    const DataBindBinaryReaderFrame *owner,
     size_t target_index,
     DataBindBinaryVarData *out) {
   size_t cursor;
@@ -396,7 +451,7 @@ static cserde_status binary_var_data_view_at(
 }
 
 static cserde_status binary_var_data_token(
-    const DataBindBinaryReaderOwner *owner,
+    const DataBindBinaryReaderFrame *owner,
     size_t field_index,
     const DataBindBinaryFieldPlan *field,
     cserde_token *out) {
@@ -429,7 +484,7 @@ static cserde_token binary_field_key(
 }
 
 static cserde_status binary_scalar_token(
-    const DataBindBinaryReaderOwner *owner,
+    const DataBindBinaryReaderFrame *owner,
     const DataBindBinaryFieldPlan *field,
     cserde_token *out) {
   const unsigned char *source =
@@ -523,61 +578,82 @@ static cserde_status binary_reader_next(
   DataBindBinaryReaderOwner *owner =
       (DataBindBinaryReaderOwner *)context;
 
-  if (owner == NULL || out == NULL || owner->plan == NULL)
+  if (owner == NULL || out == NULL || owner->depth == 0u)
     return CSERDE_INVALID_ARGUMENT;
 
   for (;;) {
-    switch (owner->stage) {
+    DataBindBinaryReaderFrame *frame = &owner->frames[owner->depth - 1u];
+    switch (frame->stage) {
     case DATA_BIND_BINARY_READER_MAP_BEGIN:
       memset(out, 0, sizeof(*out));
       out->kind = CSERDE_MAP_BEGIN;
-      owner->stage = DATA_BIND_BINARY_READER_FIELD_KEY;
+      frame->stage = DATA_BIND_BINARY_READER_FIELD_KEY;
       return CSERDE_OK;
 
     case DATA_BIND_BINARY_READER_FIELD_KEY:
-      while (owner->field_index < owner->plan->field_count &&
+      while (frame->field_index < frame->plan->field_count &&
              !binary_field_present(
-                 owner, &owner->plan->fields[owner->field_index]))
-        ++owner->field_index;
+                 frame, &frame->plan->fields[frame->field_index]))
+        ++frame->field_index;
 
-      if (owner->field_index >= owner->plan->field_count) {
-        owner->stage = DATA_BIND_BINARY_READER_MAP_END;
+      if (frame->field_index >= frame->plan->field_count) {
+        frame->stage = DATA_BIND_BINARY_READER_MAP_END;
         continue;
       }
 
-      owner->current = &owner->plan->fields[owner->field_index];
-      *out = binary_field_key(owner->current);
-      owner->stage = DATA_BIND_BINARY_READER_FIELD_VALUE;
+      frame->current = &frame->plan->fields[frame->field_index];
+      *out = binary_field_key(frame->current);
+      frame->stage = DATA_BIND_BINARY_READER_FIELD_VALUE;
       return CSERDE_OK;
 
     case DATA_BIND_BINARY_READER_FIELD_VALUE:
-      if (owner->current == NULL)
+      if (frame->current == NULL)
         return CSERDE_INVALID_STATE;
-      if (binary_field_null(owner, owner->current)) {
+      if (binary_field_null(frame, frame->current)) {
         memset(out, 0, sizeof(*out));
         out->kind = CSERDE_NULL;
       } else {
         cserde_status status;
-        if (binary_field_representation(owner->current) ==
+        if (frame->current->token_kind == CSERDE_MAP_BEGIN) {
+          const DataBindBinaryFieldPlan *field = frame->current;
+          DataBindBinaryReaderFrame *child;
+          if (owner->depth >= owner->max_depth)
+            return CSERDE_LIMIT_EXCEEDED;
+          child = &owner->frames[owner->depth++];
+          memset(child, 0, sizeof(*child));
+          child->plan = frame->plan->child_plans[frame->field_index];
+          child->payload = frame->payload + field->wire_offset;
+          child->payload_bytes = field->wire_extent;
+          child->stage = DATA_BIND_BINARY_READER_MAP_BEGIN;
+          ++frame->field_index;
+          frame->current = NULL;
+          frame->stage = DATA_BIND_BINARY_READER_FIELD_KEY;
+          continue;
+        }
+        if (binary_field_representation(frame->current) ==
             DATA_BIND_BINARY_REP_VAR_DATA)
           status = binary_var_data_token(
-              owner, owner->field_index, owner->current, out);
+              frame, frame->field_index, frame->current, out);
         else
-          status = binary_scalar_token(owner, owner->current, out);
+          status = binary_scalar_token(frame, frame->current, out);
         if (status != CSERDE_OK) return status;
       }
-      ++owner->field_index;
-      owner->current = NULL;
-      owner->stage = DATA_BIND_BINARY_READER_FIELD_KEY;
+      ++frame->field_index;
+      frame->current = NULL;
+      frame->stage = DATA_BIND_BINARY_READER_FIELD_KEY;
       return CSERDE_OK;
 
     case DATA_BIND_BINARY_READER_MAP_END:
       memset(out, 0, sizeof(*out));
       out->kind = CSERDE_MAP_END;
-      owner->stage = DATA_BIND_BINARY_READER_DONE;
+      frame->stage = DATA_BIND_BINARY_READER_DONE;
       return CSERDE_OK;
 
     case DATA_BIND_BINARY_READER_DONE:
+      if (owner->depth > 1u) {
+        --owner->depth;
+        continue;
+      }
       return CSERDE_DONE;
 
     default:
@@ -601,7 +677,9 @@ DataBindStatus data_bind_binary_reader_open(
     DataBindError *error) {
   DataBindBinaryReaderOwner *owner;
   DataBindStatus status;
-  (void)max_depth;
+  const DataBindBinaryLayoutPlan *ancestors[DATA_BIND_BINARY_LAYOUT_MAX_DEPTH];
+  if (max_depth == 0u || max_depth > DATA_BIND_BINARY_LAYOUT_MAX_DEPTH)
+    max_depth = DATA_BIND_BINARY_LAYOUT_MAX_DEPTH;
 
   binary_error_clear(error);
   if (out_reader != NULL) *out_reader = NULL;
@@ -613,7 +691,7 @@ DataBindStatus data_bind_binary_reader_open(
         error, DATA_BIND_ERR_INVALID_ARG, NULL,
         "Invalid Binary reader open arguments");
 
-  status = data_bind_binary_layout_plan_validate(plan, error);
+  status = binary_layout_validate(plan, ancestors, 0u, max_depth, 0, error);
   if (status != DATA_BIND_OK) return status;
 
   if (payload_bytes < plan->fixed_block_size)
@@ -635,10 +713,12 @@ DataBindStatus data_bind_binary_reader_open(
         error, DATA_BIND_ERR_OOM, plan->type_name,
         "Could not allocate bounded Binary reader lease");
 
-  owner->plan = plan;
-  owner->payload = (const unsigned char *)payload;
-  owner->payload_bytes = payload_bytes;
-  owner->stage = DATA_BIND_BINARY_READER_MAP_BEGIN;
+  owner->depth = 1u;
+  owner->max_depth = max_depth;
+  owner->frames[0].plan = plan;
+  owner->frames[0].payload = (const unsigned char *)payload;
+  owner->frames[0].payload_bytes = payload_bytes;
+  owner->frames[0].stage = DATA_BIND_BINARY_READER_MAP_BEGIN;
 
   if (cserde_reader_init(
           &owner->reader, &BINARY_READER_OPS, owner) != CSERDE_OK) {
