@@ -22,6 +22,7 @@ typedef struct DataBindBinaryWriterFrame {
   size_t next_field;
   size_t current_field;
   size_t group_count;
+  const DataBindBinaryArrayPlan *array;
   DataBindBinaryWriterStage stage;
 } DataBindBinaryWriterFrame;
 
@@ -390,6 +391,22 @@ static cserde_status binary_writer_value(
     if (binary_writer_nullable(field))
       binary_writer_state_bit(
           owner, frame->plan->null_offset, field->nullable_bit, 0);
+    if (representation == DATA_BIND_BINARY_REP_FIXED &&
+        field->token_kind == CSERDE_ARRAY_BEGIN) {
+      const DataBindBinaryArrayPlan *array =
+          data_bind_binary_array_plan_at(frame->plan, frame->current_field);
+      DataBindBinaryWriterFrame *child;
+      if (token->kind != CSERDE_ARRAY_BEGIN || array == NULL) return CSERDE_UNSUPPORTED;
+      if (owner->depth >= owner->max_depth) return CSERDE_LIMIT_EXCEEDED;
+      child = &owner->frames[owner->depth++];
+      memset(child, 0, sizeof(*child));
+      child->array = array;
+      child->plan = array->element_token_kind == CSERDE_MAP_BEGIN
+                        ? frame->plan->child_plans[frame->current_field] : frame->plan;
+      child->base_offset = frame->base_offset + field->wire_offset;
+      child->stage = DATA_BIND_BINARY_WRITER_GROUP;
+      return CSERDE_OK;
+    }
     if (representation == DATA_BIND_BINARY_REP_GROUP) {
       DataBindBinaryWriterFrame *child;
       const DataBindBinaryLayoutPlan *entry = frame->plan->child_plans[frame->current_field];
@@ -489,23 +506,46 @@ static cserde_status binary_writer_write(
 
   case DATA_BIND_BINARY_WRITER_GROUP:
     if (token->kind == CSERDE_ARRAY_END) {
-      data_bind_binary_wire_write_u16(
-          owner->buffer + frame->base_offset + sizeof(uint16_t),
-          frame->plan->wire_big_endian, (uint16_t)frame->group_count);
+      if (frame->array != NULL) {
+        if (frame->group_count != frame->array->count) return CSERDE_UNSUPPORTED;
+      } else {
+        data_bind_binary_wire_write_u16(
+            owner->buffer + frame->base_offset + sizeof(uint16_t),
+            frame->plan->wire_big_endian, (uint16_t)frame->group_count);
+      }
       --owner->depth;
       frame = binary_writer_frame(owner);
       frame->next_field = frame->current_field + 1u;
       frame->stage = DATA_BIND_BINARY_WRITER_KEY;
       return CSERDE_OK;
     }
+    if (frame->array != NULL &&
+        frame->array->element_token_kind != CSERDE_MAP_BEGIN) {
+      DataBindBinaryFieldPlan element = DATA_BIND_BINARY_FIELD_PLAN_INIT;
+      if (frame->group_count >= frame->array->count) return CSERDE_LIMIT_EXCEEDED;
+      element.token_kind = frame->array->element_token_kind;
+      element.scalar_bits = frame->array->element_scalar_bits;
+      element.wire_offset = frame->group_count * frame->array->element_extent;
+      element.wire_extent = frame->array->element_extent;
+      if (!binary_writer_fixed_value(owner, &element, token)) return CSERDE_UNSUPPORTED;
+      ++frame->group_count;
+      return CSERDE_OK;
+    }
     if (token->kind == CSERDE_MAP_BEGIN) {
       DataBindBinaryWriterFrame *child;
       size_t entry_offset = owner->length;
-      if (frame->group_count == UINT16_MAX || owner->depth >= owner->max_depth ||
-          !binary_writer_reserve(owner, frame->plan->fixed_block_size))
-        return CSERDE_LIMIT_EXCEEDED;
-      memset(owner->buffer + entry_offset, 0, frame->plan->fixed_block_size);
-      owner->length += frame->plan->fixed_block_size;
+      if (owner->depth >= owner->max_depth) return CSERDE_LIMIT_EXCEEDED;
+      if (frame->array != NULL) {
+        if (frame->group_count >= frame->array->count) return CSERDE_LIMIT_EXCEEDED;
+        entry_offset = frame->base_offset +
+                       frame->group_count * frame->array->element_extent;
+      } else {
+        if (frame->group_count == UINT16_MAX ||
+            !binary_writer_reserve(owner, frame->plan->fixed_block_size))
+          return CSERDE_LIMIT_EXCEEDED;
+        memset(owner->buffer + entry_offset, 0, frame->plan->fixed_block_size);
+        owner->length += frame->plan->fixed_block_size;
+      }
       child = &owner->frames[owner->depth++];
       memset(child, 0, sizeof(*child));
       child->plan = frame->plan;

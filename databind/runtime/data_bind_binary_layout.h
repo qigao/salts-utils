@@ -33,7 +33,9 @@ typedef enum DataBindBinaryRepresentation {
  * token_kind is the canonical CSerde semantic token class, not a second
  * DataBind/Binary type enum. FIXED fields admit BOOL/SINT/UINT/FLOAT,
  * BYTES with zero scalar_bits and an exact wire_extent, or MAP_BEGIN with
- * an exact fixed child plan. Fixed bytes do not have a length prefix or endian
+ * an exact fixed child plan. ARRAY_BEGIN admits an exact fixed sequence via
+ * array_plans, with scalar/bytes or fixed MAP elements. Fixed bytes do not have
+ * a length prefix or endian
  * conversion; the immutable input span is borrowed until reader close.
  * VAR_DATA fields admit STRING/BYTES and use a uint32 tail length prefix.
  * GROUP fields admit SEQ_BEGIN with a fixed entry plan and a uint16 stride/count
@@ -59,6 +61,17 @@ typedef struct DataBindBinaryFieldPlan {
   size_t representation;
   size_t tail_prefix_bytes;
 } DataBindBinaryFieldPlan;
+
+/* Fixed sequence wire facts. No count/length header is present on the wire.
+ * MAP elements use the owner's corresponding child_plans entry. Scalar and
+ * exact BYTES elements have no child record. */
+typedef struct DataBindBinaryArrayPlan {
+  size_t size;
+  size_t count;
+  size_t element_extent;
+  cserde_token_kind element_token_kind;
+  unsigned element_scalar_bits;
+} DataBindBinaryArrayPlan;
 
 #define DATA_BIND_BINARY_FIELD_PLAN_V1_SIZE \
   offsetof(DataBindBinaryFieldPlan, representation)
@@ -92,22 +105,37 @@ typedef struct DataBindBinaryLayoutPlan {
    * other entries are NULL. Keeping field records unchanged preserves their
    * array stride for released scalar/VAR_DATA providers. */
   const struct DataBindBinaryLayoutPlan *const *child_plans;
+  /* Optional field_count-entry sparse table for FIXED ARRAY_BEGIN fields.
+   * Keeping element metadata separate preserves released field-array stride. */
+  const DataBindBinaryArrayPlan *const *array_plans;
 } DataBindBinaryLayoutPlan;
 
 #define DATA_BIND_BINARY_LAYOUT_PLAN_V1_SIZE \
   offsetof(DataBindBinaryLayoutPlan, child_plans)
 
+#define DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE \
+  offsetof(DataBindBinaryLayoutPlan, array_plans)
+
 #define DATA_BIND_BINARY_LAYOUT_PLAN_INIT \
   { sizeof(DataBindBinaryLayoutPlan), DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION, \
-    NULL, 0, 0u, 0u, 0u, 0u, 0u, NULL, 0u, NULL }
+    NULL, 0, 0u, 0u, 0u, 0u, 0u, NULL, 0u, NULL, NULL }
+
+static inline const DataBindBinaryArrayPlan *data_bind_binary_array_plan_at(
+    const DataBindBinaryLayoutPlan *plan, size_t field_index) {
+  return plan != NULL && plan->size >= sizeof(*plan) &&
+                 field_index < plan->field_count && plan->array_plans != NULL
+             ? plan->array_plans[field_index] : NULL;
+}
 
 /*
  * Validate one generated Binary wire-layout plan.
  *
- * FIXED scalar/record, GROUP records and VAR_DATA STRING/BYTES are admitted. Child
+ * FIXED scalar/record/array, GROUP records and VAR_DATA STRING/BYTES are admitted. Child
  * records contain only FIXED fields and use their own state bitmaps. Cycles,
  * depth beyond MAX_DEPTH and unsupported shapes fail closed. GROUP consumes
  * one sequence frame plus one entry record frame and has a UINT16_MAX count.
+ * A fixed array uses one sequence frame, plus a record frame for MAP elements;
+ * count times element_extent must equal the owning field's wire_extent.
  * The plan,
  * field array and reachable child tables must remain immutable and alive until
  * the reader/writer closes; validation does not retain them.

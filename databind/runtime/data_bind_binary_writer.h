@@ -21,6 +21,8 @@ extern "C" {
  * Fixed child MAPs write into their exact ranges in the same buffer, without
  * additional allocations. GROUP appends at most UINT16_MAX fixed entries to the
  * same buffer with checked growth and commits its count on ARRAY_END.
+ * Fixed arrays write the declared element count into their prevalidated inline
+ * range. A short ARRAY_END or excess input prevents all publication.
  * Access is single-threaded; all reachable plan storage
  * stays immutable and alive until close. max_depth bounds active MAPs/ARRAYs
  * including the root; zero selects MAX_DEPTH. Schema/token errors and depth
