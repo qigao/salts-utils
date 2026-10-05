@@ -2528,87 +2528,101 @@ static void tbe_compiler_annotate_csv_flat_messages(Node *root) {
   }
 }
 
+static int tbe_compiler_has_local_overlay_lifecycle(Node *root, Node *record) {
+  Node *fields = tbe_compiler_find_child(record, "fields");
+  size_t j;
+  int has_state = 0;
+
+  if (!tbe_compiler_has_child(record, "cmeta_graph_supported") ||
+      tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
+      fields == NULL || fields->type != NODE_LIST)
+    return 0;
+
+  for (j = 0u; j < fields->data.list.count; ++j) {
+    Node *field = fields->data.list.items[j];
+    const char *type = tbe_compiler_string_value(field, "type");
+    const char *requirement =
+        tbe_compiler_string_value(field, "cmeta_native_requirement");
+    const char *native_data =
+        tbe_compiler_string_value(field, "native_data_symbol");
+    Node *nested_record =
+        type != NULL ? tbe_compiler_find_any_record(root, type) : NULL;
+    const int nested_overlay =
+        nested_record != NULL &&
+        tbe_compiler_has_child(nested_record, "cmeta_local_overlay_lifecycle");
+    const int nested_lifecycle =
+        nested_record != NULL &&
+        tbe_compiler_has_child(nested_record, "cmeta_lifecycle_supported");
+    Node *enum_record =
+        type != NULL ? tbe_compiler_find_record(root, "enums", type) : NULL;
+    const int native_enum =
+        enum_record != NULL &&
+        tbe_compiler_has_child(enum_record, "native_enum_supported") &&
+        tbe_compiler_has_child(enum_record, "typed_cmeta_runtime_supported") &&
+        native_data != NULL &&
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL;
+    const int native_uuid =
+        type != NULL && strcmp(type, "uuid") == 0 &&
+        native_data != NULL &&
+        strcmp(native_data, "salts_uuid_cmeta_data") == 0 &&
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
+        strcmp(tbe_compiler_string_value(field, "native_type_symbol"),
+               "salts_uuid_cmeta_type") == 0;
+    const int fixed_bytes =
+        type != NULL && strcmp(type, "bytes") == 0 &&
+        tbe_compiler_has_child(field, "is_fixed_size") &&
+        tbe_compiler_string_value(field, "native_fixed_bytes_name") != NULL &&
+        native_data != NULL &&
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL;
+    const int owned_storage =
+        type != NULL && requirement != NULL && native_data != NULL &&
+        (strcmp(requirement, "owned_lifecycle") == 0 ||
+         strcmp(requirement, "overlay_presence") == 0 ||
+         strcmp(requirement, "overlay_null") == 0 ||
+         strcmp(requirement, "overlay_presence_null") == 0) &&
+        ((strcmp(type, "string") == 0 &&
+          strcmp(native_data, "salts_tstr_cmeta_data") == 0) ||
+         (strcmp(type, "bytes") == 0 &&
+          strcmp(native_data, "stl_byte_buffer_cmeta_data") == 0));
+    if (type == NULL ||
+        tbe_compiler_has_child(field, "is_collection") ||
+        tbe_compiler_has_child(field, "is_group_field") ||
+        (tbe_compiler_scalar_projection(type) == NULL && !owned_storage &&
+         !fixed_bytes && !nested_lifecycle && !nested_overlay && !native_enum &&
+         !native_uuid)) {
+      return 0;
+    }
+    if (tbe_compiler_has_child(field, "is_optional") ||
+        tbe_compiler_has_child(field, "is_nullable") || nested_overlay)
+      has_state = 1;
+  }
+
+  /* Only local init/clear is admitted. Container move still requires a
+   * separate protocol for the semantic state bits. */
+  return has_state;
+}
+
 static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
   Node *messages = tbe_compiler_find_child(root, "messages");
   size_t i;
+  int changed;
   if (messages == NULL || messages->type != NODE_LIST) return;
+  for (i = 0u; i < messages->data.list.count; ++i)
+    tbe_compiler_remove_children(messages->data.list.items[i],
+                                 "cmeta_local_overlay_lifecycle");
 
-  for (i = 0u; i < messages->data.list.count; ++i) {
-    Node *record = messages->data.list.items[i];
-    Node *fields = tbe_compiler_find_child(record, "fields");
-    size_t j;
-    int has_state = 0;
-    int supported = 1;
-
-    tbe_compiler_remove_children(record, "cmeta_local_overlay_lifecycle");
-    if (!tbe_compiler_has_child(record, "cmeta_graph_supported") ||
-        tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
-        fields == NULL || fields->type != NODE_LIST)
-      continue;
-
-    for (j = 0u; j < fields->data.list.count; ++j) {
-      Node *field = fields->data.list.items[j];
-      const char *type = tbe_compiler_string_value(field, "type");
-      const char *requirement =
-          tbe_compiler_string_value(field, "cmeta_native_requirement");
-      const char *native_data =
-          tbe_compiler_string_value(field, "native_data_symbol");
-      Node *nested_record =
-          type != NULL ? tbe_compiler_find_any_record(root, type) : NULL;
-      const int nested_lifecycle =
-          nested_record != NULL &&
-          tbe_compiler_has_child(nested_record, "cmeta_lifecycle_supported");
-      Node *enum_record =
-          type != NULL ? tbe_compiler_find_record(root, "enums", type) : NULL;
-      const int native_enum =
-          enum_record != NULL &&
-          tbe_compiler_has_child(enum_record, "native_enum_supported") &&
-          tbe_compiler_has_child(enum_record, "typed_cmeta_runtime_supported") &&
-          native_data != NULL &&
-          tbe_compiler_string_value(field, "native_type_symbol") != NULL;
-      const int native_uuid =
-          type != NULL && strcmp(type, "uuid") == 0 &&
-          native_data != NULL &&
-          strcmp(native_data, "salts_uuid_cmeta_data") == 0 &&
-          tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
-          strcmp(tbe_compiler_string_value(field, "native_type_symbol"),
-                 "salts_uuid_cmeta_type") == 0;
-      const int fixed_bytes =
-          type != NULL && strcmp(type, "bytes") == 0 &&
-          tbe_compiler_has_child(field, "is_fixed_size") &&
-          tbe_compiler_string_value(field, "native_fixed_bytes_name") != NULL &&
-          native_data != NULL &&
-          tbe_compiler_string_value(field, "native_type_symbol") != NULL;
-      const int owned_storage =
-          type != NULL && requirement != NULL && native_data != NULL &&
-          (strcmp(requirement, "owned_lifecycle") == 0 ||
-           strcmp(requirement, "overlay_presence") == 0 ||
-           strcmp(requirement, "overlay_null") == 0 ||
-           strcmp(requirement, "overlay_presence_null") == 0) &&
-          ((strcmp(type, "string") == 0 &&
-            strcmp(native_data, "salts_tstr_cmeta_data") == 0) ||
-           (strcmp(type, "bytes") == 0 &&
-            strcmp(native_data, "stl_byte_buffer_cmeta_data") == 0));
-      if (type == NULL ||
-          tbe_compiler_has_child(field, "is_collection") ||
-          tbe_compiler_has_child(field, "is_group_field") ||
-          (tbe_compiler_scalar_projection(type) == NULL && !owned_storage &&
-           !fixed_bytes && !nested_lifecycle && !native_enum &&
-           !native_uuid)) {
-        supported = 0;
-        break;
-      }
-      if (tbe_compiler_has_child(field, "is_optional") ||
-          tbe_compiler_has_child(field, "is_nullable"))
-        has_state = 1;
+  /* At most R admission passes, O(R^2 * F) including record-name lookup.
+   * A published graph is required, so cycles and excessive depth stay closed. */
+  do {
+    changed = 0;
+    for (i = 0u; i < messages->data.list.count; ++i) {
+      Node *record = messages->data.list.items[i];
+      if (!tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle") &&
+          tbe_compiler_has_local_overlay_lifecycle(root, record) &&
+          tbe_compiler_set_string(record, "cmeta_local_overlay_lifecycle", "1") == 0)
+        changed = 1;
     }
-
-    /* This marker selects only local init/clear; CMeta move still needs a
-     * separate overlay protocol before the record can enter a container. */
-    if (supported && has_state)
-      (void)tbe_compiler_set_string(
-          record, "cmeta_local_overlay_lifecycle", "1");
-  }
+  } while (changed);
 }
 
 static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {

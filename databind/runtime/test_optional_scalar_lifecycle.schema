@@ -108,3 +108,15 @@ message WideEnumHolder {
 message DefaultEnumHolder {
     DefaultState value;
 }
+
+[id(18)]
+message OverlayHolder {
+    OwnedState text;
+    OwnedBytesState bytes;
+}
+
+[id(19)]
+message OverlayEnvelope {
+    optional OverlayHolder child;
+    nullable string note;
+}

@@ -4,6 +4,91 @@
 #include <string.h>
 
 spec("optional local lifecycle uses canonical CMeta") {
+  it("releases owned overlays through nested records regardless of logical state") {
+    enum { PAYLOAD_SIZE = 16, REUSED_PAYLOAD_SIZE = 8 };
+    OverlayEnvelope_t value;
+    memset(&value, 0xa5, sizeof(value));
+    OverlayEnvelope_init(&value);
+    check_null(value.child.text.label);
+    check_null(value.child.text.note);
+    check_null(value.note);
+    check_equal(stl_byte_buffer_size(&value.child.bytes.payload), (size_t)0u);
+    check_equal(value.child.text._presence[0], 0u);
+    check_equal(value.child.text._nulls[0], 0u);
+    check_equal(value.child.bytes._presence[0], 0u);
+    check_equal(value.child.bytes._nulls[0], 0u);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+
+    value.child.text.label = tstr_dup("absent owned label");
+    value.child.text.note = tstr_dup("null owned note");
+    value.note = tstr_dup("outer owned note");
+    check_not_null(value.child.text.label);
+    check_not_null(value.child.text.note);
+    check_not_null(value.note);
+    check_equal(stl_byte_buffer_resize(&value.child.bytes.payload, PAYLOAD_SIZE), STL_OK);
+    check_equal(stl_byte_buffer_resize(&value.child.bytes.note, PAYLOAD_SIZE), STL_OK);
+    value.child.text._nulls[0] = 1u;
+    value.child.bytes._nulls[0] = 1u;
+    value._nulls[0] = 1u;
+    value.child.text.count = 7u;
+    value.child.bytes.count = 9u;
+    /* Absence/null affects semantic state, never ownership of native storage. */
+    OverlayEnvelope_clear(&value);
+    check_null(value.child.text.label);
+    check_null(value.child.text.note);
+    check_null(value.note);
+    check_equal(stl_byte_buffer_size(&value.child.bytes.payload), (size_t)0u);
+    check_equal(stl_byte_buffer_size(&value.child.bytes.note), (size_t)0u);
+    check_equal(value.child.text.count, 0u);
+    check_equal(value.child.bytes.count, 0u);
+    check_equal(value.child.text._presence[0], 0u);
+    check_equal(value.child.text._nulls[0], 0u);
+    check_equal(value.child.bytes._presence[0], 0u);
+    check_equal(value.child.bytes._nulls[0], 0u);
+    check_equal(value._presence[0], 0u);
+    check_equal(value._nulls[0], 0u);
+    OverlayEnvelope_clear(&value);
+
+    OverlayEnvelope_init(&value);
+    value.child.text.label = tstr_dup("reused owner");
+    check_not_null(value.child.text.label);
+    check_equal(stl_byte_buffer_resize(&value.child.bytes.payload, REUSED_PAYLOAD_SIZE), STL_OK);
+    OverlayEnvelope_clear(&value);
+    OverlayEnvelope_init(NULL);
+    OverlayEnvelope_clear(NULL);
+  }
+
+  it("keeps nested overlay conversions closed without mutating owned storage") {
+    OverlayHolder_t value;
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    const cmeta_data_desc *data = NULL;
+    static const char json[] = "{}";
+    char *output = (char *)&value;
+    size_t output_size = sizeof(value);
+    tstr retained;
+    OverlayHolder_init(&value);
+    check_equal(OverlayHolder_cmeta_data(&data, &error), DATA_BIND_OK);
+    check_not_null(data);
+    value.text.label = tstr_dup("keep ownership on rejection");
+    retained = value.text.label;
+    check_not_null(retained);
+    check_equal(ScalarLifecycle_codec_create(&codec, &error), DATA_BIND_OK);
+    if (codec != NULL) {
+      check_equal(OverlayHolder_from_json(codec, &value, json, sizeof(json) - 1u,
+                                         &error), DATA_BIND_ERR_SCHEMA);
+      check(value.text.label == retained);
+      check_equal(OverlayHolder_to_json(codec, &value, &output, &output_size,
+                                       &error), DATA_BIND_ERR_SCHEMA);
+      check_null(output);
+      check_equal(output_size, (size_t)0u);
+      check(value.text.label == retained);
+    }
+    OverlayHolder_clear(&value);
+    data_bind_free(codec);
+  }
+
   it("initializes and clears UUID storage and state overlays") {
     UuidState_t value;
     memset(&value, 0xa5, sizeof(value));

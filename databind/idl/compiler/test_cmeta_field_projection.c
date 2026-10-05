@@ -549,6 +549,48 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
+    it("propagates local owned overlay lifecycle through reverse-ordered records") {
+        Node *root = create_node_map("root");
+        Node *outer;
+        Node *middle;
+        Node *leaf;
+        Node *field;
+        size_t pass;
+
+        check_not_null(root);
+        if (!root) return;
+        outer = field_projection_add_record(root, "messages", "Envelope");
+        middle = field_projection_add_record(root, "messages", "Holder");
+        leaf = field_projection_add_record(root, "messages", "OwnedOverlay");
+        field = field_projection_add_field(outer, "Envelope", "child", "Holder");
+        check_not_null(field);
+        if (!field) { node_free(root); return; }
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        check_not_null(field_projection_add_field(middle, "Holder", "child", "OwnedOverlay"));
+        field = field_projection_add_field(leaf, "OwnedOverlay", "payload", "bytes");
+        check_not_null(field);
+        if (!field) { node_free(root); return; }
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        field = field_projection_add_field(leaf, "OwnedOverlay", "label", "string");
+        check_not_null(field);
+        if (!field) { node_free(root); return; }
+        check_equal(map_add(field, create_node_string("is_nullable", "1")), 0);
+
+        for (pass = 0u; pass < 2u; ++pass) {
+            Node *records[] = {outer, middle, leaf};
+            size_t i;
+            annotate_language_types_from_tree(root);
+            for (i = 0u; i < sizeof(records) / sizeof(records[0]); ++i) {
+                check_not_null(field_projection_child(records[i], "cmeta_graph_supported"));
+                check_not_null(field_projection_child(records[i], "cmeta_local_overlay_lifecycle"));
+                check_not_null(field_projection_child(records[i], "no_legacy_typed_table"));
+                check_null(field_projection_child(records[i], "cmeta_lifecycle_supported"));
+                check_null(field_projection_child(records[i], "typed_cmeta_runtime_supported"));
+            }
+        }
+        node_free(root);
+    }
+
     it("uses CSTL Vec storage while optional list admission stays deferred") {
         Node *root = create_node_map("root");
         Node *record;

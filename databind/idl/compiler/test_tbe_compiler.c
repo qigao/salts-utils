@@ -2955,7 +2955,7 @@ spec("tbe_compiler") {
     }
 
 
-    it("retains legacy type tables referenced by nested message fields") {
+    it("omits legacy tables for nested local overlay lifecycles") {
       const char *schema_path = "test_tbe_compiler_nested_legacy.tbe";
       const char *header_path = "test_tbe_compiler_nested_legacy.h";
       const char *source_path = "test_tbe_compiler_nested_legacy.c";
@@ -2982,13 +2982,11 @@ spec("tbe_compiler") {
       source = tt_read_file(source_path, &source_size);
       check_not_null(source);
       if (source != NULL) {
-        check_contains(source, "static TbeTypedType Inner_TYPED_TYPE;");
-        check_contains(source, "static TbeTypedType Leaf_TYPED_TYPE;");
-        check_contains(source, ".object_type = &Leaf_TYPED_TYPE");
-        check_contains(source, ".object_type = &Inner_TYPED_TYPE");
-        check_contains(source, "static TbeTypedType Outer_TYPED_TYPE;");
-        check_contains(source, "#define TBE_TYPED_DEFINE_RAW_LIFECYCLE(name)");
-        check(strstr(source, "Standalone_TYPED_TYPE") == NULL);
+        check(strstr(source, "TbeTyped") == NULL);
+        check(strstr(source, "TBE_TYPED") == NULL);
+        check(strstr(source, "tbe_typed") == NULL);
+        check_contains(source, "DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(Inner)");
+        check_contains(source, "DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD(Outer)");
       }
       free(source);
       cleanup_test_file(schema_path);
