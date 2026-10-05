@@ -11,6 +11,8 @@ typedef enum DataBindBinaryReaderStage {
   DATA_BIND_BINARY_READER_FIELD_KEY,
   DATA_BIND_BINARY_READER_FIELD_VALUE,
   DATA_BIND_BINARY_READER_MAP_END,
+  DATA_BIND_BINARY_READER_SEQ_BEGIN,
+  DATA_BIND_BINARY_READER_SEQ_ENTRY,
   DATA_BIND_BINARY_READER_DONE
 } DataBindBinaryReaderStage;
 
@@ -20,6 +22,8 @@ typedef struct DataBindBinaryReaderFrame {
   size_t payload_bytes;
   size_t field_index;
   const DataBindBinaryFieldPlan *current;
+  size_t group_stride;
+  size_t group_count;
   DataBindBinaryReaderStage stage;
 } DataBindBinaryReaderFrame;
 
@@ -126,6 +130,7 @@ static DataBindStatus binary_layout_validate(
     DataBindError *error) {
   size_t state_end;
   size_t i;
+  int saw_tail = 0;
   int saw_var_data = 0;
 
   if (depth >= max_depth)
@@ -171,7 +176,7 @@ static DataBindStatus binary_layout_validate(
           "Binary reader field metadata is incomplete");
 
     if (representation == DATA_BIND_BINARY_REP_FIXED) {
-      if (saw_var_data ||
+      if (saw_tail ||
           field->wire_extent == 0u ||
           !binary_size_add(field->wire_offset, field->wire_extent, &end) ||
           end > plan->fixed_block_size ||
@@ -202,7 +207,32 @@ static DataBindStatus binary_layout_validate(
         return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
                            "Binary scalar width is invalid");
       }
+    } else if (representation == DATA_BIND_BINARY_REP_GROUP) {
+      DataBindStatus status;
+      const DataBindBinaryLayoutPlan *child;
+      saw_tail = 1;
+      if (fixed_only || saw_var_data || field->size < sizeof(*field) ||
+          field->token_kind != CSERDE_ARRAY_BEGIN || field->scalar_bits != 0u ||
+          field->wire_offset != 0u || field->wire_extent != 0u ||
+          field->tail_prefix_bytes != DATA_BIND_BINARY_GROUP_HEADER_SIZE ||
+          plan->size < sizeof(*plan) || plan->child_plans == NULL ||
+          plan->child_plans[i] == NULL)
+        return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                           "Binary GROUP metadata is incomplete or out of order");
+      child = plan->child_plans[i];
+      if (depth + 2u >= max_depth)
+        return binary_fail(error, DATA_BIND_ERR_LIMIT, field->field_name,
+                           "Binary GROUP entry exceeds the configured depth");
+      /* The intervening sequence frame has no record ancestor. */
+      ancestors[depth + 1u] = NULL;
+      status = binary_layout_validate(child, ancestors, depth + 2u, max_depth, 1, error);
+      if (status != DATA_BIND_OK) return status;
+      if (child->fixed_block_size == 0u || child->fixed_block_size > UINT16_MAX ||
+          (child->wire_big_endian != 0) != (plan->wire_big_endian != 0))
+        return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                           "Binary GROUP entry extent or byte order disagrees");
     } else if (representation == DATA_BIND_BINARY_REP_VAR_DATA) {
+      saw_tail = 1;
       saw_var_data = 1;
       if (fixed_only || !binary_field_has_var_data_tail(field) ||
           (field->token_kind != CSERDE_STRING &&
@@ -219,7 +249,8 @@ static DataBindStatus binary_layout_validate(
           "Binary reader field representation is unsupported");
     }
 
-    if (field->token_kind != CSERDE_MAP_BEGIN && plan->size >= sizeof(*plan) &&
+    if (field->token_kind != CSERDE_MAP_BEGIN && field->token_kind != CSERDE_ARRAY_BEGIN &&
+        plan->size >= sizeof(*plan) &&
         plan->child_plans != NULL && plan->child_plans[i] != NULL)
       return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
                          "Binary scalar field has unexpected child metadata");
@@ -260,7 +291,7 @@ static DataBindStatus binary_layout_validate(
     }
   }
 
-  if (plan->fixed_block_size == 0u && !saw_var_data)
+  if (plan->fixed_block_size == 0u && !saw_tail)
     return binary_fail(
         error, DATA_BIND_ERR_INVALID_ARG, plan->type_name,
         "Binary reader plan has no fixed block or VAR_DATA tail");
@@ -315,6 +346,48 @@ static DataBindStatus binary_wire_state_validate(
   return DATA_BIND_OK;
 }
 
+typedef struct DataBindBinaryTailView {
+  const unsigned char *data;
+  size_t size;
+  size_t stride;
+  size_t count;
+} DataBindBinaryTailView;
+
+/* Preflight and token iteration derive their boundaries from the same wire. */
+static DataBindStatus binary_tail_entry(
+    const DataBindBinaryLayoutPlan *plan, size_t field_index,
+    const unsigned char *payload, size_t payload_bytes, size_t cursor,
+    DataBindBinaryTailView *out, DataBindError *error) {
+  const DataBindBinaryFieldPlan *field = &plan->fields[field_index];
+  const size_t representation = binary_field_representation(field);
+  const size_t prefix = field->tail_prefix_bytes;
+  size_t bytes;
+  if (cursor > payload_bytes || prefix > payload_bytes - cursor)
+    return binary_fail(error, DATA_BIND_ERR_PARSE, field->field_name,
+                       representation == DATA_BIND_BINARY_REP_GROUP
+                           ? "Binary GROUP header is truncated"
+                           : "Binary VAR_DATA length prefix is truncated");
+  memset(out, 0, sizeof(*out));
+  if (representation == DATA_BIND_BINARY_REP_GROUP) {
+    out->stride = data_bind_binary_wire_read_u16(payload + cursor, plan->wire_big_endian);
+    out->count = data_bind_binary_wire_read_u16(
+        payload + cursor + sizeof(uint16_t), plan->wire_big_endian);
+    if (out->stride < plan->child_plans[field_index]->fixed_block_size ||
+        (out->count != 0u && out->stride > SIZE_MAX / out->count))
+      return binary_fail(error, DATA_BIND_ERR_PARSE, field->field_name,
+                         "Binary GROUP stride is shorter than its entry layout");
+    bytes = out->stride * out->count;
+  } else {
+    bytes = data_bind_binary_wire_read_u32(payload + cursor, plan->wire_big_endian);
+  }
+  if (bytes > payload_bytes - cursor - prefix)
+    return binary_fail(error, DATA_BIND_ERR_PARSE, field->field_name,
+                       "Binary tail payload is truncated");
+  out->data = payload + cursor + prefix;
+  out->size = bytes;
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus binary_tail_preflight(
     const DataBindBinaryLayoutPlan *plan,
     const unsigned char *payload,
@@ -333,8 +406,8 @@ static DataBindStatus binary_tail_preflight(
   cursor = plan->fixed_block_size;
   for (i = 0u; i < plan->field_count; ++i) {
     const DataBindBinaryFieldPlan *field = &plan->fields[i];
-    uint32_t length;
-    size_t remaining;
+    DataBindBinaryTailView view;
+    DataBindStatus status;
     const int optional =
         (field->flags & DATA_BIND_BINARY_FIELD_OPTIONAL) != 0u;
     const int nullable =
@@ -348,23 +421,10 @@ static DataBindStatus binary_tail_preflight(
         binary_state_bit(
             payload, plan->null_offset, field->nullable_bit);
 
-    if (binary_field_representation(field) !=
-        DATA_BIND_BINARY_REP_VAR_DATA)
+    if (binary_field_representation(field) == DATA_BIND_BINARY_REP_FIXED)
       continue;
-
-    if (cursor > payload_bytes ||
-        payload_bytes - cursor < sizeof(uint32_t))
-      return binary_fail(
-          error, DATA_BIND_ERR_PARSE, field->field_name,
-          "Binary VAR_DATA length prefix is truncated");
-
-    remaining = payload_bytes - cursor;
-    length = data_bind_binary_wire_read_u32(
-        payload + cursor, plan->wire_big_endian);
-    if ((size_t)length > remaining - sizeof(uint32_t))
-      return binary_fail(
-          error, DATA_BIND_ERR_PARSE, field->field_name,
-          "Binary VAR_DATA payload is truncated");
+    status = binary_tail_entry(plan, i, payload, payload_bytes, cursor, &view, error);
+    if (status != DATA_BIND_OK) return status;
 
     /*
      * Binary tail entries are positional. An optional ABSENT field still owns
@@ -372,18 +432,27 @@ static DataBindStatus binary_tail_preflight(
      * through CSerde. This preserves the existing Binary wire contract.
      * Explicit NULL is different: its canonical tail payload must be empty.
      */
-    if (is_null && length != 0u)
+    if (is_null && view.size != 0u)
       return binary_fail(
           error, DATA_BIND_ERR_PARSE, field->field_name,
-          "Binary NULL VAR_DATA field has a nonzero payload length");
+          "Binary NULL tail field has a nonzero payload length");
 
-    cursor += sizeof(uint32_t) + (size_t)length;
+    if (present && !is_null &&
+        binary_field_representation(field) == DATA_BIND_BINARY_REP_GROUP) {
+      size_t entry;
+      for (entry = 0u; entry < view.count; ++entry) {
+        status = binary_wire_state_validate(
+            plan->child_plans[i], view.data + entry * view.stride, error);
+        if (status != DATA_BIND_OK) return status;
+      }
+    }
+    cursor += field->tail_prefix_bytes + view.size;
   }
 
   if (cursor != payload_bytes)
     return binary_fail(
         error, DATA_BIND_ERR_PARSE, plan->type_name,
-        "Binary payload has trailing bytes after the VAR_DATA tail");
+        "Binary payload has trailing bytes after the tail");
 
   return DATA_BIND_OK;
 }
@@ -406,10 +475,10 @@ static int binary_field_null(
       owner->payload, owner->plan->null_offset, field->nullable_bit);
 }
 
-static cserde_status binary_var_data_view_at(
+static cserde_status binary_tail_view_at(
     const DataBindBinaryReaderFrame *owner,
     size_t target_index,
-    DataBindBinaryVarData *out) {
+    DataBindBinaryTailView *out) {
   size_t cursor;
   size_t i;
 
@@ -417,34 +486,25 @@ static cserde_status binary_var_data_view_at(
       target_index >= owner->plan->field_count)
     return CSERDE_INVALID_ARGUMENT;
 
-  out->data = NULL;
-  out->size = 0u;
+  memset(out, 0, sizeof(*out));
   cursor = owner->plan->fixed_block_size;
 
   for (i = 0u; i < owner->plan->field_count; ++i) {
     const DataBindBinaryFieldPlan *field = &owner->plan->fields[i];
-    uint32_t length;
+    DataBindBinaryTailView view;
 
-    if (binary_field_representation(field) !=
-        DATA_BIND_BINARY_REP_VAR_DATA)
+    if (binary_field_representation(field) == DATA_BIND_BINARY_REP_FIXED)
       continue;
-    if (cursor > owner->payload_bytes ||
-        owner->payload_bytes - cursor < sizeof(uint32_t))
-      return CSERDE_INVALID_STATE;
-
-    length = data_bind_binary_wire_read_u32(
-        owner->payload + cursor, owner->plan->wire_big_endian);
-    if ((size_t)length >
-        owner->payload_bytes - cursor - sizeof(uint32_t))
+    if (binary_tail_entry(owner->plan, i, owner->payload, owner->payload_bytes,
+                          cursor, &view, NULL) != DATA_BIND_OK)
       return CSERDE_INVALID_STATE;
 
     if (i == target_index) {
-      out->data = owner->payload + cursor + sizeof(uint32_t);
-      out->size = (size_t)length;
+      *out = view;
       return CSERDE_OK;
     }
 
-    cursor += sizeof(uint32_t) + (size_t)length;
+    cursor += field->tail_prefix_bytes + view.size;
   }
 
   return CSERDE_INVALID_STATE;
@@ -455,13 +515,13 @@ static cserde_status binary_var_data_token(
     size_t field_index,
     const DataBindBinaryFieldPlan *field,
     cserde_token *out) {
-  DataBindBinaryVarData value = {0};
+  DataBindBinaryTailView value = {0};
 
   if (field == NULL || out == NULL ||
       (field->token_kind != CSERDE_STRING &&
        field->token_kind != CSERDE_BYTES))
     return CSERDE_INVALID_ARGUMENT;
-  if (binary_var_data_view_at(owner, field_index, &value) != CSERDE_OK)
+  if (binary_tail_view_at(owner, field_index, &value) != CSERDE_OK)
     return CSERDE_INVALID_STATE;
 
   memset(out, 0, sizeof(*out));
@@ -614,6 +674,25 @@ static cserde_status binary_reader_next(
         out->kind = CSERDE_NULL;
       } else {
         cserde_status status;
+        if (frame->current->token_kind == CSERDE_ARRAY_BEGIN) {
+          DataBindBinaryTailView view;
+          DataBindBinaryReaderFrame *child;
+          if (owner->depth >= owner->max_depth) return CSERDE_LIMIT_EXCEEDED;
+          status = binary_tail_view_at(frame, frame->field_index, &view);
+          if (status != CSERDE_OK) return status;
+          child = &owner->frames[owner->depth++];
+          memset(child, 0, sizeof(*child));
+          child->plan = frame->plan->child_plans[frame->field_index];
+          child->payload = view.data;
+          child->payload_bytes = view.size;
+          child->group_stride = view.stride;
+          child->group_count = view.count;
+          child->stage = DATA_BIND_BINARY_READER_SEQ_BEGIN;
+          ++frame->field_index;
+          frame->current = NULL;
+          frame->stage = DATA_BIND_BINARY_READER_FIELD_KEY;
+          continue;
+        }
         if (frame->current->token_kind == CSERDE_MAP_BEGIN) {
           const DataBindBinaryFieldPlan *field = frame->current;
           DataBindBinaryReaderFrame *child;
@@ -642,6 +721,30 @@ static cserde_status binary_reader_next(
       frame->current = NULL;
       frame->stage = DATA_BIND_BINARY_READER_FIELD_KEY;
       return CSERDE_OK;
+
+    case DATA_BIND_BINARY_READER_SEQ_BEGIN:
+      memset(out, 0, sizeof(*out));
+      out->kind = CSERDE_ARRAY_BEGIN;
+      frame->stage = DATA_BIND_BINARY_READER_SEQ_ENTRY;
+      return CSERDE_OK;
+
+    case DATA_BIND_BINARY_READER_SEQ_ENTRY:
+      if (frame->field_index == frame->group_count) {
+        memset(out, 0, sizeof(*out));
+        out->kind = CSERDE_ARRAY_END;
+        frame->stage = DATA_BIND_BINARY_READER_DONE;
+        return CSERDE_OK;
+      } else {
+        DataBindBinaryReaderFrame *child;
+        if (owner->depth >= owner->max_depth) return CSERDE_LIMIT_EXCEEDED;
+        child = &owner->frames[owner->depth++];
+        memset(child, 0, sizeof(*child));
+        child->plan = frame->plan;
+        child->payload = frame->payload + frame->field_index++ * frame->group_stride;
+        child->payload_bytes = frame->plan->fixed_block_size;
+        child->stage = DATA_BIND_BINARY_READER_MAP_BEGIN;
+        continue;
+      }
 
     case DATA_BIND_BINARY_READER_MAP_END:
       memset(out, 0, sizeof(*out));

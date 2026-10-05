@@ -237,6 +237,119 @@ static void expect_var_data_message(
 }
 
 spec("DataBind canonical Binary reader") {
+  it("preflights GROUP strides and active entry states in both wire orders") {
+    enum { GROUP_ENTRY_STRIDE = 17u, GROUP_ENTRY_COUNT = 2u,
+           GROUP_WIRE_BYTES = 2u + DATA_BIND_BINARY_GROUP_HEADER_SIZE +
+                              GROUP_ENTRY_STRIDE * GROUP_ENTRY_COUNT + sizeof(uint32_t) + 3u };
+    const DataBindBinaryFieldPlan fields[] = {
+        {sizeof(DataBindBinaryFieldPlan), "entries", CSERDE_ARRAY_BEGIN,
+         0u, 0u, 0u, 0u, 0u, DATA_BIND_BINARY_FIELD_OPTIONAL | DATA_BIND_BINARY_FIELD_NULLABLE,
+         DATA_BIND_BINARY_REP_GROUP, DATA_BIND_BINARY_GROUP_HEADER_SIZE},
+        {sizeof(DataBindBinaryFieldPlan), "text", CSERDE_STRING,
+         0u, 0u, 0u, 0u, 0u, 0u, DATA_BIND_BINARY_REP_VAR_DATA, sizeof(uint32_t)}};
+    for (int big_endian = 0; big_endian <= 1; ++big_endian) {
+      DataBindBinaryLayoutPlan entry = binary_plan(big_endian);
+      const DataBindBinaryLayoutPlan *children[] = {&entry, NULL};
+      DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+      unsigned char wire[GROUP_WIRE_BYTES + 1u] = {0};
+      cserde_reader *reader = NULL;
+      void *owner = NULL;
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      cserde_token token = {0};
+      size_t maps = 0u, arrays = 0u, integers = 0u, texts = 0u;
+      cserde_status status;
+      plan.type_name = "GroupAndTail";
+      plan.wire_big_endian = big_endian;
+      plan.fixed_block_size = 2u;
+      plan.presence_size = 1u;
+      plan.null_offset = 1u;
+      plan.null_size = 1u;
+      plan.fields = fields;
+      plan.field_count = sizeof(fields) / sizeof(fields[0]);
+      plan.child_plans = children;
+      wire[0] = 1u;
+      data_bind_binary_wire_write_u16(wire + plan.fixed_block_size, big_endian, GROUP_ENTRY_STRIDE);
+      data_bind_binary_wire_write_u16(wire + plan.fixed_block_size + sizeof(uint16_t), big_endian, GROUP_ENTRY_COUNT);
+      for (size_t row = 0u; row < GROUP_ENTRY_COUNT; ++row)
+        write_payload(wire + plan.fixed_block_size + DATA_BIND_BINARY_GROUP_HEADER_SIZE + row * GROUP_ENTRY_STRIDE,
+                      big_endian, 1, 0);
+      check_true(data_bind_binary_wire_write_var_data(
+          wire + GROUP_WIRE_BYTES - sizeof(uint32_t) - 3u, sizeof(uint32_t) + 3u,
+          big_endian, "cat", 3u));
+      check_equal(data_bind_binary_reader_open(&plan, wire, GROUP_WIRE_BYTES, 3u,
+                  &reader, &owner, &error), DATA_BIND_OK);
+      while ((status = cserde_reader_next(reader, &token)) == CSERDE_OK) {
+        if (token.kind == CSERDE_MAP_BEGIN) ++maps;
+        if (token.kind == CSERDE_ARRAY_BEGIN) ++arrays;
+        if (token.kind == CSERDE_SINT) {
+          ++integers;
+          check_equal(token.value.sint, (int64_t)-1234);
+        }
+        if (token_key_is(&token, "cat")) ++texts;
+      }
+      check_equal(status, CSERDE_DONE);
+      check_equal(maps, (size_t)3u);
+      check_equal(arrays, (size_t)1u);
+      check_equal(integers, (size_t)2u);
+      check_equal(texts, (size_t)1u);
+      data_bind_binary_reader_close(reader, owner);
+      reader = NULL;
+      owner = NULL;
+      check_equal(data_bind_binary_reader_open(&plan, wire, GROUP_WIRE_BYTES, 2u,
+                  &reader, &owner, &error), DATA_BIND_ERR_LIMIT);
+      check_null(reader);
+      check_null(owner);
+      wire[plan.fixed_block_size + DATA_BIND_BINARY_GROUP_HEADER_SIZE] = 0u;
+      wire[plan.fixed_block_size + DATA_BIND_BINARY_GROUP_HEADER_SIZE + 1u] = 1u;
+      check_equal(data_bind_binary_reader_open(&plan, wire, GROUP_WIRE_BYTES, 3u,
+                  &reader, &owner, &error), DATA_BIND_ERR_PARSE);
+      check_null(reader);
+      wire[0] = 0u;
+      check_equal(data_bind_binary_reader_open(&plan, wire, GROUP_WIRE_BYTES, 3u,
+                  &reader, &owner, &error), DATA_BIND_OK);
+      arrays = 0u;
+      texts = 0u;
+      while (cserde_reader_next(reader, &token) == CSERDE_OK) {
+        if (token.kind == CSERDE_ARRAY_BEGIN) ++arrays;
+        if (token_key_is(&token, "cat")) ++texts;
+      }
+      check_equal(arrays, (size_t)0u);
+      check_equal(texts, (size_t)1u);
+      data_bind_binary_reader_close(reader, owner);
+      reader = NULL;
+      owner = NULL;
+      wire[0] = 1u;
+      wire[1] = 1u;
+      check_equal(data_bind_binary_reader_open(&plan, wire, GROUP_WIRE_BYTES, 3u,
+                  &reader, &owner, &error), DATA_BIND_ERR_PARSE);
+      wire[0] = 0u;
+      wire[1] = 0u;
+      data_bind_binary_wire_write_u16(wire + plan.fixed_block_size, big_endian, (uint16_t)(entry.fixed_block_size - 1u));
+      check_equal(data_bind_binary_reader_open(&plan, wire, GROUP_WIRE_BYTES, 3u,
+                  &reader, &owner, &error), DATA_BIND_ERR_PARSE);
+      data_bind_binary_wire_write_u16(wire + plan.fixed_block_size, big_endian, GROUP_ENTRY_STRIDE);
+      data_bind_binary_wire_write_u16(wire + plan.fixed_block_size + sizeof(uint16_t), big_endian, UINT16_MAX);
+      check_equal(data_bind_binary_reader_open(&plan, wire, GROUP_WIRE_BYTES, 3u,
+                  &reader, &owner, &error), DATA_BIND_ERR_PARSE);
+      data_bind_binary_wire_write_u16(wire + plan.fixed_block_size + sizeof(uint16_t), big_endian, GROUP_ENTRY_COUNT);
+      check_equal(data_bind_binary_reader_open(&plan, wire, GROUP_WIRE_BYTES + 1u, 3u,
+                  &reader, &owner, &error), DATA_BIND_ERR_PARSE);
+      for (size_t bytes = plan.fixed_block_size; bytes < GROUP_WIRE_BYTES; ++bytes) {
+        check_equal(data_bind_binary_reader_open(&plan, wire, bytes, 3u,
+                    &reader, &owner, &error), DATA_BIND_ERR_PARSE);
+        check_null(reader);
+        check_null(owner);
+      }
+      children[0] = NULL;
+      check_equal(data_bind_binary_layout_plan_validate(&plan, &error), DATA_BIND_ERR_SCHEMA);
+      children[0] = &plan;
+      check_equal(data_bind_binary_layout_plan_validate(&plan, &error), DATA_BIND_ERR_SCHEMA);
+      entry = var_data_plan(big_endian);
+      children[0] = &entry;
+      check_equal(data_bind_binary_layout_plan_validate(&plan, &error), DATA_BIND_ERR_SCHEMA);
+    }
+  }
+
   it("validates exact fixed child extents, cycles, tails and depth before opening") {
     enum { RECORD_CHAIN_LENGTH = DATA_BIND_BINARY_LAYOUT_MAX_DEPTH + 1u };
     DataBindBinaryLayoutPlan plans[RECORD_CHAIN_LENGTH];

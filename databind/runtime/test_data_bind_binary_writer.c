@@ -4,6 +4,7 @@
 #include "tinytest.h"
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct BinarySink {
@@ -179,6 +180,96 @@ static void write_required_scalars(cserde_writer *writer) {
 }
 
 spec("DataBind canonical Binary writer") {
+  it("bounds GROUP count and depth and publishes complete entries once") {
+    const DataBindBinaryFieldPlan entry_field[] = {
+        {sizeof(DataBindBinaryFieldPlan), "value", CSERDE_UINT,
+         8u, 0u, 1u, 0u, 0u, 0u, DATA_BIND_BINARY_REP_FIXED, 0u}};
+    const DataBindBinaryFieldPlan group_field[] = {
+        {sizeof(DataBindBinaryFieldPlan), "entries", CSERDE_ARRAY_BEGIN,
+         0u, 0u, 0u, 0u, 0u, 0u, DATA_BIND_BINARY_REP_GROUP, DATA_BIND_BINARY_GROUP_HEADER_SIZE}};
+    for (int big_endian = 0; big_endian <= 1; ++big_endian) {
+      DataBindBinaryLayoutPlan entry = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+      const DataBindBinaryLayoutPlan *children[] = {&entry};
+      DataBindBinaryLayoutPlan plan = DATA_BIND_BINARY_LAYOUT_PLAN_INIT;
+      enum { GROUP_WIRE_CAPACITY = DATA_BIND_BINARY_GROUP_HEADER_SIZE + UINT16_MAX };
+      unsigned char *wire = (unsigned char *)malloc(GROUP_WIRE_CAPACITY);
+      cserde_token begin = {0}, end = {0};
+      entry.type_name = "GroupEntry";
+      entry.wire_big_endian = big_endian;
+      entry.fixed_block_size = 1u;
+      entry.fields = entry_field;
+      entry.field_count = 1u;
+      plan.type_name = "OnlyGroup";
+      plan.wire_big_endian = big_endian;
+      plan.fields = group_field;
+      plan.field_count = 1u;
+      plan.child_plans = children;
+      begin.kind = CSERDE_ARRAY_BEGIN;
+      end.kind = CSERDE_ARRAY_END;
+      check_not_null(wire);
+      if (wire == NULL) continue;
+      for (size_t scenario = 0u; scenario < 4u; ++scenario) {
+        BinarySink sink = {wire, GROUP_WIRE_CAPACITY, 0u, 0u};
+        cserde_writer *writer = NULL;
+        void *owner = NULL;
+        DataBindError error = DATA_BIND_ERROR_INIT;
+        const size_t max_depth = scenario == 0u ? 2u : 3u;
+        check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink, max_depth,
+                    &writer, &owner, &error), DATA_BIND_OK);
+        check_true(write_token(writer, map_begin()));
+        check_true(write_token(writer, key("entries")));
+        check_true(write_token(writer, begin));
+        if (scenario == 0u) {
+          cserde_token record = map_begin();
+          check_equal(cserde_writer_write(writer, &record), CSERDE_LIMIT_EXCEEDED);
+        } else if (scenario == 1u) {
+          check_true(write_token(writer, map_begin()));
+          check_equal(cserde_writer_write(writer, &end), CSERDE_UNSUPPORTED);
+        } else {
+          int accepted = 1;
+          for (size_t row = 0u; row < UINT16_MAX && accepted; ++row)
+            accepted = write_token(writer, map_begin()) && write_token(writer, key("value")) &&
+                       write_token(writer, uint_value(UINT8_MAX)) && write_token(writer, map_end());
+          check_true(accepted);
+          check_equal(sink.calls, 0u);
+          if (scenario == 2u) {
+            cserde_token record = map_begin();
+            check_equal(cserde_writer_write(writer, &record), CSERDE_LIMIT_EXCEEDED);
+            check_equal(cserde_writer_write(writer, &end), CSERDE_LIMIT_EXCEEDED);
+            check_equal(cserde_writer_finish(writer), CSERDE_LIMIT_EXCEEDED);
+          } else {
+            check_true(write_token(writer, end));
+            check_true(write_token(writer, map_end()));
+            check_equal(cserde_writer_finish(writer), CSERDE_OK);
+            check_equal(cserde_writer_finish(writer), CSERDE_INVALID_STATE);
+          }
+        }
+        check_equal(data_bind_binary_writer_close(writer, owner, &error),
+                    scenario == 3u ? DATA_BIND_OK :
+                    (scenario == 1u ? DATA_BIND_ERR_SCHEMA : DATA_BIND_ERR_LIMIT));
+        check_equal(sink.calls, scenario == 3u ? 1u : 0u);
+        if (scenario == 3u) {
+          cserde_reader *reader = NULL;
+          void *reader_owner = NULL;
+          cserde_token token = {0};
+          size_t rows = 0u;
+          cserde_status status;
+          check_equal(sink.size, (size_t)GROUP_WIRE_CAPACITY);
+          check_equal(data_bind_binary_wire_read_u16(wire, big_endian), UINT16_C(1));
+          check_equal(data_bind_binary_wire_read_u16(wire + sizeof(uint16_t), big_endian), UINT16_MAX);
+          check_equal(data_bind_binary_reader_open(&plan, wire, sink.size, 3u,
+                      &reader, &reader_owner, &error), DATA_BIND_OK);
+          while ((status = cserde_reader_next(reader, &token)) == CSERDE_OK)
+            if (token.kind == CSERDE_UINT) ++rows;
+          check_equal(status, CSERDE_DONE);
+          check_equal(rows, (size_t)UINT16_MAX);
+          data_bind_binary_reader_close(reader, reader_owner);
+        }
+      }
+      free(wire);
+    }
+  }
+
   it("preserves parent and child state independently in both wire orders") {
     for (int big_endian = 0; big_endian <= 1; ++big_endian) {
       for (unsigned state = 0u; state < 3u; ++state) {

@@ -1682,15 +1682,23 @@ DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth
 {{#cmeta_native_csv_flat_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_CSV({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 {{/cmeta_native_csv_flat_supported}}{{^cmeta_native_csv_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_CSV({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
-{{/native_cstl_storage}}{{/cmeta_native_csv_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER({{name}})
-{{/native_cstl_storage}}{{^native_cstl_storage}}{{#binary_reader_supported}}DATABIND_DEFINE_UNAVAILABLE_MESSAGE_CSV_OUTPUT({{name}})
+{{/native_cstl_storage}}{{/cmeta_native_csv_flat_supported}}{{#binary_reader_supported}}DATABIND_DEFINE_UNAVAILABLE_MESSAGE_CSV_OUTPUT({{name}})
 DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
-{{/binary_reader_supported}}{{^binary_reader_supported}}DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
-{{/binary_reader_supported}}{{/native_cstl_storage}}
+{{/binary_reader_supported}}{{^binary_reader_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER({{name}})
+{{/native_cstl_storage}}{{^native_cstl_storage}}DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
+{{/native_cstl_storage}}{{/binary_reader_supported}}
 {{#cmeta_native_xml_output_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 {{/cmeta_native_xml_output_supported}}{{^cmeta_native_xml_output_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_XML_OUTPUT({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
-{{/native_cstl_storage}}{{/cmeta_native_xml_output_supported}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#cmeta_native_xml_flat_supported}}{{#cmeta_local_overlay_lifecycle}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
+{{/native_cstl_storage}}{{/cmeta_native_xml_output_supported}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#binary_overlay_supported}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
+{{/cmeta_member_lifecycle}}
+DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
+DATABIND_DEFINE_RAW_MESSAGE_XML({{name}})
+DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
+DATABIND_DEFINE_UNAVAILABLE_MESSAGE_CSV_OUTPUT({{name}})
+DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
+DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
+{{/binary_overlay_supported}}{{^binary_overlay_supported}}{{#cmeta_native_xml_flat_supported}}{{#cmeta_local_overlay_lifecycle}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
 {{/cmeta_member_lifecycle}}
 {{/cmeta_local_overlay_lifecycle}}
 DATABIND_DEFINE_RAW_MESSAGE_TEXT({{name}})
@@ -1705,7 +1713,7 @@ DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
 {{/cmeta_member_lifecycle}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD({{name}})
 {{/cmeta_member_lifecycle}}
 {{/cmeta_local_overlay_lifecycle}}
-{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}{{/cmeta_lifecycle_supported}}{{/cmeta_graph_supported}}{{^cmeta_graph_supported}}{{^cmeta_member_lifecycle}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
+{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}{{/binary_overlay_supported}}{{/cmeta_lifecycle_supported}}{{/cmeta_graph_supported}}{{^cmeta_graph_supported}}{{^cmeta_member_lifecycle}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{/native_cstl_storage}}{{/cmeta_member_lifecycle}}{{/cmeta_graph_supported}}
 {{/messages}}

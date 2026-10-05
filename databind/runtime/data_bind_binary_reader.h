@@ -16,11 +16,12 @@ extern "C" {
  *
  * The provider borrows payload bytes and allocates only one fixed-size reader
  * lease object; it never copies payload data or performs schema/reflection
- * lookup. Before publishing the reader, the complete VAR_DATA tail is checked
+ * lookup. Before publishing the reader, the complete GROUP/VAR_DATA tail is checked
  * for length-prefix/payload bounds, recursive active-record state consistency
- * and trailing bytes. Fixed child records emit nested MAP tokens. Access is
+ * and trailing bytes. Fixed child records emit nested MAP tokens; GROUP emits
+ * ARRAY of MAPs, skipping extended wire strides without copying entries. Access is
  * single-threaded; payload and all reachable plan storage stay alive until close.
- * max_depth bounds record MAP depth including the root; zero selects MAX_DEPTH.
+ * max_depth bounds MAP/ARRAY depth including the root; zero selects MAX_DEPTH.
  * Invalid layouts return SCHEMA, excess depth LIMIT, and malformed wire PARSE;
  * failures leave both output handles NULL.
  */

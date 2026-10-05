@@ -14,6 +14,7 @@ extern "C" {
 
 enum { DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION = 1u };
 enum { DATA_BIND_BINARY_LAYOUT_MAX_DEPTH = 32u };
+enum { DATA_BIND_BINARY_GROUP_HEADER_SIZE = 2u * sizeof(uint16_t) };
 
 enum {
   DATA_BIND_BINARY_FIELD_OPTIONAL = 1u << 0,
@@ -22,7 +23,8 @@ enum {
 
 typedef enum DataBindBinaryRepresentation {
   DATA_BIND_BINARY_REP_FIXED = 0,
-  DATA_BIND_BINARY_REP_VAR_DATA = 1
+  DATA_BIND_BINARY_REP_VAR_DATA = 1,
+  DATA_BIND_BINARY_REP_GROUP = 2
 } DataBindBinaryRepresentation;
 
 /*
@@ -32,6 +34,8 @@ typedef enum DataBindBinaryRepresentation {
  * DataBind/Binary type enum. FIXED fields admit BOOL/SINT/UINT/FLOAT, or
  * MAP_BEGIN with an exact fixed child plan.
  * VAR_DATA fields admit STRING/BYTES and use a uint32 tail length prefix.
+ * GROUP fields admit SEQ_BEGIN with a fixed entry plan and a uint16 stride/count
+ * header. The wire stride may exceed the known entry extent on input.
  * Enum/flags FIXED fields use SINT/UINT according to canonical underlying
  * CMeta storage semantics.
  */
@@ -82,7 +86,7 @@ typedef struct DataBindBinaryLayoutPlan {
   size_t field_count;
 
   /* Append-only record lowering tail. If non-NULL, this borrowed table has
-   * field_count entries: MAP_BEGIN fields have an immutable fixed child plan;
+   * field_count entries: MAP_BEGIN/SEQ_BEGIN fields have a fixed child plan;
    * other entries are NULL. Keeping field records unchanged preserves their
    * array stride for released scalar/VAR_DATA providers. */
   const struct DataBindBinaryLayoutPlan *const *child_plans;
@@ -98,9 +102,11 @@ typedef struct DataBindBinaryLayoutPlan {
 /*
  * Validate one generated Binary wire-layout plan.
  *
- * FIXED scalar/record plus VAR_DATA STRING/BYTES fields are admitted. Child
+ * FIXED scalar/record, GROUP records and VAR_DATA STRING/BYTES are admitted. Child
  * records contain only FIXED fields and use their own state bitmaps. Cycles,
- * depth beyond MAX_DEPTH, GROUP and unsupported shapes fail closed. The plan,
+ * depth beyond MAX_DEPTH and unsupported shapes fail closed. GROUP consumes
+ * one sequence frame plus one entry record frame and has a UINT16_MAX count.
+ * The plan,
  * field array and reachable child tables must remain immutable and alive until
  * the reader/writer closes; validation does not retain them.
  */
