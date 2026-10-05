@@ -691,6 +691,7 @@ suite("compiler_cmeta_field_projection") {
                     "OptionalSetStorage_value_set_t_cmeta_type");
         check_not_null(field_projection_child(record, "native_cstl_storage"));
         check_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(record, "cmeta_member_lifecycle"));
         check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         node_free(root);
@@ -735,6 +736,7 @@ suite("compiler_cmeta_field_projection") {
         check_null(field_projection_text(map, "native_map_name"));
         check_not_null(field_projection_child(record, "native_cstl_storage"));
         check_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(record, "cmeta_member_lifecycle"));
         check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
 

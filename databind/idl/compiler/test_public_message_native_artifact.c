@@ -260,11 +260,14 @@ spec("DataBind public Message native artifact") {
         "{\"values\":[1],\"tags\":[\"tag\"],\"attrs\":{\"k\":7}}";
     OverlayContainers_t value;
     DataBindError error = DATA_BIND_ERROR_INIT;
+    const cmeta_data_desc *data = &cmeta_data_uint32;
     tstr tag = tstr_dup("tag");
     tstr key = tstr_dup("k");
 
     memset(&value, 0xa5, sizeof(value));
     OverlayContainers_init(&value);
+    check_equal(OverlayContainers_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
+    check(data == &cmeta_data_uint32);
 
     check_equal(value._presence[0], (uint8_t)0u);
     check_equal(value._nulls[0], (uint8_t)0u);
@@ -329,6 +332,22 @@ spec("DataBind public Message native artifact") {
     if (tag != NULL) check_equal(tstr_len(tag), (size_t)3u);
     check_not_null(key);
     if (key != NULL) check_equal(tstr_len(key), (size_t)1u);
+
+    OverlayContainers_clear(&value);
+    OverlayContainers_init(&value);
+    check_equal(OverlayContainers_values_vec_t_push(&value.values, UINT32_C(17)), STL_OK);
+    if (tag != NULL)
+      check_equal(OverlayContainers_tags_set_t_add(&value.tags, tag), STL_OK);
+    if (key != NULL)
+      check_equal(OverlayContainers_attrs_map_t_put(&value.attrs, key, UINT32_C(9)), STL_OK);
+    /* The parent stays absent/null while the containers retain their copies. */
+    value._nulls[0] = UINT8_C(0xff);
+    OverlayContainers_clear(&value);
+    check_equal(OverlayContainers_values_vec_t_size(&value.values), (size_t)0u);
+    check_equal(OverlayContainers_tags_set_t_size(&value.tags), (size_t)0u);
+    check_equal(OverlayContainers_attrs_map_t_size(&value.attrs), (size_t)0u);
+    check_equal(value._presence[0], (uint8_t)0u);
+    check_equal(value._nulls[0], (uint8_t)0u);
 
     tstr_free(tag);
     tstr_free(key);

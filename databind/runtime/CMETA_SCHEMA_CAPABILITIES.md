@@ -102,6 +102,12 @@ the graph depth limit is separate from local lifecycle admission.
 记录集合求依赖闭包，环与未知所有权不会被准入；运行时不查找类型名称，
 不发布超深描述符，也不恢复历史 typed 表。
 
+带状态的 canonical CSTL 容器也可使用逐成员生命周期：容器生成阶段先证明
+元素、键和值的 traits，再逐字段检查具体 type/data provider。这样即使父图
+未获发布，Vec/Set/Map 仍可正确初始化和释放。单个合法容器不能替其他成员
+授予生命周期；未准入的固定数组等成员仍使整条记录生成失败。此路径不扩展
+语义图或格式支持，公开 C/C++ 容器消费测试验证状态位、受管副本释放和复用。
+
 记录及其成员由调用方独占，`init` 仅用于未初始化或已 clear 的存储，
 不可覆盖仍拥有资源的对象。成员值是唯一所有权事实源；presence/null
 位只表达逻辑状态，即使 ABSENT/NULL，clear 仍释放底层字符串与字节缓冲区。

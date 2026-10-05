@@ -2457,9 +2457,17 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
 static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {
   const char *type = tbe_compiler_string_value(field, "type");
   Node *record;
-  if (type == NULL || tbe_compiler_has_child(field, "is_collection") ||
-      tbe_compiler_has_child(field, "is_group_field"))
+  if (type == NULL || tbe_compiler_has_child(field, "is_group_field"))
     return 0;
+  /* Storage promotion has already proved the exact element/key/value traits.
+   * A semantic overlay may keep the parent graph unpublished without taking
+   * away the individual container provider's owning lifecycle. */
+  if (tbe_compiler_has_child(field, "native_cstl_sequence") ||
+      tbe_compiler_has_child(field, "native_cstl_set") ||
+      tbe_compiler_has_child(field, "native_cstl_map"))
+    return tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+           tbe_compiler_string_value(field, "native_type_symbol") != NULL;
+  if (tbe_compiler_has_child(field, "is_collection")) return 0;
   record = tbe_compiler_find_any_record(root, type);
   if (record != NULL)
     return tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
