@@ -149,8 +149,6 @@
 extern "C" {
 #endif
 
-typedef struct json_value_s json_value_t;
-
 /** Runtime field kinds used by generated owning C records. */
 typedef enum TbeTypedKind {
   TBE_TYPED_BOOL = 0,
@@ -442,18 +440,6 @@ typedef struct TbeTypedDescriptor {
 #define TBE_TYPED_BIND_INIT(BINDING, OBJECT, ERROR)                                         \
   tbe_typed_init(&(BINDING), (OBJECT), (ERROR))
 #define TBE_TYPED_BIND_CLEAR(BINDING, OBJECT) tbe_typed_clear(&(BINDING), (OBJECT))
-#define TBE_TYPED_BIND_PARSE(CODEC, BINDING, FORMAT, DATA, LEN, ROW, OBJECT, ERROR)          \
-  tbe_typed_parse((CODEC), (BINDING).name, &(BINDING), (FORMAT), (DATA), (LEN), (ROW),      \
-                  (OBJECT), (ERROR))
-#define TBE_TYPED_BIND_PARSE_EX(CODEC, BINDING, FORMAT, DATA, LEN, ROW, OBJECT, ERROR)       \
-  tbe_typed_parse_ex((CODEC), (BINDING).name, &(BINDING), (FORMAT), (DATA), (LEN), (ROW),   \
-                     (OBJECT), (ERROR))
-#define TBE_TYPED_BIND_SERIALIZE(CODEC, BINDING, OBJECT, FORMAT, OUT, OUT_LEN, ERROR)        \
-  tbe_typed_serialize((CODEC), (BINDING).name, &(BINDING), (OBJECT), (FORMAT), (OUT),       \
-                      (OUT_LEN), (ERROR))
-#define TBE_TYPED_BIND_SERIALIZE_EX(CODEC, BINDING, OBJECT, FORMAT, OUT, OUT_LEN, ERROR)     \
-  tbe_typed_serialize_ex((CODEC), (BINDING).name, &(BINDING), (OBJECT), (FORMAT), (OUT),    \
-                         (OUT_LEN), (ERROR))
 
 TBE_TYPED_VEC_DEFINE(tbe_bytes_t, uint8_t)
 
@@ -491,14 +477,6 @@ DATA_BIND_API DataBindStatus tbe_typed_descriptor_clear(
     const TbeTypedDescriptor *descriptor, void *object, DataBindError *error);
 
 /**
- * Populate an initialized object from a schema-bound dynamic value.
- * @return `DATA_BIND_OK`, or a type/range/allocation error.
- */
-DATA_BIND_API DataBindStatus tbe_typed_from_value(const TbeTypedType *type,
-                                                  const DataBindValue *value, void *object,
-                                                  DataBindError *error);
-
-/**
  * Verify that a generated native descriptor matches a type in @p codec.
  *
  * This checks the record kind, field order, field names, optional flags, byte
@@ -521,60 +499,17 @@ DATA_BIND_API DataBindStatus tbe_typed_parse_binary(const TbeTypedType *type, co
                                                     size_t len, void *object, DataBindError *error);
 
 /**
- * Convert an owning object to a newly allocated TurboParser JSON value.
- * Release the result with tbe_typed_json_free().
+ * Decode an exact fixed Binary wire block through the versioned descriptor.
+ * codec/type_name validate the schema; descriptor supplies native metadata and
+ * wire overlay. object is initialized semantic-zero storage, not a live owner.
+ * Failures leave object unchanged; success publishes the decoded fixed value.
+ * error is optional. Unsupported layouts return DATA_BIND_ERR_SCHEMA, wrong
+ * wire length returns DATA_BIND_ERR_PARSE. The Binary implementation remains
+ * historical pending #489; canonical format paths use MessagePlan/native APIs.
  */
-DATA_BIND_API json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
-                                              DataBindError *error);
-
-/** Release a JSON value returned by tbe_typed_to_json() and set it to NULL. */
-DATA_BIND_API void tbe_typed_json_free(json_value_t **value);
-
-/**
- * Parse `bin`, `json`, `yaml`, `csv`, or `xml` into an initialized object.
- * CSV uses the zero-based @p row index. The previous object remains unchanged
- * when parsing fails.
- */
-DATA_BIND_API DataBindStatus tbe_typed_parse(DataBind *codec, const char *type_name,
-                                             const TbeTypedType *type, const char *format,
-                                             const void *data, size_t len, size_t row, void *object,
-                                             DataBindError *error);
-
-/** Enum-based typed parse; preferred over the string compatibility wrapper. */
-DATA_BIND_API DataBindStatus tbe_typed_parse_ex(DataBind *codec, const char *type_name,
-                                                const TbeTypedType *type, DataBindFormat format,
-                                                const void *data, size_t len, size_t row,
-                                                void *object, DataBindError *error);
-
-/** Versioned descriptor parse for generated/shared-library boundaries. */
-DATA_BIND_API DataBindStatus tbe_typed_descriptor_parse(
+DATA_BIND_API DataBindStatus tbe_typed_descriptor_parse_binary(
     DataBind *codec, const char *type_name, const TbeTypedDescriptor *descriptor,
-    DataBindFormat format, const void *data, size_t len, size_t row, void *object,
-    DataBindError *error);
-
-/**
- * Serialize to `json`, `yaml`, `csv`, or `xml` using schema field mappings.
- * The primary `[name(...)]` annotation is used for output; `[alias(...)]`
- * annotations are input-only.
- * @param codec Required for every text format.
- * @param out Receives an allocated buffer released by `tbe_typed_serialized_free`.
- */
-DATA_BIND_API DataBindStatus tbe_typed_serialize(DataBind *codec, const char *type_name,
-                                                 const TbeTypedType *type, const void *object,
-                                                 const char *format, char **out, size_t *out_len,
-                                                 DataBindError *error);
-
-/** Enum-based typed serialization; binary uses the binary-specific APIs. */
-DATA_BIND_API DataBindStatus tbe_typed_serialize_ex(DataBind *codec, const char *type_name,
-                                                    const TbeTypedType *type, const void *object,
-                                                    DataBindFormat format, char **out,
-                                                    size_t *out_len, DataBindError *error);
-
-/** Versioned descriptor serialization for generated/shared-library boundaries. */
-DATA_BIND_API DataBindStatus tbe_typed_descriptor_serialize(
-    DataBind *codec, const char *type_name, const TbeTypedDescriptor *descriptor,
-    const void *object, DataBindFormat format, char **out, size_t *out_len,
-    DataBindError *error);
+    const void *data, size_t len, void *object, DataBindError *error);
 
 /** Descriptor-routed binary serialization using CMeta native field addresses. */
 DATA_BIND_API DataBindStatus tbe_typed_descriptor_serialize_binary(

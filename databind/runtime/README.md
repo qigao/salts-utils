@@ -7,6 +7,12 @@ DataBind 是 SaltsUtils 的组成部分，源码、构建、测试、安装和�
 DataBind 私有的 owning dynamic-container compatibility engine、storage fallback、第二 binder
 或格式 fallback。原生对象使用 canonical CMeta graph 与 DataBind plans；历史
 `TBE_TYPED_*` runtime 的移除由 [#488](https://github.com/qigao/salts-utils/issues/488) 跟踪。
+历史 `tbe_typed` 已移除动态值/JSON 转换、通用 parse/serialize、格式分发与对应
+`TBE_TYPED_BIND_PARSE*` / `TBE_TYPED_BIND_SERIALIZE*` 宏；没有转发兼容入口。
+JSON/YAML/XML/CSV 原生路径使用 FormatPlan 和 MessagePlan/native，动态值转换使用
+canonical value reader。剩余 descriptor 解码只暴露显式
+`tbe_typed_descriptor_parse_binary`，与 Binary 专用序列化入口一起等待
+[#489](https://github.com/qigao/salts-utils/issues/489) 切换；raw lifecycle 的清理仍属 #488。
 
 DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，

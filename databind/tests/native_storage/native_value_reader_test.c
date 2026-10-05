@@ -3,6 +3,7 @@
 #include "native_test_alignment.h"
 
 #include <cstl/byte_buffer.h>
+#include <cstl/typed.h>
 #include <salts_cmeta_data.h>
 #include <tinytest.h>
 #include <stddef.h>
@@ -10,7 +11,7 @@
 #include <string.h>
 
 enum { VALUE_FIELDS = 3, VALUE_WORKSPACE = 4096, VALUE_DEPTH = 8,
-       VALUE_ITEMS = 64, VALUE_OWNED_BYTES = 128 };
+       VALUE_ITEMS = 64, VALUE_OWNED_BYTES = 128, LIST_FAILURE_MAX_ITEMS = 2 };
 typedef struct ValueRecord { uint32_t id; tstr text; stl_byte_buffer blob; } ValueRecord;
 static const cmeta_type_identity VALUE_ID = CMETA_TYPE_ID_ATOM_INIT("test.value-reader.Record");
 static const cmeta_type_desc VALUE_TYPE = {
@@ -33,7 +34,32 @@ static const cmeta_data_desc VALUE_DATA = {
     .kind = CMETA_DATA_STRUCT, .storage_type = &VALUE_TYPE, .shape = &VALUE_SHAPE};
 static const DataBindNativeTypeBinding VALUE_BINDING =
     DATA_BIND_NATIVE_TYPE_BINDING_INIT("Record", &VALUE_DATA);
+
+typed(Vec, ValueList, uint32_t, &cmeta_type_uint32, &cmeta_data_uint32);
+typedef struct ValueListRecord { ValueList values; } ValueListRecord;
+static const cmeta_type_identity LIST_ID = CMETA_TYPE_ID_ATOM_INIT("test.value-reader.Values");
+static const cmeta_type_desc LIST_TYPE = {
+    .name = "ValueListRecord", .size = sizeof(ValueListRecord), .align = _Alignof(ValueListRecord),
+    .kind = CMETA_T_OBJECT, .identity = &LIST_ID};
+static const cmeta_field_desc list_layout_fields[] = {
+    {"values", "ValueList", offsetof(ValueListRecord, values), sizeof(ValueList),
+     _Alignof(ValueList), &ValueList_cmeta_type, NULL}};
+static const cmeta_struct_desc LIST_LAYOUT = {
+    "ValueListRecord", sizeof(ValueListRecord), _Alignof(ValueListRecord), list_layout_fields, 1u};
+static const cmeta_data_field_desc list_fields[] = {
+    {"test.value-reader.Values.values", "values", offsetof(ValueListRecord, values),
+     &ValueList_collection_data}};
+static const cmeta_data_struct_shape LIST_SHAPE = {&LIST_LAYOUT, list_fields, 1u};
+static const cmeta_data_desc LIST_DATA = {
+    .struct_size = sizeof(cmeta_data_desc), .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.value-reader.Values.data", .display_name = "ValueListRecord",
+    .kind = CMETA_DATA_STRUCT, .storage_type = &LIST_TYPE, .shape = &LIST_SHAPE};
+static const DataBindNativeTypeBinding LIST_BINDING =
+    DATA_BIND_NATIVE_TYPE_BINDING_INIT("Values", &LIST_DATA);
+/* Exact wire from the historical dynamic-to-typed list regression. */
+static const uint8_t LIST_WIRE[] = {2, 0, 0, 0, 7, 0, 0, 0, 9, 0, 0, 0};
 static const char SCHEMA[] =
+    "message Values { list<uint32> values; }"
     "message Record { uint32 id; [alias(oldText)] string text; bytes blob; }"
     "message Broken { uint32 id; string text; string blob; }"
     "message Tokens { int64 signed_value; uint64 unsigned_value; bool flag; double real;"
@@ -48,12 +74,14 @@ static const char TOKENS[] =
     "\"values\":[3,4],\"unique_values\":[3,3,4],\"labels\":{\"-7\":\"minus\",\"8\":\"plus\"},\"span\":\"25ms\"}";
 static DataBind *codec;
 static DataBindMessagePlan *plan;
+static DataBindMessagePlan *list_plan;
 static DataBindError error;
 static DataBindMessagePlanDiagnostic diagnostic;
 static DataBindNativeOptions native_options;
 static DataBindValueReaderLimits limits;
 static union { DataBindNativeTestAlignment alignment; unsigned char bytes[VALUE_WORKSPACE]; } workspace;
 static ValueRecord published;
+static ValueListRecord list_published;
 
 static DataBindValue *parse(const char *type, const char *json) {
   DataBindValue *root = NULL;
@@ -111,6 +139,26 @@ static DataBindStatus replace(const DataBindValue *root) {
   return status;
 }
 
+static DataBindStatus replace_list(const DataBindValue *root) {
+  ValueListRecord staging;
+  cserde_reader *reader = NULL;
+  if (cmeta_data_value_init_zero(&LIST_DATA, &staging) != CMETA_OK)
+    return DATA_BIND_ERR_SCHEMA;
+  DataBindStatus status = data_bind_value_reader_open(root, &limits, &reader, &error);
+  if (status == DATA_BIND_OK)
+    status = data_bind_message_plan_decode_native(list_plan, &native_options, reader,
+                                                 &staging, sizeof(staging), &diagnostic);
+  data_bind_value_reader_close(reader);
+  if (status == DATA_BIND_OK) {
+    cmeta_data_value_destroy(&LIST_DATA, &list_published);
+    cmeta_data_trait_move_construct(&LIST_DATA, &list_published, &staging);
+  } else {
+    check_equal(ValueList_size(&staging.values), 0u);
+  }
+  cmeta_data_value_destroy(&LIST_DATA, &staging);
+  return status;
+}
+
 spec("DataBind borrowed canonical dynamic value reader") {
   before_all() {
     layout_fields[1].type = salts_tstr_cmeta_data.storage_type;
@@ -123,6 +171,8 @@ spec("DataBind borrowed canonical dynamic value reader") {
     check(create_status == DATA_BIND_OK, "%s", error.message);
     DataBindStatus status = data_bind_message_plan_compile(codec, "Record", &VALUE_BINDING, &plan, &diagnostic);
     check(status == DATA_BIND_OK, "%s", diagnostic.message);
+    status = data_bind_message_plan_compile(codec, "Values", &LIST_BINDING, &list_plan, &diagnostic);
+    check(status == DATA_BIND_OK, "%s", diagnostic.message);
   }
   before_each() {
     limits = (DataBindValueReaderLimits)DATA_BIND_VALUE_READER_LIMITS_INIT;
@@ -133,12 +183,44 @@ spec("DataBind borrowed canonical dynamic value reader") {
     native_options.max_items = VALUE_ITEMS;
     native_options.max_owned_bytes = VALUE_OWNED_BYTES;
     check_equal(cmeta_data_value_init_zero(&VALUE_DATA, &published), CMETA_OK);
+    check_equal(cmeta_data_value_init_zero(&LIST_DATA, &list_published), CMETA_OK);
     DataBindValue *root = parse("Record", SEED);
     check_equal(replace(root), DATA_BIND_OK);
     data_bind_value_free(root);
   }
-  after_each() { cmeta_data_value_destroy(&VALUE_DATA, &published); }
-  after_all() { data_bind_message_plan_free(plan); data_bind_free(codec); }
+  after_each() {
+    cmeta_data_value_destroy(&LIST_DATA, &list_published);
+    cmeta_data_value_destroy(&VALUE_DATA, &published);
+  }
+  after_all() {
+    data_bind_message_plan_free(list_plan);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("preserves legacy Binary list wire values through canonical owner publication") {
+    DataBindValue *root = NULL;
+    check_equal(data_bind_parse(codec, "Values", LIST_WIRE, sizeof(LIST_WIRE), &root, &error), DATA_BIND_OK);
+    check_equal(replace_list(root), DATA_BIND_OK);
+    data_bind_value_free(root);
+    check_equal(ValueList_size(&list_published.values), 2u);
+    check_equal(*ValueList_at_const(&list_published.values, 0u), 7u);
+    check_equal(*ValueList_at_const(&list_published.values, 1u), 9u);
+  }
+  it("retains list ownership on bounded conversion failure and permits retry") {
+    DataBindValue *root = NULL;
+    check_equal(data_bind_parse(codec, "Values", LIST_WIRE, sizeof(LIST_WIRE), &root, &error), DATA_BIND_OK);
+    check_equal(replace_list(root), DATA_BIND_OK);
+    const uint32_t *owner = ValueList_data_const(&list_published.values);
+    native_options.max_items = LIST_FAILURE_MAX_ITEMS;
+    check_equal(replace_list(root), DATA_BIND_ERR_LIMIT);
+    check(ValueList_data_const(&list_published.values) == owner);
+    check_equal(ValueList_size(&list_published.values), 2u);
+    native_options.max_items = VALUE_ITEMS;
+    check_equal(replace_list(root), DATA_BIND_OK);
+    data_bind_value_free(root);
+    check_equal(*ValueList_at_const(&list_published.values, 1u), 9u);
+  }
 
   it("replaces both owners and preserves embedded NUL after source destruction") {
     DataBindValue *root = parse("Record", "{\"id\":7,\"oldText\":\"A\\u0000B\",\"blob\":\"C\\u0000D\"}");
