@@ -96,6 +96,23 @@ typed-kind metadata. Optional presence is therefore not a reason to suppress an
 otherwise valid structural graph, while generated `uint8_t` Bool, storage-unselected
 buffers/containers, uint64-wide enums, cycles and depth 33 remain unavailable.
 
+深层记录的本地生命周期与图发布分开准入（#487、#488）：图发布仍限制为
+32 层；超过边界的按值记录仅在每个成员均有已验证的 CMeta 生命周期，或
+引用另一个已准入的本地生命周期时生成逐成员 `init/clear`。编译期按有限
+记录集合求依赖闭包，环与未知所有权不会被准入；运行时不查找类型名称，
+不发布超深描述符，也不恢复历史 typed 表。
+
+记录及其成员由调用方独占，`init` 仅用于未初始化或已 clear 的存储，
+不可覆盖仍拥有资源的对象。成员值是唯一所有权事实源；presence/null
+位只表达逻辑状态，即使 ABSENT/NULL，clear 仍释放底层字符串与字节缓冲区。
+释放后才复位整个对象及状态位，允许重复 clear 和重新 init；借用成员的
+指针在 clear 时失效。初始化和清理不得与访问并发，无队列或背压行为。
+逐成员代码不引入分配、复制、转移或新的容量策略；资源分配与限制仍由
+叶节点 provider 负责。生命周期调用遇到不符合生成时契约的 provider
+错误立即终止（现有 void 接口无法返回错误），不会把释放失败伪装成清零成功。
+`test_tbe_typed_cmeta_graph` 覆盖 33 层标量、34 层受管资源、状态位、重复
+clear 和复用；公开 C/C++ fixture 保持相同 ABI，格式转换仍按原准入规则拒绝。
+
 The stricter `typed_cmeta_runtime_supported` classifier emits a public
 `Record_typed_descriptor` only when the entire transitive graph contains
 non-optional fixed-width integers/floats, adapter-backed non-flags enums, and nested

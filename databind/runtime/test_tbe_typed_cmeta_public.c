@@ -18,6 +18,18 @@ int main(void) {
   }
   sentinel = data;
   {
+    Depth33_t lifecycle;
+    Depth33_t zero;
+    memset(&zero, 0, sizeof(zero));
+    memset(&lifecycle, 0xa5, sizeof(lifecycle));
+    Depth33_init(&lifecycle);
+    if (memcmp(&lifecycle, &zero, sizeof(lifecycle)) != 0) return 38;
+    memset(&lifecycle, 0x5a, sizeof(lifecycle));
+    Depth33_clear(&lifecycle);
+    if (memcmp(&lifecycle, &zero, sizeof(lifecycle)) != 0) return 39;
+    Depth33_clear(&lifecycle);
+  }
+  {
     Sample_t lifecycle;
     memset(&lifecycle, 0xa5, sizeof(lifecycle));
     Sample_init(&lifecycle);
@@ -34,18 +46,18 @@ int main(void) {
       return 34;
   }
   {
-    LoginMessage_t lifecycle;
+    Unsupported_t lifecycle;
     tstr owned;
     memset(&lifecycle, 0xa5, sizeof(lifecycle));
-    LoginMessage_init(&lifecycle);
-    if (lifecycle.user != NULL)
+    Unsupported_init(&lifecycle);
+    if (lifecycle.bad != NULL)
       return 35;
     owned = tstr_dup("alice");
     if (owned == NULL)
       return 36;
-    lifecycle.user = owned;
-    LoginMessage_clear(&lifecycle);
-    if (lifecycle.user != NULL)
+    lifecycle.bad = owned;
+    Unsupported_clear(&lifecycle);
+    if (lifecycle.bad != NULL)
       return 37;
   }
   {
@@ -78,13 +90,13 @@ int main(void) {
           cmeta_data_enum_read_bits(value_data, &object.value, &bits) != CMETA_OK ||
           bits != i + 1u || object.value != items[i] ||
           EnumSymbolStorage_to_bin_into(codec, &object, wire, sizeof(wire), &wire_len,
-                                        &error) != DATA_BIND_OK ||
-          wire_len != 2u || wire[0] != i + 1u || wire[1] != 0u)
+                                        &error) != DATA_BIND_ERR_SCHEMA ||
+          wire_len != 0u || wire[0] != 0u || wire[1] != 0u)
         { data_bind_free(codec); return 32; }
     }
     data_bind_free(codec);
   }
-  if (Unsupported_cmeta_data(&data, &error) != DATA_BIND_ERR_SCHEMA) {
+  if (Depth33_cmeta_data(&data, &error) != DATA_BIND_ERR_SCHEMA) {
     fputs("unsupported public graph request did not fail\n", stderr);
     return 2;
   }
@@ -168,7 +180,6 @@ int main(void) {
     const cmeta_data_desc *root = NULL;
     const cmeta_data_desc *enum_data;
     WideEnumStorage_t object = {0};
-    WideEnumStorage_t decoded = {0};
     uint8_t wire[sizeof(uint64_t)] = {0};
     size_t wire_len = 0u;
     uint64_t bits = 0u;
@@ -191,13 +202,11 @@ int main(void) {
                                     UINT64_MAX) != CMETA_OK ||
         WideEnumStorage_to_bin_into(
             codec, &object, wire, sizeof(wire), &wire_len,
-            &error) != DATA_BIND_OK ||
-        wire_len != sizeof(wire) ||
-        WideEnumStorage_from_bin(
-            codec, &decoded, wire, wire_len, &error) != DATA_BIND_OK ||
-        cmeta_data_enum_read_bits(enum_data, &decoded.value,
+            &error) != DATA_BIND_ERR_SCHEMA ||
+        wire_len != 0u ||
+        cmeta_data_enum_read_bits(enum_data, &object.value,
                                   &bits) != CMETA_OK ||
-        bits != UINT64_MAX || decoded.value != UINT64_MAX;
+        bits != UINT64_MAX || object.value != UINT64_MAX;
     data_bind_free(codec);
     if (failed) return 29;
   }

@@ -1145,6 +1145,18 @@ suite("compiler_cmeta_field_projection") {
         check_null(field_projection_child(
             field_projection_record(root, "messages", "Depth33"),
             "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "Depth33"),
+            "cmeta_member_lifecycle"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "Depth33"),
+            "no_legacy_typed_table"));
+        check_null(field_projection_child(
+            field_projection_record(root, "messages", "Cycle"),
+            "cmeta_member_lifecycle"));
+        check_null(field_projection_child(
+            field_projection_record(root, "messages", "FixedArrayStorage"),
+            "cmeta_member_lifecycle"));
 
         /* Native reader budgets count every descriptor node, not only nested
          * records. These values mirror data_bind_native.c preflight exactly:

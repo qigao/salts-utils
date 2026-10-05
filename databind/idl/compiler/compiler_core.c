@@ -2322,6 +2322,7 @@ static int tbe_compiler_typed_type_referenced(Node *root, const char *name) {
 
 static int tbe_compiler_needs_legacy_table(Node *record,
                                            int is_message) {
+  if (tbe_compiler_has_child(record, "cmeta_member_lifecycle")) return 0;
   if (is_message &&
       tbe_compiler_has_child(record, "cmeta_graph_supported") &&
       !tbe_compiler_has_child(record, "cmeta_lifecycle_supported") &&
@@ -2410,7 +2411,8 @@ static void tbe_compiler_annotate_canonical_records(Node *root) {
       if (name != NULL &&
           (tbe_compiler_has_child(record, "native_cstl_storage") ||
            tbe_compiler_has_child(record, "typed_cmeta_runtime_supported") ||
-           tbe_compiler_has_child(record, "cmeta_lifecycle_supported")) &&
+           tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
+           tbe_compiler_has_child(record, "cmeta_member_lifecycle")) &&
           !tbe_compiler_has_child(record, "legacy_typed_table_required"))
         (void)tbe_compiler_set_string(record, "cmeta_canonical_record", "1");
     }
@@ -2609,6 +2611,125 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
   }
 }
 
+static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {
+  const char *type = tbe_compiler_string_value(field, "type");
+  Node *record;
+  if (type == NULL || tbe_compiler_has_child(field, "is_collection") ||
+      tbe_compiler_has_child(field, "is_group_field"))
+    return 0;
+  record = tbe_compiler_find_any_record(root, type);
+  if (record != NULL)
+    return tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
+           tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle") ||
+           tbe_compiler_has_child(record, "cmeta_member_lifecycle");
+  if (tbe_compiler_string_value(field, "native_data_symbol") == NULL ||
+      tbe_compiler_string_value(field, "native_type_symbol") == NULL)
+    return 0;
+  record = tbe_compiler_find_record(root, "enums", type);
+  return tbe_compiler_scalar_projection(type) != NULL ||
+         (record != NULL && tbe_compiler_has_child(record, "native_enum_supported")) ||
+         strcmp(type, "string") == 0 || strcmp(type, "uuid") == 0 ||
+         (strcmp(type, "bytes") == 0 &&
+          (!tbe_compiler_has_child(field, "is_fixed_size") ||
+           tbe_compiler_has_child(field, "native_fixed_bytes_name")));
+}
+
+static void tbe_compiler_annotate_member_lifecycle(Node *root) {
+  static const char *const sections[] = {"composites", "groups", "messages"};
+  size_t section_index;
+  int changed;
+  for (section_index = 0u; section_index < sizeof(sections) / sizeof(sections[0]);
+       ++section_index) {
+    Node *records = tbe_compiler_find_child(root, sections[section_index]);
+    size_t i;
+    if (records == NULL || records->type != NODE_LIST) continue;
+    for (i = 0u; i < records->data.list.count; ++i)
+      tbe_compiler_remove_children(records->data.list.items[i], "cmeta_member_lifecycle");
+  }
+  /* Each pass admits at least one record or stops: O(R^2 * F) including name
+   * lookup for R records and F fields. Cycles never acquire a lifecycle
+   * authority through this closure; runtime uses exact generated calls. */
+  do {
+    changed = 0;
+    for (section_index = 0u; section_index < sizeof(sections) / sizeof(sections[0]);
+         ++section_index) {
+      Node *records = tbe_compiler_find_child(root, sections[section_index]);
+      size_t i;
+      if (records == NULL || records->type != NODE_LIST) continue;
+      for (i = 0u; i < records->data.list.count; ++i) {
+        Node *record = records->data.list.items[i];
+        Node *fields = tbe_compiler_find_child(record, "fields");
+        size_t j;
+        if (tbe_compiler_has_child(record, "cmeta_graph_supported") ||
+            tbe_compiler_has_child(record, "cmeta_member_lifecycle") ||
+            fields == NULL || fields->type != NODE_LIST)
+          continue;
+        for (j = 0u; j < fields->data.list.count; ++j)
+          if (!tbe_compiler_member_lifecycle_field(root, fields->data.list.items[j]))
+            break;
+        if (j == fields->data.list.count &&
+            tbe_compiler_set_string(record, "cmeta_member_lifecycle", "1") == 0)
+          changed = 1;
+      }
+    }
+  } while (changed);
+}
+
+static int tbe_compiler_append_member_lifecycles(const char *path, Node *root) {
+  static const char *const sections[] = {"composites", "groups", "messages"};
+  static const char *const operations[] = {"init", "clear"};
+  Node *schema = tbe_compiler_find_child(root, "schema");
+  const char *schema_name = tbe_compiler_string_value(schema, "schema_name");
+  FILE *file;
+  size_t section_index;
+  int failed;
+  if (schema_name == NULL) return -1;
+  file = fopen(path, "ab");
+  if (file == NULL) return -1;
+  for (section_index = 0u; section_index < sizeof(sections) / sizeof(sections[0]);
+       ++section_index) {
+    Node *records = tbe_compiler_find_child(root, sections[section_index]);
+    size_t i;
+    if (records == NULL || records->type != NODE_LIST) continue;
+    for (i = 0u; i < records->data.list.count; ++i) {
+      Node *record = records->data.list.items[i];
+      Node *fields = tbe_compiler_find_child(record, "fields");
+      const char *name = tbe_compiler_string_value(record, "name");
+      size_t operation;
+      if (!tbe_compiler_has_child(record, "cmeta_member_lifecycle")) continue;
+      for (operation = 0u; operation < sizeof(operations) / sizeof(operations[0]);
+           ++operation) {
+        size_t j;
+        fprintf(file, "\nvoid %s_%s(%s_t *object) {\n"
+                      "    if (object == NULL) return;\n"
+                      "    %s_CMETA_INIT_ALL();\n",
+                name, operations[operation], name, schema_name);
+        if (operation == 0u) fprintf(file, "    memset(object, 0, sizeof(*object));\n");
+        for (j = 0u; j < fields->data.list.count; ++j) {
+          Node *field = fields->data.list.items[j];
+          const char *type = tbe_compiler_string_value(field, "type");
+          const char *member = tbe_compiler_string_value(field, "c_name");
+          Node *nested = tbe_compiler_find_any_record(root, type);
+          if (nested != NULL &&
+              tbe_compiler_has_child(nested, "cmeta_member_lifecycle")) {
+            fprintf(file, "    %s_%s(&object->%s);\n", type, operations[operation], member);
+          } else {
+            /* The public void lifecycle cannot report a broken generated
+             * provider contract. Match CMeta's destroy-only fail-fast rule. */
+            fprintf(file, "    if (cmeta_data_value_%s(&%s, &object->%s) != CMETA_OK) abort();\n",
+                    operation == 0u ? "init_zero" : "restore_zero",
+                    tbe_compiler_string_value(field, "native_data_symbol"), member);
+          }
+        }
+        if (operation != 0u) fprintf(file, "    memset(object, 0, sizeof(*object));\n");
+        fprintf(file, "}\n");
+      }
+    }
+  }
+  failed = ferror(file);
+  return fclose(file) == 0 && !failed ? 0 : -1;
+}
+
 void tbe_compiler_annotate_language_types(
     const IdlContract *contract, Node *root) {
   if (contract == NULL || root == NULL) return;
@@ -2625,6 +2746,7 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
   tbe_compiler_annotate_local_overlay_lifecycle(root);
+  tbe_compiler_annotate_member_lifecycle(root);
   tbe_compiler_annotate_xml_flat_messages(root);
   tbe_compiler_annotate_csv_flat_messages(root);
   tbe_compiler_annotate_live_legacy_tables(root);
@@ -3434,6 +3556,11 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     status = resolved_template != NULL
                  ? tbe_compiler_render_file(root, resolved_template, options->source_output_path)
                  : 1;
+    if (status == 0 &&
+        tbe_compiler_append_member_lifecycles(options->source_output_path, root) != 0) {
+      fprintf(stderr, "Failed to append generated member lifecycle functions\n");
+      status = 1;
+    }
     if (status == 0 &&
         tbe_compiler_append_binary_readers(
             options->source_output_path, root, contract, &binary_format) != 0) {
