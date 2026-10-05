@@ -137,6 +137,8 @@ add_library(
   data_bind.h
   data_bind_internal.h
   data_bind_value_internal.h
+  data_bind_value_reader.c
+  data_bind_value_reader.h
   data_bind_record.c
   data_bind_builtin_format_provider.c
   data_bind_binary_layout.h
@@ -279,6 +281,7 @@ install(
 install(
   FILES
     data_bind.h
+    data_bind_value_reader.h
     data_bind_format_provider.h
     data_bind_native.h
     data_bind_binary_layout.h
