@@ -5,6 +5,56 @@
     ],
     "configurePresets": [
         {
+            "name": "ci-linux-paths",
+            "hidden": true,
+            "inherits": "pkg-vcpkg",
+            "cacheVariables": {
+                "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
+                "VCPKG_TARGET_TRIPLET": "x64-linux",
+                "VCPKG_INSTALL_OPTIONS": "--only-binarycaching",
+                "SALTS_UTILS_ENABLE_CAPTURE": false,
+                "BUILD_TESTS": true,
+                "BUILD_BENCHMARKS": true,
+                "BUILD_EXAMPLES": false
+            },
+            "environment": {
+                "PKG_ROOT": "${sourceDir}/stage/ci-packages",
+                "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed"
+            }
+        },
+        {
+            "name": "ci-linux-release-user",
+            "inherits": ["release-linux-ninja", "ci-linux-paths"],
+            "binaryDir": "${sourceDir}/build/ci-linux-release",
+            "cacheVariables": {
+                "BUILD_TESTS": true,
+                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux",
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release",
+                "ENABLE_SANITIZER_ADDRESS": false,
+                "ENABLE_SANITIZER_UNDEFINED": false
+            },
+            "environment": {
+                "SALTS_ROOT": "$penv{SALTS_ROOT}",
+                "LD_LIBRARY_PATH": "${sourceDir}/build/ci-linux-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+            }
+        },
+        {
+            "name": "ci-linux-dev-user",
+            "inherits": ["dev-linux-ninja", "ci-linux-paths"],
+            "binaryDir": "${sourceDir}/build/ci-linux-dev",
+            "cacheVariables": {
+                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux/debug",
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug",
+                "ENABLE_SANITIZER_ADDRESS": true,
+                "ENABLE_SANITIZER_UNDEFINED": true
+            },
+            "environment": {
+                "SALTS_ROOT": "$penv{SALTS_ROOT}",
+                "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1",
+                "LD_LIBRARY_PATH": "${sourceDir}/build/ci-linux-dev/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+            }
+        },
+        {
             "name": "win-toolchain",
             "hidden": true,
             "environment": {
@@ -319,6 +369,24 @@
     ],
     "buildPresets": [
         {
+            "name": "ci-linux-release-user",
+            "configurePreset": "ci-linux-release-user"
+        },
+        {
+            "name": "ci-linux-dev-user",
+            "configurePreset": "ci-linux-dev-user"
+        },
+        {
+            "name": "install-ci-linux-release-user",
+            "configurePreset": "ci-linux-release-user",
+            "targets": ["install"]
+        },
+        {
+            "name": "install-ci-linux-dev-user",
+            "configurePreset": "ci-linux-dev-user",
+            "targets": ["install"]
+        },
+        {
             "name": "win-dev-user",
             "configurePreset": "win-dev-user"
         },
@@ -480,6 +548,19 @@
         }
     ],
     "testPresets": [
+        {
+            "name": "ci-linux-release-user",
+            "inherits": "base-test",
+            "configurePreset": "ci-linux-release-user"
+        },
+        {
+            "name": "ci-linux-dev-user",
+            "inherits": "base-test",
+            "configurePreset": "ci-linux-dev-user",
+            "environment": {
+                "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1"
+            }
+        },
         {
             "name": "win-dev-user",
             "inherits": "base-test",

@@ -8,6 +8,8 @@ on:
       - "cmake/ci/restore-native-sdk.ps1"
       - "packaging/nuget/**"
       - "CMakeLists.txt"
+      - "CMakeUserPresets.json"
+      - "presets/**"
       - "vcpkg.json"
       - "crypto/**"
       - "cmake/SaltsUtilsConfig.cmake.in"
@@ -28,6 +30,8 @@ on:
       - "cmake/ci/restore-native-sdk.ps1"
       - "packaging/nuget/**"
       - "CMakeLists.txt"
+      - "CMakeUserPresets.json"
+      - "presets/**"
       - "vcpkg.json"
       - "crypto/**"
       - "cmake/SaltsUtilsConfig.cmake.in"
@@ -190,18 +194,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build/binding-plan -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON -DBUILD_EXAMPLES=OFF \
-            -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
-          cmake --build build/binding-plan \
+          cmake --preset ci-linux-release-user
+          cmake --build --preset ci-linux-release-user \
             --target test_data_bind_native_enum test_data_bind_native_scalar test_data_bind_native_message test_data_bind_native_collection_message test_data_bind_native_ownership_boundary test_data_bind_native_bytes_json test_data_bind_native_value_reader test_data_bind_native_value_reader_cpp test_data_bind_value_boundary test_data_bind_binary_native test_data_bind_binary_writer test_databind_generated_binary_admission test_binary_tail_only benchmark_data_bind_native test_data_bind_binding_plan test_data_bind_object_message_plan \
-                     test_data_bind_native_nullable \
+                     test_data_bind_native_nullable test_generated_message_plan \
                      test_data_bind_projection_plan test_data_bind_record_exact \
                      test_data_bind_binary_reader test_data_bind_opaque_plan \
                      test_databind_binary_reader_codegen test_databind_binary_layout_ir \
@@ -237,8 +233,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|benchmark_data_bind_native|test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_native_nullable|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_databind_binary_reader_codegen|test_databind_binary_layout_ir|test_databind_binary_var_data_transport|test_databind_opaque_transport|test_databind_opaque_service|test_databind_method_plan_binary_admission|test_databind_flowmq_plan_projection|test_data_bind_service_native_error|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_cmeta_public_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp|test_tbe_compiler|test_tbe_compiler_cmeta_fields|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_service_native_lowering|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact|test_databind_plugin_projection_rejection|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_tbe_cmeta_cli_gates)$' \
+          ctest --preset ci-linux-release-user --no-tests=error \
+            -R '^(test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|test_generated_message_plan|benchmark_data_bind_native|test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_native_nullable|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_databind_binary_reader_codegen|test_databind_binary_layout_ir|test_databind_binary_var_data_transport|test_databind_opaque_transport|test_databind_opaque_service|test_databind_method_plan_binary_admission|test_databind_flowmq_plan_projection|test_data_bind_service_native_error|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_cmeta_public_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp|test_tbe_compiler|test_tbe_compiler_cmeta_fields|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_service_native_lowering|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact|test_databind_plugin_projection_rejection|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_tbe_cmeta_cli_gates)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
@@ -247,20 +243,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build/binding-plan-sanitize -G Ninja \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON -DBUILD_EXAMPLES=OFF \
-            -DENABLE_SANITIZER_ADDRESS=ON \
-            -DENABLE_SANITIZER_UNDEFINED=ON
-          UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-          cmake --build build/binding-plan-sanitize \
+          cmake --preset ci-linux-dev-user
+          cmake --build --preset ci-linux-dev-user \
             --target test_data_bind_native_enum test_data_bind_native_scalar test_data_bind_native_message test_data_bind_native_collection_message test_data_bind_native_ownership_boundary test_data_bind_native_bytes_json test_data_bind_native_value_reader test_data_bind_native_value_reader_cpp test_data_bind_value_boundary test_data_bind_binary_native test_data_bind_binary_writer test_databind_generated_binary_admission test_binary_tail_only benchmark_data_bind_native test_data_bind_native_container test_data_bind_native_storage_requirements test_data_bind_binary_reader test_data_bind_opaque_plan \
                      test_data_bind_yaml_provider test_data_bind_xml_provider \
+                     test_generated_message_plan test_data_bind_binding_plan test_data_bind_object_message_plan \
                      test_data_bind_service_native_error \
                      test_databind_message_native_artifact \
                      test_databind_plugin_generic_descriptor_client \
@@ -274,10 +261,8 @@ jobs:
                      test_databind_generated_owned_buffers \
                      test_databind_generated_sequence_public_cpp \
             --parallel 2
-          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
-          UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-          ctest --test-dir build/binding-plan-sanitize --no-tests=error \
-            -R '^(test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|benchmark_data_bind_native|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_service_native_error|test_databind_message_native_artifact|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp)$' \
+          ctest --preset ci-linux-dev-user --no-tests=error \
+            -R '^(test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|test_generated_message_plan|benchmark_data_bind_native|test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_service_native_error|test_databind_message_native_artifact|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
