@@ -16,6 +16,8 @@ canonical value reader。剩余 descriptor 解码只暴露显式
 
 通用组合生命周期测试使用 CMeta Struct 与 CSTL 的受管 Vec、Set、Map provider，
 覆盖嵌套 owner 的独立复制、释放、重复 clear、状态位复位和解码中途超限后的清理。
+native storage 测试也直接使用 canonical native API，验证平台原生标量身份、
+受管 string/bytes，以及 provider 定义的非全零 semantic zero 和恰好一次释放。
 固定字节使用 CMeta exact fixed provider 的 init/copy/restore-zero；当前 native 路径
 要求 owned buffer provider，因此对只有 fixed provider 的形状在修改宿主前返回 schema 错误。
 固定数组尚无 canonical sequence provider，保留显式 Binary 回归覆盖，
