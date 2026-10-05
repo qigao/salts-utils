@@ -283,7 +283,9 @@ symbol visibility。静态库不定义这两个宏。
 
 这条路线不运行 `salts-idlc`，也不生成业务头文件。完整可运行示例见
 [`benchmark_data_bind_native.c`](benchmark_data_bind_native.c)，nullable 状态与释放回归见
-[`test_data_bind_native_nullable.c`](test_data_bind_native_nullable.c)。
+[`test_data_bind_native_nullable.c`](test_data_bind_native_nullable.c)，标量类型身份、数值边界
+与 UUID 生命周期见
+[`native_scalar_contract_test.c`](../tests/native_storage/native_scalar_contract_test.c)。
 
 1. 用 CMeta layout 和 `cmeta_data_desc` 声明原生成员。拥有字符串的 `tstr` 使用
    `salts_tstr_cmeta_data`；该 provider 负责初始化、移动与释放。图中保留 canonical

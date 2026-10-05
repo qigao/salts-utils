@@ -79,3 +79,10 @@ if(TARGET test_databind_generated_owned_buffers)
   set_tests_properties(test_data_bind_native_writer PROPERTIES
     FIXTURES_REQUIRED databind_generated_owned_buffers_contract)
 endif()
+
+cmake_add_test(test_data_bind_native_scalar
+  SOURCES native_scalar_contract_test.c
+  LIBS Salts::DataBind Salts::TinyTest
+  FOLDER "databind/tests")
+set_tests_properties(test_data_bind_native_scalar PROPERTIES
+  LABELS "databind;cmeta;native;scalar" TIMEOUT 60)

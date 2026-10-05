@@ -3,7 +3,6 @@
 
 #include <cmeta/data.h>
 
-#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -135,42 +134,6 @@ static const TbeTypedType TEST_WIDE_ENUM_TYPE = {
     .fields = TEST_WIDE_ENUM_FIELDS,
     .field_count = sizeof(TEST_WIDE_ENUM_FIELDS) / sizeof(TEST_WIDE_ENUM_FIELDS[0]),
     .fixed_block_size = 8,
-};
-
-typedef struct TestFloat32 {
-  float value;
-} TestFloat32;
-
-static const TbeTypedField TEST_FLOAT32_FIELDS[] = {{
-    .name = "value",
-    .kind = TBE_TYPED_F32,
-    .wire_kind = TBE_TYPED_F32,
-    .offset = offsetof(TestFloat32, value),
-}};
-
-static const TbeTypedType TEST_FLOAT32_TYPE = {
-    .name = "FloatRecord",
-    .size = sizeof(TestFloat32),
-    .fields = TEST_FLOAT32_FIELDS,
-    .field_count = sizeof(TEST_FLOAT32_FIELDS) / sizeof(TEST_FLOAT32_FIELDS[0]),
-};
-
-typedef struct TestFloat64 {
-  double value;
-} TestFloat64;
-
-static const TbeTypedField TEST_FLOAT64_FIELDS[] = {{
-    .name = "value",
-    .kind = TBE_TYPED_F64,
-    .wire_kind = TBE_TYPED_F64,
-    .offset = offsetof(TestFloat64, value),
-}};
-
-static const TbeTypedType TEST_FLOAT64_TYPE = {
-    .name = "DoubleRecord",
-    .size = sizeof(TestFloat64),
-    .fields = TEST_FLOAT64_FIELDS,
-    .field_count = sizeof(TEST_FLOAT64_FIELDS) / sizeof(TEST_FLOAT64_FIELDS[0]),
 };
 
 typedef struct TestBytes {
@@ -464,27 +427,6 @@ spec("typed DataBind binary") {
     data_bind_free(codec);
   }
 
-  it("rejects finite doubles outside the float32 range") {
-    static const char schema[] = "message FloatRecord { float value; }";
-    static const char json[] = "{\"value\":3.5e38}";
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    DataBind *codec = NULL;
-    TestFloat32 value;
-
-    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
-                 DATA_BIND_OK);
-    check_equal(tbe_typed_init(&TEST_FLOAT32_TYPE, &value, &error), DATA_BIND_OK);
-    value.value = 1.0f;
-    if (codec != NULL) {
-      check_equal(tbe_typed_parse(codec, "FloatRecord", &TEST_FLOAT32_TYPE, "json", json,
-                                   sizeof(json) - 1, 0, &value, &error),
-                   DATA_BIND_ERR_TYPE_MISMATCH);
-      check_within(value.value, 1.0f, 0.0f);
-    }
-    tbe_typed_clear(&TEST_FLOAT32_TYPE, &value);
-    data_bind_free(codec);
-  }
-
   it("rejects invalid UTF-8 bytes before creating JSON strings") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     TestBytes bytes;
@@ -538,12 +480,10 @@ spec("typed DataBind binary") {
     data_bind_free(codec);
   }
 
-  it("rejects invalid UTF-8 strings non-finite numbers and invalid map keys in JSON") {
+  it("rejects invalid UTF-8 strings and invalid map keys in JSON") {
     static const char invalid_utf8[] = "\xC3\x28";
     DataBindError error = DATA_BIND_ERROR_INIT;
     TestText text;
-    TestFloat32 number;
-    TestFloat64 double_number;
     MacroCollections collections;
     json_value_t *json = NULL;
 
@@ -557,22 +497,6 @@ spec("typed DataBind binary") {
     }
     tbe_typed_json_free(&json);
     tbe_typed_clear(&TEST_TEXT_TYPE, &text);
-
-    check_equal(tbe_typed_init(&TEST_FLOAT32_TYPE, &number, &error), DATA_BIND_OK);
-    number.value = NAN;
-    json = tbe_typed_to_json(&TEST_FLOAT32_TYPE, &number, &error);
-    check_null(json);
-    check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
-    tbe_typed_json_free(&json);
-    tbe_typed_clear(&TEST_FLOAT32_TYPE, &number);
-
-    check_equal(tbe_typed_init(&TEST_FLOAT64_TYPE, &double_number, &error), DATA_BIND_OK);
-    double_number.value = INFINITY;
-    json = tbe_typed_to_json(&TEST_FLOAT64_TYPE, &double_number, &error);
-    check_null(json);
-    check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
-    tbe_typed_json_free(&json);
-    tbe_typed_clear(&TEST_FLOAT64_TYPE, &double_number);
 
     check_equal(TBE_TYPED_BIND_INIT(MACRO_COLLECTIONS_BINDING, &collections, &error),
                  DATA_BIND_OK);
@@ -718,8 +642,8 @@ spec("typed DataBind binary") {
     static const char schema[] =
         "message MacroOrder { "
         "[name(orderId), alias(legacyId)] uint32 id; "
-        "optional string note; "
         "list<uint32> values; "
+        "optional string note; "
         "}";
     static const char json[] = "{\"legacyId\":42,\"note\":\"macro\",\"values\":[7,9]}";
     DataBindError error = DATA_BIND_ERROR_INIT;
@@ -748,7 +672,7 @@ spec("typed DataBind binary") {
       check_equal(TBE_TYPED_BIND_SERIALIZE(codec, MACRO_ORDER_BINDING, &order, "json", &mapped,
                                            &mapped_len, &error),
                    DATA_BIND_OK);
-      check_equal(mapped, "{\"orderId\":42,\"note\":\"macro\",\"values\":[7,9]}");
+      check_equal(mapped, "{\"orderId\":42,\"values\":[7,9],\"note\":\"macro\"}");
       check_equal(mapped_len, strlen(mapped));
     }
     tbe_typed_serialized_free(mapped);
