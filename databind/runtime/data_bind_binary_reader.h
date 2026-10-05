@@ -19,7 +19,9 @@ extern "C" {
  * lookup. Before publishing the reader, the complete GROUP/VAR_DATA tail is checked
  * for length-prefix/payload bounds, recursive active-record state consistency
  * and trailing bytes. Fixed child records emit nested MAP tokens; GROUP emits
- * ARRAY of MAPs, skipping extended wire strides without copying entries. Access is
+ * ARRAY of MAPs, skipping extended wire strides without copying entries.
+ * Fixed arrays borrow an exact inline span and emit the declared number of
+ * scalar/bytes/MAP elements, without consuming a count header. Access is
  * single-threaded; payload and all reachable plan storage stay alive until close.
  * max_depth bounds MAP/ARRAY depth including the root; zero selects MAX_DEPTH.
  * Invalid layouts return SCHEMA, excess depth LIMIT, and malformed wire PARSE;

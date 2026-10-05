@@ -22,6 +22,7 @@ typedef struct DataBindBinaryReaderFrame {
   size_t payload_bytes;
   size_t field_index;
   const DataBindBinaryFieldPlan *current;
+  const DataBindBinaryArrayPlan *array;
   size_t group_stride;
   size_t group_count;
   DataBindBinaryReaderStage stage;
@@ -189,7 +190,7 @@ static DataBindStatus binary_layout_validate(
         DataBindStatus status;
         const DataBindBinaryLayoutPlan *child;
         if (field->size < sizeof(*field) ||
-            plan->size < sizeof(*plan) || plan->child_plans == NULL ||
+            plan->size < DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE || plan->child_plans == NULL ||
             plan->child_plans[i] == NULL ||
             field->scalar_bits != 0u || field->tail_prefix_bytes != 0u)
           return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
@@ -202,6 +203,44 @@ static DataBindStatus binary_layout_validate(
             (child->wire_big_endian != 0) != (plan->wire_big_endian != 0))
           return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
                              "Binary fixed record extent or byte order disagrees");
+      } else if (field->token_kind == CSERDE_ARRAY_BEGIN) {
+        const DataBindBinaryArrayPlan *array = data_bind_binary_array_plan_at(plan, i);
+        if (array == NULL || array->size < sizeof(*array) || array->count == 0u ||
+            array->element_extent == 0u ||
+            array->count > SIZE_MAX / array->element_extent ||
+            array->count * array->element_extent != field->wire_extent ||
+            field->scalar_bits != 0u || field->tail_prefix_bytes != 0u)
+          return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                             "Binary fixed array extent metadata is incomplete");
+        if (depth + 1u >= max_depth)
+          return binary_fail(error, DATA_BIND_ERR_LIMIT, field->field_name,
+                             "Binary fixed array exceeds the configured depth");
+        if (array->element_token_kind == CSERDE_MAP_BEGIN) {
+          const DataBindBinaryLayoutPlan *child;
+          DataBindStatus status;
+          if (plan->child_plans == NULL || plan->child_plans[i] == NULL ||
+              array->element_scalar_bits != 0u)
+            return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                               "Binary fixed array record metadata is incomplete");
+          child = plan->child_plans[i];
+          ancestors[depth + 1u] = NULL;
+          status = binary_layout_validate(child, ancestors, depth + 2u,
+                                          max_depth, 1, error);
+          if (status != DATA_BIND_OK) return status;
+          if (child->fixed_block_size != array->element_extent ||
+              (child->wire_big_endian != 0) != (plan->wire_big_endian != 0))
+            return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                               "Binary fixed array record extent or byte order disagrees");
+        } else {
+          if ((plan->child_plans != NULL && plan->child_plans[i] != NULL) ||
+              (array->element_token_kind == CSERDE_BYTES
+                   ? array->element_scalar_bits != 0u
+                   : (!binary_token_width_valid(array->element_token_kind,
+                                                array->element_scalar_bits) ||
+                      array->element_extent != array->element_scalar_bits / 8u)))
+            return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                               "Binary fixed array scalar metadata is invalid");
+        }
       } else if (field->token_kind == CSERDE_BYTES) {
         if (field->scalar_bits != 0u ||
             (binary_field_has_var_data_tail(field) && field->tail_prefix_bytes != 0u))
@@ -220,7 +259,7 @@ static DataBindStatus binary_layout_validate(
           field->token_kind != CSERDE_ARRAY_BEGIN || field->scalar_bits != 0u ||
           field->wire_offset != 0u || field->wire_extent != 0u ||
           field->tail_prefix_bytes != DATA_BIND_BINARY_GROUP_HEADER_SIZE ||
-          plan->size < sizeof(*plan) || plan->child_plans == NULL ||
+          plan->size < DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE || plan->child_plans == NULL ||
           plan->child_plans[i] == NULL)
         return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
                            "Binary GROUP metadata is incomplete or out of order");
@@ -255,10 +294,15 @@ static DataBindStatus binary_layout_validate(
     }
 
     if (field->token_kind != CSERDE_MAP_BEGIN && field->token_kind != CSERDE_ARRAY_BEGIN &&
-        plan->size >= sizeof(*plan) &&
+        plan->size >= DATA_BIND_BINARY_LAYOUT_PLAN_CHILD_SIZE &&
         plan->child_plans != NULL && plan->child_plans[i] != NULL)
       return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
                          "Binary scalar field has unexpected child metadata");
+    if ((representation != DATA_BIND_BINARY_REP_FIXED ||
+         field->token_kind != CSERDE_ARRAY_BEGIN) &&
+        data_bind_binary_array_plan_at(plan, i) != NULL)
+      return binary_fail(error, DATA_BIND_ERR_SCHEMA, field->field_name,
+                         "Binary field has unexpected fixed array metadata");
 
     if ((field->flags & DATA_BIND_BINARY_FIELD_OPTIONAL) != 0u) {
       if (plan->presence_size == 0u ||
@@ -346,6 +390,19 @@ static DataBindStatus binary_wire_state_validate(
       DataBindStatus status = binary_wire_state_validate(
           plan->child_plans[i], payload + field->wire_offset, error);
       if (status != DATA_BIND_OK) return status;
+    } else if (present && !is_null &&
+               binary_field_representation(field) == DATA_BIND_BINARY_REP_FIXED &&
+               field->token_kind == CSERDE_ARRAY_BEGIN) {
+      const DataBindBinaryArrayPlan *array = data_bind_binary_array_plan_at(plan, i);
+      if (array->element_token_kind == CSERDE_MAP_BEGIN) {
+        size_t entry;
+        for (entry = 0u; entry < array->count; ++entry) {
+          DataBindStatus status = binary_wire_state_validate(
+              plan->child_plans[i], payload + field->wire_offset +
+                                        entry * array->element_extent, error);
+          if (status != DATA_BIND_OK) return status;
+        }
+      }
     }
   }
   return DATA_BIND_OK;
@@ -688,12 +745,24 @@ static cserde_status binary_reader_next(
         if (frame->current->token_kind == CSERDE_ARRAY_BEGIN) {
           DataBindBinaryTailView view;
           DataBindBinaryReaderFrame *child;
+          const DataBindBinaryArrayPlan *array =
+              data_bind_binary_array_plan_at(frame->plan, frame->field_index);
           if (owner->depth >= owner->max_depth) return CSERDE_LIMIT_EXCEEDED;
-          status = binary_tail_view_at(frame, frame->field_index, &view);
-          if (status != CSERDE_OK) return status;
+          if (array != NULL) {
+            memset(&view, 0, sizeof(view));
+            view.data = frame->payload + frame->current->wire_offset;
+            view.size = frame->current->wire_extent;
+            view.stride = array->element_extent;
+            view.count = array->count;
+          } else {
+            status = binary_tail_view_at(frame, frame->field_index, &view);
+            if (status != CSERDE_OK) return status;
+          }
           child = &owner->frames[owner->depth++];
           memset(child, 0, sizeof(*child));
-          child->plan = frame->plan->child_plans[frame->field_index];
+          child->array = array;
+          child->plan = array != NULL && array->element_token_kind != CSERDE_MAP_BEGIN
+                            ? frame->plan : frame->plan->child_plans[frame->field_index];
           child->payload = view.data;
           child->payload_bytes = view.size;
           child->group_stride = view.stride;
@@ -747,6 +816,17 @@ static cserde_status binary_reader_next(
         return CSERDE_OK;
       } else {
         DataBindBinaryReaderFrame *child;
+        if (frame->array != NULL && frame->array->element_token_kind != CSERDE_MAP_BEGIN) {
+          DataBindBinaryFieldPlan element = DATA_BIND_BINARY_FIELD_PLAN_INIT;
+          cserde_status status;
+          element.token_kind = frame->array->element_token_kind;
+          element.scalar_bits = frame->array->element_scalar_bits;
+          element.wire_offset = frame->field_index * frame->group_stride;
+          element.wire_extent = frame->group_stride;
+          status = binary_scalar_token(frame, &element, out);
+          if (status == CSERDE_OK) ++frame->field_index;
+          return status;
+        }
         if (owner->depth >= owner->max_depth) return CSERDE_LIMIT_EXCEEDED;
         child = &owner->frames[owner->depth++];
         memset(child, 0, sizeof(*child));

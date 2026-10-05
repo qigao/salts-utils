@@ -16,7 +16,7 @@ Binary reader/writer 通过 CSerde 与 MessagePlan/native 交互，不持有宿�
 子 record 的范围必须与其固定块完全一致，拥有独立状态位并输出嵌套 MAP token；
 child plan 表以 size-versioned tail 追加到 layout plan，field struct 步长保持不变。
 旧尺寸 scalar/VAR_DATA 计划继续有效。新增 record provider 需要支持此 tail 的运行时；
-旧运行时仍拒绝 MAP/GROUP/FIXED BYTES 字段。不支持的固定数组与含可变 tail 的子 record
+旧运行时仍拒绝 MAP/GROUP/FIXED BYTES 字段。不支持的生成固定数组与含可变 tail 的子 record
 在修改对象或发布输出前返回明确错误。
 
 Binary lease 由单线程持有，借用不可变 plan graph 与输入 wire 到 close，
@@ -49,9 +49,23 @@ Binary FIXED BYTES 的 `scalar_bits` 为零，`wire_extent` 是唯一 wire 长�
 不添加长度前缀、不做端序转换。reader 借用完整 wire span 到 close，writer 在
 精确长度校验后复制到消息 buffer，仅在整条消息完成时发布。native/MessagePlan
 仍要求完整 owned buffer provider；只有 fixed copy/restore 的自定义形状继续被拒绝。
-固定数组尚无 canonical sequence provider，不借用 raw composite init/clear
+当前发布的 SDK 尚无固定数组 canonical sequence provider，不借用 raw composite init/clear
 模拟 canonical 所有权。Binary/native 回归覆盖旧 wire 黄金字节、大小端、
 ABSENT/NULL/VALUE、独立 owner、重复 clear、失败回滚和有界输出的一次性发布。
+
+Binary runtime 已支持固定数组 wire plan：字段仍使用 FIXED/ARRAY_BEGIN，
+`array_plans` 是 layout 的 size-versioned 可选尾表，记录 count、元素 token、位宽与
+wire extent；record 元素复用同字段的 child plan。该表不承载 CMeta/native 状态，
+也不改变已有 field 数组的 ABI 步长。旧尺寸 child-layout 计划继续有效；
+旧运行时会拒绝新固定数组形状，使用新 provider 的消费者必须升级运行时。
+count 与元素 extent 的乘法必须经 checked arithmetic 后等于字段 extent。
+reader 在发布前检查 active record 元素的状态，借用整段 wire；writer 直接写入
+预先验证的固定块，精确收到 count 个元素后才接受 ARRAY_END，短输入、超长输入、
+错误 token 与越界数值均阻止整条消息发布。不增加 count header，不做 native-offset
+推导，也不为元素分配独立 lease/buffer。固定数组占一个 ARRAY 深度，record 元素再占
+一个 MAP 深度；预检成本为 active record 元素的字段访问总数。
+生成/native 准入仍等待 [canonical 固定数组 provider](https://github.com/qigao/salts/pull/911)
+及 compiler lowering 完成，未满足这些契约的入口继续返回明确错误（[#489](https://github.com/qigao/salts-utils/issues/489)）。
 
 DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
