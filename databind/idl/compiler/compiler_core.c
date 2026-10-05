@@ -1138,14 +1138,6 @@ static void tbe_compiler_annotate_field_types(
           ? &resolved
           : NULL;
 
-  if (semantic) {
-    snprintf(type_buf, sizeof(type_buf), "%d", (int)semantic->kind);
-    tbe_compiler_set_string(field, "cmeta_kind", type_buf);
-    tbe_compiler_set_string(field, "cmeta_schema_kind", semantic->schema_kind);
-    if (semantic->data)
-      tbe_compiler_set_string(field, "cmeta_data_id", semantic->data->stable_id);
-  }
-
   tbe_compiler_pascal_identifier(name, field_name, sizeof(field_name));
   tbe_compiler_set_string(field, "go_name", field_name);
 
