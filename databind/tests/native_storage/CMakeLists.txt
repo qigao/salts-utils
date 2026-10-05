@@ -63,7 +63,8 @@ foreach(target IN ITEMS
 endforeach()
 target_link_libraries(test_data_bind_native_reader PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_lifecycle PRIVATE Salts::TinyTest)
-target_link_libraries(test_data_bind_native_enum PRIVATE Salts::TinyTest)
+target_link_libraries(test_data_bind_native_enum PRIVATE Salts::TinyTest Salts::DataBind)
+cmake_set_test_runtime_path(test_data_bind_native_enum test_data_bind_native_enum)
 target_link_libraries(test_data_bind_native_writer PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_container
   PRIVATE Salts::TinyTest Salts::CSTL)

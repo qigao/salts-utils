@@ -209,6 +209,12 @@ DATA_BIND_API DataBindStatus data_bind_native_clear(
  * All temporary native storage comes from the caller workspace. On failure,
  * destination remains unchanged; on success, one complete value is published
  * and the reader is not probed for a following value or EOF.
+ *
+ * Canonical flags domains accept integer/name tokens and arrays combining
+ * them, including nested or empty arrays. Array and element nodes count toward
+ * max_items; their depth counts toward max_depth. Assignment occurs only after
+ * the complete flags value has been consumed and validated by the CMeta domain.
+ * Ordinary enum domains continue to reject array input.
  */
 DATA_BIND_API DataBindStatus data_bind_native_decode(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,

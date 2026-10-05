@@ -359,72 +359,27 @@ spec("typed DataBind binary") {
     tbe_typed_clear(&TEST_PACKET_TYPE, &packet);
   }
 
-  it("round-trips uint64 enum values without narrowing") {
-    static const char schema[] =
-        "enum Wide <uint64> { Max = 18446744073709551615; } "
-        "message WideRecord { Wide value; }";
-    static const char json[] = "{\"value\":\"Max\"}";
+  it("round-trips uint64 enum bits through the binary backend without narrowing") {
     static const uint8_t expected[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     DataBindError error = DATA_BIND_ERROR_INIT;
-    DataBind *codec = NULL;
     TestWideEnum value;
     TestWideEnum decoded;
     uint8_t *wire = NULL;
     size_t wire_len = 0;
-    char *encoded_json = NULL;
-    size_t json_len = 0;
 
-    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
-                 DATA_BIND_OK);
     check_equal(tbe_typed_init(&TEST_WIDE_ENUM_TYPE, &value, &error), DATA_BIND_OK);
     check_equal(tbe_typed_init(&TEST_WIDE_ENUM_TYPE, &decoded, &error), DATA_BIND_OK);
-    if (codec != NULL) {
-      check_equal(tbe_typed_parse(codec, "WideRecord", &TEST_WIDE_ENUM_TYPE, "json", json,
-                                   sizeof(json) - 1, 0, &value, &error),
-                   DATA_BIND_OK);
-      check(value.value == UINT64_MAX);
-      check_equal(tbe_typed_serialize_binary(&TEST_WIDE_ENUM_TYPE, &value, &wire, &wire_len,
-                                              &error),
-                   DATA_BIND_OK);
-      check_equal(wire_len, sizeof(expected));
-      check_equal(wire, expected, sizeof(expected));
-      check_equal(tbe_typed_parse_binary(&TEST_WIDE_ENUM_TYPE, wire, wire_len, &decoded, &error),
-                   DATA_BIND_OK);
-      check(decoded.value == UINT64_MAX);
-      check_equal(tbe_typed_serialize(codec, "WideRecord", &TEST_WIDE_ENUM_TYPE, &value, "json",
-                                      &encoded_json, &json_len, &error),
-                   DATA_BIND_OK);
-      check_equal(encoded_json, "{\"value\":18446744073709551615}");
-    }
-    tbe_typed_serialized_free(encoded_json);
+    value.value = UINT64_MAX;
+    check_equal(tbe_typed_serialize_binary(&TEST_WIDE_ENUM_TYPE, &value, &wire, &wire_len,
+                                           &error), DATA_BIND_OK);
+    check_equal(wire_len, sizeof(expected));
+    check_equal(wire, expected, sizeof(expected));
+    check_equal(tbe_typed_parse_binary(&TEST_WIDE_ENUM_TYPE, wire, wire_len, &decoded, &error),
+                DATA_BIND_OK);
+    check_equal(decoded.value, UINT64_MAX);
     tbe_typed_serialized_free(wire);
     tbe_typed_clear(&TEST_WIDE_ENUM_TYPE, &decoded);
     tbe_typed_clear(&TEST_WIDE_ENUM_TYPE, &value);
-    data_bind_free(codec);
-  }
-
-  it("combines uint64 flags above INT64_MAX") {
-    static const char schema[] =
-        "flags WideFlags <uint64> { Low = 1; High = 9223372036854775808; } "
-        "message WideFlagsRecord { WideFlags value; }";
-    static const char json[] = "{\"value\":[\"Low\",\"High\"]}";
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    DataBind *codec = NULL;
-    TbeTypedType flags_type = TEST_WIDE_ENUM_TYPE;
-    TestWideEnum value;
-
-    flags_type.name = "WideFlagsRecord";
-    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
-                 DATA_BIND_OK);
-    check_equal(tbe_typed_init(&flags_type, &value, &error), DATA_BIND_OK);
-    if (codec != NULL) {
-      check_equal(tbe_typed_parse(codec, "WideFlagsRecord", &flags_type, "json", json,
-                                   sizeof(json) - 1, 0, &value, &error),
-                   DATA_BIND_OK);
-      check(value.value == (UINT64_C(1) | (UINT64_C(1) << 63)));
-    }
-    tbe_typed_clear(&flags_type, &value);
-    data_bind_free(codec);
   }
 
   it("rejects invalid UTF-8 bytes before creating JSON strings") {

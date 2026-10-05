@@ -303,6 +303,11 @@ symbol visibility。静态库不定义这两个宏。
 6. 统一 cleanup 通过 CMeta 生命周期释放对象，再释放 FormatPlan、MessagePlan 和 codec。
    不按 presence 位跳过已拥有的字符串，也不以清零内存代替释放。
 
+原生 flags 可读取整数、单个名称以及组合它们的数组，嵌套数组按位合并，空数组表示零。
+数组和成员均计入 `max_items`，实际嵌套计入 `max_depth`；只有完整输入与 CMeta domain
+校验成功后才调用赋值 provider。未知名称、非法位、截断或预算耗尽不会发布部分值。
+普通 enum 仍拒绝数组。输出保持 canonical 整数位值，不把 flags 数组作为另一套宿主存储。
+
 公共契约见 [`data_bind_message_plan.h`](data_bind_message_plan.h)、
 [`data_bind_projection_plan.h`](data_bind_projection_plan.h) 和
 [`data_bind_format_provider.h`](data_bind_format_provider.h)。完整 FormatPlan 编译用于输出
