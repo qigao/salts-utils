@@ -2680,12 +2680,11 @@ static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) 
     Node *record = list->data.list.items[i];
     Node *fields = tbe_compiler_find_child(record, "fields");
     size_t j;
-    if (!tbe_compiler_native_lifecycle_supported(record)) {
-      fprintf(stderr, "Native C source record %s lacks canonical lifecycle support\n",
+    if (!fields || fields->type != NODE_LIST) {
+      fprintf(stderr, "Native C source record %s lacks field metadata\n",
               tbe_compiler_string_value(record, "name"));
       return 0;
     }
-    if (!fields || fields->type != NODE_LIST) continue;
     for (j = 0; j < fields->data.list.count; ++j) {
       Node *field = fields->data.list.items[j];
       const char *c_name = tbe_compiler_string_value(field, "c_name");
@@ -2778,6 +2777,12 @@ static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) 
           return 0;
         }
       }
+    }
+    /* Preserve specific field diagnostics before checking record ownership. */
+    if (!tbe_compiler_native_lifecycle_supported(record)) {
+      fprintf(stderr, "Native C source record %s lacks canonical lifecycle support\n",
+              tbe_compiler_string_value(record, "name"));
+      return 0;
     }
   }
   return 1;
