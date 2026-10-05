@@ -5833,11 +5833,8 @@ DataBindStatus data_bind_message_plan_acquire_generated(
 
   if (out_plan != NULL) *out_plan = NULL;
   db_error_clear(error);
-  if (codec == NULL || artifact == NULL || out_plan == NULL ||
-      artifact->size < sizeof(*artifact) ||
-      artifact->abi_version != DATA_BIND_MESSAGE_NATIVE_ARTIFACT_ABI_VERSION ||
-      artifact->type_name == NULL || artifact->type_name[0] == '\0' ||
-      artifact->native_binding == NULL)
+  if (codec == NULL || out_plan == NULL ||
+      !data_bind_message_native_artifact_valid(artifact))
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
                         "Invalid generated MessagePlan artifact");
 

@@ -141,8 +141,9 @@ static inline const DataBindBinaryArrayPlan *data_bind_binary_array_plan_at(
  * scalar/STRING/BYTES/fixed-record collections and VAR_DATA STRING/BYTES are
  * admitted. COUNTED MAP keys are length-prefixed STRING tokens. Child
  * records contain only FIXED fields and use their own state bitmaps. Cycles,
- * depth beyond MAX_DEPTH and unsupported shapes fail closed. Truncated layout,
- * field and element records are rejected before their contents are read.
+ * depth beyond MAX_DEPTH and unsupported shapes fail closed. Layout, field and
+ * element records require their exact current sizes; old ABIs, shortened and
+ * extended records are rejected before their contents are read.
  * GROUP consumes
  * one sequence frame plus one entry record frame and has a UINT16_MAX count.
  * A fixed array uses one sequence frame, plus a record frame for MAP elements;

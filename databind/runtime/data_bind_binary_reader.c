@@ -137,7 +137,7 @@ static DataBindStatus binary_layout_validate(
 
   binary_error_clear(error);
   if (plan == NULL ||
-      plan->size < sizeof(*plan) ||
+      plan->size != sizeof(*plan) ||
       plan->abi_version != DATA_BIND_BINARY_LAYOUT_PLAN_ABI_VERSION ||
       plan->type_name == NULL || plan->type_name[0] == '\0' ||
       (plan->field_count != 0u && plan->fields == NULL))
@@ -161,7 +161,7 @@ static DataBindStatus binary_layout_validate(
 
     size_t representation;
 
-    if (field->size < sizeof(*field))
+    if (field->size != sizeof(*field))
       return binary_fail(error, DATA_BIND_ERR_SCHEMA, plan->type_name,
                          "Binary reader field metadata is incomplete");
     if (field->field_name == NULL || field->field_name[0] == '\0')
@@ -200,7 +200,7 @@ static DataBindStatus binary_layout_validate(
                              "Binary fixed record extent or byte order disagrees");
       } else if (field->token_kind == CSERDE_ARRAY_BEGIN) {
         const DataBindBinaryArrayPlan *array = data_bind_binary_array_plan_at(plan, i);
-        if (array == NULL || array->size < sizeof(*array) || array->count == 0u ||
+        if (array == NULL || array->size != sizeof(*array) || array->count == 0u ||
             array->element_extent == 0u ||
             array->count > SIZE_MAX / array->element_extent ||
             array->count * array->element_extent != field->wire_extent ||
@@ -257,7 +257,7 @@ static DataBindStatus binary_layout_validate(
           (field->token_kind != CSERDE_ARRAY_BEGIN && field->token_kind != CSERDE_MAP_BEGIN) ||
           field->wire_offset != 0u || field->wire_extent != 0u || field->scalar_bits != 0u ||
           field->tail_prefix_bytes != sizeof(uint32_t) || array == NULL ||
-          array->size < sizeof(*array) || array->count != 0u ||
+          array->size != sizeof(*array) || array->count != 0u ||
           (array->element_token_kind == CSERDE_STRING || array->element_token_kind == CSERDE_BYTES ?
               array->element_scalar_bits != 0u || array->element_extent != 0u :
            array->element_token_kind == CSERDE_MAP_BEGIN ?

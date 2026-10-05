@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_MESSAGE_PLAN_ABI_VERSION = 1u };
+enum { DATA_BIND_MESSAGE_PLAN_ABI_VERSION = 2u };
 
 typedef struct DataBindMessagePlan DataBindMessagePlan;
 
@@ -45,7 +45,8 @@ typedef DataBindStatus (*DataBindMessageObjectSetStateFn)(
  *
  * CMeta owns VALUE access through cmeta_object_field_read/assign. This provider
  * owns only DataBind ABSENT/NULL/VALUE state. Required non-nullable fields need
- * no state provider.
+ * no state provider. Provider and diagnostic records require the exact current
+ * size and ABI; invalid diagnostics are rejected without modifying them.
  */
 typedef struct DataBindMessageObjectStateProvider {
   size_t size;

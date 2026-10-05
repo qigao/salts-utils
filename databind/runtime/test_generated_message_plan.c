@@ -1,5 +1,6 @@
 #include "binary_tail_only_generated.h"
 #include "data_bind_message_plan.h"
+#include "../tests/native_storage/reader_probe.h"
 #include "tinytest.h"
 
 #include <salts_thread.h>
@@ -9,7 +10,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { PREPARED_TEST_THREADS = 4u, PREPARED_TEST_REPEATS = 40u };
+enum {
+  PREPARED_TEST_THREADS = 4u,
+  PREPARED_TEST_REPEATS = 40u,
+  PREPARED_TEST_WORKSPACE_BYTES = 4096u,
+  PREPARED_TEST_MAX_DEPTH = 8u,
+  PREPARED_TEST_MAX_ITEMS = 64u
+};
 static atomic_size_t resolver_calls;
 static atomic_int reject_resolver;
 static DataBind *codec;
@@ -38,6 +45,79 @@ static void prepare_worker(void *context) {
   while (!atomic_load_explicit(worker->start, memory_order_acquire)) salts_thread_yield();
   worker->status = data_bind_message_plan_acquire_generated(
       worker->codec, &COUNTED_ARTIFACT, &worker->plan, NULL);
+}
+
+static cserde_status counted_writer_write(void *context, const cserde_token *token) {
+  if (context == NULL || token == NULL) return CSERDE_INVALID_ARGUMENT;
+  ++*(size_t *)context;
+  return CSERDE_OK;
+}
+
+static cserde_status counted_writer_finish(void *context) {
+  if (context == NULL) return CSERDE_INVALID_ARGUMENT;
+  ++*(size_t *)context;
+  return CSERDE_OK;
+}
+
+static const cserde_writer_ops COUNTED_WRITER_OPS = {
+    sizeof(cserde_writer_ops), CSERDE_WRITER_OPS_ABI_VERSION,
+    counted_writer_write, counted_writer_finish};
+
+static void require_message_diagnostic_rejection(size_t size, uint32_t abi_version) {
+  static const uint8_t source_text[] = {'n', 'e', 'w'};
+  static const uint8_t field_name[] = "text";
+  DataBindNativeTypeBinding binding = DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+  DataBindMessagePlan *owned = NULL;
+  DataBindMessagePlan *output = NULL;
+  DataBindMessagePlanDiagnostic diagnostic = DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+  unsigned char diagnostic_before[sizeof(diagnostic)];
+  unsigned char workspace[PREPARED_TEST_WORKSPACE_BYTES] = {0};
+  DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+  NativeReaderProbe probe = {0};
+  cserde_reader reader = {0};
+  cserde_writer writer = {0};
+  size_t writer_calls = 0u;
+  const NativeReaderProbeStep steps[] = {
+      native_reader_probe_token(CSERDE_MAP_BEGIN),
+      native_reader_probe_slice(CSERDE_STRING, field_name, sizeof(field_name) - 1u, CSERDE_VIEW_STABLE),
+      native_reader_probe_slice(CSERDE_STRING, source_text, sizeof(source_text), CSERDE_VIEW_STABLE),
+      native_reader_probe_token(CSERDE_MAP_END)};
+  TailOnly_t value;
+
+  check_equal(TailOnly_native_artifact()->native_binding(&binding, &error), DATA_BIND_OK);
+  check_equal(data_bind_message_plan_compile(
+      codec, "TailOnly", &binding, &owned, &diagnostic), DATA_BIND_OK);
+  check_not_null(owned);
+  TailOnly_init(&value);
+  value.text = tstr_dup("retained");
+  check_not_null(value.text);
+  options.workspace = workspace;
+  options.workspace_bytes = sizeof(workspace);
+  options.max_depth = PREPARED_TEST_MAX_DEPTH;
+  options.max_items = PREPARED_TEST_MAX_ITEMS;
+  options.max_owned_bytes = sizeof(workspace);
+  check_equal(native_reader_probe_open(&probe, steps, sizeof(steps) / sizeof(steps[0]),
+                                      &reader), CSERDE_OK);
+  check_equal(cserde_writer_init(&writer, &COUNTED_WRITER_OPS, &writer_calls), CSERDE_OK);
+  diagnostic.size = size;
+  diagnostic.abi_version = abi_version;
+  memcpy(diagnostic_before, &diagnostic, sizeof(diagnostic));
+  check_equal(data_bind_message_plan_compile(
+      codec, "TailOnly", &binding, &output, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+  check_null(output);
+  check_equal(data_bind_message_plan_compile_object(
+      codec, "TailOnly", binding.data, &output, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+  check_null(output);
+  check_equal(data_bind_message_plan_decode_native(
+      owned, &options, &reader, &value, sizeof(value), &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+  check_equal(data_bind_message_plan_encode_native(
+      owned, &options, &value, sizeof(value), &writer, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+  check_equal(value.text, "retained");
+  check_equal(probe.calls, (size_t)0u);
+  check_equal(writer_calls, (size_t)0u);
+  check_equal(memcmp(&diagnostic, diagnostic_before, sizeof(diagnostic)), 0);
+  TailOnly_clear(&value);
+  data_bind_message_plan_free(owned);
 }
 
 spec("Generated codec-owned MessagePlan preparation") {
@@ -173,11 +253,42 @@ spec("Generated codec-owned MessagePlan preparation") {
         codec, &artifact, &plan, &error), DATA_BIND_ERR_INVALID_ARG);
     check_null(plan);
     artifact.size = sizeof(artifact);
-    artifact.abi_version = 0u;
+    artifact.abi_version = DATA_BIND_MESSAGE_NATIVE_ARTIFACT_ABI_VERSION - 1u;
+    check_equal(data_bind_message_plan_acquire_generated(
+        codec, &artifact, &plan, &error), DATA_BIND_ERR_INVALID_ARG);
+    check_null(plan);
+    artifact.abi_version = DATA_BIND_MESSAGE_NATIVE_ARTIFACT_ABI_VERSION;
+    artifact.size = sizeof(artifact) + 1u;
+    check_false(data_bind_message_native_artifact_valid(&artifact));
     check_equal(data_bind_message_plan_acquire_generated(
         codec, &artifact, &plan, &error), DATA_BIND_ERR_INVALID_ARG);
     check_null(plan);
     check_equal(atomic_load(&resolver_calls), (size_t)0u);
+  }
+
+  it("rejects an old same-size MessagePlan diagnostic ABI without rewriting it") {
+    require_message_diagnostic_rejection(
+        sizeof(DataBindMessagePlanDiagnostic), DATA_BIND_MESSAGE_PLAN_ABI_VERSION - 1u);
+  }
+  it("rejects a short MessagePlan diagnostic instead of publishing partial fields") {
+    require_message_diagnostic_rejection(
+        offsetof(DataBindMessagePlanDiagnostic, schema_field), DATA_BIND_MESSAGE_PLAN_ABI_VERSION);
+  }
+  it("rejects an extended MessagePlan diagnostic instead of interpreting its prefix") {
+    require_message_diagnostic_rejection(
+        sizeof(DataBindMessagePlanDiagnostic) + 1u, DATA_BIND_MESSAGE_PLAN_ABI_VERSION);
+  }
+
+  it("rejects extended native binding records instead of copying their current prefix") {
+    DataBindNativeTypeBinding binding = DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic = DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_equal(TailOnly_native_artifact()->native_binding(&binding, &error), DATA_BIND_OK);
+    binding.size += 1u;
+    check_equal(data_bind_message_plan_compile(
+        codec, "TailOnly", &binding, &plan, &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+    check_equal(diagnostic.status, DATA_BIND_ERR_SCHEMA);
   }
 
   it("rejects a new artifact at the hard plan limit while keeping existing plans usable") {

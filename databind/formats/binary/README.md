@@ -50,9 +50,9 @@ failures abort generation. A requested Binary transport must build its format
 plan successfully. Generation never clears a failed format plan and continues
 with an empty substitute.
 
-Execution requires plan ABI 2 and complete current layout, field and element
+Execution requires plan ABI 2 and exact current layout, field and element
 records. ABI 1 providers are rejected even when their record sizes match the
-current sizes. Old record prefixes are rejected before reading missing
+current sizes. Shortened and extended record prefixes are rejected before reading missing
 representation metadata or opening a lease; no implicit FIXED representation
 or zero enum flags are supplied. Consumers must regenerate their Binary
 providers with the current compiler. The byte grammar remains unchanged.
@@ -66,6 +66,12 @@ later acquisitions perform only a bounded address lookup. Applications can call
 outside execution. Neither decode nor encode compiles schema facts after a warm
 acquisition. CSerde field-name matching consumes the prepared field tables; it
 does not query the schema or a provider registry.
+
+Generated Message artifacts and MessagePlan control records require ABI 2 and
+their exact current sizes. Old artifact/diagnostic ABIs and partial or extended
+records are rejected. Diagnostics are never upgraded or partially rewritten;
+invalid diagnostics remain unchanged, with no reader or writer callback entered.
+Native binding and state-overlay records also require their exact current sizes.
 
 Per-call compilation repeats schema lookup and allocation. Embedding one global
 generated semantic plan would ignore a caller codec's constraints. Preparation

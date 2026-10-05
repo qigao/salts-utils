@@ -59,30 +59,16 @@ struct DataBindMessagePlan {
   DataBindValidationPlan *validation;
 };
 
-static size_t message_out_size(size_t requested, size_t full) {
-  return requested != 0u && requested < full ? requested : full;
-}
-
 static int message_diag_header_valid(
     const DataBindMessagePlanDiagnostic *diagnostic) {
   return diagnostic == NULL ||
-         diagnostic->size >=
-             offsetof(DataBindMessagePlanDiagnostic, status) +
-                 sizeof(diagnostic->status);
+         (diagnostic->size == sizeof(*diagnostic) &&
+          diagnostic->abi_version == DATA_BIND_MESSAGE_PLAN_ABI_VERSION);
 }
 
 static void message_diag_clear(DataBindMessagePlanDiagnostic *diagnostic) {
-  size_t size;
   if (diagnostic == NULL) return;
-  size = message_out_size(diagnostic->size, sizeof(*diagnostic));
-  memset(diagnostic, 0, size);
-  if (size >= sizeof(size_t)) diagnostic->size = size;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, abi_version) +
-                  sizeof(diagnostic->abi_version))
-    diagnostic->abi_version = DATA_BIND_MESSAGE_PLAN_ABI_VERSION;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, status) +
-                  sizeof(diagnostic->status))
-    diagnostic->status = DATA_BIND_OK;
+  *diagnostic = (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
 }
 
 static DataBindStatus message_fail(
@@ -92,28 +78,14 @@ static DataBindStatus message_fail(
     const char *fmt,
     ...) {
   va_list ap;
-  size_t size;
-
   if (diagnostic == NULL) return status;
-  size = message_out_size(diagnostic->size, sizeof(*diagnostic));
-  memset(diagnostic, 0, size);
-  if (size >= sizeof(size_t)) diagnostic->size = size;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, abi_version) +
-                  sizeof(diagnostic->abi_version))
-    diagnostic->abi_version = DATA_BIND_MESSAGE_PLAN_ABI_VERSION;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, status) +
-                  sizeof(diagnostic->status))
-    diagnostic->status = status;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, schema_field) +
-                  sizeof(diagnostic->schema_field))
-    snprintf(diagnostic->schema_field, sizeof(diagnostic->schema_field),
-             "%s", field != NULL ? field : "");
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, message) +
-                  sizeof(diagnostic->message)) {
-    va_start(ap, fmt);
-    vsnprintf(diagnostic->message, sizeof(diagnostic->message), fmt, ap);
-    va_end(ap);
-  }
+  message_diag_clear(diagnostic);
+  diagnostic->status = status;
+  snprintf(diagnostic->schema_field, sizeof(diagnostic->schema_field),
+           "%s", field != NULL ? field : "");
+  va_start(ap, fmt);
+  vsnprintf(diagnostic->message, sizeof(diagnostic->message), fmt, ap);
+  va_end(ap);
   return status;
 }
 
@@ -162,7 +134,7 @@ static DataBindStatus message_cmeta_status(cmeta_status status) {
 static int message_object_state_provider_valid(
     const DataBindMessageObjectStateProvider *provider) {
   return provider != NULL &&
-         provider->size >= sizeof(*provider) &&
+         provider->size == sizeof(*provider) &&
          provider->abi_version == DATA_BIND_MESSAGE_PLAN_ABI_VERSION &&
          provider->get_state != NULL &&
          provider->set_state != NULL;
@@ -246,7 +218,7 @@ static int message_state_metadata_valid(
       int found = 0;
       size_t j;
 
-      if (left->size < sizeof(*left) ||
+      if (left->size != sizeof(*left) ||
           left->field_name == NULL || left->field_name[0] == '\0' ||
           left->bit > 7u ||
           left->byte_offset >= binding->data->storage_type->size) {
@@ -1123,9 +1095,7 @@ DataBindStatus data_bind_message_plan_compile(
 
   if (codec == NULL || type_name == NULL || type_name[0] == '\0' ||
       native == NULL || out_plan == NULL ||
-      native->size <
-          offsetof(DataBindNativeTypeBinding, null_count) +
-              sizeof(native->null_count) ||
+      native->size != sizeof(*native) ||
       native->abi_version != DATA_BIND_NATIVE_BINDING_ABI_VERSION ||
       native->idl_type_name == NULL ||
       strcmp(native->idl_type_name, type_name) != 0 ||

@@ -300,7 +300,7 @@ spec("DataBind canonical Binary writer") {
     }
   }
 
-  it("rejects truncated layout and element records before creating a lease") {
+  it("rejects short and extended layout field and element records before creating a lease") {
     DataBindBinaryFieldPlan field = DATA_BIND_BINARY_FIELD_PLAN_INIT;
     DataBindBinaryArrayPlan array = {
         sizeof(DataBindBinaryArrayPlan), 1u, 2u, CSERDE_UINT, 16u, 0u};
@@ -317,20 +317,32 @@ spec("DataBind canonical Binary writer") {
     plan.fields = &field;
     plan.field_count = 1u;
     plan.array_plans = arrays;
-    for (unsigned scenario = 0u; scenario < 2u; ++scenario) {
+    enum { SHORT_PLAN, SHORT_ARRAY, EXTENDED_PLAN, EXTENDED_ARRAY, EXTENDED_FIELD,
+           RECORD_SCENARIOS };
+    for (unsigned scenario = 0u; scenario < RECORD_SCENARIOS; ++scenario) {
       cserde_writer *writer = NULL;
       cserde_reader *reader = NULL;
       void *owner = NULL, *reader_owner = NULL;
-      if (scenario == 0u) plan.size = offsetof(DataBindBinaryLayoutPlan, array_plans);
-      else { plan.size = sizeof(plan); array.size = offsetof(DataBindBinaryArrayPlan, element_flags); }
+      plan.size = sizeof(plan);
+      array.size = sizeof(array);
+      field.size = sizeof(field);
+      switch (scenario) {
+      case SHORT_PLAN: plan.size = offsetof(DataBindBinaryLayoutPlan, array_plans); break;
+      case SHORT_ARRAY: array.size = offsetof(DataBindBinaryArrayPlan, element_flags); break;
+      case EXTENDED_PLAN: plan.size += 1u; break;
+      case EXTENDED_ARRAY: array.size += 1u; break;
+      default: field.size += 1u; break;
+      }
       check_equal(data_bind_binary_writer_open(&plan, binary_sink_write, &sink,
                   2u, &writer, &owner, &error),
-                  scenario == 0u ? DATA_BIND_ERR_INVALID_ARG : DATA_BIND_ERR_SCHEMA);
+                  scenario == SHORT_PLAN || scenario == EXTENDED_PLAN
+                      ? DATA_BIND_ERR_INVALID_ARG : DATA_BIND_ERR_SCHEMA);
       check_null(writer);
       check_null(owner);
       check_equal(data_bind_binary_reader_open(&plan, wire, sizeof(wire), 2u,
                   &reader, &reader_owner, &error),
-                  scenario == 0u ? DATA_BIND_ERR_INVALID_ARG : DATA_BIND_ERR_SCHEMA);
+                  scenario == SHORT_PLAN || scenario == EXTENDED_PLAN
+                      ? DATA_BIND_ERR_INVALID_ARG : DATA_BIND_ERR_SCHEMA);
       check_null(reader);
       check_null(reader_owner);
       check_equal(sink.calls, 0u);
