@@ -216,17 +216,18 @@ spec("DataBind canonical CSTL native containers") {
     check_true(requirements.decode_bytes <= sizeof(workspace.bytes));
   }
 
-  it("consumes canonical typed receiver method reflection from Salts 1.7.7") {
+  it("consumes canonical typed receiver method reflection and generic owners") {
     const cmeta_receiver_method_set *set;
     const cmeta_receiver_method *method;
     const cmeta_param_desc *receiver;
     const cmeta_type_desc *one_int[] = {&cmeta_type_int};
     const cmeta_type_desc *map_args[] = {&cmeta_type_int, &cmeta_type_long};
+    cmeta_generic_desc map_owner = stl_map_generic_desc;
     cmeta_receiver_resolution resolution = CMETA_RECEIVER_RESOLUTION_INIT;
 
     set = NativeIntVec_receiver_method_set();
     check_true(cmeta_receiver_method_set_valid(set));
-    check_equal(set->owner_name, "Vec");
+    check_true(cmeta_generic_desc_equal(set->owner, &stl_vec_generic_desc));
     method = cmeta_receiver_method_find(set, "push");
     check_not_null(method);
     check_true(method->function == NativeIntVec_push_function());
@@ -237,13 +238,13 @@ spec("DataBind canonical CSTL native containers") {
     check_true(cmeta_type_equal(receiver->type->pointee, &NativeIntVec_cmeta_type));
     check_equal(
         cmeta_receiver_method_resolve(
-            set, &NativeIntVec_cmeta_type, "Vec", "push",
+            set, &NativeIntVec_cmeta_type, &stl_vec_generic_desc, "push",
             one_int, 1u, &resolution),
         CMETA_RECEIVER_RESOLVE_OK);
 
     set = NativeIntSet_receiver_method_set();
     check_true(cmeta_receiver_method_set_valid(set));
-    check_equal(set->owner_name, "Set");
+    check_true(cmeta_generic_desc_equal(set->owner, &stl_set_generic_desc));
     method = cmeta_receiver_method_find(set, "add");
     check_not_null(method);
     check_true(method->function == NativeIntSet_add_function());
@@ -251,13 +252,14 @@ spec("DataBind canonical CSTL native containers") {
     resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
     check_equal(
         cmeta_receiver_method_resolve(
-            set, &NativeIntSet_cmeta_type, "Set", "add",
+            set, &NativeIntSet_cmeta_type, &stl_set_generic_desc, "add",
             one_int, 1u, &resolution),
         CMETA_RECEIVER_RESOLVE_OK);
 
     set = NativeIntLongMap_receiver_method_set();
     check_true(cmeta_receiver_method_set_valid(set));
-    check_equal(set->owner_name, "Map");
+    check_true(cmeta_generic_desc_equal(set->owner, &stl_map_generic_desc));
+    check_true(cmeta_generic_desc_equal(set->owner, &map_owner));
     method = cmeta_receiver_method_find(set, "put");
     check_not_null(method);
     check_true(method->function == NativeIntLongMap_put_function());
@@ -265,16 +267,17 @@ spec("DataBind canonical CSTL native containers") {
     resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
     check_equal(
         cmeta_receiver_method_resolve(
-            set, &NativeIntLongMap_cmeta_type, "Map", "put",
+            set, &NativeIntLongMap_cmeta_type, &map_owner, "put",
             map_args, 2u, &resolution),
         CMETA_RECEIVER_RESOLVE_OK);
 
     resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
     check_equal(
         cmeta_receiver_method_resolve(
-            set, &NativeIntLongMap_cmeta_type, "HashMap", "put",
+            set, &NativeIntLongMap_cmeta_type, &stl_vec_generic_desc, "put",
             map_args, 2u, &resolution),
         CMETA_RECEIVER_RESOLVE_OWNER_MISMATCH);
+    check_null(resolution.method);
   }
 
   it("round-trips typed Vec<int> through array tokens") {
