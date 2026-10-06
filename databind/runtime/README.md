@@ -78,6 +78,18 @@ DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema�
 
 ## 设计边界
 
+单层 `list<T>`、`set<T>`、`map<string,T>` 的真实原生存储分别是 CSTL Vec、Set、Map，
+字段通过 `cmeta_declared_type` 发布对应 SDK constructor 和真实参数 TypeDesc。
+生成的 typed facade 的 `cmeta_receiver_method_set.owner` 使用同一 canonical constructor；
+资格验证通过 CMeta 语义比较和 resolver 接纳操作，不用具体 specialization 名称、display
+name 或描述符地址作为泛型 owner。构建期和消费端资格验证可检查这些元数据，生成的
+执行路径仍调用普通 C API，不新增逐元素的 method/owner 查询。
+
+optional/nullable 仍表示状态位加底层原生值，不投影成 `Option<T>`。当前 IDL/native
+没有 Pair、Tuple 或 Result 的实际存储准入；直接请求这些泛型形式时拒绝生成，不因为
+CMeta 已有 constructor 就合成原生表示。C++ 公共声明保持 C 布局，借用生成 C 产物发布的
+canonical 图；跨 C/C++ 翻译单元通过 constructor stable identity 和递归参数身份比较。
+
 嵌套泛型的原生 lowering 以不可变 Contract 中的递归逻辑类型为输入，在构建期按
 内层到外层生成具体 CSTL wrapper。每层直接引用内层的 canonical TypeDesc/DataDesc，
 COPY/MOVE/DESTROY 委托给 Salts 的 data-traits bridge。生成代码不增加容器生命周期

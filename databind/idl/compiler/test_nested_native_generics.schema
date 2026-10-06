@@ -5,6 +5,12 @@ message User {
   string name;
 }
 
+message Flat {
+  list<uint32> values;
+  set<uint32> ids;
+  map<string,uint32> counters;
+}
+
 message Batch {
   list<list<int32>> matrix;
   list<map<string,User>> records;
