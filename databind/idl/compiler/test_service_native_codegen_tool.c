@@ -340,6 +340,22 @@ int main(int argc, char **argv) {
       goto cleanup_policy_done;
     }
 
+    if (text_count(move, "DataBindStatus rollback_status = DATA_BIND_OK;") != 2u ||
+        strstr(move, "(void)cmeta_data_value_move(") != NULL ||
+        strstr(move, "rollback_status = DATA_BIND_ERR_RUNTIME;") == NULL ||
+        strstr(text, "error->kind = kind;\n"
+                     "    status = ") == NULL ||
+        strstr(text, "destination->kind = kind;\n"
+                     "    status = ") == NULL ||
+        strstr(text, "__error_init(error);\n"
+                     "    return status;") != NULL ||
+        strstr(text, "__error_init(destination);\n"
+                     "    return status;") != NULL) {
+      fprintf(stderr,
+              "service-native-codegen: move rollback carrier policy missing\n");
+      goto cleanup_policy_done;
+    }
+
     *move = '\0';
     if (strstr(clear, "DataBindStatus status = DATA_BIND_OK;") == NULL ||
         text_count(clear, "cmeta_data_value_restore_zero(") != 2u ||
