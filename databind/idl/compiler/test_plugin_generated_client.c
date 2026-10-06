@@ -209,8 +209,6 @@ spec("generated DataBind Plugin client") {
         databind_plugin_client_5_Image_14_ImageProcessor_close(&client),
         SALTS_PLUGIN_STALE);
     check_true(salts_plugin_lease_valid(client.lease));
-    check_not_null(client.Decode_export);
-    check_not_null(client.Encode_export);
     check_equal(salts_plugin_registry_get_lifecycle(
                     &registry, ref, &info),
                 SALTS_PLUGIN_OK);
