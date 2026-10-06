@@ -13,11 +13,11 @@
 #include "binary_reader_codegen.h"
 #include "binary_layout_lowering.h"
 #include "schema_cmeta.h"
-#include <salts_cmeta_data.h>
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta_cmeta_data.h>
+#include <cmeta_cmeta_fixed_width.h>
 #include "tbe_error.h"
-#include "salts_fs.h"
-#include "salts_uuid.h"
+#include "cmeta_fs.h"
+#include "cmeta_uuid.h"
 #include <tstr.h>
 
 #include <errno.h>
@@ -89,14 +89,14 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
   path_length = output_length + prefix_length + uuid_length + suffix_length;
 
   for (attempt = 0; attempt < TBE_COMPILER_TEMP_OUTPUT_ATTEMPTS; ++attempt) {
-    salts_uuid_t uuid;
+    cmeta_uuid_t uuid;
     char uuid_text[SALTS_UUID_STRING_SIZE];
     char *temporary_path;
     FILE *file;
     int descriptor;
 
-    if (salts_uuid_v4_generate(&uuid) != SALTS_OK ||
-        salts_uuid_format(&uuid, uuid_text, sizeof(uuid_text)) != SALTS_OK) {
+    if (cmeta_uuid_v4_generate(&uuid) != SALTS_OK ||
+        cmeta_uuid_format(&uuid, uuid_text, sizeof(uuid_text)) != SALTS_OK) {
       return -1;
     }
     temporary_path = (char *)malloc(path_length);
@@ -121,7 +121,7 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
 #else
       close(descriptor);
 #endif
-      salts_fs_unlink(temporary_path);
+      cmeta_fs_unlink(temporary_path);
       free(temporary_path);
       return -1;
     }
@@ -458,7 +458,7 @@ static const char *tbe_compiler_native_requirement_name(
 
 /* Native symbol spellings project the same canonical records into generated C. */
 static const tbe_compiler_scalar_projection_t TBE_COMPILER_SCALAR_PROJECTIONS[] = {
-    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "salts_bool8_cmeta_data", "salts_bool8_cmeta_type"},
+    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "cmeta_bool8_cmeta_data", "cmeta_bool8_cmeta_type"},
     {&cmeta_data_int8, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "cmeta_data_int8", "cmeta_type_int8"},
     {&cmeta_data_uint8, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "cmeta_data_uint8", "cmeta_type_uint8"},
     {&cmeta_data_int16, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "cmeta_data_int16", "cmeta_type_int16"},
@@ -500,7 +500,7 @@ static const char *tbe_compiler_cpp_scalar_type(const char *type) {
   if (projection) return projection->cpp_type;
   if (strcmp(type, "string") == 0) return "std::string";
   if (strcmp(type, "bytes") == 0) return "std::vector<std::uint8_t>";
-  if (strcmp(type, "uuid") == 0) return "salts_uuid_t";
+  if (strcmp(type, "uuid") == 0) return "cmeta_uuid_t";
   return type;
 }
 
@@ -564,7 +564,7 @@ static const char *tbe_compiler_typed_c_scalar(const char *type) {
   if (!type) return NULL;
   projection = tbe_compiler_scalar_projection(type);
   if (projection) return projection->c_type;
-  if (strcmp(type, "uuid") == 0) return "salts_uuid_t";
+  if (strcmp(type, "uuid") == 0) return "cmeta_uuid_t";
   return NULL;
 }
 
@@ -726,17 +726,17 @@ static int databind_compiler_annotate_named_native_semantic(
 
   if (strcmp(type_name, "string") == 0)
     return tbe_compiler_set_string(target_node, type_key,
-                                   "salts_tstr_cmeta_type") == 0 &&
+                                   "cmeta_tstr_cmeta_type") == 0 &&
                    tbe_compiler_set_string(target_node, data_key,
-                                           "salts_tstr_cmeta_data") == 0
+                                           "cmeta_tstr_cmeta_data") == 0
                ? 0
                : -1;
 
   if (strcmp(type_name, "uuid") == 0)
     return tbe_compiler_set_string(target_node, type_key,
-                                   "salts_uuid_cmeta_type") == 0 &&
+                                   "cmeta_uuid_cmeta_type") == 0 &&
                    tbe_compiler_set_string(target_node, data_key,
-                                           "salts_uuid_cmeta_data") == 0
+                                           "cmeta_uuid_cmeta_data") == 0
                ? 0
                : -1;
 
@@ -834,9 +834,9 @@ static int databind_compiler_annotate_named_native_refs(
 
   if (strcmp(type_name, "uuid") == 0)
     return tbe_compiler_set_string(target_node, type_ref_key,
-                                   "&salts_uuid_cmeta_type") == 0 &&
+                                   "&cmeta_uuid_cmeta_type") == 0 &&
                    tbe_compiler_set_string(target_node, data_ref_key,
-                                           "&salts_uuid_cmeta_data") == 0
+                                           "&cmeta_uuid_cmeta_data") == 0
                ? 0
                : -1;
 
@@ -1394,9 +1394,9 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     snprintf(declaration, sizeof(declaration), "tstr %s;", c_name);
     tbe_compiler_set_string(field, "typed_is_var_data", "1");
     tbe_compiler_set_string(field, "native_data_symbol",
-                            "salts_tstr_cmeta_data");
+                            "cmeta_tstr_cmeta_data");
     tbe_compiler_set_string(field, "native_type_symbol",
-                            "salts_tstr_cmeta_type");
+                            "cmeta_tstr_cmeta_type");
     tbe_compiler_set_string(field, "native_external", "1");
     tbe_compiler_set_string(field, "native_c_type", "tstr");
     tbe_compiler_set_string(field, "typed_declaration", declaration);
@@ -1416,9 +1416,9 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "native_type_symbol", scalar->native_type_symbol);
       tbe_compiler_set_string(field, "native_external", "1");
       tbe_compiler_set_string(field, "native_c_type", c_type);
-    } else if (semantic && salts_uuid_cmeta_data_valid(semantic->data)) {
-      tbe_compiler_set_string(field, "native_data_symbol", "salts_uuid_cmeta_data");
-      tbe_compiler_set_string(field, "native_type_symbol", "salts_uuid_cmeta_type");
+    } else if (semantic && cmeta_uuid_cmeta_data_valid(semantic->data)) {
+      tbe_compiler_set_string(field, "native_data_symbol", "cmeta_uuid_cmeta_data");
+      tbe_compiler_set_string(field, "native_type_symbol", "cmeta_uuid_cmeta_type");
       tbe_compiler_set_string(field, "native_external", "1");
       tbe_compiler_set_string(field, "native_c_type", c_type);
     } else if (tbe_compiler_find_record(root, "enums", type) != NULL) {
@@ -1486,7 +1486,7 @@ static void tbe_compiler_annotate_native_requirement(
              (semantic->kind == CMETA_DATA_BYTES &&
               !tbe_compiler_has_child(field, "is_fixed_size")) ||
              (semantic->kind == CMETA_DATA_CUSTOM &&
-              !salts_uuid_cmeta_data_valid(semantic->data))) {
+              !cmeta_uuid_cmeta_data_valid(semantic->data))) {
     requirement = TBE_COMPILER_NATIVE_OWNED_LIFECYCLE;
   } else if (type && tbe_compiler_find_record(root, "enums", type)) {
     requirement = TBE_COMPILER_NATIVE_ENUM_DOMAIN;
@@ -1496,7 +1496,7 @@ static void tbe_compiler_annotate_native_requirement(
              semantic->kind == CMETA_DATA_FLOAT ||
              (semantic->kind == CMETA_DATA_BYTES &&
               tbe_compiler_has_child(field, "is_fixed_size")) ||
-             salts_uuid_cmeta_data_valid(semantic->data)) {
+             cmeta_uuid_cmeta_data_valid(semantic->data)) {
     requirement = TBE_COMPILER_NATIVE_FIXED_VALUE;
   } else {
     return;
@@ -2814,10 +2814,10 @@ static int tbe_compiler_has_local_overlay_lifecycle(Node *root, Node *record) {
     const int native_uuid =
         type != NULL && strcmp(type, "uuid") == 0 &&
         native_data != NULL &&
-        strcmp(native_data, "salts_uuid_cmeta_data") == 0 &&
+        strcmp(native_data, "cmeta_uuid_cmeta_data") == 0 &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
         strcmp(tbe_compiler_string_value(field, "native_type_symbol"),
-               "salts_uuid_cmeta_type") == 0;
+               "cmeta_uuid_cmeta_type") == 0;
     const int fixed_bytes =
         type != NULL && strcmp(type, "bytes") == 0 &&
         tbe_compiler_has_child(field, "is_fixed_size") &&
@@ -2831,7 +2831,7 @@ static int tbe_compiler_has_local_overlay_lifecycle(Node *root, Node *record) {
          strcmp(requirement, "overlay_null") == 0 ||
          strcmp(requirement, "overlay_presence_null") == 0) &&
         ((strcmp(type, "string") == 0 &&
-          strcmp(native_data, "salts_tstr_cmeta_data") == 0) ||
+          strcmp(native_data, "cmeta_tstr_cmeta_data") == 0) ||
          (strcmp(type, "bytes") == 0 &&
           strcmp(native_data, "stl_byte_buffer_cmeta_data") == 0));
     const int owned_group =
@@ -3449,7 +3449,7 @@ static const char *tbe_compiler_resolve_resource(const tbe_compiler_options_t *o
     fprintf(stderr, "Built-in template resource directory is unavailable\n");
     return NULL;
   }
-  if (salts_fs_path_join(path, path_size, resource_dir, relative_path) != 0) {
+  if (cmeta_fs_path_join(path, path_size, resource_dir, relative_path) != 0) {
     fprintf(stderr, "Built-in template path is too long: %s\n", relative_path);
     return NULL;
   }
@@ -3636,7 +3636,7 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
       goto cleanup;
     }
 #endif
-    if (salts_fs_rename(temporary_output_path, output_path) != 0) {
+    if (cmeta_fs_rename(temporary_output_path, output_path) != 0) {
       fprintf(stderr, "Failed to replace output file: %s\n", output_path);
       goto cleanup;
     }
@@ -3646,7 +3646,7 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
 
 cleanup:
   if (temporary_output_open && out_file != NULL) fclose(out_file);
-  if (temporary_output_owned) salts_fs_unlink(temporary_output_path);
+  if (temporary_output_owned) cmeta_fs_unlink(temporary_output_path);
   free(temporary_output_path);
   mustache_release(templ);
   free(templ_data);

@@ -1,5 +1,5 @@
 #include "nested_native_generics_native.h"
-#include <cmeta/method.h>
+#include <cmeta/operation.h>
 
 #include <cstddef>
 #include <iterator>
@@ -11,7 +11,7 @@ static_assert(sizeof(((Batch_t *)nullptr)->matrix) > sizeof(vec_t));
 extern "C" {
 std::size_t nested_native_generics_c_size(void);
 std::size_t nested_native_generics_c_offset(std::size_t field);
-const cmeta_receiver_method_set *nested_native_generics_c_generic_methods(std::size_t field);
+const cmeta_receiver_operation_set *nested_native_generics_c_generic_methods(std::size_t field);
 
 int nested_native_generics_cpp_generic_owners(void) {
   enum { METADATA_ERROR = 1, OWNER_ERROR, RESOLUTION_ERROR, REJECTION_ERROR };
@@ -39,8 +39,8 @@ int nested_native_generics_cpp_generic_owners(void) {
   for (std::size_t field = 0u; field < std::size(operations); ++field) {
     const auto &operation = operations[field];
     const cmeta_declared_type *declared = shape->layout->fields[field].declared_type;
-    const cmeta_receiver_method_set *methods = nested_native_generics_c_generic_methods(field);
-    if (!cmeta_declared_type_valid(declared) || !cmeta_receiver_method_set_valid(methods) ||
+    const cmeta_receiver_operation_set *methods = nested_native_generics_c_generic_methods(field);
+    if (!cmeta_declared_type_valid(declared) || !cmeta_receiver_operation_set_valid(methods) ||
         !cmeta_type_equal(methods->receiver_type, declared->storage_type) ||
         !cmeta_generic_desc_equal(methods->owner, declared->constructor) ||
         !cmeta_generic_desc_equal(methods->owner, operation.constructor))
@@ -49,16 +49,16 @@ int nested_native_generics_cpp_generic_owners(void) {
     cmeta_generic_desc owner = *operation.constructor;
     owner.display_name = "independent C++ constructor display";
     cmeta_receiver_resolution resolution = CMETA_RECEIVER_RESOLUTION_INIT;
-    if (cmeta_receiver_method_resolve(methods, &receiver, &owner, operation.method,
+    if (cmeta_receiver_operation_resolve(methods, &receiver, &owner, operation.method,
           operation.arguments, operation.arity, &resolution) != CMETA_RECEIVER_RESOLVE_OK ||
-        resolution.method != cmeta_receiver_method_find(methods, operation.method))
+        resolution.operation != cmeta_receiver_operation_find(methods, operation.method))
       return RESOLUTION_ERROR;
     cmeta_generic_desc wrong_owner = *operation.constructor;
     wrong_owner.stable_id = "test.generic.wrong-owner";
     if (!cmeta_generic_desc_valid(&wrong_owner) ||
-        cmeta_receiver_method_resolve(methods, &receiver, &wrong_owner, operation.method,
+        cmeta_receiver_operation_resolve(methods, &receiver, &wrong_owner, operation.method,
           operation.arguments, operation.arity, &resolution) != CMETA_RECEIVER_RESOLVE_OWNER_MISMATCH ||
-        resolution.method != nullptr || resolution.argument_index != CMETA_RECEIVER_ARGUMENT_NONE)
+        resolution.operation != nullptr || resolution.argument_index != CMETA_RECEIVER_ARGUMENT_NONE)
       return REJECTION_ERROR;
   }
   return 0;

@@ -4,7 +4,7 @@
 #include "native_test_alignment.h"
 
 #include <cmeta/struct.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tinytest.h>
 
 #include <stddef.h>
@@ -72,13 +72,13 @@ static DataBindStatus lifecycle_clear(const cmeta_data_desc *shape, void *destin
 static void bind_lifecycle_row_metadata(void) {
   lifecycle_layout_fields[0] = StructMeta(LifecycleRow)->fields[0];
   lifecycle_layout_fields[1] = StructMeta(LifecycleRow)->fields[1];
-  lifecycle_layout_fields[1].type = salts_tstr_cmeta_data.storage_type;
+  lifecycle_layout_fields[1].type = cmeta_tstr_cmeta_data.storage_type;
   lifecycle_row_fields[0] =
       (cmeta_data_field_desc){"lifecycle.id", "id", offsetof(LifecycleRow, id),
                              &cmeta_data_int};
   lifecycle_row_fields[1] =
       (cmeta_data_field_desc){"lifecycle.name", "name", offsetof(LifecycleRow, name),
-                             &salts_tstr_cmeta_data};
+                             &cmeta_tstr_cmeta_data};
 }
 
 static void require_overlapping_layout_rejected(void) {
@@ -145,21 +145,21 @@ spec("DataBind plain-CMeta native lifecycle") {
     memset(&row, 0xa5, sizeof(row));
     check_equal(lifecycle_init(&lifecycle_row_data, &row, sizeof(row)), DATA_BIND_OK);
     check_equal(row.id, 0);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&row.name));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&row.name));
   }
 
   it("clears owned provider state and remains idempotent") {
     static const unsigned char name[] = {'A', 'l', 'i', 'c', 'e'};
     LifecycleRow row = {0};
-    check_equal(cmeta_data_buffer_init_zero(&salts_tstr_cmeta_data, &row.name), CMETA_OK);
-    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &row.name, name,
+    check_equal(cmeta_data_buffer_init_zero(&cmeta_tstr_cmeta_data, &row.name), CMETA_OK);
+    check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &row.name, name,
                                         sizeof(name), sizeof(name)), CMETA_OK);
     row.id = 7;
     check_equal(lifecycle_clear(&lifecycle_row_data, &row, sizeof(row)), DATA_BIND_OK);
     check_equal(row.id, 0);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&row.name));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&row.name));
     check_equal(lifecycle_clear(&lifecycle_row_data, &row, sizeof(row)), DATA_BIND_OK);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&row.name));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&row.name));
   }
 
   it("rejects scalar width mismatch before modifying raw storage") {

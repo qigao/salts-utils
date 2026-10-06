@@ -734,28 +734,28 @@ static salts_lua_object_proxy *salts_lua_object_proxy_from(
 static cmeta_status salts_lua_object_surface_validate(
     const cmeta_object_ref *object) {
   const cmeta_data_struct_shape *shape;
-  const cmeta_receiver_method_set *methods;
+  const cmeta_receiver_operation_set *methods;
   size_t i;
   size_t j;
 
   if (!cmeta_object_ref_valid(object))
     return CMETA_INVALID_ARGUMENT;
   if (object->data->kind != CMETA_DATA_STRUCT ||
-      object->method_provider == NULL ||
-      object->methods == NULL)
+      object->operation_provider == NULL ||
+      object->operations == NULL)
     return CMETA_OK;
 
   shape = (const cmeta_data_struct_shape *)object->data->shape;
-  methods = object->methods;
-  if (shape == NULL || !cmeta_object_method_provider_valid(
-                           object->method_provider))
+  methods = object->operations;
+  if (shape == NULL || !cmeta_object_operation_provider_valid(
+                           object->operation_provider))
     return CMETA_INVALID_ARGUMENT;
 
   for (i = 0u; i < shape->field_count; ++i) {
     const cmeta_data_field_desc *field = &shape->fields[i];
-    for (j = 0u; j < methods->method_count; ++j)
-      if (field->name != NULL && methods->methods[j].name != NULL &&
-          strcmp(field->name, methods->methods[j].name) == 0)
+    for (j = 0u; j < methods->operation_count; ++j)
+      if (field->name != NULL && methods->operations[j].name != NULL &&
+          strcmp(field->name, methods->operations[j].name) == 0)
         return CMETA_TYPE_MISMATCH;
   }
   return CMETA_OK;
@@ -812,8 +812,8 @@ static int salts_lua_object_newindex(lua_State *state) {
 static int salts_lua_object_method_call(lua_State *state) {
   salts_lua_object_proxy *proxy =
       salts_lua_object_proxy_from(state, lua_upvalueindex(1));
-  const cmeta_receiver_method *method =
-      (const cmeta_receiver_method *)lua_touserdata(
+  const cmeta_receiver_operation *method =
+      (const cmeta_receiver_operation *)lua_touserdata(
           state, lua_upvalueindex(2));
   cmeta_invokable invokable = CMETA_INVOKABLE_INIT;
   size_t argument_count;
@@ -825,7 +825,7 @@ static int salts_lua_object_method_call(lua_State *state) {
       !cmeta_object_ref_valid(&proxy->object))
     return luaL_error(state, "invalid CMeta object method proxy");
 
-  status = cmeta_object_method_invokable_bind(
+  status = cmeta_object_operation_invokable_bind(
       &proxy->object, method, &invokable);
   if (status != CMETA_OK)
     return luaL_error(
@@ -855,7 +855,7 @@ static int salts_lua_object_index(lua_State *state) {
   const char *name;
   const cmeta_data_desc *field_data = NULL;
   const void *field_value = NULL;
-  const cmeta_receiver_method *method = NULL;
+  const cmeta_receiver_operation *method = NULL;
   cmeta_status status;
 
   if (proxy == NULL || !cmeta_object_ref_valid(&proxy->object))
@@ -881,9 +881,9 @@ static int salts_lua_object_index(lua_State *state) {
     return 1;
   }
 
-  if (proxy->object.method_provider != NULL &&
-      proxy->object.methods != NULL)
-    method = cmeta_receiver_method_find(proxy->object.methods, name);
+  if (proxy->object.operation_provider != NULL &&
+      proxy->object.operations != NULL)
+    method = cmeta_receiver_operation_find(proxy->object.operations, name);
   if (method != NULL) {
     lua_pushvalue(state, 1);
     lua_pushlightuserdata(state, (void *)method);

@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "salts_buffer.h"
+#include "cmeta_buffer.h"
 
 /* ── Fast double parser for financial CSV data ────────────────────── */
 /* No scientific notation, no locale, no inf/nan — just [-]digits[.digits].

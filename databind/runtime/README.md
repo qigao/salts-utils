@@ -118,7 +118,7 @@ reader 按既有格式边界先关闭并检查结果，再发布临时值，这�
 
 单层 `list<T>`、`set<T>`、`map<string,T>` 的真实原生存储分别是 CSTL Vec、Set、Map，
 字段通过 `cmeta_declared_type` 发布对应 SDK constructor 和真实参数 TypeDesc。
-生成的 typed facade 的 `cmeta_receiver_method_set.owner` 使用同一 canonical constructor；
+生成的 typed facade 的 `cmeta_receiver_operation_set.owner` 使用同一 canonical constructor；
 资格验证通过 CMeta 语义比较和 resolver 接纳操作，不用具体 specialization 名称、display
 name 或描述符地址作为泛型 owner。构建期和消费端资格验证可检查这些元数据，生成的
 执行路径仍调用普通 C API，不新增逐元素的 method/owner 查询。
@@ -450,7 +450,7 @@ raw storage 的 `data_bind_native_init/clear` 会先验证完整 CMeta 图，再
 [`native_ownership_boundary_test.c`](../tests/native_storage/native_ownership_boundary_test.c)。
 
 1. 用 CMeta layout 和 `cmeta_data_desc` 声明原生成员。拥有字符串的 `tstr` 使用
-   `salts_tstr_cmeta_data`；该 provider 负责初始化、移动与释放。图中保留 canonical
+   `cmeta_tstr_cmeta_data`；该 provider 负责初始化、移动与释放。图中保留 canonical
    字段名，schema 的 name/alias 等格式属性由 overlay 表达。
 2. 加载 schema，使用 `DataBindNativeTypeBinding` 编译 MessagePlan，再为所选格式
    编译 FormatPlan。plans 借用的 codec 与 native metadata 必须存活到 plans 释放后。

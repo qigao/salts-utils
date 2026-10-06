@@ -9,7 +9,7 @@
 
 #include <cmeta/type_traits.h>
 #include <cstl/typed.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <vstr.h>
 
 #include <errno.h>
@@ -371,7 +371,7 @@ static int message_logical_value_matches_native(
   return builtin != NULL &&
          (cmeta_data_desc_equal(builtin, native_data) ||
           (builtin->kind == CMETA_DATA_BOOL &&
-           cmeta_data_desc_equal(native_data, &salts_bool8_cmeta_data)));
+           cmeta_data_desc_equal(native_data, &cmeta_bool8_cmeta_data)));
 }
 
 static int message_logical_sequence_matches_native(

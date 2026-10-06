@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include <cmd_arger.h>
-#include <salts_fs.h>
+#include <cmeta_fs.h>
 #include <tstr.h>
 #include <xml_parser/xml_parser.h>
 
@@ -465,14 +465,14 @@ static int render_template_range(const char *input,
     return append_bytes(output, input + cursor, input_size - cursor);
 }
 
-static int load_template(const char *template_path, salts_fs_buf_t *template_buffer) {
-    if (salts_fs_read_file(template_path, template_buffer) == 0) return 0;
+static int load_template(const char *template_path, cmeta_fs_buf_t *template_buffer) {
+    if (cmeta_fs_read_file(template_path, template_buffer) == 0) return 0;
     if (strcmp(template_path, "dashboard.html") != 0) {
         fprintf(stderr,
                 "Warning: Could not open template file at: %s. Trying dashboard.html...\n",
                 template_path);
     }
-    return salts_fs_read_file("dashboard.html", template_buffer);
+    return cmeta_fs_read_file("dashboard.html", template_buffer);
 }
 
 int main(int argc, char **argv) {
@@ -488,8 +488,8 @@ int main(int argc, char **argv) {
         cmd_arger_desc_string_sh((char **)&template_path, "template", "t", "Dashboard template file"),
         cmd_arger_desc_flag(&no_color, "no-color", "Disable terminal colors"),
     };
-    salts_fs_buf_t xml_buffer = {0};
-    salts_fs_buf_t template_buffer = {0};
+    cmeta_fs_buf_t xml_buffer = {0};
+    cmeta_fs_buf_t template_buffer = {0};
     salts_xml_document document = {0};
     salts_xml_diagnostic diagnostic = {0};
     salts_xml_node suite;
@@ -509,7 +509,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Error: XML input file is required.\n");
         goto cleanup;
     }
-    if (salts_fs_read_file(xml_file, &xml_buffer) != 0) {
+    if (cmeta_fs_read_file(xml_file, &xml_buffer) != 0) {
         fprintf(stderr, "Error: Could not read XML: %s\n", xml_file);
         goto cleanup;
     }
@@ -549,8 +549,8 @@ int main(int argc, char **argv) {
     }
 
     {
-        const salts_fs_buf_t output_buffer = salts_fs_buf_init(output, tstr_len(output));
-        if (salts_fs_write_file(output_file, &output_buffer) != 0) {
+        const cmeta_fs_buf_t output_buffer = cmeta_fs_buf_init(output, tstr_len(output));
+        if (cmeta_fs_write_file(output_file, &output_buffer) != 0) {
             fprintf(stderr, "Error: Could not write output file: %s\n", output_file);
             goto cleanup;
         }
@@ -563,7 +563,7 @@ int main(int argc, char **argv) {
 cleanup:
     tstr_free(output);
     salts_xml_document_destroy(&document);
-    salts_fs_buf_free(&template_buffer);
-    salts_fs_buf_free(&xml_buffer);
+    cmeta_fs_buf_free(&template_buffer);
+    cmeta_fs_buf_free(&xml_buffer);
     return result;
 }

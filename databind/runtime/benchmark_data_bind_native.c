@@ -4,7 +4,7 @@
 #include "tinytest.h"
 
 #include <cmeta/struct.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -135,7 +135,7 @@ spec("DataBind native JSON benchmark") {
   before_all() {
     /* Preserve Struct offsets and bind canonical semantic storage types.
      * Imported provider metadata is resolved at runtime, including on Windows. */
-    order_fields[NATIVE_BENCH_SYMBOL_INDEX].value = &salts_tstr_cmeta_data;
+    order_fields[NATIVE_BENCH_SYMBOL_INDEX].value = &cmeta_tstr_cmeta_data;
     for (size_t i = 0; i < NATIVE_BENCH_FIELD_COUNT; ++i) {
       order_layout_fields[i] = StructMeta(NativeBenchOrder)->fields[i];
       order_layout_fields[i].type = order_fields[i].value->storage_type;
@@ -166,7 +166,7 @@ spec("DataBind native JSON benchmark") {
   }
   after_each() {
     cmeta_data_value_destroy(&ORDER_DATA, &order);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&order.symbol));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&order.symbol));
   }
   after_all() {
     data_bind_format_plan_free(format_plan);

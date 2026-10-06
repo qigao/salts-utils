@@ -2,7 +2,7 @@
 
 #include <cmeta/enum.h>
 #include <cmeta/struct.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tinytest.h>
 
 #include <stdbool.h>
@@ -216,13 +216,13 @@ static const cmeta_data_desc ROW_DATA = {
 static void prepare_row_descriptor(void) {
   ROW_LAYOUT_FIELDS[0] = StructMeta(WriterRow)->fields[0];
   ROW_LAYOUT_FIELDS[1] = StructMeta(WriterRow)->fields[1];
-  ROW_LAYOUT_FIELDS[1].type = salts_tstr_cmeta_data.storage_type;
+  ROW_LAYOUT_FIELDS[1].type = cmeta_tstr_cmeta_data.storage_type;
   ROW_FIELDS[0] = (cmeta_data_field_desc){
       "test.native-writer.WriterRow.id", "id",
       offsetof(WriterRow, id), &cmeta_data_int};
   ROW_FIELDS[1] = (cmeta_data_field_desc){
       "test.native-writer.WriterRow.name", "name",
-      offsetof(WriterRow, name), &salts_tstr_cmeta_data};
+      offsetof(WriterRow, name), &cmeta_tstr_cmeta_data};
   check_true(cmeta_data_desc_valid(&ROW_DATA));
 }
 
@@ -288,7 +288,7 @@ spec("DataBind native writer contract") {
 
   it("round-trips owned string and bytes through canonical buffer read") {
     static const unsigned char bytes[] = {'A', 0u, 'B'};
-    cmeta_data_desc bytes_data = salts_tstr_cmeta_data;
+    cmeta_data_desc bytes_data = cmeta_tstr_cmeta_data;
     tstr text = NULL;
     tstr decoded_text = NULL;
     tstr raw = NULL;
@@ -302,9 +302,9 @@ spec("DataBind native writer contract") {
     bytes_data.stable_id = "test.native-writer.bytes";
     bytes_data.display_name = "bytes";
 
-    check_equal(cmeta_data_buffer_init_zero(&salts_tstr_cmeta_data, &text),
+    check_equal(cmeta_data_buffer_init_zero(&cmeta_tstr_cmeta_data, &text),
                 CMETA_OK);
-    check_equal(cmeta_data_buffer_init_zero(&salts_tstr_cmeta_data,
+    check_equal(cmeta_data_buffer_init_zero(&cmeta_tstr_cmeta_data,
                                              &decoded_text),
                 CMETA_OK);
     check_equal(cmeta_data_buffer_init_zero(&bytes_data, &raw), CMETA_OK);
@@ -312,7 +312,7 @@ spec("DataBind native writer contract") {
                 CMETA_OK);
 
     check_equal(cmeta_data_buffer_assign(
-                    &salts_tstr_cmeta_data, &text,
+                    &cmeta_tstr_cmeta_data, &text,
                     (const unsigned char *)"Alice", 5u, 5u),
                 CMETA_OK);
     check_equal(cmeta_data_buffer_assign(
@@ -320,13 +320,13 @@ spec("DataBind native writer contract") {
                 CMETA_OK);
 
     open_writer(&sink, &writer);
-    check_equal(encode_value(&salts_tstr_cmeta_data, &text, sizeof(text),
+    check_equal(encode_value(&cmeta_tstr_cmeta_data, &text, sizeof(text),
                              &writer),
                 DATA_BIND_OK);
     check_true(sink.tokens[0].kind == CSERDE_STRING);
     check_equal(sink.tokens[0].value.slice.size, 5u);
     open_reader(&sink, &token_source, &reader);
-    check_equal(decode_value(&salts_tstr_cmeta_data, &reader, &decoded_text,
+    check_equal(decode_value(&cmeta_tstr_cmeta_data, &reader, &decoded_text,
                              sizeof(decoded_text)),
                 DATA_BIND_OK);
     check_equal(tstr_len(decoded_text), 5u);
@@ -344,8 +344,8 @@ spec("DataBind native writer contract") {
     check_equal(tstr_len(decoded_raw), sizeof(bytes));
     check_equal(memcmp(decoded_raw, bytes, sizeof(bytes)), 0);
 
-    (void)cmeta_data_buffer_restore_zero(&salts_tstr_cmeta_data, &text);
-    (void)cmeta_data_buffer_restore_zero(&salts_tstr_cmeta_data,
+    (void)cmeta_data_buffer_restore_zero(&cmeta_tstr_cmeta_data, &text);
+    (void)cmeta_data_buffer_restore_zero(&cmeta_tstr_cmeta_data,
                                          &decoded_text);
     (void)cmeta_data_buffer_restore_zero(&bytes_data, &raw);
     (void)cmeta_data_buffer_restore_zero(&bytes_data, &decoded_raw);
@@ -360,14 +360,14 @@ spec("DataBind native writer contract") {
     cserde_reader reader;
 
     source.id = 7;
-    check_equal(cmeta_data_buffer_init_zero(&salts_tstr_cmeta_data,
+    check_equal(cmeta_data_buffer_init_zero(&cmeta_tstr_cmeta_data,
                                              &source.name),
                 CMETA_OK);
-    check_equal(cmeta_data_buffer_init_zero(&salts_tstr_cmeta_data,
+    check_equal(cmeta_data_buffer_init_zero(&cmeta_tstr_cmeta_data,
                                              &destination.name),
                 CMETA_OK);
     check_equal(cmeta_data_buffer_assign(
-                    &salts_tstr_cmeta_data, &source.name,
+                    &cmeta_tstr_cmeta_data, &source.name,
                     (const unsigned char *)"Bob", 3u, 3u),
                 CMETA_OK);
 
@@ -392,8 +392,8 @@ spec("DataBind native writer contract") {
     check_equal(tstr_len(destination.name), 3u);
     check_equal(memcmp(destination.name, "Bob", 3u), 0);
 
-    (void)cmeta_data_buffer_restore_zero(&salts_tstr_cmeta_data, &source.name);
-    (void)cmeta_data_buffer_restore_zero(&salts_tstr_cmeta_data,
+    (void)cmeta_data_buffer_restore_zero(&cmeta_tstr_cmeta_data, &source.name);
+    (void)cmeta_data_buffer_restore_zero(&cmeta_tstr_cmeta_data,
                                          &destination.name);
   }
 
@@ -403,11 +403,11 @@ spec("DataBind native writer contract") {
     cserde_writer writer;
 
     source.id = 9;
-    check_equal(cmeta_data_buffer_init_zero(&salts_tstr_cmeta_data,
+    check_equal(cmeta_data_buffer_init_zero(&cmeta_tstr_cmeta_data,
                                              &source.name),
                 CMETA_OK);
     check_equal(cmeta_data_buffer_assign(
-                    &salts_tstr_cmeta_data, &source.name,
+                    &cmeta_tstr_cmeta_data, &source.name,
                     (const unsigned char *)"Safe", 4u, 4u),
                 CMETA_OK);
 
@@ -422,7 +422,7 @@ spec("DataBind native writer contract") {
     check_true(writer.state == CSERDE_WRITER_FAILED);
     check_equal(sink.finish_calls, 0u);
 
-    (void)cmeta_data_buffer_restore_zero(&salts_tstr_cmeta_data, &source.name);
+    (void)cmeta_data_buffer_restore_zero(&cmeta_tstr_cmeta_data, &source.name);
   }
 
   it("validates the full graph before the first writer callback") {
@@ -443,22 +443,22 @@ spec("DataBind native writer contract") {
     TokenSink sink;
     cserde_writer writer;
 
-    check_equal(cmeta_data_buffer_init_zero(&salts_tstr_cmeta_data, &text),
+    check_equal(cmeta_data_buffer_init_zero(&cmeta_tstr_cmeta_data, &text),
                 CMETA_OK);
     check_equal(cmeta_data_buffer_assign(
-                    &salts_tstr_cmeta_data, &text,
+                    &cmeta_tstr_cmeta_data, &text,
                     (const unsigned char *)"four", 4u, 4u),
                 CMETA_OK);
 
     options.max_owned_bytes = 3u;
     open_writer(&sink, &writer);
-    check_equal(encode_value(&salts_tstr_cmeta_data, &text, sizeof(text),
+    check_equal(encode_value(&cmeta_tstr_cmeta_data, &text, sizeof(text),
                              &writer),
                 DATA_BIND_ERR_LIMIT);
     check_equal(sink.count, 0u);
     check_equal(tstr_len(text), 4u);
     check_equal(memcmp(text, "four", 4u), 0);
 
-    (void)cmeta_data_buffer_restore_zero(&salts_tstr_cmeta_data, &text);
+    (void)cmeta_data_buffer_restore_zero(&cmeta_tstr_cmeta_data, &text);
   }
 }

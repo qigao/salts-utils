@@ -20,11 +20,11 @@ static int fake_handle_marker = 0;
 
 /* Test-owned function declarations script the backend adapters; the selected
  * override set leaves production thread and serial declarations untouched. */
-FunctionDecl(value, int, fake_nonblocking_read,
+FunctionDeclResult(value, int, CMETA_RESULT_VALUE, fake_nonblocking_read,
              (void *, handle, CMETA_PARAM_IN, &cmeta_type_void_ptr, CMETA_ABI_OBJECT_POINTER),
              (void *, buffer, CMETA_PARAM_IN, &cmeta_type_void_ptr, CMETA_ABI_OBJECT_POINTER),
              (size_t, count, CMETA_PARAM_IN, &cmeta_type_size, CMETA_ABI_SCALAR));
-FunctionDecl(value, int, fake_nonblocking_write,
+FunctionDeclResult(value, int, CMETA_RESULT_VALUE, fake_nonblocking_write,
              (void *, handle, CMETA_PARAM_IN, &cmeta_type_void_ptr, CMETA_ABI_OBJECT_POINTER),
              (const void *, buffer, CMETA_PARAM_IN, &cmeta_type_void_ptr, CMETA_ABI_OBJECT_POINTER),
              (size_t, count, CMETA_PARAM_IN, &cmeta_type_size, CMETA_ABI_SCALAR));
@@ -149,7 +149,7 @@ suite("salts_serial mocked backend") {
     salts_serial_test_set_handle(serial, FAKE_HANDLE);
 
     check_equal(salts_serial_start_async(serial), SALTS_SERIAL_OK);
-    salts_sleep_ms(30);
+    cmeta_sleep_ms(30);
     check_equal(salts_serial_stop_async(serial), SALTS_SERIAL_OK);
 
     check_equal(salts_serial_rx_available(serial), 3);
@@ -183,7 +183,7 @@ suite("salts_serial mocked backend") {
                 SALTS_SERIAL_OK);
     check_equal(bytes_buffered, 2);
 
-    salts_sleep_ms(30);
+    cmeta_sleep_ms(30);
     check_equal(salts_serial_stop_async(serial), SALTS_SERIAL_OK);
 
     check_equal(fake_tx_len, 2);

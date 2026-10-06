@@ -18,7 +18,7 @@ typedef struct cflow_fs_watch_windows {
     HANDLE stop_event;
     HANDLE io_event;
     HANDLE ready_event;
-    salts_thread_t thread;
+    cmeta_thread_t thread;
     unsigned char *buffer;
     DWORD buffer_capacity;
     DWORD notify_filter;
@@ -269,7 +269,7 @@ int cflow_fs_watch_backend_open(cflow_fs_watch_impl *impl,
         FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION;
     backend->start_status = SALTS_EBUSY;
     cflow_fs_watch_backend_set(impl, backend);
-    thread_status = salts_thread_create(
+    thread_status = cmeta_thread_create(
         &backend->thread, watch_windows_thread, backend);
     if (thread_status != SALTS_OK) {
         cflow_fs_watch_backend_set(impl, NULL);
@@ -287,7 +287,7 @@ int cflow_fs_watch_backend_open(cflow_fs_watch_impl *impl,
         InterlockedCompareExchange(&backend->start_status, 0, 0) != SALTS_OK) {
         const int status =
             (int)InterlockedCompareExchange(&backend->start_status, 0, 0);
-        (void)salts_thread_join(&backend->thread);
+        (void)cmeta_thread_join(&backend->thread);
         cflow_fs_watch_backend_set(impl, NULL);
         CloseHandle(backend->io_event);
         CloseHandle(backend->stop_event);
@@ -317,7 +317,7 @@ int cflow_fs_watch_backend_destroy(cflow_fs_watch_impl *impl) {
     int status = SALTS_OK;
     if (backend == NULL)
         return SALTS_EINVAL;
-    if (salts_thread_join(&backend->thread) != SALTS_OK)
+    if (cmeta_thread_join(&backend->thread) != SALTS_OK)
         status = SALTS_EIO;
     if (!CloseHandle(backend->io_event) && status == SALTS_OK)
         status = -(int)GetLastError();

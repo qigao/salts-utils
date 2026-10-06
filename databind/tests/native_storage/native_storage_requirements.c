@@ -1,6 +1,6 @@
 /* Canonical native storage admission and provider-defined semantic zero. */
 #include "data_bind_native.h"
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tinytest.h>
 
 #include <stdbool.h>
@@ -104,7 +104,7 @@ static void require_storage(ProbeDescriptor *probe) {
 
 static void require_owned_buffer(cmeta_data_kind kind) {
   ProbeDescriptor probe;
-  cmeta_data_desc leaf = salts_tstr_cmeta_data;
+  cmeta_data_desc leaf = cmeta_tstr_cmeta_data;
   leaf.kind = kind;
   leaf.stable_id = kind == CMETA_DATA_STRING ? "test.reader.owned-text" : "test.reader.owned-bytes";
   leaf.display_name = leaf.stable_id;
@@ -170,7 +170,7 @@ spec("DataBind canonical native storage admission") {
   }
   it("preserves the existing explicit bool8 provider") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeBool8, uint8_t, &salts_bool8_cmeta_data);
+    DESCRIBE(probe, ProbeBool8, uint8_t, &cmeta_bool8_cmeta_data);
     require_storage(&probe);
   }
   it("preserves canonical double storage") {
@@ -201,7 +201,7 @@ spec("DataBind canonical native storage admission") {
   }
   it("rejects missing buffer operations without touching destination storage") {
     ProbeDescriptor probe;
-    cmeta_data_desc leaf = salts_tstr_cmeta_data;
+    cmeta_data_desc leaf = cmeta_tstr_cmeta_data;
     leaf.buffer_ops = NULL;
     DESCRIBE(probe, ProbeBuffer, tstr, &leaf);
     reject_without_touching(&probe);
@@ -232,14 +232,14 @@ static size_t tagged_releases;
 static bool tagged_is_zero(const void *object) {
   const ProbeTaggedBuffer *buffer = (const ProbeTaggedBuffer *)object;
   return buffer != NULL && buffer->tag == PROBE_BUFFER_ZERO_TAG &&
-         salts_tstr_cmeta_buffer_ops.is_zero(&buffer->text);
+         cmeta_tstr_cmeta_buffer_ops.is_zero(&buffer->text);
 }
 
 static cmeta_status tagged_init_zero(void *object) {
   ProbeTaggedBuffer *buffer = (ProbeTaggedBuffer *)object;
   cmeta_status status;
   if (buffer == NULL) return CMETA_INVALID_ARGUMENT;
-  status = salts_tstr_cmeta_buffer_ops.init_zero(&buffer->text);
+  status = cmeta_tstr_cmeta_buffer_ops.init_zero(&buffer->text);
   if (status == CMETA_OK) buffer->tag = PROBE_BUFFER_ZERO_TAG;
   return status;
 }
@@ -248,14 +248,14 @@ static cmeta_status tagged_assign(void *object, const unsigned char *data,
                                    size_t size, size_t max_bytes) {
   ProbeTaggedBuffer *buffer = (ProbeTaggedBuffer *)object;
   if (!tagged_is_zero(buffer)) return CMETA_INVALID_ARGUMENT;
-  return salts_tstr_cmeta_buffer_ops.assign(&buffer->text, data, size, max_bytes);
+  return cmeta_tstr_cmeta_buffer_ops.assign(&buffer->text, data, size, max_bytes);
 }
 
 static void tagged_restore_zero(void *object) {
   ProbeTaggedBuffer *buffer = (ProbeTaggedBuffer *)object;
   if (buffer == NULL) return;
-  if (!salts_tstr_cmeta_buffer_ops.is_zero(&buffer->text)) ++tagged_releases;
-  salts_tstr_cmeta_buffer_ops.restore_zero(&buffer->text);
+  if (!cmeta_tstr_cmeta_buffer_ops.is_zero(&buffer->text)) ++tagged_releases;
+  cmeta_tstr_cmeta_buffer_ops.restore_zero(&buffer->text);
   buffer->tag = PROBE_BUFFER_ZERO_TAG;
 }
 
@@ -264,13 +264,13 @@ static cmeta_status tagged_read(const void *object, const unsigned char **data,
   const ProbeTaggedBuffer *buffer = (const ProbeTaggedBuffer *)object;
   if (buffer == NULL || buffer->tag != PROBE_BUFFER_ZERO_TAG)
     return CMETA_INVALID_ARGUMENT;
-  return salts_tstr_cmeta_buffer_ops.read(&buffer->text, data, size);
+  return cmeta_tstr_cmeta_buffer_ops.read(&buffer->text, data, size);
 }
 
 static void tagged_move(void *destination, void *source) {
   ProbeTaggedBuffer *to = (ProbeTaggedBuffer *)destination;
   ProbeTaggedBuffer *from = (ProbeTaggedBuffer *)source;
-  salts_tstr_cmeta_buffer_ops.move(&to->text, &from->text);
+  cmeta_tstr_cmeta_buffer_ops.move(&to->text, &from->text);
   to->tag = PROBE_BUFFER_ZERO_TAG;
   from->tag = PROBE_BUFFER_ZERO_TAG;
 }
@@ -291,7 +291,7 @@ static const cmeta_data_buffer_ops tagged_ops = {
 static const unsigned char tagged_payload[] = {'A', 0u, 'B'};
 
 static cmeta_data_desc tagged_data(cmeta_data_kind kind) {
-  cmeta_data_desc data = salts_tstr_cmeta_data;
+  cmeta_data_desc data = cmeta_tstr_cmeta_data;
   data.kind = kind;
   data.stable_id = kind == CMETA_DATA_STRING
       ? "test.native-storage.tagged-text" : "test.native-storage.tagged-bytes";

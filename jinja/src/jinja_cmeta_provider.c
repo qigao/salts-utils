@@ -10,7 +10,7 @@
 #include "jinja_float.h"
 #include "parser/jinja_text_lexer.h"
 
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <salts_unicode.h>
 #include <tstr.h>
 
@@ -449,9 +449,9 @@ static const cmeta_data_desc jinja_cmeta_vstr_desc = {sizeof(cmeta_data_desc),
                                                       "salts.vstr.data.v1",
                                                       "vstr",
                                                       CMETA_DATA_STRING,
-                                                      &salts_vstr_cmeta_type,
+                                                      &cmeta_vstr_cmeta_type,
                                                       &jinja_cmeta_vstr_shape,
-                                                      &salts_vstr_cmeta_buffer_ops,
+                                                      &cmeta_vstr_cmeta_buffer_ops,
                                                       NULL,
                                                       NULL};
 

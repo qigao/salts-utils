@@ -1,7 +1,7 @@
 #include "cmeta_graph_generated.h"
 #include "schema_cmeta.h"
 #include "tinytest.h"
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <cstl/byte_buffer.h>
 #include <string.h>
 
@@ -132,7 +132,7 @@ suite("real generated and runtime CMeta acceptance") {
     check(data_bind_schema_field_at(codec, "UuidStorage", 0, &field));
     check_equal(field.cmeta_kind, CMETA_DATA_CUSTOM);
     check_equal(data_bind_schema_field_cmeta_data(codec, "UuidStorage", 0, &runtime, &error), DATA_BIND_OK);
-    check(salts_uuid_cmeta_data_valid(runtime));
+    check(cmeta_uuid_cmeta_data_valid(runtime));
     if (native) same_value_type(runtime, ((const cmeta_data_struct_shape *)native->shape)->fields[0].value);
     data_bind_free(codec);
   }
@@ -272,7 +272,7 @@ suite("real generated and runtime CMeta acceptance") {
       const cmeta_data_desc *expected;
     } cases[] = {
       {"Unsupported", 1u, CMETA_DATA_STRING, "Unsupported.bad",
-       Unsupported_cmeta_data, &salts_tstr_cmeta_data},
+       Unsupported_cmeta_data, &cmeta_tstr_cmeta_data},
       {"BytesStorage", 0u, CMETA_DATA_BYTES, "BytesStorage.value",
        BytesStorage_cmeta_data, &stl_byte_buffer_cmeta_data}
     };
@@ -444,7 +444,7 @@ suite("real generated and runtime CMeta acceptance") {
     check_equal(MapStorage_value_map_t_put(&object.value, second.key, second.value), STL_OK);
     tstr_free(first.key);
     tstr_free(second.key);
-    check(cmeta_data_desc_equal(ops->key(&object.value), &salts_tstr_cmeta_data));
+    check(cmeta_data_desc_equal(ops->key(&object.value), &cmeta_tstr_cmeta_data));
     same_value_type(ops->value(&object.value), &cmeta_data_int32);
     check_equal(cmeta_data_map_foreach(map_data, &object.value, collect_map_entry,
                                       &visited, 2u), CMETA_OK);
@@ -543,7 +543,7 @@ suite("real generated and runtime CMeta acceptance") {
         }
         check_equal(native_bool->kind, CMETA_DATA_BOOL);
         check(cmeta_type_equal(native_bool->storage_type,
-                               &salts_bool8_cmeta_type));
+                               &cmeta_bool8_cmeta_type));
         check(!cmeta_type_equal(native_bool->storage_type,
                                 cmeta_data_bool.storage_type));
       }

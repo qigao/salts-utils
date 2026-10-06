@@ -108,7 +108,7 @@ static int derive_artifact_path(
                artifact_name, suffix);
   if (n <= 0 || (size_t)n >= sizeof(filename)) return 0;
 
-  return salts_fs_path_join(
+  return cmeta_fs_path_join(
              out, out_size, dir, filename) == 0;
 }
 
@@ -127,10 +127,10 @@ static int ensure_artifact_context(
         "Artifact projections require --output to anchor generated artifacts");
   if (out->artifact_dir[0] != '\0') return 0;
 
-  if (salts_fs_path_dirname(
+  if (cmeta_fs_path_dirname(
           input->output_path, out->artifact_dir,
           sizeof(out->artifact_dir)) != 0 ||
-      salts_fs_path_basename(
+      cmeta_fs_path_basename(
           input->output_path, out->native_header,
           sizeof(out->native_header)) != 0)
     return frontend_error(
@@ -581,7 +581,7 @@ static int add_wasm(
     return frontend_error(
         error, error_size,
         "--artifacts wasm requires --wasm-core-module <core.wasm>");
-  if (salts_fs_access(
+  if (cmeta_fs_access(
           input->wasm_core_module_path,
           SALTS_FS_ACCESS_EXISTS) != 0)
     return frontend_error(

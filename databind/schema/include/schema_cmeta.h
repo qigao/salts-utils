@@ -17,7 +17,7 @@ extern "C" {
  * Integer aliases always resolve to exact-width descriptors. bool uses CMeta's
  * native boolean descriptor; float/f32 and double/f64 use its respective native
  * float/double storage and 32/64-bit shapes. UUID resolves to the process-wide
- * salts_uuid_cmeta_data descriptor. No DataBind-private descriptor is created.
+ * cmeta_uuid_cmeta_data descriptor. No DataBind-private descriptor is created.
  * The returned descriptor is immutable provider-owned storage; do not free it.
  *
  * string and bytes require an explicit storage/ownership choice and return NULL

@@ -1,7 +1,7 @@
 #include "native_service_projection.h"
 
 #include "service_native.h"
-#include "salts_fs.h"
+#include "cmeta_fs.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -47,8 +47,8 @@ static char *native_service_suffixed_path(
 
 static void native_service_unlink_if_exists(const char *path) {
   if (path != NULL &&
-      salts_fs_access(path, SALTS_FS_ACCESS_EXISTS) == 0)
-    (void)salts_fs_unlink(path);
+      cmeta_fs_access(path, SALTS_FS_ACCESS_EXISTS) == 0)
+    (void)cmeta_fs_unlink(path);
 }
 
 static FILE *native_service_open_staging(
@@ -88,8 +88,8 @@ static int native_service_prepare_backup(native_service_output *output) {
       native_service_suffixed_path(output->final_path, ".databind-native.bak");
   if (output->backup_path == NULL) return 0;
   native_service_unlink_if_exists(output->backup_path);
-  if (salts_fs_access(output->final_path, SALTS_FS_ACCESS_EXISTS) == 0) {
-    if (salts_fs_rename(output->final_path, output->backup_path) != 0)
+  if (cmeta_fs_access(output->final_path, SALTS_FS_ACCESS_EXISTS) == 0) {
+    if (cmeta_fs_rename(output->final_path, output->backup_path) != 0)
       return 0;
     output->had_original = 1;
   }
@@ -101,7 +101,7 @@ static void native_service_rollback(native_service_output *output) {
   if (output->published)
     native_service_unlink_if_exists(output->final_path);
   if (output->had_original && output->backup_path != NULL)
-    (void)salts_fs_rename(output->backup_path, output->final_path);
+    (void)cmeta_fs_rename(output->backup_path, output->final_path);
   else
     native_service_unlink_if_exists(output->backup_path);
   native_service_unlink_if_exists(output->staging_path);
@@ -126,7 +126,7 @@ static int native_service_commit(
     ++prepared;
   }
   for (i = 0u; i < count; ++i) {
-    if (salts_fs_rename(
+    if (cmeta_fs_rename(
             outputs[i].staging_path, outputs[i].final_path) != 0)
       goto fail;
     outputs[i].published = 1;

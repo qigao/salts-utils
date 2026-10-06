@@ -172,13 +172,13 @@ static DataBindBindingProvider plugin_provider(
 
 spec("generated DataBind Plugin Service") {
   it("executes BindingPlan -> Plugin -> BindingPlan under one DSO lease") {
-    salts_plugin_registry registry = {0};
-    salts_plugin_registry_config config = {.capacity = 2u};
-    salts_plugin_ref ref = {0};
-    salts_plugin_lease lease = {0};
-    const salts_plugin_manifest *manifest = NULL;
-    const salts_plugin_export *entry = NULL;
-    const salts_plugin_export *catalog_entry = NULL;
+    cmeta_plugin_registry registry = {0};
+    cmeta_plugin_registry_config config = {.capacity = 2u};
+    cmeta_plugin_ref ref = {0};
+    cmeta_plugin_lease lease = {0};
+    const cmeta_plugin_manifest *manifest = NULL;
+    const cmeta_plugin_export *entry = NULL;
+    const cmeta_plugin_export *catalog_entry = NULL;
     data_bind_plugin_catalog *catalog = NULL;
     DataBindPluginOperationBinding operation =
         DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
@@ -223,35 +223,35 @@ spec("generated DataBind Plugin Service") {
     native_options.max_items = 64u;
     native_options.max_owned_bytes = 1024u;
 
-    check_equal(salts_plugin_registry_init(&registry, &config),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_load(
+    check_equal(cmeta_plugin_registry_init(&registry, &config),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_load(
                     &registry, GENERATED_DATABIND_PLUGIN_PATH, &ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_start(&registry, ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_acquire(
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_start(&registry, ref),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_acquire(
                     &registry, ref, &lease, &manifest),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
 
     check_not_null(manifest);
     check_equal(manifest->plugin_id, "Image.ImageProcessor");
     check_equal(manifest->export_count, (size_t)3u);
-    check_equal(salts_plugin_manifest_find_export(
+    check_equal(cmeta_plugin_manifest_find_export(
                     manifest, "Image.Codec.Decode", &entry),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     {
-      const salts_plugin_export *unselected = NULL;
-      check_equal(salts_plugin_manifest_find_export(
+      const cmeta_plugin_export *unselected = NULL;
+      check_equal(cmeta_plugin_manifest_find_export(
                       manifest, "Image.Admin.Inspect", &unselected),
-                  SALTS_PLUGIN_UNKNOWN_EXPORT);
+                  CMETA_PLUGIN_UNKNOWN_EXPORT);
       check_null(unselected);
     }
     check_not_null(entry);
-    check_equal(entry->kind, SALTS_PLUGIN_EXPORT_FUNCTION);
-    check_equal(salts_plugin_export_require_function(
+    check_equal(entry->kind, CMETA_PLUGIN_EXPORT_FUNCTION);
+    check_equal(cmeta_plugin_export_require_function(
                     entry, "Image.Codec", 1u, 0u),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_true(cmeta_function_desc_valid(entry->value.function.desc));
     check_true(cmeta_function_abi_desc_valid(entry->value.function.abi));
     check_true(entry->value.function.abi->function ==
@@ -265,19 +265,19 @@ spec("generated DataBind Plugin Service") {
                     entry->value.function.abi, 1u),
                 CMETA_ABI_OBJECT_POINTER);
 
-    check_equal(salts_plugin_manifest_find_export(
+    check_equal(cmeta_plugin_manifest_find_export(
                     manifest, DATA_BIND_PLUGIN_CATALOG_EXPORT_ID,
                     &catalog_entry),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_not_null(catalog_entry);
-    check_equal(catalog_entry->kind, SALTS_PLUGIN_EXPORT_INTERFACE);
-    check_equal(salts_plugin_export_require_interface(
+    check_equal(catalog_entry->kind, CMETA_PLUGIN_EXPORT_INTERFACE);
+    check_equal(cmeta_plugin_export_require_interface(
                     catalog_entry,
                     DATA_BIND_PLUGIN_CATALOG_CONTRACT_ID,
                     DATA_BIND_PLUGIN_CATALOG_CONTRACT_VERSION,
                     0u,
                     data_bind_plugin_catalog_interface()),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     catalog =
         (data_bind_plugin_catalog *)catalog_entry->value.interface.value;
     check_true(data_bind_plugin_catalog_valid(catalog));
@@ -418,17 +418,17 @@ spec("generated DataBind Plugin Service") {
     data_bind_free(codec);
     codec = NULL;
 
-    check_equal(salts_plugin_registry_release(&registry, &lease),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_request_stop(&registry, ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_poll_quiescent(
+    check_equal(cmeta_plugin_registry_release(&registry, &lease),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_request_stop(&registry, ref),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_poll_quiescent(
                     &registry, ref, &quiescent),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_true(quiescent);
-    check_equal(salts_plugin_registry_unload(&registry, ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_destroy(&registry),
-                SALTS_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_unload(&registry, ref),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_destroy(&registry),
+                CMETA_PLUGIN_OK);
   }
 }

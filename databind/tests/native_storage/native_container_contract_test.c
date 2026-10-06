@@ -1,8 +1,8 @@
 #include "data_bind_native.h"
 
-#include <cmeta/method.h>
+#include <cmeta/operation.h>
 #include <cstl/typed.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tstr.h>
 #include <tinytest.h>
 
@@ -34,9 +34,18 @@ typedef struct NativeContainerTokenSource {
   size_t index;
 } NativeContainerTokenSource;
 
+#ifdef _MSC_VER
+/* Salts 2.0.0 compares generated lifecycle flags from distinct enums.
+ * Remove these scoped guards when the SDK casts those bitmask operands. */
+#pragma warning(push)
+#pragma warning(disable : 5287)
+#endif
 cmeta_type(Vec, NativeIntVec, int);
 cmeta_type(Set, NativeIntSet, int);
 cmeta_type(Map, NativeIntLongMap, int, long);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 typedef struct NativeTextRecord {
   tstr text;
@@ -60,6 +69,10 @@ static const cmeta_struct_desc NATIVE_TEXT_RECORD_LAYOUT = {
 static const cmeta_data_struct_shape NATIVE_TEXT_RECORD_SHAPE = {
     &NATIVE_TEXT_RECORD_LAYOUT, NATIVE_TEXT_RECORD_FIELDS, 1u};
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 5287)
+#endif
 cmeta_type(Vec, NativeTextRecordVec, NativeTextRecord,
       &NATIVE_TEXT_RECORD_TYPE, &NATIVE_TEXT_RECORD_DATA);
 
@@ -68,6 +81,10 @@ cmeta_type(Set, NativeTextSet, tstr,
 cmeta_type(Map, NativeTextRecordMap, tstr, NativeTextRecord,
       SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_DATA_REF,
       &NATIVE_TEXT_RECORD_TYPE, &NATIVE_TEXT_RECORD_DATA);
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 enum { COMPOSITE_FIELD_COUNT = 4, INLINE_BYTES_EXTENT = 4 };
 typedef unsigned char InlineBytes[INLINE_BYTES_EXTENT];
@@ -162,13 +179,13 @@ static void reset_native(void) {
       .offset = offsetof(NativeTextRecord, text),
       .size = sizeof(tstr),
       .align = _Alignof(tstr),
-      .type = salts_tstr_cmeta_data.storage_type,
+      .type = cmeta_tstr_cmeta_data.storage_type,
       .declared_type = NULL};
   NATIVE_TEXT_RECORD_FIELDS[0] = (cmeta_data_field_desc){
       .stable_id = "test.databind.NativeTextRecord.text",
       .name = "text",
       .offset = offsetof(NativeTextRecord, text),
-      .value = &salts_tstr_cmeta_data};
+      .value = &cmeta_tstr_cmeta_data};
   NATIVE_TEXT_RECORD_DATA = (cmeta_data_desc){
       .struct_size = sizeof(cmeta_data_desc),
       .abi_version = CMETA_DATA_DESC_ABI_VERSION,
@@ -252,10 +269,10 @@ static const cmeta_data_desc *counting_element(const void *object) {
 static void populate_composite(NativeComposite *object) {
   NativeTextRecord value = {0};
   tstr key = NULL;
-  check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &value.text,
+  check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &value.text,
               (const unsigned char *)COMPOSITE_TEXT,
               sizeof(COMPOSITE_TEXT) - 1u, sizeof(COMPOSITE_TEXT) - 1u), CMETA_OK);
-  check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &key,
+  check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &key,
               (const unsigned char *)COMPOSITE_KEY,
               sizeof(COMPOSITE_KEY) - 1u, sizeof(COMPOSITE_KEY) - 1u), CMETA_OK);
   check_true(cmeta_data_trait_copy_construct(&NATIVE_TEXT_RECORD_DATA,
@@ -267,7 +284,7 @@ static void populate_composite(NativeComposite *object) {
   check_equal(NativeTextSet_add(&object->unique_names, key), STL_OK);
   check_equal(NativeTextRecordMap_put(&object->children_by_name, key, value), STL_OK);
   cmeta_data_value_destroy(&NATIVE_TEXT_RECORD_DATA, &value);
-  cmeta_data_value_destroy(&salts_tstr_cmeta_data, &key);
+  cmeta_data_value_destroy(&cmeta_tstr_cmeta_data, &key);
 }
 
 static void check_composite_zero(const NativeComposite *object) {
@@ -334,7 +351,7 @@ spec("DataBind canonical CSTL native containers") {
     check_true(value->text != destination.child.text);
     check_equal(native_clear(&COMPOSITE_DATA, &source), DATA_BIND_OK);
     check_equal(memcmp(value->text, COMPOSITE_TEXT, sizeof(COMPOSITE_TEXT) - 1u), 0);
-    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &key,
+    check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &key,
                 (const unsigned char *)COMPOSITE_KEY,
                 sizeof(COMPOSITE_KEY) - 1u, sizeof(COMPOSITE_KEY) - 1u), CMETA_OK);
     check_true(NativeTextSet_contains(&destination.unique_names, key));
@@ -342,7 +359,7 @@ spec("DataBind canonical CSTL native containers") {
     check_not_null(value);
     check_equal(memcmp(value->text, COMPOSITE_TEXT, sizeof(COMPOSITE_TEXT) - 1u), 0);
     check_equal(memcmp(destination.child.text, COMPOSITE_TEXT, sizeof(COMPOSITE_TEXT) - 1u), 0);
-    cmeta_data_value_destroy(&salts_tstr_cmeta_data, &key);
+    cmeta_data_value_destroy(&cmeta_tstr_cmeta_data, &key);
     check_equal(native_clear(&COMPOSITE_DATA, &destination), DATA_BIND_OK);
   }
 
@@ -452,67 +469,67 @@ spec("DataBind canonical CSTL native containers") {
   }
 
   it("consumes canonical typed receiver method reflection and generic owners") {
-    const cmeta_receiver_method_set *set;
-    const cmeta_receiver_method *method;
+    const cmeta_receiver_operation_set *set;
+    const cmeta_receiver_operation *method;
     const cmeta_param_desc *receiver;
     const cmeta_type_desc *one_int[] = {&cmeta_type_int};
     const cmeta_type_desc *map_args[] = {&cmeta_type_int, &cmeta_type_long};
     cmeta_generic_desc map_owner = stl_map_generic_desc;
     cmeta_receiver_resolution resolution = CMETA_RECEIVER_RESOLUTION_INIT;
 
-    set = NativeIntVec_receiver_method_set();
-    check_true(cmeta_receiver_method_set_valid(set));
+    set = NativeIntVec_receiver_operation_set();
+    check_true(cmeta_receiver_operation_set_valid(set));
     check_true(cmeta_generic_desc_equal(set->owner, &stl_vec_generic_desc));
-    method = cmeta_receiver_method_find(set, "push");
+    method = cmeta_receiver_operation_find(set, "push");
     check_not_null(method);
-    check_true(method->function == NativeIntVec_push_function());
+    check_true(method->abi->function == NativeIntVec_push_function());
     check_true(method->abi == NativeIntVec_push_function_abi());
-    receiver = cmeta_function_receiver(method->function);
+    receiver = cmeta_function_receiver(method->abi->function);
     check_not_null(receiver);
     check_true((receiver->flags & CMETA_PARAM_RECEIVER) != 0u);
     check_true(cmeta_type_equal(receiver->type->pointee, &NativeIntVec_cmeta_type));
     check_equal(
-        cmeta_receiver_method_resolve(
+        cmeta_receiver_operation_resolve(
             set, &NativeIntVec_cmeta_type, &stl_vec_generic_desc, "push",
             one_int, 1u, &resolution),
         CMETA_RECEIVER_RESOLVE_OK);
 
-    set = NativeIntSet_receiver_method_set();
-    check_true(cmeta_receiver_method_set_valid(set));
+    set = NativeIntSet_receiver_operation_set();
+    check_true(cmeta_receiver_operation_set_valid(set));
     check_true(cmeta_generic_desc_equal(set->owner, &stl_set_generic_desc));
-    method = cmeta_receiver_method_find(set, "add");
+    method = cmeta_receiver_operation_find(set, "add");
     check_not_null(method);
-    check_true(method->function == NativeIntSet_add_function());
+    check_true(method->abi->function == NativeIntSet_add_function());
     check_true(method->abi == NativeIntSet_add_function_abi());
     resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
     check_equal(
-        cmeta_receiver_method_resolve(
+        cmeta_receiver_operation_resolve(
             set, &NativeIntSet_cmeta_type, &stl_set_generic_desc, "add",
             one_int, 1u, &resolution),
         CMETA_RECEIVER_RESOLVE_OK);
 
-    set = NativeIntLongMap_receiver_method_set();
-    check_true(cmeta_receiver_method_set_valid(set));
+    set = NativeIntLongMap_receiver_operation_set();
+    check_true(cmeta_receiver_operation_set_valid(set));
     check_true(cmeta_generic_desc_equal(set->owner, &stl_map_generic_desc));
     check_true(cmeta_generic_desc_equal(set->owner, &map_owner));
-    method = cmeta_receiver_method_find(set, "put");
+    method = cmeta_receiver_operation_find(set, "put");
     check_not_null(method);
-    check_true(method->function == NativeIntLongMap_put_function());
+    check_true(method->abi->function == NativeIntLongMap_put_function());
     check_true(method->abi == NativeIntLongMap_put_function_abi());
     resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
     check_equal(
-        cmeta_receiver_method_resolve(
+        cmeta_receiver_operation_resolve(
             set, &NativeIntLongMap_cmeta_type, &map_owner, "put",
             map_args, 2u, &resolution),
         CMETA_RECEIVER_RESOLVE_OK);
 
     resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
     check_equal(
-        cmeta_receiver_method_resolve(
+        cmeta_receiver_operation_resolve(
             set, &NativeIntLongMap_cmeta_type, &stl_vec_generic_desc, "put",
             map_args, 2u, &resolution),
         CMETA_RECEIVER_RESOLVE_OWNER_MISMATCH);
-    check_null(resolution.method);
+    check_null(resolution.operation);
   }
 
   it("round-trips typed Vec<int> through array tokens") {
@@ -637,11 +654,11 @@ spec("DataBind canonical CSTL native containers") {
                 CMETA_OK);
     check_equal(NativeTextRecordVec_init(&source, CONTAINER_MAX_ITEMS), STL_OK);
     check_equal(cmeta_data_buffer_assign(
-                    &salts_tstr_cmeta_data, &first.text,
+                    &cmeta_tstr_cmeta_data, &first.text,
                     (const unsigned char *)"alpha", 5u, 5u),
                 CMETA_OK);
     check_equal(cmeta_data_buffer_assign(
-                    &salts_tstr_cmeta_data, &second.text,
+                    &cmeta_tstr_cmeta_data, &second.text,
                     (const unsigned char *)"beta", 4u, 4u),
                 CMETA_OK);
 

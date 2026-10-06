@@ -260,7 +260,7 @@ static int native_error_field_admitted(
 
   if (strcmp(field->type_name, "string") == 0) {
     if (out_lifecycle_data_symbol != NULL)
-      *out_lifecycle_data_symbol = "salts_tstr_cmeta_data";
+      *out_lifecycle_data_symbol = "cmeta_tstr_cmeta_data";
     return 1;
   }
 

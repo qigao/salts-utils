@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 typedef struct playback_buffer {
-  salts_spsc_ring ring;
+  cmeta_spsc_ring ring;
   uint8_t *storage;
   size_t storage_capacity;
   size_t usable_capacity;

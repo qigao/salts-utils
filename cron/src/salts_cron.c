@@ -42,9 +42,9 @@ struct salts_cron_runner_s {
   salts_cron_expr_t expr;
   salts_cron_callback_t callback;
   void *user_data;
-  salts_mutex_t lock;
-  salts_cond_t cond;
-  salts_thread_t thread;
+  cmeta_mutex_t lock;
+  cmeta_cond_t cond;
+  cmeta_thread_t thread;
   time_t cursor_minute;
   int thread_active;
   int stop_requested;
@@ -1127,7 +1127,7 @@ int salts_cron_runner_advance(salts_cron_runner_t *runner, time_t now) {
 
   current_minute = cron_floor_minute(now);
 
-  salts_mutex_lock(&runner->lock);
+  cmeta_mutex_lock(&runner->lock);
   callback = runner->callback;
   user_data = runner->user_data;
 
@@ -1138,12 +1138,12 @@ int salts_cron_runner_advance(salts_cron_runner_t *runner, time_t now) {
   }
 
   if (current_minute < runner->cursor_minute) {
-    salts_mutex_unlock(&runner->lock);
+    cmeta_mutex_unlock(&runner->lock);
     return 0;
   }
 
   runner->cursor_minute = current_minute;
-  salts_mutex_unlock(&runner->lock);
+  cmeta_mutex_unlock(&runner->lock);
 
   check = start_minute - 60;
   while (1) {
@@ -1171,7 +1171,7 @@ static void salts_cron_runner_thread(void *arg) {
     uint64_t wait_ns;
     int rc;
 
-    salts_mutex_lock(&runner->lock);
+    cmeta_mutex_lock(&runner->lock);
     if (runner->stop_requested) {
       break;
     }
@@ -1188,22 +1188,22 @@ static void salts_cron_runner_thread(void *arg) {
       wait_ns = 1000000ULL;
     }
 
-    rc = salts_cond_timedwait(&runner->cond, &runner->lock, wait_ns);
+    rc = cmeta_cond_timedwait(&runner->cond, &runner->lock, wait_ns);
     if (runner->stop_requested) {
       break;
     }
     if (rc == SALTS_CRON_OK) {
-      salts_mutex_unlock(&runner->lock);
+      cmeta_mutex_unlock(&runner->lock);
       continue;
     }
 
-    salts_mutex_unlock(&runner->lock);
+    cmeta_mutex_unlock(&runner->lock);
     (void)salts_cron_runner_advance(runner, time(NULL));
   }
 
   runner->thread_active = 0;
-  salts_cond_broadcast(&runner->cond);
-  salts_mutex_unlock(&runner->lock);
+  cmeta_cond_broadcast(&runner->cond);
+  cmeta_mutex_unlock(&runner->lock);
 }
 
 salts_cron_runner_t *salts_cron_runner_create(const char *expression,
@@ -1227,8 +1227,8 @@ salts_cron_runner_t *salts_cron_runner_create(const char *expression,
 
   runner->callback = callback;
   runner->user_data = user_data;
-  salts_mutex_init(&runner->lock);
-  salts_cond_init(&runner->cond);
+  cmeta_mutex_init(&runner->lock);
+  cmeta_cond_init(&runner->cond);
   return runner;
 }
 
@@ -1247,22 +1247,22 @@ int salts_cron_runner_start(salts_cron_runner_t *runner) {
     return rc;
   }
 
-  salts_mutex_lock(&runner->lock);
+  cmeta_mutex_lock(&runner->lock);
   if (runner->thread_active) {
-    salts_mutex_unlock(&runner->lock);
+    cmeta_mutex_unlock(&runner->lock);
     return SALTS_CRON_ESTATE;
   }
 
   runner->stop_requested = 0;
   runner->cursor_minute = cron_floor_minute(now);
   runner->thread_active = 1;
-  salts_mutex_unlock(&runner->lock);
+  cmeta_mutex_unlock(&runner->lock);
 
-  rc = salts_thread_create(&runner->thread, salts_cron_runner_thread, runner);
+  rc = cmeta_thread_create(&runner->thread, salts_cron_runner_thread, runner);
   if (rc != 0) {
-    salts_mutex_lock(&runner->lock);
+    cmeta_mutex_lock(&runner->lock);
     runner->thread_active = 0;
-    salts_mutex_unlock(&runner->lock);
+    cmeta_mutex_unlock(&runner->lock);
     return SALTS_CRON_ESTATE;
   }
 
@@ -1274,16 +1274,16 @@ int salts_cron_runner_stop(salts_cron_runner_t *runner) {
     return SALTS_CRON_EINVAL;
   }
 
-  salts_mutex_lock(&runner->lock);
+  cmeta_mutex_lock(&runner->lock);
   if (!runner->thread_active) {
-    salts_mutex_unlock(&runner->lock);
+    cmeta_mutex_unlock(&runner->lock);
     return SALTS_CRON_OK;
   }
   runner->stop_requested = 1;
-  salts_cond_broadcast(&runner->cond);
-  salts_mutex_unlock(&runner->lock);
+  cmeta_cond_broadcast(&runner->cond);
+  cmeta_mutex_unlock(&runner->lock);
 
-  salts_thread_join(&runner->thread);
+  cmeta_thread_join(&runner->thread);
   return SALTS_CRON_OK;
 }
 
@@ -1293,8 +1293,8 @@ void salts_cron_runner_destroy(salts_cron_runner_t *runner) {
   }
 
   salts_cron_runner_stop(runner);
-  salts_cond_destroy(&runner->cond);
-  salts_mutex_destroy(&runner->lock);
+  cmeta_cond_destroy(&runner->cond);
+  cmeta_mutex_destroy(&runner->lock);
   free(runner);
 }
 

@@ -19,7 +19,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <vstr.h>
-#include <salts_uuid.h>
+#include <cmeta_uuid.h>
 #include <stddef.h>
 #include <stdint.h>
 

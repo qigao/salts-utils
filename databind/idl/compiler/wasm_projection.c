@@ -3,7 +3,7 @@
 #include "schema_cmeta.h"
 #include "service_native.h"
 
-#include <salts_fs.h>
+#include <cmeta_fs.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -1034,14 +1034,14 @@ int databind_compiler_wasm_generate(
 cleanup:
   if (!ok) {
     if (request != NULL && request->output != NULL)
-      (void)salts_fs_unlink(request->output);
+      (void)cmeta_fs_unlink(request->output);
     if (config != NULL) {
       if (config->host_header_output != NULL)
-        (void)salts_fs_unlink(config->host_header_output);
+        (void)cmeta_fs_unlink(config->host_header_output);
       if (config->host_source_output != NULL)
-        (void)salts_fs_unlink(config->host_source_output);
+        (void)cmeta_fs_unlink(config->host_source_output);
       if (config->guest_header_output != NULL)
-        (void)salts_fs_unlink(config->guest_header_output);
+        (void)cmeta_fs_unlink(config->guest_header_output);
     }
   }
   wasm_buffer_destroy(&component_binary);

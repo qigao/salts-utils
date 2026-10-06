@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <salts_fs.h>
+#include <cmeta_fs.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,7 +53,7 @@ typedef enum cflow_fs_lifecycle {
 
 typedef struct cflow_fs_dir_buffer {
     /* Entries and names are caller-owned through terminal callback return. */
-    salts_fs_dirent_t *entries;
+    cmeta_fs_dirent_t *entries;
     size_t entry_capacity;
     char *names;
     size_t names_capacity;
@@ -105,10 +105,10 @@ int cflow_fs_service_init(cflow_fs_service *service,
  * @return Exact admission result; rejection does not borrow out.
  */
 cflow_fs_submit_result cflow_fs_try_stat(
-    cflow_fs_service *service, const char *path, salts_fs_stat_t *out);
+    cflow_fs_service *service, const char *path, cmeta_fs_stat_t *out);
 /** Same contract as cflow_fs_try_stat(), without following the final link. */
 cflow_fs_submit_result cflow_fs_try_lstat(
-    cflow_fs_service *service, const char *path, salts_fs_stat_t *out);
+    cflow_fs_service *service, const char *path, cmeta_fs_stat_t *out);
 /**
  * Submit bounded directory enumeration.
  * @param out Caller-owned entries and name arena borrowed through callback.

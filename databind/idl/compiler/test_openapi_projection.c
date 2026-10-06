@@ -3,7 +3,7 @@
 #include "projection.h"
 
 #include "json_parser.h"
-#include "salts_fs.h"
+#include "cmeta_fs.h"
 #include "tinytest.h"
 
 #include <stdlib.h>
@@ -53,7 +53,7 @@ static int generate_openapi(
       DATABIND_COMPILER_OPENAPI_BACKEND;
   int result;
 
-  (void)salts_fs_unlink(output);
+  (void)cmeta_fs_unlink(output);
   if (databind_compiler_parse_contract_file(
           schema_path, &root, &contract, &schema_data) != 0)
     return -2;
@@ -203,7 +203,7 @@ spec("DataBind OpenAPI projection") {
     }
 
     json_free(root);
-    (void)salts_fs_unlink(output);
+    (void)cmeta_fs_unlink(output);
   }
 
   it("fails closed for an optional path parameter") {
@@ -225,7 +225,7 @@ spec("DataBind OpenAPI projection") {
 
     check_equal(
         generate_openapi(OPENAPI_OPTIONAL_PATH_SCHEMA, output, &http), -1);
-    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
   }
 
   it("fails closed when decoded bytes Size cannot be represented losslessly") {
@@ -243,6 +243,6 @@ spec("DataBind OpenAPI projection") {
 
     check_equal(
         generate_openapi(OPENAPI_BYTES_SIZE_SCHEMA, output, &http), -1);
-    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
   }
 }

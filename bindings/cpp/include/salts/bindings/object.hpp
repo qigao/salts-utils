@@ -26,7 +26,7 @@ inline cmeta_status bind_object_ref(
     cmeta_object_ref *out, Borrowed<T> borrowed,
     const cmeta_data_desc *data,
     const cmeta_object_field_provider *field_provider,
-    const cmeta_object_method_provider *method_provider) noexcept {
+    const cmeta_object_operation_provider *method_provider) noexcept {
   static_assert(!std::is_const_v<T>,
                 "CMeta object references require mutable native storage");
   if (out == nullptr || borrowed.object == nullptr || data == nullptr)

@@ -70,7 +70,7 @@ struct DataBindValue {
       uint8_t *ptr;
       size_t len;
     } bytes_val;
-    salts_uuid_t uuid_val;
+    cmeta_uuid_t uuid_val;
     DataBindDateTime datetime_val;
     DataBindDate date_val;
     DataBindTime time_val;

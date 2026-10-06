@@ -2,9 +2,6 @@
 set -euo pipefail
 
 : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
-: "${RUNNER_TEMP:?RUNNER_TEMP is required}"
-: "${GITHUB_ENV:?GITHUB_ENV is required}"
-: "${GITHUB_PATH:?GITHUB_PATH is required}"
 
 salts_rid="${1:?Salts target RID is required}"
 re2c_rid="${2:?re2c host RID is required}"
@@ -13,20 +10,25 @@ case "$with_turbowasm" in
   0|1) ;;
   *) echo "usage: restore-native-sdk.sh <salts-rid> <re2c-rid> [with-turbowasm:0|1]" >&2; exit 1 ;;
 esac
-packages="${QIGAO_NUGET_PACKAGES:-$RUNNER_TEMP/qigao-nuget}"
-config="$RUNNER_TEMP/NuGet.Config"
-project="$RUNNER_TEMP/qigao-native-sdk-restore.csproj"
-
-cat > "$config" <<EOF
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources><clear /></packageSources>
-</configuration>
-EOF
-
-dotnet nuget add source "https://nuget.pkg.github.com/qigao/index.json" \
-  --name github --username qigao --password "$GITHUB_TOKEN" \
-  --store-password-in-clear-text --configfile "$config"
+mode="${4:-ci}"
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+case "$mode" in
+  local)
+    restore_root="$repository_root/build/native-sdk"
+    packages="${QIGAO_NUGET_PACKAGES:-$repository_root/stage/nuget}"
+    ;;
+  ci)
+    : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
+    : "${GITHUB_ENV:?GITHUB_ENV is required}"
+    : "${GITHUB_PATH:?GITHUB_PATH is required}"
+    restore_root="$RUNNER_TEMP"
+    packages="${QIGAO_NUGET_PACKAGES:-$RUNNER_TEMP/qigao-nuget}"
+    ;;
+  *) echo "restore mode must be ci or local" >&2; exit 1 ;;
+esac
+mkdir -p "$restore_root"
+config="$repository_root/cmake/vcpkg-cache.nuget.config"
+project="$restore_root/qigao-native-sdk-restore.csproj"
 
 cat > "$project" <<'EOF'
 <Project Sdk="Microsoft.NET.Sdk">
@@ -35,7 +37,7 @@ cat > "$project" <<'EOF'
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
+    <PackageReference Include="Salts.Native" Version="[2.0.0]" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -56,26 +58,24 @@ else
     --no-cache --force-evaluate
 fi
 
-single_package_dir() {
-  local package_root="$1"
-  local package_name="$2"
-  local found=()
-  while IFS= read -r path; do
-    found+=("$path")
-  done < <(find "$package_root" -mindepth 1 -maxdepth 1 -type d -print)
-  [ "${#found[@]}" -eq 1 ] || {
-    printf 'native SDK restore error: expected exactly one %s package, found %s\n' "$package_name" "${#found[@]}" >&2
-    exit 1
-  }
-  printf '%s\n' "${found[0]}"
+restored_package_dir() {
+  python3 - "$restore_root/obj/project.assets.json" "$packages" "$1" <<'PY'
+import json, pathlib, sys
+assets = json.loads(pathlib.Path(sys.argv[1]).read_text())
+matches = [v['path'] for k, v in assets['libraries'].items()
+           if k.lower().startswith(sys.argv[3].lower() + '/')]
+if len(matches) != 1:
+    raise SystemExit('expected one resolved ' + sys.argv[3] + ' package')
+print(pathlib.Path(sys.argv[2]) / matches[0])
+PY
 }
 
-salts_package="$(single_package_dir "$packages/salts.native" Salts.Native)"
+salts_package="$(restored_package_dir Salts.Native)"
 salts_version="$(basename "$salts_package")"
-re2c_package="$(single_package_dir "$packages/qigao.re2c.binary" Qigao.Re2c.Binary)"
+re2c_package="$(restored_package_dir Qigao.Re2c.Binary)"
 turbowasm_package=""
 if [ "$with_turbowasm" = "1" ]; then
-  turbowasm_package="$(single_package_dir "$packages/turbowasm.native" TurboWasm.Native)"
+  turbowasm_package="$(restored_package_dir TurboWasm.Native)"
 fi
 salts_root="$salts_package/sdk/$salts_rid"
 salts_host_root="$salts_package/sdk/$re2c_rid"
@@ -101,9 +101,25 @@ if [ "$with_turbowasm" = "1" ]; then
   grep -q "TurboWasm::Component" "$turbowasm_root/lib/cmake/TurboWasm/TurboWasmTargets.cmake" ||
     fail "released TurboWasm package does not export TurboWasm::Component"
   turbowasm_version="$(basename "$turbowasm_package")"
-  printf "TURBOWASM_ROOT=%s\n" "$turbowasm_root" >> "$GITHUB_ENV"
-  printf "TURBOWASM_VERSION=%s\n" "$turbowasm_version" >> "$GITHUB_ENV"
+  if [ "$mode" = ci ]; then
+    printf "TURBOWASM_ROOT=%s\n" "$turbowasm_root" >> "$GITHUB_ENV"
+    printf "TURBOWASM_VERSION=%s\n" "$turbowasm_version" >> "$GITHUB_ENV"
+  fi
   printf 'restored TurboWasm.Native %s for %s\n' "$turbowasm_version" "$salts_rid"
+fi
+
+if [ "$mode" = local ]; then
+  {
+    printf 'export SALTS_ROOT=%q\n' "$salts_root"
+    printf 'export SALTS_HOST_ROOT=%q\n' "$salts_host_root"
+    printf 'export RE2C_ROOT=%q\n' "$re2c_root"
+    printf 'export QIGAO_NUGET_PACKAGES=%q\n' "$packages"
+    if [ "$with_turbowasm" = 1 ]; then
+      printf 'export TURBOWASM_ROOT=%q\n' "$turbowasm_root"
+    fi
+  } > "$restore_root/env.sh"
+  printf 'restored Salts.Native %s for %s; source %s/env.sh\n' "$salts_version" "$salts_rid" "$restore_root"
+  exit 0
 fi
 
 printf "SALTS_ROOT=%s\n" "$salts_root" >> "$GITHUB_ENV"

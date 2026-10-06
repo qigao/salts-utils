@@ -2,7 +2,7 @@
 #include "schema_cmeta.h"
 
 #include <cmeta/data.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <string.h>
 
 static const IdlDataDecl TEST_DATA[] = {
@@ -50,7 +50,7 @@ suite("schema_cmeta_fields") {
         field = field_of("uuid", IDL_COLLECTION_NONE);
         check(schema_cmeta_field_resolve(&TEST_CONTRACT, &field, &type));
         check_equal(type.kind, CMETA_DATA_CUSTOM);
-        check(type.data == &salts_uuid_cmeta_data);
+        check(type.data == &cmeta_uuid_cmeta_data);
         check_equal(type.data->kind, CMETA_DATA_STRING);
     }
 

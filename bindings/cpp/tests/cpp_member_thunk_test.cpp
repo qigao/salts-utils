@@ -152,21 +152,19 @@ static const cmeta_function_abi_desc member_preview_abi = {
     2u
 };
 
-static const cmeta_receiver_method member_counter_methods[] = {
+static const cmeta_receiver_operation member_counter_methods[] = {
     {
         "add",
-        &member_add_function,
         &member_add_abi
     },
     {
         "preview",
-        &member_preview_function,
         &member_preview_abi
     }
 };
 
-static const cmeta_receiver_method_set member_counter_method_set = {
-    sizeof(cmeta_receiver_method_set),
+static const cmeta_receiver_operation_set member_counter_method_set = {
+    sizeof(cmeta_receiver_operation_set),
     &member_counter_type,
     member_counter_methods,
     2u,
@@ -308,16 +306,15 @@ static const cmeta_function_abi_desc member_scale_abi = {
     2u
 };
 
-static const cmeta_receiver_method member_scale_methods[] = {
+static const cmeta_receiver_operation member_scale_methods[] = {
     {
         "scale",
-        &member_scale_function,
         &member_scale_abi
     }
 };
 
-static const cmeta_receiver_method_set member_scale_method_set = {
-    sizeof(cmeta_receiver_method_set),
+static const cmeta_receiver_operation_set member_scale_method_set = {
+    sizeof(cmeta_receiver_operation_set),
     &member_virtual_base_type,
     member_scale_methods,
     1u,
@@ -392,7 +389,7 @@ spec("C++ exact member-function thunk") {
     cmeta_invokable invokable{};
 
     check_equal(
-        cmeta_object_method_invokable_bind(
+        cmeta_object_operation_invokable_bind(
             &object, &member_counter_methods[0], &invokable),
         CMETA_OK);
     check_equal(
@@ -407,7 +404,7 @@ spec("C++ exact member-function thunk") {
     result = 0;
     invokable = cmeta_invokable{};
     check_equal(
-        cmeta_object_method_invokable_bind(
+        cmeta_object_operation_invokable_bind(
             &object, &member_counter_methods[1], &invokable),
         CMETA_OK);
     check_equal(
@@ -428,6 +425,32 @@ spec("C++ exact member-function thunk") {
         Salts::member_method<&member_counter::add>(
             &member_counter_methods[0],
             &member_add_projected_data)};
+
+    check_false(provider.valid());
+    check_null(provider.c_provider());
+  }
+
+  it("rejects receiver operations without a canonical ABI") {
+    const cmeta_receiver_operation operation{"add", nullptr};
+    const cmeta_receiver_operation_set operations{
+        sizeof(cmeta_receiver_operation_set), &member_counter_type,
+        &operation, 1u, nullptr};
+    Salts::MemberMethodProvider provider{
+        &operations,
+        Salts::member_method<&member_counter::add>(
+            &operation, &member_add_projected_data)};
+
+    check_false(provider.valid());
+    check_null(provider.c_provider());
+  }
+
+  it("rejects projected effects that disagree with the canonical ABI") {
+    Salts::MemberMethodProvider provider{
+        &member_counter_method_set,
+        Salts::member_method<&member_counter::add>(
+            &member_counter_methods[0], &member_preview_projected_data),
+        Salts::member_method<&member_counter::preview>(
+            &member_counter_methods[1], &member_preview_projected_data)};
 
     check_false(provider.valid());
     check_null(provider.c_provider());
@@ -458,7 +481,7 @@ spec("C++ exact member-function thunk") {
     cmeta_invokable invokable{};
 
     check_equal(
-        cmeta_object_method_invokable_bind(
+        cmeta_object_operation_invokable_bind(
             &object, &member_scale_methods[0], &invokable),
         CMETA_OK);
     check_equal(

@@ -1,8 +1,8 @@
 #include "cmeta_graph_generated.h"
 #include "tinytest.h"
 
-#include <salts_cmeta_data.h>
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta_cmeta_data.h>
+#include <cmeta_cmeta_fixed_width.h>
 
 #include <stddef.h>
 #include <string.h>
@@ -703,7 +703,7 @@ spec("generated native CMeta graph") {
     if (!native_bool) return;
     check_equal(native_bool->kind, CMETA_DATA_BOOL);
     check(cmeta_type_equal(native_bool->storage_type,
-                           &salts_bool8_cmeta_type));
+                           &cmeta_bool8_cmeta_type));
     check_not_null(cmeta_data_fixed_ops_of(native_bool));
     check(!cmeta_type_equal(native_bool->storage_type,
                             cmeta_data_bool.storage_type));
@@ -742,11 +742,11 @@ spec("generated native CMeta graph") {
     check_equal(cmeta_data_fixed_extent(shape->fields[0].value, &fixed_extent),
                 CMETA_OK);
     check_equal(fixed_extent, sizeof(((FixedValues_t *)0)->enabled));
-    check(salts_uuid_cmeta_data_valid(shape->fields[1].value));
+    check(cmeta_uuid_cmeta_data_valid(shape->fields[1].value));
     check_equal(shape->fields[1].value->storage_type->size,
                 sizeof(((FixedValues_t *)0)->id));
     check_equal(shape->fields[1].value->storage_type->align,
-                _Alignof(salts_uuid_t));
+                _Alignof(cmeta_uuid_t));
     check_equal(cmeta_data_fixed_extent(shape->fields[1].value, &fixed_extent),
                 CMETA_OK);
     check_equal(fixed_extent, sizeof(((FixedValues_t *)0)->id));
@@ -1027,10 +1027,10 @@ spec("generated native CMeta graph") {
     if (data) {
       const cmeta_data_struct_shape *shape = data->shape;
       const cmeta_data_desc *uuid = shape->fields[0].value;
-      cmeta_type_desc copied = salts_uuid_cmeta_type;
+      cmeta_type_desc copied = cmeta_uuid_cmeta_type;
       cmeta_type_identity identity = *copied.identity;
       copied.identity = &identity;
-      check(salts_uuid_cmeta_data_valid(uuid));
+      check(cmeta_uuid_cmeta_data_valid(uuid));
       check_equal(uuid->kind, CMETA_DATA_STRING);
       check(cmeta_type_equal(uuid->storage_type, &copied));
       check_equal(uuid->storage_type->size, sizeof(((UuidStorage_t *)0)->value));

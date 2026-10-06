@@ -6,11 +6,13 @@ on:
       - ".github/workflows/native-sdk-release.yml"
       - "cmake/ci/restore-native-sdk.sh"
       - "cmake/ci/restore-native-sdk.ps1"
+      - "cmake/vcpkg-cache.nuget.config"
       - "packaging/nuget/**"
       - "CMakeLists.txt"
       - "CMakeUserPresets.json"
       - "presets/**"
       - "vcpkg.json"
+      - "vcpkg-configuration.json"
       - "crypto/**"
       - "cmake/SaltsUtilsConfig.cmake.in"
       - "databind/CMakeLists.txt"
@@ -28,11 +30,13 @@ on:
       - ".github/workflows/native-sdk-release.yml"
       - "cmake/ci/restore-native-sdk.sh"
       - "cmake/ci/restore-native-sdk.ps1"
+      - "cmake/vcpkg-cache.nuget.config"
       - "packaging/nuget/**"
       - "CMakeLists.txt"
       - "CMakeUserPresets.json"
       - "presets/**"
       - "vcpkg.json"
+      - "vcpkg-configuration.json"
       - "crypto/**"
       - "cmake/SaltsUtilsConfig.cmake.in"
       - "databind/CMakeLists.txt"
@@ -96,7 +100,7 @@ jobs:
           persist-credentials: false
 
       - name: Configure shared vcpkg binary cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
 
@@ -151,7 +155,7 @@ jobs:
           persist-credentials: false
 
       - name: Configure shared vcpkg binary cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
 
@@ -173,7 +177,7 @@ jobs:
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
 
-      - name: Restore latest published native SDKs
+      - name: Restore Salts 2.0 and published native tools
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -270,7 +274,7 @@ jobs:
           persist-credentials: false
 
       - name: Configure shared vcpkg binary cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
 
@@ -292,7 +296,7 @@ jobs:
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
 
-      - name: Restore latest published native SDKs
+      - name: Restore Salts 2.0 and published native tools
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -333,7 +337,7 @@ jobs:
       QIGAO_SDK_RID: linux-x64
     steps:
       - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
       - uses: actions/setup-dotnet@v4
@@ -348,10 +352,10 @@ jobs:
           sudo apt-get install -y ninja-build pkg-config nasm libpipewire-0.3-dev libx11-dev libxext-dev
           test -n "${VCPKG_ROOT:-}"
           test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
-          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
+          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
+          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
 
-      - name: Restore latest published native SDKs
+      - name: Restore Salts 2.0 and published native tools
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -408,7 +412,7 @@ jobs:
       QIGAO_SDK_RID: linux-arm64
     steps:
       - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
       - uses: actions/setup-dotnet@v4
@@ -424,8 +428,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends ninja-build pkg-config
           test -n "${VCPKG_ROOT:-}"
           test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
-          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
+          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
+          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
           case "${VCPKG_BINARY_SOURCES:-}" in
             *nugetconfig*) ;;
             *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
@@ -494,7 +498,7 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
       - uses: actions/setup-dotnet@v4
@@ -508,8 +512,8 @@ jobs:
           brew install nasm ninja
           test -n "${VCPKG_ROOT:-}"
           test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
-          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
+          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
+          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
           case "$RUNNER_ARCH" in
             X64) rid=macos-x64; triplet=x64-osx ;;
             ARM64) rid=macos-arm64; triplet=arm64-osx ;;
@@ -520,7 +524,7 @@ jobs:
           echo "QIGAO_TARGET_TRIPLET=$triplet" >> "$GITHUB_ENV"
           echo "QIGAO_SDK_RID=$rid" >> "$GITHUB_ENV"
 
-      - name: Restore latest published native SDKs
+      - name: Restore Salts 2.0 and published native tools
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -604,7 +608,7 @@ jobs:
           & $ccache.Source --version
           if ($LASTEXITCODE -ne 0) { throw "ccache executable probe failed" }
 
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
 
@@ -628,8 +632,8 @@ jobs:
           if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe") -PathType Leaf)) {
             throw "canonical vcpkg executable is unavailable"
           }
-          if ([string]::IsNullOrWhiteSpace($env:QIGAO_VCPKG_TOOLCHAIN_FILE) -or
-              -not (Test-Path -LiteralPath $env:QIGAO_VCPKG_TOOLCHAIN_FILE -PathType Leaf)) {
+          if ([string]::IsNullOrWhiteSpace($env:VCPKG_CACHE_REPOSITORY_ROOT) -or
+              -not (Test-Path -LiteralPath (Join-Path $env:VCPKG_CACHE_REPOSITORY_ROOT "cmake/QigaoVcpkgToolchain.cmake") -PathType Leaf)) {
             throw "canonical qigao vcpkg toolchain is unavailable"
           }
           if ([string]::IsNullOrWhiteSpace($env:VCPKG_BINARY_SOURCES) -or $env:VCPKG_BINARY_SOURCES -notmatch "nugetconfig") {
@@ -648,7 +652,7 @@ jobs:
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore latest published native SDKs
+      - name: Restore Salts 2.0 and published native tools
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -785,7 +789,7 @@ jobs:
       QIGAO_SDK_RID: android-arm64-v8a
     steps:
       - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
       - uses: actions/setup-dotnet@v4
@@ -799,12 +803,12 @@ jobs:
           sudo apt-get install -y ninja-build pkg-config nasm
           test -n "${VCPKG_ROOT:-}"
           test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
-          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
+          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
+          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
           test -n "${ANDROID_NDK_HOME:-}"
           echo "Python3_EXECUTABLE=$(command -v python3)" >> "$GITHUB_ENV"
 
-      - name: Restore latest published native SDKs
+      - name: Restore Salts 2.0 and published native tools
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -883,7 +887,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
 
@@ -899,8 +903,8 @@ jobs:
           brew install ninja nasm
           test -n "${VCPKG_ROOT:-}"
           test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
-          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
+          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
+          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
 
       - name: Restore latest published Salts SDK and host re2c
         shell: bash
@@ -1119,7 +1123,7 @@ jobs:
       QIGAO_TARGET_TRIPLET: arm64-linux
     steps:
       - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
       - uses: actions/setup-dotnet@v4

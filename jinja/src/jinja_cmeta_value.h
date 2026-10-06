@@ -2,7 +2,7 @@
 #define JINJA_CMETA_VALUE_H
 
 #include "jinja_cmeta_internal.h"
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <stdbool.h>
 
 /* Either a render-local serial or a stable source address and type. Borrowed

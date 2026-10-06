@@ -1,29 +1,25 @@
 param(
   [Parameter(Mandatory=$true)][string]$SaltsRid,
   [Parameter(Mandatory=$true)][string]$Re2cRid,
-  [switch]$WithTurboWasm
+  [switch]$WithTurboWasm,
+  [switch]$Local
 )
 $ErrorActionPreference = "Stop"
 
-foreach ($name in @("GITHUB_TOKEN", "RUNNER_TEMP", "GITHUB_ENV", "GITHUB_PATH")) {
+$requiredEnvironment = @("GITHUB_TOKEN")
+if (-not $Local) { $requiredEnvironment += @("RUNNER_TEMP", "GITHUB_ENV", "GITHUB_PATH") }
+foreach ($name in $requiredEnvironment) {
   if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
     throw "$name is required"
   }
 }
 
-$packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } else { Join-Path $env:RUNNER_TEMP "qigao-nuget" }
-$config = Join-Path $env:RUNNER_TEMP "NuGet.Config"
-$project = Join-Path $env:RUNNER_TEMP "qigao-native-sdk-restore.csproj"
-
-@'
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources><clear /></packageSources>
-</configuration>
-'@ | Set-Content -LiteralPath $config -Encoding utf8NoBOM
-
-dotnet nuget add source "https://nuget.pkg.github.com/qigao/index.json" --name github --username qigao --password $env:GITHUB_TOKEN --store-password-in-clear-text --configfile $config
-if ($LASTEXITCODE -ne 0) { throw "failed to configure GitHub Packages source" }
+$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../.."))
+$restoreRoot = if ($Local) { Join-Path $repositoryRoot "build/native-sdk" } else { $env:RUNNER_TEMP }
+$packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } elseif ($Local) { Join-Path $repositoryRoot "stage/nuget" } else { Join-Path $restoreRoot "qigao-nuget" }
+$config = Join-Path $repositoryRoot "cmake/vcpkg-cache.nuget.config"
+$project = Join-Path $restoreRoot "qigao-native-sdk-restore.csproj"
+New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
 
 @'
 <Project Sdk="Microsoft.NET.Sdk">
@@ -32,7 +28,7 @@ if ($LASTEXITCODE -ne 0) { throw "failed to configure GitHub Packages source" }
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
+    <PackageReference Include="Salts.Native" Version="[2.0.0]" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -42,24 +38,25 @@ if ($LASTEXITCODE -ne 0) { throw "failed to configure GitHub Packages source" }
 $restoreArgs = @($project, "--packages", $packages, "--configfile", $config, "--no-cache", "--force-evaluate")
 if ($WithTurboWasm) { $restoreArgs += "-p:WithTurboWasm=true" }
 dotnet restore @restoreArgs
-if ($LASTEXITCODE -ne 0) { throw "failed to restore latest native SDKs" }
+if ($LASTEXITCODE -ne 0) { throw "failed to restore Salts 2.0.0 and native tools" }
 
-$saltsPackages = @(Get-ChildItem -LiteralPath (Join-Path $packages "salts.native") -Directory)
-if ($saltsPackages.Count -ne 1) { throw "expected exactly one restored Salts.Native package, found $($saltsPackages.Count)" }
-$re2cPackages = @(Get-ChildItem -LiteralPath (Join-Path $packages "qigao.re2c.binary") -Directory)
-if ($re2cPackages.Count -ne 1) { throw "expected exactly one restored Qigao.Re2c.Binary package, found $($re2cPackages.Count)" }
-$turbowasmPackages = @()
-if ($WithTurboWasm) {
-  $turbowasmPackages = @(Get-ChildItem -LiteralPath (Join-Path $packages "turbowasm.native") -Directory)
-  if ($turbowasmPackages.Count -ne 1) { throw "expected exactly one restored TurboWasm.Native package, found $($turbowasmPackages.Count)" }
+$assets = Get-Content -LiteralPath (Join-Path $restoreRoot "obj/project.assets.json") -Raw | ConvertFrom-Json -AsHashtable
+function Get-RestoredPackage([string]$name) {
+  $keys = @($assets.libraries.Keys | Where-Object { $_.StartsWith("$name/", [StringComparison]::OrdinalIgnoreCase) })
+  if ($keys.Count -ne 1) { throw "expected one resolved $name package" }
+  return Join-Path $packages $assets.libraries[$keys[0]].path
 }
 
-$saltsRoot = Join-Path $saltsPackages[0].FullName "sdk\$SaltsRid"
-$re2cRoot = Join-Path $re2cPackages[0].FullName "tools\$Re2cRid"
-$turbowasmRoot = if ($WithTurboWasm) { Join-Path $turbowasmPackages[0].FullName "sdk\$SaltsRid" } else { $null }
+$saltsPackage = Get-RestoredPackage "Salts.Native"
+$saltsRoot = Join-Path $saltsPackage "sdk\$SaltsRid"
+$saltsHostRoot = Join-Path $saltsPackage "sdk\$Re2cRid"
+$re2cRoot = Join-Path (Get-RestoredPackage "Qigao.Re2c.Binary") "tools\$Re2cRid"
+$turbowasmPackage = if ($WithTurboWasm) { Get-RestoredPackage "TurboWasm.Native" } else { $null }
+$turbowasmRoot = if ($WithTurboWasm) { Join-Path $turbowasmPackage "sdk\$SaltsRid" } else { $null }
 $required = @(
   (Join-Path $saltsRoot "lib\cmake\Salts\SaltsConfig.cmake"),
   (Join-Path $saltsRoot "include\cmeta\function.h"),
+  (Join-Path $saltsHostRoot "lib\cmake\Salts\SaltsConfig.cmake"),
   (Join-Path $re2cRoot "bin\re2c.exe"),
   (Join-Path $re2cRoot "share\re2c\stdlib\unicode_categories.re"),
   (Join-Path $re2cRoot "share\re2c\stdlib\unicode_properties.re")
@@ -82,13 +79,25 @@ if ($WithTurboWasm) {
   if (-not (Select-String -LiteralPath (Join-Path $turbowasmRoot "lib\cmake\TurboWasm\TurboWasmTargets.cmake") -SimpleMatch "TurboWasm::Component" -Quiet)) {
     throw "released TurboWasm package does not export TurboWasm::Component"
   }
-  $turbowasmVersion = $turbowasmPackages[0].Name
-  "TURBOWASM_ROOT=$turbowasmRoot" >> $env:GITHUB_ENV
-  "TURBOWASM_VERSION=$turbowasmVersion" >> $env:GITHUB_ENV
+  $turbowasmVersion = Split-Path $turbowasmPackage -Leaf
+  $env:TURBOWASM_ROOT = $turbowasmRoot
+  if (-not $Local) {
+    "TURBOWASM_ROOT=$turbowasmRoot" >> $env:GITHUB_ENV
+    "TURBOWASM_VERSION=$turbowasmVersion" >> $env:GITHUB_ENV
+  }
   Write-Host "restored TurboWasm.Native $turbowasmVersion for $SaltsRid"
 }
 
-"SALTS_ROOT=$saltsRoot" >> $env:GITHUB_ENV
-"RE2C_ROOT=$re2cRoot" >> $env:GITHUB_ENV
-"QIGAO_NUGET_PACKAGES=$packages" >> $env:GITHUB_ENV
-(Join-Path $re2cRoot "bin") >> $env:GITHUB_PATH
+$env:SALTS_ROOT = $saltsRoot
+$env:SALTS_HOST_ROOT = $saltsHostRoot
+$env:RE2C_ROOT = $re2cRoot
+$env:QIGAO_NUGET_PACKAGES = $packages
+if (-not $Local) {
+  "SALTS_ROOT=$saltsRoot" >> $env:GITHUB_ENV
+  "SALTS_HOST_ROOT=$saltsHostRoot" >> $env:GITHUB_ENV
+  "SALTS_VERSION=$(Split-Path $saltsPackage -Leaf)" >> $env:GITHUB_ENV
+  "RE2C_ROOT=$re2cRoot" >> $env:GITHUB_ENV
+  "QIGAO_NUGET_PACKAGES=$packages" >> $env:GITHUB_ENV
+  (Join-Path $re2cRoot "bin") >> $env:GITHUB_PATH
+}
+Write-Host "restored Salts.Native $(Split-Path $saltsPackage -Leaf) for $SaltsRid"

@@ -1,7 +1,7 @@
 #include "plugin_projection.h"
 
 #include "service_native.h"
-#include "salts_fs.h"
+#include "cmeta_fs.h"
 
 #include <salts/plugin.h>
 
@@ -82,7 +82,7 @@ static int plugin_native_ir_valid(
 
   if (out_selected_count != NULL) *out_selected_count = 0u;
 
-  if (!plugin_bounded_text_valid(plugin_id, SALTS_PLUGIN_ID_MAX) ||
+  if (!plugin_bounded_text_valid(plugin_id, CMETA_PLUGIN_ID_MAX) ||
       ir == NULL || ir->operations == NULL)
     return 0;
 
@@ -95,17 +95,17 @@ static int plugin_native_ir_valid(
 
     if (!plugin_bounded_text_valid(
             operation->qualified_service,
-            SALTS_PLUGIN_CONTRACT_ID_MAX) ||
+            CMETA_PLUGIN_CONTRACT_ID_MAX) ||
         !plugin_bounded_text_valid(
             operation->qualified_operation,
-            SALTS_PLUGIN_EXPORT_ID_MAX) ||
+            CMETA_PLUGIN_EXPORT_ID_MAX) ||
         !plugin_text_valid(operation->symbol) ||
         !plugin_text_valid(operation->request_type) ||
         !plugin_text_valid(operation->response_type))
       return 0;
 
     ++selected_count;
-    if (selected_count >= SALTS_PLUGIN_MAX_EXPORTS)
+    if (selected_count >= CMETA_PLUGIN_MAX_EXPORTS)
       return 0;
   }
 
@@ -249,8 +249,8 @@ static char *plugin_suffixed_path(
 
 static void plugin_unlink_if_exists(const char *path) {
   if (path != NULL &&
-      salts_fs_access(path, SALTS_FS_ACCESS_EXISTS) == 0)
-    (void)salts_fs_unlink(path);
+      cmeta_fs_access(path, SALTS_FS_ACCESS_EXISTS) == 0)
+    (void)cmeta_fs_unlink(path);
 }
 
 static FILE *plugin_open_staging(
@@ -305,9 +305,9 @@ static int plugin_prepare_output_backup(
 
   plugin_unlink_if_exists(output->backup_path);
 
-  if (salts_fs_access(
+  if (cmeta_fs_access(
           output->final_path, SALTS_FS_ACCESS_EXISTS) == 0) {
-    if (salts_fs_rename(
+    if (cmeta_fs_rename(
             output->final_path, output->backup_path) != 0)
       return 0;
     output->had_original = 1;
@@ -324,7 +324,7 @@ static void plugin_rollback_output(
     plugin_unlink_if_exists(output->final_path);
 
   if (output->had_original && output->backup_path != NULL)
-    (void)salts_fs_rename(
+    (void)cmeta_fs_rename(
         output->backup_path, output->final_path);
   else if (output->backup_path != NULL)
     plugin_unlink_if_exists(output->backup_path);
@@ -360,7 +360,7 @@ static int plugin_commit_output_set(
       goto rollback;
 
   for (i = 0u; i < output_count; ++i) {
-    if (salts_fs_rename(
+    if (cmeta_fs_rename(
             outputs[i].staging_path,
             outputs[i].final_path) != 0)
       goto rollback;
@@ -401,7 +401,7 @@ static int plugin_write_header(
     return 0;
 
   if (fprintf(file, "#ifndef %s\n#define %s\n\n", guard, guard) < 0 ||
-      fputs("#include \"data_bind.h\"\n#include <salts_cmeta_data.h>\n#include <string.h>\n#include ", file) == EOF ||
+      fputs("#include \"data_bind.h\"\n#include <cmeta_cmeta_data.h>\n#include <string.h>\n#include ", file) == EOF ||
       !plugin_write_c_string(file, config->native_header) ||
       fputs(
           "\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
@@ -465,8 +465,8 @@ static int plugin_write_client_header(
           " * borrowed from that lease. They expire when close succeeds; callers\n"
           " * must not retain or dereference those views after close. */\n"
           "typedef struct %s {\n"
-          "  salts_plugin_registry *registry;\n"
-          "  salts_plugin_lease lease;\n",
+          "  cmeta_plugin_registry *registry;\n"
+          "  cmeta_plugin_lease lease;\n",
           client_symbol) < 0)
     return 0;
 
@@ -474,7 +474,7 @@ static int plugin_write_client_header(
     if (fprintf(
             file,
             "  DataBindPluginOperationBinding %s_operation;\n"
-            "  const salts_plugin_export *%s_export;\n",
+            "  const cmeta_plugin_export *%s_export;\n",
             ir->operations[i].symbol,
             ir->operations[i].symbol) < 0)
       return 0;
@@ -484,10 +484,10 @@ static int plugin_write_client_header(
           "} %s;\n"
           "#define %s {0}\n\n"
           "bool %s_valid(const %s *client);\n"
-          "salts_plugin_status %s_open(\n"
-          "    salts_plugin_registry *registry, salts_plugin_ref ref,\n"
+          "cmeta_plugin_status %s_open(\n"
+          "    cmeta_plugin_registry *registry, cmeta_plugin_ref ref,\n"
           "    %s *out_client);\n"
-          "salts_plugin_status %s_close(%s *client);\n\n",
+          "cmeta_plugin_status %s_close(%s *client);\n\n",
           client_symbol, init_macro,
           client_symbol, client_symbol,
           client_symbol, client_symbol,
@@ -501,7 +501,7 @@ static int plugin_write_client_header(
     if (operation->error_count == 0u) {
       if (fprintf(
               file,
-              "salts_plugin_status %s_plugin_client_call(\n"
+              "cmeta_plugin_status %s_plugin_client_call(\n"
               "    %s *client,\n"
               "    const %s_t *request, %s_t *response,\n"
               "    int *native_status);\n\n",
@@ -513,7 +513,7 @@ static int plugin_write_client_header(
     } else {
       if (fprintf(
               file,
-              "salts_plugin_status %s_plugin_client_call(\n"
+              "cmeta_plugin_status %s_plugin_client_call(\n"
               "    %s *client,\n"
               "    const %s_t *request, %s_t *response,\n"
               "    %s__error *typed_error, int *native_status);\n\n",
@@ -606,7 +606,7 @@ static int plugin_write_client_source(
           file,
           "bool %s_valid(const %s *client) {\n"
           "  return client != NULL && client->registry != NULL &&\n"
-          "         salts_plugin_lease_valid(client->lease)",
+          "         cmeta_plugin_lease_valid(client->lease)",
           client_symbol, client_symbol) < 0)
     return 0;
 
@@ -627,17 +627,17 @@ static int plugin_write_client_source(
    * release leaves the owning handle intact so the caller can retry. */
   if (fprintf(
           file,
-          "static salts_plugin_status %s__release_owned_lease(%s *client) {\n"
-          "  salts_plugin_registry *registry;\n"
-          "  salts_plugin_lease lease;\n"
-          "  salts_plugin_status status;\n"
+          "static cmeta_plugin_status %s__release_owned_lease(%s *client) {\n"
+          "  cmeta_plugin_registry *registry;\n"
+          "  cmeta_plugin_lease lease;\n"
+          "  cmeta_plugin_status status;\n"
           "  if (client == NULL || client->registry == NULL ||\n"
-          "      !salts_plugin_lease_valid(client->lease))\n"
-          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+          "      !cmeta_plugin_lease_valid(client->lease))\n"
+          "    return CMETA_PLUGIN_INVALID_ARGUMENT;\n"
           "  registry = client->registry;\n"
           "  lease = client->lease;\n"
-          "  status = salts_plugin_registry_release(registry, &lease);\n"
-          "  if (status == SALTS_PLUGIN_OK)\n"
+          "  status = cmeta_plugin_registry_release(registry, &lease);\n"
+          "  if (status == CMETA_PLUGIN_OK)\n"
           "    memset(client, 0, sizeof(*client));\n"
           "  return status;\n"
           "}\n\n",
@@ -646,18 +646,18 @@ static int plugin_write_client_source(
 
   if (fprintf(
           file,
-          "salts_plugin_status %s_open(\n"
-          "    salts_plugin_registry *registry, salts_plugin_ref ref,\n"
+          "cmeta_plugin_status %s_open(\n"
+          "    cmeta_plugin_registry *registry, cmeta_plugin_ref ref,\n"
           "    %s *out_client) {\n"
-          "  salts_plugin_status status;\n"
-          "  salts_plugin_status release_status;\n"
-          "  salts_plugin_lease lease = {0};\n"
-          "  const salts_plugin_manifest *manifest = NULL;\n"
-          "  const salts_plugin_export *catalog_entry = NULL;\n"
-          "  const salts_plugin_export *entry = NULL;\n"
+          "  cmeta_plugin_status status;\n"
+          "  cmeta_plugin_status release_status;\n"
+          "  cmeta_plugin_lease lease = {0};\n"
+          "  const cmeta_plugin_manifest *manifest = NULL;\n"
+          "  const cmeta_plugin_export *catalog_entry = NULL;\n"
+          "  const cmeta_plugin_export *entry = NULL;\n"
           "  data_bind_plugin_catalog *catalog = NULL;\n\n"
           "  if (out_client == NULL)\n"
-          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+          "    return CMETA_PLUGIN_INVALID_ARGUMENT;\n"
           "  if (out_client->registry != NULL ||\n"
           "      out_client->lease.plugin.slot != 0u ||\n"
           "      out_client->lease.plugin.generation != 0u ||\n"
@@ -677,20 +677,20 @@ static int plugin_write_client_source(
 
   if (fputs(
           ")\n"
-          "    return SALTS_PLUGIN_ALREADY;\n"
+          "    return CMETA_PLUGIN_ALREADY;\n"
           "  memset(out_client, 0, sizeof(*out_client));\n"
-          "  if (registry == NULL || !salts_plugin_ref_valid(ref))\n"
-          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n\n"
-          "  status = salts_plugin_registry_acquire(\n"
+          "  if (registry == NULL || !cmeta_plugin_ref_valid(ref))\n"
+          "    return CMETA_PLUGIN_INVALID_ARGUMENT;\n\n"
+          "  status = cmeta_plugin_registry_acquire(\n"
           "      registry, ref, &lease, &manifest);\n"
-          "  if (status != SALTS_PLUGIN_OK) return status;\n\n"
+          "  if (status != CMETA_PLUGIN_OK) return status;\n\n"
           "  if (manifest == NULL || manifest->plugin_id == NULL ||\n"
           "      strcmp(manifest->plugin_id, ",
           file) == EOF ||
       !plugin_write_c_string(file, plugin_id) ||
       fputs(
           ") != 0) {\n"
-          "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+          "    status = CMETA_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
           "    goto fail;\n"
           "  }\n\n",
           file) == EOF)
@@ -703,27 +703,27 @@ static int plugin_write_client_source(
 
     if (fputs(
             "  entry = NULL;\n"
-            "  status = salts_plugin_manifest_find_export(\n"
+            "  status = cmeta_plugin_manifest_find_export(\n"
             "      manifest, ",
             file) == EOF ||
         !plugin_write_c_string(file, operation->qualified_operation) ||
         fputs(", &entry);\n"
-              "  if (status != SALTS_PLUGIN_OK) goto fail;\n"
-              "  status = salts_plugin_export_require_function(\n"
+              "  if (status != CMETA_PLUGIN_OK) goto fail;\n"
+              "  status = cmeta_plugin_export_require_function(\n"
               "      entry, ",
               file) == EOF ||
         !plugin_write_c_string(file, operation->qualified_service) ||
         fprintf(
             file,
             ", %uu, 0u);\n"
-            "  if (status != SALTS_PLUGIN_OK) goto fail;\n"
+            "  if (status != CMETA_PLUGIN_OK) goto fail;\n"
             "  if (!cmeta_function_desc_equal(\n"
             "          entry->value.function.desc,\n"
             "          &%s__function_meta) ||\n"
             "      !cmeta_function_abi_desc_equal(\n"
             "          entry->value.function.abi,\n"
             "          &%s__function_abi_meta)) {\n"
-            "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+            "    status = CMETA_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
             "    goto fail;\n"
             "  }\n"
             "  out_client->%s_export = entry;\n\n",
@@ -736,19 +736,19 @@ static int plugin_write_client_source(
 
   /* The same client lease also owns the canonical DataBind catalog graph. */
   if (fputs(
-          "  status = salts_plugin_manifest_find_export(\n"
+          "  status = cmeta_plugin_manifest_find_export(\n"
           "      manifest, DATA_BIND_PLUGIN_CATALOG_EXPORT_ID,\n"
           "      &catalog_entry);\n"
-          "  if (status != SALTS_PLUGIN_OK) goto fail;\n"
-          "  status = salts_plugin_export_require_interface(\n"
+          "  if (status != CMETA_PLUGIN_OK) goto fail;\n"
+          "  status = cmeta_plugin_export_require_interface(\n"
           "      catalog_entry, DATA_BIND_PLUGIN_CATALOG_CONTRACT_ID,\n"
           "      DATA_BIND_PLUGIN_CATALOG_CONTRACT_VERSION, 0u,\n"
           "      data_bind_plugin_catalog_interface());\n"
-          "  if (status != SALTS_PLUGIN_OK) goto fail;\n"
+          "  if (status != CMETA_PLUGIN_OK) goto fail;\n"
           "  catalog = (data_bind_plugin_catalog *)\n"
           "      catalog_entry->value.interface.value;\n"
           "  if (!data_bind_plugin_catalog_valid(catalog)) {\n"
-          "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+          "    status = CMETA_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
           "    goto fail;\n"
           "  }\n\n",
           file) == EOF)
@@ -766,7 +766,7 @@ static int plugin_write_client_source(
         fprintf(
             file,
             ", &out_client->%s_operation) != DATA_BIND_OK) {\n"
-            "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+            "    status = CMETA_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
             "    goto fail;\n"
             "  }\n"
             "  if (!cmeta_function_desc_equal(\n"
@@ -775,7 +775,7 @@ static int plugin_write_client_source(
             "      !cmeta_function_desc_equal(\n"
             "          out_client->%s_operation.function,\n"
             "          out_client->%s_export->value.function.desc)) {\n"
-            "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+            "    status = CMETA_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
             "    goto fail;\n"
             "  }\n\n",
             operation->symbol,
@@ -790,17 +790,17 @@ static int plugin_write_client_source(
           file,
           "  out_client->registry = registry;\n"
           "  out_client->lease = lease;\n"
-          "  return SALTS_PLUGIN_OK;\n\n"
+          "  return CMETA_PLUGIN_OK;\n\n"
           "fail:\n"
           "  memset(out_client, 0, sizeof(*out_client));\n"
           "  out_client->registry = registry;\n"
           "  out_client->lease = lease;\n"
           "  release_status = %s__release_owned_lease(out_client);\n"
-          "  if (release_status != SALTS_PLUGIN_OK)\n"
+          "  if (release_status != CMETA_PLUGIN_OK)\n"
           "    return release_status;\n"
           "  return status;\n"
           "}\n\n"
-          "salts_plugin_status %s_close(%s *client) {\n"
+          "cmeta_plugin_status %s_close(%s *client) {\n"
           "  return %s__release_owned_lease(client);\n"
           "}\n\n",
           client_symbol, client_symbol, client_symbol, client_symbol) < 0)
@@ -813,31 +813,31 @@ static int plugin_write_client_source(
     if (operation->error_count == 0u) {
       if (fprintf(
               file,
-              "salts_plugin_status %s_plugin_client_call(\n"
+              "cmeta_plugin_status %s_plugin_client_call(\n"
               "    %s *client,\n"
               "    const %s_t *request, %s_t *response,\n"
               "    int *native_status) {\n"
-              "  const salts_plugin_export *entry;\n"
+              "  const cmeta_plugin_export *entry;\n"
               "  void *params[2];\n"
               "  int result;\n"
               "  if (client == NULL || request == NULL || response == NULL ||\n"
               "      native_status == NULL)\n"
-              "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+              "    return CMETA_PLUGIN_INVALID_ARGUMENT;\n"
               "  if (client->registry == NULL ||\n"
-              "      !salts_plugin_lease_valid(client->lease))\n"
-              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "      !cmeta_plugin_lease_valid(client->lease))\n"
+              "    return CMETA_PLUGIN_INVALID_STATE;\n"
               "  entry = client->%s_export;\n"
-              "  if (entry == NULL || entry->kind != SALTS_PLUGIN_EXPORT_FUNCTION ||\n"
+              "  if (entry == NULL || entry->kind != CMETA_PLUGIN_EXPORT_FUNCTION ||\n"
               "      entry->value.function.invoke == NULL)\n"
-              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "    return CMETA_PLUGIN_INVALID_STATE;\n"
               "  params[0] = (void *)request;\n"
               "  params[1] = response;\n"
               "  if (!entry->value.function.invoke(\n"
               "          entry->value.function.context, &result,\n"
               "          params, 2u))\n"
-              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "    return CMETA_PLUGIN_INVALID_STATE;\n"
               "  *native_status = result;\n"
-              "  return SALTS_PLUGIN_OK;\n"
+              "  return CMETA_PLUGIN_OK;\n"
               "}\n\n",
               operation->symbol,
               client_symbol,
@@ -848,24 +848,24 @@ static int plugin_write_client_source(
     } else {
       if (fprintf(
               file,
-              "salts_plugin_status %s_plugin_client_call(\n"
+              "cmeta_plugin_status %s_plugin_client_call(\n"
               "    %s *client,\n"
               "    const %s_t *request, %s_t *response,\n"
               "    %s__error *typed_error, int *native_status) {\n"
-              "  const salts_plugin_export *entry;\n"
+              "  const cmeta_plugin_export *entry;\n"
               "  void *params[3];\n"
               "  %s__error local_error = %s__ERROR_INIT;\n"
               "  int result;\n"
               "  if (client == NULL || request == NULL || response == NULL ||\n"
               "      typed_error == NULL || native_status == NULL)\n"
-              "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+              "    return CMETA_PLUGIN_INVALID_ARGUMENT;\n"
               "  if (client->registry == NULL ||\n"
-              "      !salts_plugin_lease_valid(client->lease))\n"
-              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "      !cmeta_plugin_lease_valid(client->lease))\n"
+              "    return CMETA_PLUGIN_INVALID_STATE;\n"
               "  entry = client->%s_export;\n"
-              "  if (entry == NULL || entry->kind != SALTS_PLUGIN_EXPORT_FUNCTION ||\n"
+              "  if (entry == NULL || entry->kind != CMETA_PLUGIN_EXPORT_FUNCTION ||\n"
               "      entry->value.function.invoke == NULL)\n"
-              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "    return CMETA_PLUGIN_INVALID_STATE;\n"
               "  params[0] = (void *)request;\n"
               "  params[1] = response;\n"
               "  %s__error_init(&local_error);\n"
@@ -874,14 +874,14 @@ static int plugin_write_client_source(
               "          entry->value.function.context, &result,\n"
               "          params, 3u)) {\n"
               "    (void)%s__error_clear(&local_error);\n"
-              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "    return CMETA_PLUGIN_INVALID_STATE;\n"
               "  }\n"
               "  if (%s__error_move(typed_error, &local_error) != DATA_BIND_OK) {\n"
               "    (void)%s__error_clear(&local_error);\n"
-              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "    return CMETA_PLUGIN_INVALID_STATE;\n"
               "  }\n"
               "  *native_status = result;\n"
-              "  return SALTS_PLUGIN_OK;\n"
+              "  return CMETA_PLUGIN_OK;\n"
               "}\n\n",
               operation->symbol,
               client_symbol,
@@ -1017,7 +1017,7 @@ static int plugin_write_source(
           "    &databind_plugin_catalog_token,\n"
           "    &databind_generated_service_catalog_vtable\n"
           "};\n\n"
-          "static const salts_plugin_export databind_plugin_exports[] = {\n",
+          "static const cmeta_plugin_export databind_plugin_exports[] = {\n",
           file) == EOF)
     return 0;
 
@@ -1027,8 +1027,8 @@ static int plugin_write_source(
 
     if (fputs(
             "  {\n"
-            "    .struct_size = SALTS_PLUGIN_EXPORT_SIZE,\n"
-            "    .kind = SALTS_PLUGIN_EXPORT_FUNCTION,\n",
+            "    .struct_size = CMETA_PLUGIN_EXPORT_SIZE,\n"
+            "    .kind = CMETA_PLUGIN_EXPORT_FUNCTION,\n",
             file) == EOF ||
         fprintf(
             file,
@@ -1057,8 +1057,8 @@ static int plugin_write_source(
 
   if (fputs(
           "  {\n"
-          "    .struct_size = SALTS_PLUGIN_EXPORT_SIZE,\n"
-          "    .kind = SALTS_PLUGIN_EXPORT_INTERFACE,\n"
+          "    .struct_size = CMETA_PLUGIN_EXPORT_SIZE,\n"
+          "    .kind = CMETA_PLUGIN_EXPORT_INTERFACE,\n"
           "    .contract_version = DATA_BIND_PLUGIN_CATALOG_CONTRACT_VERSION,\n"
           "    .capabilities = 0u,\n"
           "    .export_id = DATA_BIND_PLUGIN_CATALOG_EXPORT_ID,\n"
@@ -1069,9 +1069,9 @@ static int plugin_write_source(
           "    },\n"
           "  },\n"
           "};\n\n"
-          "static const salts_plugin_manifest databind_plugin_manifest = {\n"
-          "  .struct_size = SALTS_PLUGIN_MANIFEST_SIZE,\n"
-          "  .abi_version = SALTS_PLUGIN_ABI_VERSION,\n"
+          "static const cmeta_plugin_manifest databind_plugin_manifest = {\n"
+          "  .struct_size = CMETA_PLUGIN_MANIFEST_SIZE,\n"
+          "  .abi_version = CMETA_PLUGIN_ABI_VERSION,\n"
           "  .plugin_id = ",
           file) == EOF ||
       !plugin_write_c_string(file, plugin_id) ||
@@ -1082,10 +1082,10 @@ static int plugin_write_source(
           "  .exports = databind_plugin_exports,\n"
           "  .export_count = %zuu,\n"
           "};\n\n"
-          "SALTS_PLUGIN_QUERY_EXPORT\n"
-          "const salts_plugin_manifest *SALTS_PLUGIN_CALL\n"
-          "salts_plugin_query(uint32_t host_abi) {\n"
-          "  return host_abi == SALTS_PLUGIN_ABI_VERSION\n"
+          "CMETA_PLUGIN_QUERY_EXPORT\n"
+          "const cmeta_plugin_manifest *CMETA_PLUGIN_CALL\n"
+          "cmeta_plugin_query(uint32_t host_abi) {\n"
+          "  return host_abi == CMETA_PLUGIN_ABI_VERSION\n"
           "             ? &databind_plugin_manifest\n"
           "             : NULL;\n"
           "}\n",

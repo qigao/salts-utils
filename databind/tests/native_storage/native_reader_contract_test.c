@@ -4,7 +4,7 @@
 #include "native_test_alignment.h"
 #include "reader_probe.h"
 #include <cmeta/struct.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tinytest.h>
 #include <limits.h>
 #include <stdint.h>
@@ -64,7 +64,7 @@ static DataBindStatus decode(const cmeta_data_desc *data, void *out, size_t capa
 
 static void check_empty_row(void) {
   check_equal(row.id, 0);
-  check_true(salts_tstr_cmeta_buffer_ops.is_zero(&row.name));
+  check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&row.name));
 }
 
 spec("DataBind direct reader to native contract") {
@@ -82,21 +82,21 @@ spec("DataBind direct reader to native contract") {
     options.max_items = CONTRACT_MAX_ITEMS;
     options.max_owned_bytes = CONTRACT_MAX_OWNED_BYTES;
     row.id = 0;
-    check_equal(cmeta_data_buffer_init_zero(&salts_tstr_cmeta_data, &row.name), CMETA_OK);
-    check_equal(cmeta_data_buffer_init_zero(&salts_tstr_cmeta_data, &text), CMETA_OK);
+    check_equal(cmeta_data_buffer_init_zero(&cmeta_tstr_cmeta_data, &row.name), CMETA_OK);
+    check_equal(cmeta_data_buffer_init_zero(&cmeta_tstr_cmeta_data, &text), CMETA_OK);
     /* Preserve generated offsets; supply the explicit provider type that the
      * generic Struct macro cannot infer for tstr. No alternate type identity. */
     row_layout_fields[0] = StructMeta(ContractRow)->fields[0];
     row_layout_fields[1] = StructMeta(ContractRow)->fields[1];
-    row_layout_fields[1].type = salts_tstr_cmeta_data.storage_type;
+    row_layout_fields[1].type = cmeta_tstr_cmeta_data.storage_type;
     /* Imported Salts metadata is bound at runtime, also on Windows. */
     row_fields[0] = (cmeta_data_field_desc){"row.id", "id", offsetof(ContractRow, id), &cmeta_data_int};
-    row_fields[1] = (cmeta_data_field_desc){"row.name", "name", offsetof(ContractRow, name), &salts_tstr_cmeta_data};
+    row_fields[1] = (cmeta_data_field_desc){"row.name", "name", offsetof(ContractRow, name), &cmeta_tstr_cmeta_data};
     check_true(cmeta_data_desc_valid(&row_data));
   }
   after_each() {
-    salts_tstr_cmeta_buffer_ops.restore_zero(&row.name);
-    salts_tstr_cmeta_buffer_ops.restore_zero(&text);
+    cmeta_tstr_cmeta_buffer_ops.restore_zero(&row.name);
+    cmeta_tstr_cmeta_buffer_ops.restore_zero(&text);
   }
 
   it("consumes two scalar values separately without an extra EOF read") {
@@ -258,9 +258,9 @@ spec("DataBind direct reader to native contract") {
     const NativeReaderProbeStep steps[] = {string_token("four")};
     open_source(steps, 1u);
     options.max_owned_bytes = 3u;
-    check_equal(decode(&salts_tstr_cmeta_data, &text, sizeof(text)), DATA_BIND_ERR_LIMIT);
+    check_equal(decode(&cmeta_tstr_cmeta_data, &text, sizeof(text)), DATA_BIND_ERR_LIMIT);
     check_equal(probe.calls, 1u);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&text));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&text));
   }
 
   it("rejects zero depth budget before any reader consumption") {
@@ -306,7 +306,7 @@ spec("DataBind direct reader to native contract") {
     static const unsigned char bytes[] = {'A', 0u, 'B'};
     const NativeReaderProbeStep steps[] = {
         native_reader_probe_slice(CSERDE_BYTES, bytes, sizeof(bytes), CSERDE_VIEW_TRANSIENT)};
-    cmeta_data_desc data = salts_tstr_cmeta_data;
+    cmeta_data_desc data = cmeta_tstr_cmeta_data;
     cserde_token next = {0};
     data.kind = CMETA_DATA_BYTES;
     open_source(steps, 1u);

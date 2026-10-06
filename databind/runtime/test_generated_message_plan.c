@@ -3,7 +3,7 @@
 #include "../tests/native_storage/reader_probe.h"
 #include "tinytest.h"
 
-#include <salts_thread.h>
+#include <cmeta_thread.h>
 #include <tstr.h>
 
 #include <stdatomic.h>
@@ -42,7 +42,7 @@ typedef struct PrepareWorker {
 
 static void prepare_worker(void *context) {
   PrepareWorker *worker = (PrepareWorker *)context;
-  while (!atomic_load_explicit(worker->start, memory_order_acquire)) salts_thread_yield();
+  while (!atomic_load_explicit(worker->start, memory_order_acquire)) cmeta_thread_yield();
   worker->status = data_bind_message_plan_acquire_generated(
       worker->codec, &COUNTED_ARTIFACT, &worker->plan, NULL);
 }
@@ -131,7 +131,7 @@ spec("Generated codec-owned MessagePlan preparation") {
 
   it("publishes one complete native plan to concurrent cold callers") {
     PrepareWorker workers[PREPARED_TEST_THREADS] = {0};
-    salts_thread_t threads[PREPARED_TEST_THREADS] = {0};
+    cmeta_thread_t threads[PREPARED_TEST_THREADS] = {0};
     atomic_int start = 0;
     size_t created = 0u;
     const DataBindMessagePlan *warm = NULL;
@@ -139,12 +139,12 @@ spec("Generated codec-owned MessagePlan preparation") {
     for (; created < PREPARED_TEST_THREADS; ++created) {
       workers[created].codec = codec;
       workers[created].start = &start;
-      if (salts_thread_create(&threads[created], prepare_worker, &workers[created]) != 0)
+      if (cmeta_thread_create(&threads[created], prepare_worker, &workers[created]) != 0)
         break;
     }
     atomic_store_explicit(&start, 1, memory_order_release);
     for (size_t i = 0u; i < created; ++i)
-      check_equal(salts_thread_join(&threads[i]), 0);
+      check_equal(cmeta_thread_join(&threads[i]), 0);
     check_equal(created, (size_t)PREPARED_TEST_THREADS);
     for (size_t i = 0u; i < created; ++i) {
       check_equal(workers[i].status, DATA_BIND_OK);

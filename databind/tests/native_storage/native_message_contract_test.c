@@ -4,7 +4,7 @@
 #include "native_test_alignment.h"
 
 #include <cmeta/struct.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tinytest.h>
 
 #include <stddef.h>
@@ -132,7 +132,7 @@ cleanup:
 
 spec("DataBind canonical message JSON contract") {
   before_all() {
-    record_fields[MESSAGE_TEXT_INDEX].value = &salts_tstr_cmeta_data;
+    record_fields[MESSAGE_TEXT_INDEX].value = &cmeta_tstr_cmeta_data;
     for (size_t i = 0; i < MESSAGE_FIELD_COUNT; ++i) {
       record_layout_fields[i] = StructMeta(MessageRecord)->fields[i];
       record_layout_fields[i].type = record_fields[i].value->storage_type;
@@ -163,7 +163,7 @@ spec("DataBind canonical message JSON contract") {
   }
   after_each() {
     cmeta_data_value_destroy(&RECORD_DATA, &published);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&published.text));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&published.text));
   }
   after_all() {
     data_bind_format_plan_free(format_plan);
@@ -228,7 +228,7 @@ spec("DataBind canonical message JSON contract") {
     check_equal(data_bind_native_clear(&options, &RECORD_DATA, &published,
                                       sizeof(published), &native), DATA_BIND_OK);
     check_equal(published.id, 0u);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&published.text));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&published.text));
     check_equal(replace_json(RECORD_JSON, sizeof(RECORD_JSON) - 1u), DATA_BIND_OK);
     check_equal(published.id, 7u);
     check_equal(published.text, "mapped");
@@ -248,9 +248,9 @@ spec("DataBind canonical message JSON contract") {
   it("rejects invalid UTF-8 text in JSON without consuming native ownership") {
     static const unsigned char invalid_utf8[] = {0xc3u, 0x28u};
     MessageOutput out = {.capacity = MESSAGE_OUTPUT_BYTES - 1u};
-    check_equal(cmeta_data_buffer_restore_zero(&salts_tstr_cmeta_data,
+    check_equal(cmeta_data_buffer_restore_zero(&cmeta_tstr_cmeta_data,
                                               &published.text), CMETA_OK);
-    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &published.text,
+    check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &published.text,
                                         invalid_utf8, sizeof(invalid_utf8),
                                         MESSAGE_MAX_OWNED_BYTES), CMETA_OK);
     tstr original = published.text;

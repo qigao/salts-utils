@@ -28,7 +28,7 @@ extern "C" {
  */
 static inline int data_bind_plugin_operation_execution_admit(
     const DataBindPluginOperationBinding *operation,
-    const salts_plugin_export *function_export,
+    const cmeta_plugin_export *function_export,
     DataBindNativeExecution *out) {
   const cmeta_function_desc *function;
   const cmeta_function_abi_desc *abi;
@@ -43,15 +43,15 @@ static inline int data_bind_plugin_operation_execution_admit(
 
   if (!data_bind_plugin_operation_binding_valid(operation) ||
       function_export == NULL ||
-      function_export->struct_size != SALTS_PLUGIN_EXPORT_SIZE ||
-      function_export->kind != SALTS_PLUGIN_EXPORT_FUNCTION ||
+      function_export->struct_size != CMETA_PLUGIN_EXPORT_SIZE ||
+      function_export->kind != CMETA_PLUGIN_EXPORT_FUNCTION ||
       function_export->export_id == NULL ||
       strcmp(function_export->export_id, operation->export_id) != 0 ||
-      salts_plugin_export_require_function(
+      cmeta_plugin_export_require_function(
           function_export,
           function_export->contract_id,
           function_export->contract_version,
-          0u) != SALTS_PLUGIN_OK)
+          0u) != CMETA_PLUGIN_OK)
     return 0;
 
   function = function_export->value.function.desc;

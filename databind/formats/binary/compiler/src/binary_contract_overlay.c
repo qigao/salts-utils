@@ -1330,7 +1330,7 @@ static int binary_annotate_field_profile(Node *field, tbe_error_t *error) {
   } else if (strcmp(field_type, "uuid") == 0) {
     if (map_set_string(field, "ctype", "UUID") < 0 ||
         map_set_size(field, "size_bytes", 16u) < 0 ||
-        map_set_string(field, "host_type", "salts_uuid_t") < 0 ||
+        map_set_string(field, "host_type", "cmeta_uuid_t") < 0 ||
         map_set_true(field, "is_uuid") < 0 ||
         map_set_true(field, "is_primitive") < 0 ||
         map_set_true(field, "is_fixed_size") < 0)

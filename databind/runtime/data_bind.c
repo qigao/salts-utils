@@ -30,10 +30,10 @@
 #include <xml_parser/xml_parser.h>
 #include <xml_parser/xml_sax.h>
 #include <query_vm.h>
-#include <salts_fs.h>
+#include <cmeta_fs.h>
 #include <tstr.h>
-#include <salts_thread.h>
-#include <salts_uuid.h>
+#include <cmeta_thread.h>
+#include <cmeta_uuid.h>
 #include <cstl.h>
 #include <cstl/typed.h>
 
@@ -140,16 +140,16 @@ static uintptr_t g_value_pool_closed_slot_storage;
 
 enum value_pool_state { VALUE_POOL_DISABLED = 0, VALUE_POOL_ENABLED };
 
-static salts_mutex_t g_value_pool_control_mutex;
+static cmeta_mutex_t g_value_pool_control_mutex;
 static atomic_int g_value_pool_state = VALUE_POOL_ENABLED;
 static _Atomic uint64_t g_value_pool_ready_mask;
 static atomic_size_t g_value_pool_allocated_count;
 static atomic_size_t g_value_pool_reused_count;
-static salts_once_t g_value_pool_once = SALTS_ONCE_INIT;
+static cmeta_once_t g_value_pool_once = SALTS_ONCE_INIT;
 static SALTS_THREAD_LOCAL size_t g_value_pool_take_cursor;
 static SALTS_THREAD_LOCAL size_t g_value_pool_put_cursor;
 
-static void value_pool_init_once(void) { salts_mutex_init(&g_value_pool_control_mutex); }
+static void value_pool_init_once(void) { cmeta_mutex_init(&g_value_pool_control_mutex); }
 
 static int value_pool_is_enabled(void) {
   return atomic_load_explicit(&g_value_pool_state, memory_order_acquire) == VALUE_POOL_ENABLED;
@@ -246,7 +246,7 @@ struct DataBind {
   IdlContract *contract;
   Node *schema_root; /* Binary format overlay/render tree; Contract owns semantics. */
   uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
-  salts_mutex_t prepared_mutex;
+  cmeta_mutex_t prepared_mutex;
   db_prepared_message_plan_vec_t prepared_messages;
   size_t prepared_message_count;
   size_t prepared_field_count;
@@ -453,8 +453,8 @@ static const type_meta_t *find_type_meta(const char *type) {
   size_t i;
   if (info == NULL) return NULL;
   if (!atomic_load_explicit(&g_type_metas_ready, memory_order_acquire)) {
-    salts_once(&g_value_pool_once, value_pool_init_once);
-    salts_mutex_lock(&g_value_pool_control_mutex);
+    cmeta_once(&g_value_pool_once, value_pool_init_once);
+    cmeta_mutex_lock(&g_value_pool_control_mutex);
     if (!atomic_load_explicit(&g_type_metas_ready, memory_order_relaxed)) {
       for (i = 0; i < TYPE_META_COUNT; ++i) {
         const databind_binary_scalar_profile_t *src = &DATABIND_BINARY_SCALAR_PROFILES[i];
@@ -467,7 +467,7 @@ static const type_meta_t *find_type_meta(const char *type) {
       }
       atomic_store_explicit(&g_type_metas_ready, 1, memory_order_release);
     }
-    salts_mutex_unlock(&g_value_pool_control_mutex);
+    cmeta_mutex_unlock(&g_value_pool_control_mutex);
   }
   index = (size_t)(info - DATABIND_BINARY_SCALAR_PROFILES);
   return &g_type_metas[index];
@@ -1542,8 +1542,8 @@ static DataBindValue *dbv_uuid_bytes(const uint8_t *data) {
 }
 
 static DataBindValue *dbv_uuid_text(const char *text) {
-  salts_uuid_t uuid;
-  if (text == NULL || salts_uuid_parse(text, &uuid) != SALTS_OK) return NULL;
+  cmeta_uuid_t uuid;
+  if (text == NULL || cmeta_uuid_parse(text, &uuid) != SALTS_OK) return NULL;
   return dbv_uuid_bytes(uuid.bytes);
 }
 
@@ -5708,7 +5708,7 @@ static DataBindStatus data_bind_create_from_root(
     return db_error_set(error, status, NULL, -1, -1,
                         "Could not initialize codec MessagePlan storage");
   }
-  salts_mutex_init(&codec->prepared_mutex);
+  cmeta_mutex_init(&codec->prepared_mutex);
   if (codec->prepared_mutex == NULL) {
     db_prepared_message_plan_vec_t_destroy(&codec->prepared_messages);
     node_free(schema_root);
@@ -5726,7 +5726,7 @@ static DataBindStatus data_bind_create_from_root(
 DataBindStatus data_bind_create(
     const char *schema_path, DataBind **out_codec,
     DataBindError *error) {
-  salts_fs_buf_t schema = {NULL, 0};
+  cmeta_fs_buf_t schema = {NULL, 0};
   Node *schema_root;
   IdlContract *contract = NULL;
   DataBindStatus status;
@@ -5737,7 +5737,7 @@ DataBindStatus data_bind_create(
         error, DATA_BIND_ERR_INVALID_ARG, schema_path, -1, -1,
         "Invalid codec create arguments");
 
-  if (salts_fs_read_file(schema_path, &schema) != 0)
+  if (cmeta_fs_read_file(schema_path, &schema) != 0)
     return db_error_set(
         error, DATA_BIND_ERR_IO, schema_path, -1, -1,
         "Cannot read schema: %s", schema_path);
@@ -5745,7 +5745,7 @@ DataBindStatus data_bind_create(
   schema_root = parse_schema_text_to_root(
       schema.base, schema.len, schema_path, NULL, 0, error);
   if (schema_root == NULL) {
-    salts_fs_buf_free(&schema);
+    cmeta_fs_buf_free(&schema);
     return db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
   }
 
@@ -5753,13 +5753,13 @@ DataBindStatus data_bind_create(
       schema.base, schema.len, schema_path, &contract, error);
   if (status != DATA_BIND_OK) {
     node_free(schema_root);
-    salts_fs_buf_free(&schema);
+    cmeta_fs_buf_free(&schema);
     return status;
   }
 
   status = data_bind_create_from_root(
       schema_root, contract, out_codec, error);
-  salts_fs_buf_free(&schema);
+  cmeta_fs_buf_free(&schema);
   return status;
 }
 
@@ -5799,7 +5799,7 @@ void data_bind_free(DataBind *codec) {
     data_bind_message_plan_free(
         db_prepared_message_plan_vec_t_at(&codec->prepared_messages, i)->plan);
   db_prepared_message_plan_vec_t_destroy(&codec->prepared_messages);
-  salts_mutex_destroy(&codec->prepared_mutex);
+  cmeta_mutex_destroy(&codec->prepared_mutex);
   node_free(codec->schema_root);
   idl_contract_destroy(codec->contract);
   free(codec);
@@ -5838,13 +5838,13 @@ DataBindStatus data_bind_message_plan_acquire_generated(
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
                         "Invalid generated MessagePlan artifact");
 
-  salts_mutex_lock(&codec->prepared_mutex);
+  cmeta_mutex_lock(&codec->prepared_mutex);
   existing = db_prepared_message_find_locked(codec, artifact);
   reserve_table = db_prepared_message_plan_vec_t_capacity(&codec->prepared_messages) == 0u;
   status = codec->prepared_message_count >=
                DATA_BIND_MESSAGE_PLAN_MAX_PREPARED ?
                DATA_BIND_ERR_LIMIT : DATA_BIND_OK;
-  salts_mutex_unlock(&codec->prepared_mutex);
+  cmeta_mutex_unlock(&codec->prepared_mutex);
   if (existing != NULL) {
     *out_plan = existing;
     return DATA_BIND_OK;
@@ -5889,7 +5889,7 @@ DataBindStatus data_bind_message_plan_acquire_generated(
     }
   }
 
-  salts_mutex_lock(&codec->prepared_mutex);
+  cmeta_mutex_lock(&codec->prepared_mutex);
   existing = db_prepared_message_find_locked(codec, artifact);
   if (existing != NULL) {
     *out_plan = existing;
@@ -5913,7 +5913,7 @@ DataBindStatus data_bind_message_plan_acquire_generated(
     *out_plan = plan;
     plan = NULL;
   }
-  salts_mutex_unlock(&codec->prepared_mutex);
+  cmeta_mutex_unlock(&codec->prepared_mutex);
 
 cleanup:
   data_bind_message_plan_free(plan);
@@ -5928,8 +5928,8 @@ void data_bind_set_value_pool_enabled(int enabled) {
   DataBindValue *nodes[VALUE_POOL_SIZE];
   size_t node_count = 0;
   size_t i;
-  salts_once(&g_value_pool_once, value_pool_init_once);
-  salts_mutex_lock(&g_value_pool_control_mutex);
+  cmeta_once(&g_value_pool_once, value_pool_init_once);
+  cmeta_mutex_lock(&g_value_pool_control_mutex);
 
   if (enabled) {
     int state = atomic_load_explicit(&g_value_pool_state, memory_order_relaxed);
@@ -5951,7 +5951,7 @@ void data_bind_set_value_pool_enabled(int enabled) {
     }
     atomic_store_explicit(&g_value_pool_ready_mask, 0, memory_order_relaxed);
   }
-  salts_mutex_unlock(&g_value_pool_control_mutex);
+  cmeta_mutex_unlock(&g_value_pool_control_mutex);
 
   for (i = 0; i < node_count; ++i)
     free(nodes[i]);
@@ -8409,7 +8409,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
   data_bind_stream_t *parser = (data_bind_stream_t *)stream;
   DataBindError *error = parser ? parser->error : NULL;
   char *chunk = NULL;
-  salts_file_t fd;
+  cmeta_file_t fd;
   DataBindStatus status;
   int close_rc;
 
@@ -8417,7 +8417,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_feed_file", -1, -1,
                         "Invalid stream file feed arguments");
   }
-  fd = salts_fs_open(file_path, SALTS_FS_O_RDONLY, 0);
+  fd = cmeta_fs_open(file_path, SALTS_FS_O_RDONLY, 0);
   if (fd == SALTS_INVALID_FILE) {
     return db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                         "Failed to open stream input file");
@@ -8425,14 +8425,14 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
 
   chunk = (char *)malloc(DATA_BIND_FILE_STREAM_CHUNK_SIZE);
   if (chunk == NULL) {
-    salts_fs_close(fd);
+    cmeta_fs_close(fd);
     return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed_file", -1, -1,
                         "Out of memory allocating stream file chunk");
   }
 
   status = DATA_BIND_OK;
   for (;;) {
-    int nread = salts_fs_read(fd, chunk, DATA_BIND_FILE_STREAM_CHUNK_SIZE);
+    int nread = cmeta_fs_read(fd, chunk, DATA_BIND_FILE_STREAM_CHUNK_SIZE);
     if (nread < 0) {
       status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                             "Failed to read stream input file");
@@ -8444,7 +8444,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
   }
 
   free(chunk);
-  close_rc = salts_fs_close(fd);
+  close_rc = cmeta_fs_close(fd);
   if (status == DATA_BIND_OK && close_rc != 0) {
     status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                           "Failed to close stream input file");
@@ -10229,7 +10229,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
                                       value->data.bytes_val.len);
     break;
   case DATA_BIND_VALUE_UUID:
-    if (salts_uuid_format(&value->data.uuid_val, text, sizeof(text)) != SALTS_OK) {
+    if (cmeta_uuid_format(&value->data.uuid_val, text, sizeof(text)) != SALTS_OK) {
       *status = DATA_BIND_ERR_RUNTIME;
       return NULL;
     }
@@ -10450,7 +10450,7 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
   case DATA_BIND_VALUE_BOOL:
     return snprintf(text, size, "%s", value->data.bool_val ? "true" : "false") > 0;
   case DATA_BIND_VALUE_UUID:
-    return salts_uuid_format(&value->data.uuid_val, text, size) == SALTS_OK;
+    return cmeta_uuid_format(&value->data.uuid_val, text, size) == SALTS_OK;
   case DATA_BIND_VALUE_DATETIME:
     return data_bind_temporal_format_rfc822(
                &value->data.datetime_val, text, size) == DATA_BIND_OK;
@@ -11189,7 +11189,7 @@ const char *data_bind_value_as_uuid_string(const DataBindValue *value, char *out
   if (value == NULL || value->kind != DATA_BIND_VALUE_UUID || out == NULL ||
       len < SALTS_UUID_STRING_SIZE)
     return NULL;
-  return salts_uuid_format(&value->data.uuid_val, out, len) == SALTS_OK ? out : NULL;
+  return cmeta_uuid_format(&value->data.uuid_val, out, len) == SALTS_OK ? out : NULL;
 }
 
 int data_bind_value_as_datetime(const DataBindValue *value, DataBindDateTime *out) {

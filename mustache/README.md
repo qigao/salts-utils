@@ -190,7 +190,7 @@ rolled back.
 Use a `mem_pool_t` when the rendered bytes should share an arena lifetime:
 
 ```c
-#include "salts_buffer.h"
+#include "cmeta_buffer.h"
 
 mem_pool_t pool = {0};
 MUSTACHE_STRING_RENDERER_ARENA renderer = {0};

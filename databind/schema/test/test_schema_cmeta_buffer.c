@@ -2,7 +2,7 @@
 #include "schema_cmeta.h"
 #include "../src/schema_cmeta_buffer.h"
 
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 
 #include <stddef.h>
 #include <string.h>
@@ -37,28 +37,28 @@ suite("schema_cmeta_buffer") {
         cmeta_data_desc owned = {0};
         cmeta_data_desc borrowed = {0};
         build_buffer(&owned, &buffer_cases[i], &owned_shape,
-                     &salts_tstr_cmeta_buffer_ops);
+                     &cmeta_tstr_cmeta_buffer_ops);
         build_buffer(&borrowed, &buffer_cases[i], &borrowed_shape,
-                     &salts_vstr_cmeta_buffer_ops);
+                     &cmeta_vstr_cmeta_buffer_ops);
         check_true(cmeta_data_desc_valid(&owned));
         check_true(cmeta_data_desc_valid(&borrowed));
         check_equal(owned.kind, buffer_cases[i].kind);
         check_equal(borrowed.kind, buffer_cases[i].kind);
-        check_true(owned.storage_type == &salts_tstr_cmeta_type);
-        check_true(borrowed.storage_type == &salts_vstr_cmeta_type);
+        check_true(owned.storage_type == &cmeta_tstr_cmeta_type);
+        check_true(borrowed.storage_type == &cmeta_vstr_cmeta_type);
         check_true(owned.shape == &owned_shape);
         check_true(borrowed.shape == &borrowed_shape);
-        check_true(cmeta_data_buffer_ops_of(&owned) == &salts_tstr_cmeta_buffer_ops);
-        check_true(cmeta_data_buffer_ops_of(&borrowed) == &salts_vstr_cmeta_buffer_ops);
+        check_true(cmeta_data_buffer_ops_of(&owned) == &cmeta_tstr_cmeta_buffer_ops);
+        check_true(cmeta_data_buffer_ops_of(&borrowed) == &cmeta_vstr_cmeta_buffer_ops);
       }
       check_null(schema_cmeta_builtin_data("string"));
       check_null(schema_cmeta_builtin_data("bytes"));
     }
 
     it("accepts storage metadata copies by CMeta semantic identity") {
-      cmeta_type_identity identity = *salts_tstr_cmeta_type.identity;
-      cmeta_type_desc storage = salts_tstr_cmeta_type;
-      cmeta_data_buffer_ops ops = salts_tstr_cmeta_buffer_ops;
+      cmeta_type_identity identity = *cmeta_tstr_cmeta_type.identity;
+      cmeta_type_desc storage = cmeta_tstr_cmeta_type;
+      cmeta_data_buffer_ops ops = cmeta_tstr_cmeta_buffer_ops;
       cmeta_data_desc data = {0};
       const unsigned char input[] = {'a', 0, 'b'};
       tstr out = NULL;
@@ -66,7 +66,7 @@ suite("schema_cmeta_buffer") {
       ops.storage_type = &storage;
 
       check_true(schema_cmeta_buffer_data(&data, "test.schema.copy", "copy",
-          CMETA_DATA_BYTES, &salts_tstr_cmeta_type, &owned_shape, &ops));
+          CMETA_DATA_BYTES, &cmeta_tstr_cmeta_type, &owned_shape, &ops));
       check_true(cmeta_type_identity_equal(data.storage_type->identity, &identity));
       check_equal(cmeta_data_buffer_assign(&data, &out, input, sizeof(input),
                                            sizeof(input)), CMETA_OK);
@@ -85,8 +85,8 @@ suite("schema_cmeta_buffer") {
       };
       cmeta_data_desc out = sentinel;
       unsigned char original[sizeof(out)];
-      cmeta_data_buffer_ops incomplete = salts_tstr_cmeta_buffer_ops;
-      cmeta_data_buffer_ops custom = salts_tstr_cmeta_buffer_ops;
+      cmeta_data_buffer_ops incomplete = cmeta_tstr_cmeta_buffer_ops;
+      cmeta_data_buffer_ops custom = cmeta_tstr_cmeta_buffer_ops;
       const cmeta_data_buffer_shape custom_shape = {CMETA_DATA_BUFFER_CUSTOM};
       struct InvalidCase {
         const char *id;
@@ -97,23 +97,23 @@ suite("schema_cmeta_buffer") {
         const cmeta_data_buffer_ops *ops;
       };
       const struct InvalidCase cases[] = {
-        {NULL, "buffer", CMETA_DATA_STRING, &salts_tstr_cmeta_type,
-         &owned_shape, &salts_tstr_cmeta_buffer_ops},
-        {"id", "", CMETA_DATA_BYTES, &salts_tstr_cmeta_type,
-         &owned_shape, &salts_tstr_cmeta_buffer_ops},
-        {"id", "buffer", CMETA_DATA_SINT, &salts_tstr_cmeta_type,
-         &owned_shape, &salts_tstr_cmeta_buffer_ops},
+        {NULL, "buffer", CMETA_DATA_STRING, &cmeta_tstr_cmeta_type,
+         &owned_shape, &cmeta_tstr_cmeta_buffer_ops},
+        {"id", "", CMETA_DATA_BYTES, &cmeta_tstr_cmeta_type,
+         &owned_shape, &cmeta_tstr_cmeta_buffer_ops},
+        {"id", "buffer", CMETA_DATA_SINT, &cmeta_tstr_cmeta_type,
+         &owned_shape, &cmeta_tstr_cmeta_buffer_ops},
         {"id", "buffer", CMETA_DATA_STRING, &cmeta_type_int,
-         &owned_shape, &salts_tstr_cmeta_buffer_ops},
-        {"id", "buffer", CMETA_DATA_BYTES, &salts_tstr_cmeta_type,
-         &borrowed_shape, &salts_tstr_cmeta_buffer_ops},
-        {"id", "buffer", CMETA_DATA_STRING, &salts_tstr_cmeta_type,
-         NULL, &salts_tstr_cmeta_buffer_ops},
-        {"id", "buffer", CMETA_DATA_BYTES, &salts_tstr_cmeta_type,
+         &owned_shape, &cmeta_tstr_cmeta_buffer_ops},
+        {"id", "buffer", CMETA_DATA_BYTES, &cmeta_tstr_cmeta_type,
+         &borrowed_shape, &cmeta_tstr_cmeta_buffer_ops},
+        {"id", "buffer", CMETA_DATA_STRING, &cmeta_tstr_cmeta_type,
+         NULL, &cmeta_tstr_cmeta_buffer_ops},
+        {"id", "buffer", CMETA_DATA_BYTES, &cmeta_tstr_cmeta_type,
          &owned_shape, NULL},
-        {"id", "buffer", CMETA_DATA_BYTES, &salts_tstr_cmeta_type,
+        {"id", "buffer", CMETA_DATA_BYTES, &cmeta_tstr_cmeta_type,
          &owned_shape, &incomplete},
-        {"id", "buffer", CMETA_DATA_BYTES, &salts_tstr_cmeta_type,
+        {"id", "buffer", CMETA_DATA_BYTES, &cmeta_tstr_cmeta_type,
          &custom_shape, &custom}
       };
       size_t i;
@@ -126,7 +126,7 @@ suite("schema_cmeta_buffer") {
         check_true(memcmp(&out, original, sizeof(out)) == 0);
       }
       check_false(schema_cmeta_buffer_data(NULL, "id", "buffer", CMETA_DATA_BYTES,
-          &salts_tstr_cmeta_type, &owned_shape, &salts_tstr_cmeta_buffer_ops));
+          &cmeta_tstr_cmeta_type, &owned_shape, &cmeta_tstr_cmeta_buffer_ops));
     }
   }
 }

@@ -3,7 +3,7 @@
 #include <data_bind_format_provider.h>
 #include <data_bind_projection_plan.h>
 #include <data_bind_xml_writer.h>
-#include <salts_uuid.h>
+#include <cmeta_uuid.h>
 #include <data_bind_binary_wire.h>
 
 #include <stdint.h>
@@ -19,7 +19,7 @@ int main(void) {
       "message Response { uint32 value; }"
       "service Store { Read: Request -> Response; }";
   uint8_t storage[4] = {0};
-  salts_uuid_t uuid = {{0}};
+  cmeta_uuid_t uuid = {{0}};
   DataBind *codec = NULL;
   DataBindFormatPlan *format = NULL;
   DataBindFormatPlanInfo info = DATA_BIND_FORMAT_PLAN_INFO_INIT;

@@ -3,7 +3,7 @@
 
 #include "json_parser.h"
 #include "toonc.h"
-#include <salts_error.h>
+#include <cmeta_error.h>
 
 #ifdef __cplusplus
 extern "C" {
