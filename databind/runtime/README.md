@@ -43,7 +43,7 @@ entry，仅在 ARRAY_END 提交 count，在整条消息完成后发布一次。G
 覆盖嵌套 owner 的独立复制、释放、重复 clear、状态位复位和解码中途超限后的清理。
 native storage 测试也直接使用 canonical native API，验证平台原生标量身份、
 受管 string/bytes，以及 provider 定义的非全零 semantic zero 和恰好一次释放。
-当前最低 Salts 版本为 v1.8.25。固定字节使用完整 CMeta exact fixed/buffer-v2 provider，精确长度赋值、借用读取、
+当前最低 Salts 版本为 v1.8.26。容器声明与生成代码直接使用 `cmeta_type(...)`；旧 `typed(...)` 入口不再受支持。固定字节使用完整 CMeta exact fixed/buffer-v2 provider，精确长度赋值、借用读取、
 独立 copy、清零源对象的无分配 move 与幂等 restore 共享同一 inline 存储。
 Binary FIXED BYTES 的 `scalar_bits` 为零，`wire_extent` 是唯一 wire 长度事实源；
 不添加长度前缀、不做端序转换。reader 借用完整 wire span 到 close，writer 在

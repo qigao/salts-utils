@@ -239,7 +239,7 @@ static const cmeta_type_desc DB_PREPARED_MESSAGE_PLAN_TYPE = {
     "salts-utils.databind.prepared-message-plan", sizeof(db_prepared_message_plan_t),
     _Alignof(db_prepared_message_plan_t), CMETA_T_OBJECT, NULL,
     &DB_PREPARED_MESSAGE_PLAN_TRAITS, NULL};
-typed(Vec, db_prepared_message_plan_vec_t, db_prepared_message_plan_t,
+cmeta_type(Vec, db_prepared_message_plan_vec_t, db_prepared_message_plan_t,
       &DB_PREPARED_MESSAGE_PLAN_TYPE, NULL);
 
 struct DataBind {
@@ -9902,7 +9902,7 @@ static DataBindStatus db_binary_execution_plan(
                         "Invalid Binary execution plan arguments");
   if (idl_contract_find_data(codec->contract, type_name) == NULL)
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name, -1, -1,
-                        "Binary root type was not found");
+                        "Binary root type was not found: %s", type_name);
   if (!databind_binary_format_plan_build_root(
           codec->contract, codec->schema_root, type_name, &format, &format_error)) {
     status = db_error_set(error,
@@ -10613,7 +10613,7 @@ static const cmeta_type_desc DATA_BIND_CSV_CELL_TYPE = {
     "salts-utils.databind.csv-cell", sizeof(data_bind_csv_cell_t),
     _Alignof(data_bind_csv_cell_t), CMETA_T_OBJECT, NULL,
     &DATA_BIND_CSV_CELL_TRAITS, NULL};
-typed(Vec, data_bind_csv_cell_vec_t, data_bind_csv_cell_t,
+cmeta_type(Vec, data_bind_csv_cell_vec_t, data_bind_csv_cell_t,
       &DATA_BIND_CSV_CELL_TYPE, NULL);
 
 static void data_bind_csv_cells_destroy(data_bind_csv_cell_vec_t *cells) {

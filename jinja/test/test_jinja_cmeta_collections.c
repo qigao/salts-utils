@@ -2,13 +2,13 @@
 
 #include <cstl/typed.h>
 
-typed(Vec, JinjaCanonicalVec, int);
-typed(Deque, JinjaCanonicalDeque, int);
-typed(List, JinjaCanonicalList, int);
-typed(Set, JinjaCanonicalSet, int);
-typed(HashSet, JinjaCanonicalHashSet, int);
-typed(Map, JinjaCanonicalMap, int, int);
-typed(MultiMap, JinjaCanonicalMultiMap, int, int);
+cmeta_type(Vec, JinjaCanonicalVec, int);
+cmeta_type(Deque, JinjaCanonicalDeque, int);
+cmeta_type(List, JinjaCanonicalList, int);
+cmeta_type(Set, JinjaCanonicalSet, int);
+cmeta_type(HashSet, JinjaCanonicalHashSet, int);
+cmeta_type(Map, JinjaCanonicalMap, int, int);
+cmeta_type(MultiMap, JinjaCanonicalMultiMap, int, int);
 
 typedef struct JinjaCanonicalRoot {
   cmeta_data_collection_view view;

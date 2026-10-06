@@ -80,8 +80,8 @@ foreach(case IN LISTS container_gate_names)
 endforeach()
 
 # Canonical profiles, including DataBind optional/nullable overlays, must still
-# generate successfully and must not carry any historical container-provider
-# implementation into the public header or generated source.
+# generate successfully. Generated providers are compiled and exercised by the
+# generated CMeta public and native collection tests.
 set(canonical_schema
   "message Canonical { list<uint32> values; set<string> tags; map<string,uint32> attrs; optional list<uint32> maybe_values; nullable set<string> maybe_tags; optional nullable map<string,uint32> maybe_attrs; }")
 file(WRITE "${WORK_DIR}/canonical_containers.schema" "${canonical_schema}")
@@ -96,27 +96,5 @@ if(NOT canonical_result EQUAL 0)
   message(FATAL_ERROR
     "canonical containers failed generation: ${canonical_diagnostic}")
 endif()
-file(READ "${WORK_DIR}/canonical_containers.h" canonical_header)
-file(READ "${WORK_DIR}/canonical_containers.c" canonical_source)
-foreach(required "typed(Vec" "typed(Set" "typed(Map")
-  string(FIND "${canonical_header}" "${required}" required_index)
-  if(required_index EQUAL -1)
-    message(FATAL_ERROR
-      "canonical generated header is missing ${required}")
-  endif()
-endforeach()
-foreach(forbidden
-    "DATABIND_GENERATED_SEQUENCE_PROVIDER"
-    "DATABIND_GENERATED_MAP_PROVIDER"
-    "databindCmetaSequence"
-    "databindCmetaMap")
-  string(FIND "${canonical_header}" "${forbidden}" header_index)
-  string(FIND "${canonical_source}" "${forbidden}" source_index)
-  if(NOT header_index EQUAL -1 OR NOT source_index EQUAL -1)
-    message(FATAL_ERROR
-      "canonical generated C still contains legacy provider marker ${forbidden}")
-  endif()
-endforeach()
-
 message(STATUS
-  "CMeta CLI gates: 9 semantic schemas + 4 legacy container profiles rejected; canonical CSTL container output clean")
+  "CMeta CLI gates: 9 semantic schemas + 4 unsupported container profiles rejected; canonical CSTL containers generated")

@@ -53,7 +53,7 @@ spec("generated canonical Binary admission") {
       memset(wire, GENERATED_WIRE_SENTINEL, sizeof(wire));
       status = Heartbeat_to_bin_into(codec, &source, wire, sizeof(expected) - 1u, &length, &error);
       check_equal(status, DATA_BIND_ERR_LIMIT);
-      check_equal(length, (size_t)0u);
+      check_equal(length, sizeof(expected));
       check_equal(memcmp(wire, expected_wire, sizeof(wire)), 0);
     }
     data_bind_binary_free(allocated_wire);
@@ -114,7 +114,7 @@ spec("generated canonical Binary admission") {
       memset(wire, GENERATED_WIRE_SENTINEL, sizeof(wire));
       status = LoginMessage_to_bin_into(codec, &source, wire, sizeof(expected) - 1u, &length, &error);
       check_equal(status, DATA_BIND_ERR_LIMIT);
-      check_equal(length, (size_t)0u);
+      check_equal(length, sizeof(expected));
       check_equal(memcmp(wire, expected_wire, sizeof(wire)), 0);
     }
     data_bind_binary_free(allocated_wire);

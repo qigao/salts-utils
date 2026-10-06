@@ -56,7 +56,7 @@
         },
         {
             "name": "ci-win-sdk-release-user",
-            "inherits": "ci-sdk-capture-release-user",
+            "inherits": ["ci-sdk-capture-release-user", "base-win-release-user"],
             "environment": {"VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}"},
             "cacheVariables": {
                 "CMAKE_C_COMPILER_LAUNCHER": "ccache",
@@ -65,7 +65,7 @@
         },
         {
             "name": "ci-win-release-user",
-            "inherits": "ci-sdk-release-user",
+            "inherits": ["ci-sdk-release-user", "base-win-release-user"],
             "binaryDir": "${sourceDir}/build/ci-win-release",
             "cacheVariables": {
                 "BUILD_TESTS": true
@@ -73,6 +73,25 @@
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}",
                 "SALTS_UTILS_CI_BUILD_ROOT": "${sourceDir}/build/ci-win-release"
+            }
+        },
+        {
+            "name": "ci-win-dev-user",
+            "inherits": ["ci-native-paths", "base-win-dev-user"],
+            "binaryDir": "${sourceDir}/build/ci-win-dev",
+            "cacheVariables": {
+                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug",
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug",
+                "BUILD_TESTS": true,
+                "BUILD_BENCHMARKS": false,
+                "BUILD_EXAMPLES": false,
+                "SALTS_UTILS_ENABLE_CAPTURE": false,
+                "ENABLE_SANITIZER_ADDRESS": true
+            },
+            "environment": {
+                "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}",
+                "SALTS_ROOT": "$penv{SALTS_ROOT}",
+                "PATH": "${sourceDir}/build/ci-win-dev/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             }
         },
         {
@@ -503,6 +522,10 @@
     ],
     "buildPresets": [
         {
+            "name": "ci-win-dev-user",
+            "configurePreset": "ci-win-dev-user"
+        },
+        {
             "name": "ci-sdk-release-user",
             "configurePreset": "ci-sdk-release-user"
         },
@@ -770,6 +793,11 @@
         }
     ],
     "testPresets": [
+        {
+            "name": "ci-win-dev-user",
+            "inherits": "base-test",
+            "configurePreset": "ci-win-dev-user"
+        },
         {
             "name": "ci-win-release-user",
             "inherits": "base-test",

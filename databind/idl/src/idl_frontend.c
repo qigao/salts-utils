@@ -1,4 +1,5 @@
 #include "idl.h"
+#include "idl_contract_internal.h"
 #include "schema_enum.h"
 #include "schema_service.h"
 #include "schema_channel.h"
@@ -48,28 +49,6 @@ static void map_remove_named_children(Node *map, const char *name) {
     }
 
     map->data.map.count = out;
-}
-
-static Node *map_take_named_child(Node *map, const char *name) {
-    if (!map || map->type != NODE_MAP) {
-        return NULL;
-    }
-
-    for (size_t i = 0; i < map->data.map.count; ++i) {
-        Node *child = map->data.map.items[i];
-        if (!is_named_child(child, name)) {
-            continue;
-        }
-
-        if (i + 1 < map->data.map.count) {
-            memmove(&map->data.map.items[i], &map->data.map.items[i + 1],
-                    (map->data.map.count - i - 1) * sizeof(Node *));
-        }
-        map->data.map.count--;
-        return child;
-    }
-
-    return NULL;
 }
 
 static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
@@ -207,45 +186,59 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     return temp_root;
 }
 
-static int merge_schema_into_root(Node *root, Node *parsed) {
-    Node *generated_children[9];
-    const char *generated_names[] = {
+static int schema_optional_section_empty(const Node *child) {
+    return child->type == NODE_LIST && child->data.list.count == 0u &&
+           (is_named_child(child, "services") || is_named_child(child, "channels") ||
+            is_named_child(child, "components"));
+}
+
+int idl_contract_publish_tree(Node *root, Node *parsed) {
+    static const char *const generated_names[] = {
         "schema", "messages", "composites", "groups",
         "enums", "unions", "services", "channels", "components"
     };
-
-    for (size_t i = 0; i < sizeof(generated_children) / sizeof(generated_children[0]); ++i) {
-        generated_children[i] = map_take_named_child(parsed, generated_names[i]);
-        if (i > 0 && !generated_children[i]) {
-            for (size_t j = 0; j < i; ++j) {
-                node_free(generated_children[j]);
-            }
-            return -1;
-        }
+    Node *merged;
+    Node previous;
+    if (root == NULL || parsed == NULL || root == parsed ||
+        root->type != NODE_MAP || parsed->type != NODE_MAP)
+        return -1;
+    merged = create_node_map(root->name);
+    if (merged == NULL) return -1;
+    /* Candidate entries borrow their existing owners until every append has
+     * succeeded. No allocation or fallible operation follows publication. */
+    for (size_t i = 0u; i < root->data.map.count; ++i) {
+        Node *child = root->data.map.items[i];
+        size_t j = 0u;
+        for (; j < sizeof(generated_names) / sizeof(generated_names[0]); ++j)
+            if (is_named_child(child, generated_names[j])) break;
+        if (j == sizeof(generated_names) / sizeof(generated_names[0]) &&
+            map_add(merged, child) != 0)
+            goto failure;
     }
-
-    for (size_t i = 0; i < sizeof(generated_children) / sizeof(generated_children[0]); ++i) {
+    for (size_t i = 0u; i < parsed->data.map.count; ++i) {
+        Node *child = parsed->data.map.items[i];
+        if (schema_optional_section_empty(child))
+            continue;
+        if (map_add(merged, child) != 0) goto failure;
+    }
+    for (size_t i = 0u; i < sizeof(generated_names) / sizeof(generated_names[0]); ++i)
         map_remove_named_children(root, generated_names[i]);
-        if (generated_children[i]) {
-            if ((strcmp(generated_names[i], "services") == 0 ||
-                 strcmp(generated_names[i], "channels") == 0 ||
-                 strcmp(generated_names[i], "components") == 0) &&
-                generated_children[i]->type == NODE_LIST &&
-                generated_children[i]->data.list.count == 0u) {
-                node_free(generated_children[i]);
-                generated_children[i] = NULL;
-                continue;
-            }
-            if (map_add(root, generated_children[i]) != 0) {
-                node_free(generated_children[i]);
-                for (size_t j = i + 1; j < sizeof(generated_children) / sizeof(generated_children[0]); ++j) {
-                    node_free(generated_children[j]);
-                }
-                return -1;
-            }
-        }
+    for (size_t i = 0u; i < parsed->data.map.count; ++i) {
+        Node *child = parsed->data.map.items[i];
+        if (schema_optional_section_empty(child))
+            node_free(child);
     }
+    root->data.map.count = 0u;
+    parsed->data.map.count = 0u;
+    previous = *root;
+    *root = *merged;
+    *merged = previous;
+    node_free(merged);
     return 0;
+failure:
+    merged->data.map.count = 0u;
+    node_free(merged);
+    return -1;
 }
 
 int idl_parse(const char *text, size_t len, Node *root, tbe_error_t *err) {
@@ -293,7 +286,7 @@ int idl_parse(const char *text, size_t len, Node *root, tbe_error_t *err) {
         return -1;
     }
 
-    int result = merge_schema_into_root(root, parsed);
+    int result = idl_contract_publish_tree(root, parsed);
     node_free(parsed);
 
     if (result != 0 && err && err->code == TBE_OK) {

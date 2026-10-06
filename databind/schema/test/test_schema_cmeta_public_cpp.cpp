@@ -14,6 +14,6 @@ int main() {
 
     if (!schema_cmeta_field_resolve(&contract, &field, &resolved)) return 1;
     if (resolved.kind != CMETA_DATA_SINT || resolved.data == nullptr) return 2;
-    if (std::strcmp(resolved.data->stable_id, "salts.int32.data") != 0) return 3;
+    if (std::strcmp(resolved.data->stable_id, cmeta_data_int32.stable_id) != 0) return 3;
     return 0;
 }

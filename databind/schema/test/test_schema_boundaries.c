@@ -143,15 +143,29 @@ suite("schema_boundaries") {
     }
 
     it("rejects varint nested in collections") {
-      const char *schema = "message Bad { list<varint> values; }";
-      Node *root = create_node_map("root");
-      tbe_error_t err;
-      int rc = databind_binary_contract_parse(schema, strlen(schema), root, &err);
-
-      check_equal(rc, -1);
-      check_not_null(strstr(err.message, "varint"));
-      check_null(find_child(root, "messages"));
-      node_free(root);
+      static const char *const schemas[] = {
+          "message Bad { list<varint> values; }",
+          "message Bad { set<varint> values; }",
+          "message Bad { map<string,varint> values; }",
+          "message Bad { map<varint,uint32> values; }"
+      };
+      for (size_t i = 0u; i < sizeof(schemas) / sizeof(schemas[0]); ++i) {
+        Node *root = create_node_map("root");
+        Node *sentinel = create_node_string("existing", "preserved");
+        tbe_error_t err;
+        check_not_null(root);
+        check_not_null(sentinel);
+        check_equal(map_add(root, sentinel), 0);
+        info("schema=%s", schemas[i]);
+        check_equal(databind_binary_contract_parse(
+            schemas[i], strlen(schemas[i]), root, &err), -1);
+        check_not_null(strstr(err.message, "varint"));
+        check_null(find_child(root, "messages"));
+        check_equal(root->data.map.count, (size_t)1u);
+        check(find_child(root, "existing") == sentinel);
+        check_equal(sentinel->data.string_val, "preserved");
+        node_free(root);
+      }
     }
 
     it("rejects varint as an enum underlying type") {

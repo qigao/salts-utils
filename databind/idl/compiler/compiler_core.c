@@ -2438,6 +2438,25 @@ static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {
   const char *type = tbe_compiler_string_value(field, "type");
   Node *record;
   if (type == NULL) return 0;
+  if (tbe_compiler_has_child(field, "native_fixed_array_name") ||
+      tbe_compiler_has_child(field, "native_fixed_bytes_name")) {
+    size_t count = 0u;
+    if (!tbe_compiler_parse_size(
+            tbe_compiler_string_value(field, "typed_fixed_count"), &count) ||
+        count == 0u)
+      return 0;
+    if (tbe_compiler_has_child(field, "native_fixed_array_name")) {
+      const char *inner = tbe_compiler_string_value(field, "inner_type");
+      if (inner == NULL ||
+          tbe_compiler_string_value(field, "native_element_type_ref") == NULL ||
+          tbe_compiler_string_value(field, "native_element_data_ref") == NULL)
+        return 0;
+      record = tbe_compiler_find_any_record(root, inner);
+      if (record != NULL &&
+          !tbe_compiler_has_child(record, "cmeta_lifecycle_supported"))
+        return 0;
+    }
+  }
   /* Storage promotion has already proved the exact element/key/value traits.
    * A semantic overlay may keep the parent graph unpublished without taking
    * away the individual container provider's owning lifecycle. */

@@ -2,6 +2,7 @@
 #include "binary_format_plan.h"
 
 #include "binary_scalar_profile.h"
+#include "idl_contract_internal.h"
 #include "schema_size.h"
 
 #include <limits.h>
@@ -1276,6 +1277,9 @@ static int binary_numeric_literal(const char *text) {
 }
 
 static int binary_annotate_field_profile(Node *field, tbe_error_t *error) {
+  static const char *const type_attributes[] = {
+      "type", "inner_type", "key_type", "value_type"
+  };
   const char *field_type = map_find_string_value(field, "type");
   const char *length_field = map_find_string_value(field, "length_field");
   const char *collection_kind = map_find_string_value(field, "collection_kind");
@@ -1285,11 +1289,14 @@ static int binary_annotate_field_profile(Node *field, tbe_error_t *error) {
 
   if (field_type == NULL) return 1;
 
-  if (strcmp(field_type, "varint") == 0) {
-    if (error != NULL)
-      tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
-                    "Unsupported type 'varint': Binary runtime/compiler support is not implemented");
-    return 0;
+  for (size_t i = 0u; i < sizeof(type_attributes) / sizeof(type_attributes[0]); ++i) {
+    const char *type = map_find_string_value(field, type_attributes[i]);
+    if (type != NULL && strcmp(type, "varint") == 0) {
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
+                      "Unsupported type 'varint': Binary runtime/compiler support is not implemented");
+      return 0;
+    }
   }
 
   builtin_type = databind_binary_scalar_profile_find(field_type);
@@ -1517,8 +1524,31 @@ int databind_binary_contract_apply(Node *root, tbe_error_t *error) {
 
 int databind_binary_contract_parse(
     const char *text, size_t len, Node *root, tbe_error_t *error) {
-  if (idl_parse(text, len, root, error) != 0) return -1;
-  return databind_binary_contract_apply(root, error);
+  Node *staged;
+  int status = -1;
+  if (root == NULL || root->type != NODE_MAP) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_INVALID_ARGUMENT, -1, -1,
+                    "Invalid Binary contract overlay root");
+    return -1;
+  }
+  staged = create_node_map(root->name);
+  if (staged == NULL) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                    "Unable to allocate Binary contract overlay");
+    return -1;
+  }
+  if (idl_parse(text, len, staged, error) != 0 ||
+      databind_binary_contract_apply(staged, error) != 0)
+    goto cleanup;
+  status = idl_contract_publish_tree(root, staged);
+  if (status != 0 && error != NULL)
+    tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                  "Unable to publish Binary contract overlay");
+cleanup:
+  node_free(staged);
+  return status;
 }
 
 static char *binary_plan_strdup(const char *text) {

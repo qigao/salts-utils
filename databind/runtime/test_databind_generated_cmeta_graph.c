@@ -772,14 +772,14 @@ spec("generated native CMeta graph") {
     check_null(encoded);
     check_equal(encoded_len, (size_t)0u);
 
-    /*
-     * UUID still has no canonical Binary token lowering. Generated Binary must
-     * fail closed even when the neighboring fixed bytes have a complete provider.
-     */
+    /* Binary layout admits UUID bytes; the neighboring Bool8 storage still
+     * fails native schema admission, before any wire output is published. */
     error = (DataBindError)DATA_BIND_ERROR_INIT;
-    check_equal(FixedValues_to_bin(
-                    codec, &destination, &wire, &wire_len, &error),
-                DATA_BIND_ERR_SCHEMA);
+    DataBindStatus binary_status = FixedValues_to_bin(
+        codec, &destination, &wire, &wire_len, &error);
+    info("fixed-value Binary encode: %s (%s)", error.message, error.path);
+    check_equal(binary_status, DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(error.path, "enabled");
     check_null(wire);
     check_equal(wire_len, (size_t)0u);
 

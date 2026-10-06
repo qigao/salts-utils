@@ -37,7 +37,7 @@ static const cmeta_data_desc VALUE_DATA = {
 static const DataBindNativeTypeBinding VALUE_BINDING =
     DATA_BIND_NATIVE_TYPE_BINDING_INIT("Record", &VALUE_DATA);
 
-typed(Vec, ValueList, uint32_t, &cmeta_type_uint32, &cmeta_data_uint32);
+cmeta_type(Vec, ValueList, uint32_t, &cmeta_type_uint32, &cmeta_data_uint32);
 typedef struct ValueListRecord { ValueList values; } ValueListRecord;
 static const cmeta_type_identity LIST_ID = CMETA_TYPE_ID_ATOM_INIT("test.value-reader.Values");
 static const cmeta_type_desc LIST_TYPE = {

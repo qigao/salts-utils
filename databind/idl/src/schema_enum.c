@@ -165,8 +165,10 @@ static int enum_validate_one(Node *owner, tbe_error_t *error) {
     char canonical[ENUM_DECIMAL_CAPACITY];
     if (!cmeta_data_desc_valid(type) ||
         (type->kind != CMETA_DATA_SINT && type->kind != CMETA_DATA_UINT)) {
-        return enum_fail(error, TBE_ERR_SEMANTIC_ERROR, name,
-                         "underlying type must be an 8/16/32/64-bit integer");
+        char reason[sizeof(((tbe_error_t *)0)->message)];
+        fmt(reason, sizeof(reason), "underlying type '{}' must be an 8/16/32/64-bit integer",
+            declared ? declared : (is_flags ? "uint32" : "int32"));
+        return enum_fail(error, TBE_ERR_SEMANTIC_ERROR, name, reason);
     }
     if (!name || !items || items->type != NODE_LIST || items->data.list.count == 0) {
         return enum_fail(error, TBE_ERR_SEMANTIC_ERROR, name, "at least one named value is required");

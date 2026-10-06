@@ -146,7 +146,8 @@ suite("salts_unicode") {
 
     check_scalar(upper, sizeof(upper), 'A', identifier);
     check_scalar(underscore, sizeof(underscore), '_', SALTS_UNICODE_PROPERTY_XID_CONTINUE);
-    check_scalar(digit, sizeof(digit), '7', SALTS_UNICODE_PROPERTY_XID_CONTINUE);
+    check_scalar(digit, sizeof(digit), '7', SALTS_UNICODE_PROPERTY_XID_CONTINUE |
+        SALTS_UNICODE_PROPERTY_EMOJI | SALTS_UNICODE_PROPERTY_EMOJI_COMPONENT);
     check_scalar(nul, sizeof(nul), 0u, SALTS_UNICODE_PROPERTY_NONE);
   }
 
@@ -181,7 +182,8 @@ suite("salts_unicode") {
 
   it("classifies other valid scalars") {
     static const unsigned char emoji[] = {0xf0, 0x9f, 0x98, 0x80};
-    check_scalar(emoji, sizeof(emoji), 0x1f600u, SALTS_UNICODE_PROPERTY_NONE);
+    check_scalar(emoji, sizeof(emoji), 0x1f600u, SALTS_UNICODE_PROPERTY_EMOJI |
+        SALTS_UNICODE_PROPERTY_EMOJI_PRESENTATION | SALTS_UNICODE_PROPERTY_EXTENDED_PICTOGRAPHIC);
   }
 
   it("advances a byte cursor one scalar at a time") {

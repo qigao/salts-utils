@@ -46,7 +46,7 @@ endif()
 if(BUILD_TESTS)
   add_subdirectory(test)
 endif()
-if(BUILD_BENCHMARKS OR BUILD_TESTS)
+if(BUILD_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()
 
