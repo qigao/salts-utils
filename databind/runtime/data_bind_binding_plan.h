@@ -203,6 +203,25 @@ typedef struct DataBindBindingCallFrame {
 
 typedef struct DataBindBindingPlan DataBindBindingPlan;
 
+/**
+ * Single-owner obligation for one successfully bound native Service call.
+ * Initialize with DATA_BIND_BINDING_CALL_LIFETIME_INIT. Members are private to
+ * DataBind. While live, do not copy/reinitialize this object or change the frame
+ * metadata or parameter arrays. The plan, descriptor domain and frame storage
+ * must remain valid until restore_zero.
+ * Values may be changed by the exact-ABI invocation and read by egress.
+ * Access is single-threaded; a deferred executor may take exclusive ownership
+ * through its existing synchronized task handoff.
+ */
+typedef struct DataBindBindingCallLifetime {
+  size_t size;
+  const DataBindBindingPlan *plan;
+  DataBindBindingCallFrame *frame;
+} DataBindBindingCallLifetime;
+
+#define DATA_BIND_BINDING_CALL_LIFETIME_INIT \
+  { sizeof(DataBindBindingCallLifetime), NULL, NULL }
+
 typedef enum DataBindBindingOutcomeKind {
   DATA_BIND_BINDING_OUTCOME_NONE = 0,
   DATA_BIND_BINDING_OUTCOME_SUCCESS = 1,
@@ -319,6 +338,41 @@ DATA_BIND_API DataBindStatus data_bind_binding_plan_bind_inputs(
     const DataBindBindingProvider *provider,
     const DataBindNativeOptions *native_options,
     DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic);
+
+/**
+ * Bind a complete Service frame and publish its lifetime only on success.
+ * All lifecycle staging locations must be distinct except the reflected root
+ * request alias in params. Storage must be fresh/unowned. This initializes
+ * request, IN/OUT parameters, by-value response and the NONE error envelope.
+ * On failure initialized values are rolled back and lifetime remains empty.
+ * A live lifetime is rejected without changing its frame. Existing untracked
+ * bind_inputs calls do not establish this obligation.
+ */
+DATA_BIND_API DataBindStatus data_bind_binding_plan_bind_call(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    DataBindBindingCallLifetime *lifetime,
+    DataBindBindingPlanDiagnostic *diagnostic);
+
+/** Return whether this initialized producer lifetime owns a live frame. */
+DATA_BIND_API int data_bind_binding_call_is_live(
+    const DataBindBindingCallLifetime *lifetime);
+
+/**
+ * Consume exactly one successful binding after invocation/egress or abandon.
+ * Restore active typed error, parameters, request and by-value response using
+ * cached canonical descriptors, and clear DataBind presence/null state.
+ * No resolver lookup, allocation, HTTP cleanup or descriptor-domain release.
+ * Empty/repeated calls return INVALID_ARG. Invalid frame/error-kind preflight
+ * leaves the lifetime live and all values unchanged. Once teardown starts the
+ * lifetime is consumed; a canonical lifecycle failure is reported while the
+ * remaining values are also restored. No retry may repeat their destruction.
+ */
+DATA_BIND_API DataBindStatus data_bind_binding_call_restore_zero(
+    DataBindBindingCallLifetime *lifetime,
     DataBindBindingPlanDiagnostic *diagnostic);
 
 /**

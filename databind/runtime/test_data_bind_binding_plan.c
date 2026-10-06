@@ -25,12 +25,15 @@ static const cmeta_type_identity ADD_REQUEST_ID =
 static const cmeta_type_identity ADD_RESPONSE_ID =
     CMETA_TYPE_ID_ATOM_INIT("test.calc.AddResponse");
 
+static const cmeta_type_traits ADD_RESPONSE_TRAITS = {
+    .flags = CMETA_TRAIT_TRIVIAL_COPY | CMETA_TRAIT_TRIVIAL_DESTROY};
+
 static const cmeta_type_desc ADD_REQUEST_TYPE = {
     "AddRequest", sizeof(AddRequest), _Alignof(AddRequest),
     CMETA_T_OBJECT, NULL, NULL, &ADD_REQUEST_ID};
 static const cmeta_type_desc ADD_RESPONSE_TYPE = {
     "AddResponse", sizeof(AddResponse), _Alignof(AddResponse),
-    CMETA_T_OBJECT, NULL, NULL, &ADD_RESPONSE_ID};
+    CMETA_T_OBJECT, NULL, &ADD_RESPONSE_TRAITS, &ADD_RESPONSE_ID};
 
 static const cmeta_type_desc ADD_REQUEST_PTR_TYPE = {
     "const AddRequest *", sizeof(AddRequest *), _Alignof(AddRequest *),
@@ -141,6 +144,11 @@ FunctionDeclAs(
 
 FunctionDeclAs(
     value, AddResponse *, &ADD_RESPONSE_PTR_TYPE, calc_bad_pointer_return,
+    (const AddRequest *, request,
+     CMETA_PARAM_IN | CMETA_PARAM_BORROWED, &ADD_REQUEST_PTR_TYPE));
+
+FunctionDeclAs(
+    value, AddResponse, &ADD_RESPONSE_TYPE, calc_value_return,
     (const AddRequest *, request,
      CMETA_PARAM_IN | CMETA_PARAM_BORROWED, &ADD_REQUEST_PTR_TYPE));
 
@@ -1878,6 +1886,96 @@ spec("DataBind canonical Service BindingPlan") {
     data_bind_free(codec);
   }
 
+  it("tracks a whole call through egress failure and rejects repeated teardown") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection http = projection("http-call", &scratch, http_project);
+    DataBindServiceNativeBinding native = native_binding(FunctionMeta(calc_add_root));
+    DataBindBindingPlanDiagnostic diagnostic = DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    TestProvider state = {.fail_write = 1};
+    DataBindBindingProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options = native_options(workspace, sizeof(workspace));
+    AddRequest request = {0};
+    AddResponse response = {0};
+    void *params[] = {&request, &response};
+    const size_t param_bytes[] = {sizeof(request), sizeof(response)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+    DataBindBindingCallLifetime lifetime = DATA_BIND_BINDING_CALL_LIFETIME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+        codec, "Calc", "Add", &http, &native, &plan, &diagnostic), DATA_BIND_OK);
+    data_bind_free(codec);
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 2u;
+    check_equal(data_bind_binding_plan_bind_call(
+        plan, &provider, &options, &frame, &lifetime, &diagnostic), DATA_BIND_OK);
+    check_true(data_bind_binding_call_is_live(&lifetime));
+    response.sum = 7u;
+    check_equal(data_bind_binding_plan_bind_call(
+        plan, &provider, &options, &frame, &lifetime, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    check_equal(response.sum, 7u);
+    check_equal(data_bind_binding_plan_write_outputs(
+        plan, &provider, &frame, &diagnostic), DATA_BIND_ERR_RUNTIME);
+    check_true(data_bind_binding_call_is_live(&lifetime));
+    options.workspace = NULL;
+    options.workspace_bytes = 0u;
+    check_equal(data_bind_binding_call_restore_zero(&lifetime, &diagnostic), DATA_BIND_OK);
+    check_equal(request.left, 0u);
+    check_equal(request.presence, 0u);
+    check_equal(response.sum, 0u);
+    check_false(data_bind_binding_call_is_live(&lifetime));
+    check_equal(data_bind_binding_call_restore_zero(
+        &lifetime, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    data_bind_binding_plan_free(plan);
+  }
+
+  it("initializes and rolls back by-value response staging with the whole call") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection http = projection("http-return", &scratch, http_project);
+    DataBindServiceNativeBinding native = native_binding(FunctionMeta(calc_value_return));
+    DataBindBindingPlanDiagnostic diagnostic = DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    TestProvider state = {.fail_right_type = 1};
+    DataBindBindingProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options = native_options(workspace, sizeof(workspace));
+    AddRequest request = {0};
+    AddResponse response = {.sum = 99u};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+    DataBindBindingCallLifetime lifetime = DATA_BIND_BINDING_CALL_LIFETIME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+        codec, "Calc", "Add", &http, &native, &plan, &diagnostic), DATA_BIND_OK);
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.return_value = &response;
+    frame.return_bytes = sizeof(response);
+    frame.param_count = 1u;
+    check_equal(data_bind_binding_plan_bind_call(
+        plan, &provider, &options, &frame, &lifetime, &diagnostic), DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(request.left, 0u);
+    check_equal(request.presence, 0u);
+    check_equal(response.sum, 0u);
+    check_false(data_bind_binding_call_is_live(&lifetime));
+    state.fail_right_type = 0;
+    check_equal(data_bind_binding_plan_bind_call(
+        plan, &provider, &options, &frame, &lifetime, &diagnostic), DATA_BIND_OK);
+    response.sum = 7u;
+    check_equal(data_bind_binding_plan_write_outputs(
+        plan, &provider, &frame, &diagnostic), DATA_BIND_OK);
+    check_equal(state.published_sum, 7u);
+    check_equal(data_bind_binding_call_restore_zero(&lifetime, &diagnostic), DATA_BIND_OK);
+    check_equal(response.sum, 0u);
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("executes a compiled root plan after the schema codec is released") {
     DataBind *codec = create_codec();
     ProjectionScratch scratch = {{0}, {0}};
@@ -2014,6 +2112,7 @@ spec("DataBind canonical Service BindingPlan") {
     DataBindNativeDiagnostic native_diagnostic =
         DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
     size_t failed_init_restore_baseline;
+    DataBindBindingCallLifetime lifetime = DATA_BIND_BINDING_CALL_LIFETIME_INIT;
 
     check_not_null(codec);
     if (codec == NULL) return;
@@ -2052,8 +2151,8 @@ spec("DataBind canonical Service BindingPlan") {
     frame.param_bytes = param_bytes;
     frame.param_count = 3u;
 
-    check_equal(data_bind_binding_plan_bind_inputs(
-                    plan, &provider, &options, &frame, &diagnostic),
+    check_equal(data_bind_binding_plan_bind_call(
+                    plan, &provider, &options, &frame, &lifetime, &diagnostic),
                 DATA_BIND_ERR_RUNTIME);
     check_equal(diagnostic.function_param, "third");
 
@@ -2075,6 +2174,13 @@ spec("DataBind canonical Service BindingPlan") {
     check_true(rollback_buffer_is_zero(&first));
     check_true(rollback_buffer_is_zero(&second));
     check_true(rollback_buffer_is_zero(&third));
+
+    check_false(data_bind_binding_call_is_live(&lifetime));
+    check_equal(data_bind_binding_call_restore_zero(
+                    &lifetime, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.restore_calls[0], (size_t)1u);
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.restore_calls[1], (size_t)1u);
+    check_equal(ROLLBACK_LIFECYCLE_PROBE.restore_calls[2], failed_init_restore_baseline);
 
     data_bind_binding_plan_free(plan);
     data_bind_free(codec);

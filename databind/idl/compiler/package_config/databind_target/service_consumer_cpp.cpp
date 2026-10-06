@@ -4,9 +4,12 @@
 #include "installed_service_native.h"
 
 #include <type_traits>
+#include "service_call_fixture.h"
 
 static_assert(std::is_standard_layout<DataBindServiceNativeBinding>::value,
               "installed Service binding must be C-compatible");
+static_assert(std::is_standard_layout<DataBindBindingCallLifetime>::value,
+              "installed call lifetime must be C-compatible");
 static_assert(std::is_standard_layout<DataBindNativeExecution>::value,
               "installed Service execution must be C-compatible");
 static_assert(
@@ -14,6 +17,7 @@ static_assert(
     "installed typed CFlow projection must be C-compatible");
 
 int main() {
+  if (installed_service_call() != 0) return 3;
   DataBindNativeTypeBinding request{};
   DataBindNativeTypeBinding response{};
   DataBindServiceNativeBinding service{};
