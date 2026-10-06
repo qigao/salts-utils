@@ -623,6 +623,27 @@ static int plugin_write_client_source(
   if (fputs(";\n}\n\n", file) == EOF)
     return 0;
 
+  /* Generated Plugin lease cleanup is CLEAR_ON_SUCCESS: a failed registry
+   * release leaves the owning handle intact so the caller can retry. */
+  if (fprintf(
+          file,
+          "static salts_plugin_status %s__release_owned_lease(%s *client) {\n"
+          "  salts_plugin_registry *registry;\n"
+          "  salts_plugin_lease lease;\n"
+          "  salts_plugin_status status;\n"
+          "  if (client == NULL || client->registry == NULL ||\n"
+          "      !salts_plugin_lease_valid(client->lease))\n"
+          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+          "  registry = client->registry;\n"
+          "  lease = client->lease;\n"
+          "  status = salts_plugin_registry_release(registry, &lease);\n"
+          "  if (status == SALTS_PLUGIN_OK)\n"
+          "    memset(client, 0, sizeof(*client));\n"
+          "  return status;\n"
+          "}\n\n",
+          client_symbol, client_symbol) < 0)
+    return 0;
+
   if (fprintf(
           file,
           "salts_plugin_status %s_open(\n"
@@ -771,31 +792,18 @@ static int plugin_write_client_source(
           "  out_client->lease = lease;\n"
           "  return SALTS_PLUGIN_OK;\n\n"
           "fail:\n"
-          "  release_status = salts_plugin_registry_release(\n"
-          "      registry, &lease);\n"
           "  memset(out_client, 0, sizeof(*out_client));\n"
-          "  if (release_status != SALTS_PLUGIN_OK) {\n"
-          "    out_client->registry = registry;\n"
-          "    out_client->lease = lease;\n"
+          "  out_client->registry = registry;\n"
+          "  out_client->lease = lease;\n"
+          "  release_status = %s__release_owned_lease(out_client);\n"
+          "  if (release_status != SALTS_PLUGIN_OK)\n"
           "    return release_status;\n"
-          "  }\n"
           "  return status;\n"
           "}\n\n"
           "salts_plugin_status %s_close(%s *client) {\n"
-          "  salts_plugin_registry *registry;\n"
-          "  salts_plugin_lease lease;\n"
-          "  salts_plugin_status status;\n"
-          "  if (client == NULL || client->registry == NULL ||\n"
-          "      !salts_plugin_lease_valid(client->lease))\n"
-          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
-          "  registry = client->registry;\n"
-          "  lease = client->lease;\n"
-          "  status = salts_plugin_registry_release(registry, &lease);\n"
-          "  if (status == SALTS_PLUGIN_OK)\n"
-          "    memset(client, 0, sizeof(*client));\n"
-          "  return status;\n"
+          "  return %s__release_owned_lease(client);\n"
           "}\n\n",
-          client_symbol, client_symbol) < 0)
+          client_symbol, client_symbol, client_symbol, client_symbol) < 0)
     return 0;
 
   for (i = 0u; i < ir->operation_count; ++i) {
