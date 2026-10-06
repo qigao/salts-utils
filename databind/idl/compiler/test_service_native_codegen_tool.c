@@ -38,6 +38,39 @@ cleanup:
   return ok;
 }
 
+static char *read_stream_text(FILE *file) {
+  char *text = NULL;
+  long end;
+  size_t size;
+  if (file == NULL || fflush(file) != 0 ||
+      fseek(file, 0, SEEK_END) != 0)
+    return NULL;
+  end = ftell(file);
+  if (end < 0 || fseek(file, 0, SEEK_SET) != 0)
+    return NULL;
+  size = (size_t)end;
+  text = (char *)malloc(size + 1u);
+  if (text == NULL) return NULL;
+  if (fread(text, 1u, size, file) != size) {
+    free(text);
+    return NULL;
+  }
+  text[size] = '\0';
+  return text;
+}
+
+static size_t text_count(const char *text, const char *needle) {
+  size_t count = 0u;
+  size_t length;
+  if (text == NULL || needle == NULL || needle[0] == '\0') return 0u;
+  length = strlen(needle);
+  while ((text = strstr(text, needle)) != NULL) {
+    ++count;
+    text += length;
+  }
+  return count;
+}
+
 static int write_header(
     const char *path,
     const char *native_header,
@@ -113,9 +146,9 @@ int main(int argc, char **argv) {
   databind_compiler_service_native_ir ir = {0};
   int status = 1;
 
-  if (argc != 7) {
+  if (argc != 8) {
     fprintf(stderr,
-            "usage: %s <schema> <service.h> <service.c> <native-header> <overlay-schema> <owned-error-reject-schema>\n",
+            "usage: %s <schema> <service.h> <service.c> <native-header> <overlay-schema> <owned-error-reject-schema> <cleanup-error-schema>\n",
             argc > 0 ? argv[0] : "service-native-codegen");
     return 2;
   }
@@ -258,6 +291,119 @@ int main(int argc, char **argv) {
     idl_contract_destroy(overlay_contract);
     node_free(overlay_root);
     free(overlay_schema_data);
+  }
+
+  {
+    Node *cleanup_root = NULL;
+    IdlContract *cleanup_contract = NULL;
+    char *cleanup_schema_data = NULL;
+    databind_compiler_service_native_ir cleanup_ir = {0};
+    FILE *generated = NULL;
+    char *text = NULL;
+    char *init = NULL;
+    char *clear = NULL;
+    char *move = NULL;
+    char *clear_bytes = NULL;
+    char *clear_string = NULL;
+
+    if (databind_compiler_parse_contract_file(
+            argv[7], &cleanup_root, &cleanup_contract,
+            &cleanup_schema_data) != 0 ||
+        databind_compiler_service_native_build(
+            cleanup_contract, &cleanup_ir) != 0 ||
+        cleanup_ir.operation_count != 1u ||
+        cleanup_ir.operations[0].error_count != 1u ||
+        cleanup_ir.operations[0].errors[0].field_count != 2u) {
+      fprintf(stderr,
+              "service-native-codegen: managed cleanup schema failed to lower\n");
+      goto cleanup_policy_done;
+    }
+
+    generated = tmpfile();
+    if (generated == NULL ||
+        databind_compiler_service_native_emit_reflection(
+            generated, &cleanup_ir.operations[0], 1) != 0 ||
+        (text = read_stream_text(generated)) == NULL) {
+      fprintf(stderr,
+              "service-native-codegen: managed cleanup source emit failed\n");
+      goto cleanup_policy_done;
+    }
+
+    init = strstr(text, "__error_1_init(");
+    clear = strstr(text, "__error_1_clear(");
+    move = clear != NULL ? strstr(clear, "__error_1_move(") : NULL;
+    if (init == NULL || clear == NULL || move == NULL || init >= clear ||
+        strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL ||
+        strstr(init, "cleanup_status = DATA_BIND_ERR_RUNTIME;") == NULL ||
+        strstr(init, "if (cleanup_status == DATA_BIND_OK)\n"
+                     "      memset(payload, 0, sizeof(*payload));") == NULL) {
+      fprintf(stderr,
+              "service-native-codegen: init rollback cleanup policy missing\n");
+      goto cleanup_policy_done;
+    }
+
+    if (text_count(move, "DataBindStatus rollback_status = DATA_BIND_OK;") != 2u ||
+        strstr(move, "(void)cmeta_data_value_move(") != NULL ||
+        strstr(move, "rollback_status = DATA_BIND_ERR_RUNTIME;") == NULL ||
+        strstr(text, "error->kind = kind;\n"
+                     "    status = ") == NULL ||
+        strstr(text, "destination->kind = kind;\n"
+                     "    status = ") == NULL ||
+        strstr(text, "__error_init(error);\n"
+                     "    return status;") != NULL ||
+        strstr(text, "__error_init(destination);\n"
+                     "    return status;") != NULL) {
+      fprintf(stderr,
+              "service-native-codegen: move rollback carrier policy missing\n");
+      goto cleanup_policy_done;
+    }
+
+    *move = '\0';
+    clear_bytes = strstr(
+        clear,
+        "cmeta_data_value_restore_zero(&stl_byte_buffer_cmeta_data, "
+        "&payload->payload)");
+    clear_string = strstr(
+        clear,
+        "cmeta_data_value_restore_zero(&salts_tstr_cmeta_data, "
+        "&payload->detail)");
+    if (clear_bytes == NULL || clear_string == NULL ||
+        clear_bytes >= clear_string ||
+        strstr(clear, "DataBindStatus status = DATA_BIND_OK;") == NULL ||
+        text_count(clear, "cmeta_data_value_restore_zero(") != 2u ||
+        text_count(clear, "status = DATA_BIND_ERR_RUNTIME;") != 2u ||
+        strstr(clear, "if (status == DATA_BIND_OK)\n"
+                      "    memset(payload, 0, sizeof(*payload));") == NULL ||
+        strstr(clear, "return DATA_BIND_ERR_RUNTIME;") != NULL) {
+      fprintf(stderr,
+              "service-native-codegen: clear cleanup failure policy missing\n");
+      goto cleanup_policy_done;
+    }
+
+    free(text);
+    text = NULL;
+    fclose(generated);
+    generated = NULL;
+    databind_compiler_service_native_destroy(&cleanup_ir);
+    idl_contract_destroy(cleanup_contract);
+    node_free(cleanup_root);
+    free(cleanup_schema_data);
+    cleanup_contract = NULL;
+    cleanup_root = NULL;
+    cleanup_schema_data = NULL;
+    goto cleanup_policy_pass;
+
+cleanup_policy_done:
+    free(text);
+    if (generated != NULL) fclose(generated);
+    databind_compiler_service_native_destroy(&cleanup_ir);
+    idl_contract_destroy(cleanup_contract);
+    node_free(cleanup_root);
+    free(cleanup_schema_data);
+    goto cleanup;
+
+cleanup_policy_pass:
+    ;
   }
 
   {

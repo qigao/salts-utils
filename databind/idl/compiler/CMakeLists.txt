@@ -422,12 +422,14 @@ add_custom_command(
       "service_native_records.h"
       "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_optional.schema"
       "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_owned_error.schema"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_cleanup_error.schema"
   DEPENDS
     salts_idlc
     databind_service_native_codegen_fixture_tool
     "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
     "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_optional.schema"
     "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_owned_error.schema"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_cleanup_error.schema"
   VERBATIM
   COMMENT "Generating canonical DataBind Service native metadata")
 
