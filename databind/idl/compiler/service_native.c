@@ -585,6 +585,37 @@ int databind_compiler_service_native_build(
 }
 
 
+static int native_emit_error_restore_sequence(
+    FILE *file,
+    const databind_compiler_service_native_error *error,
+    size_t field_limit,
+    const char *payload_expr,
+    const char *status_var,
+    const char *indent) {
+  size_t i;
+  if (file == NULL || error == NULL || payload_expr == NULL ||
+      status_var == NULL || indent == NULL ||
+      field_limit > error->field_count)
+    return -1;
+
+  for (i = field_limit; i != 0u; --i) {
+    const databind_compiler_service_native_error_field *field =
+        &error->fields[i - 1u];
+    if (field->native_data_symbol == NULL) continue;
+    if (field->member_name == NULL)
+      return -1;
+    if (fprintf(
+            file,
+            "%sif (cmeta_data_value_restore_zero(&%s, &%s->%s) != CMETA_OK)\n"
+            "%s  %s = DATA_BIND_ERR_RUNTIME;\n",
+            indent, field->native_data_symbol, payload_expr,
+            field->member_name, indent, status_var) < 0)
+      return -1;
+  }
+  return 0;
+}
+
+
 static int native_emit_error_variant_helpers(
     FILE *file,
     const databind_compiler_service_native_operation *operation,
@@ -614,21 +645,16 @@ static int native_emit_error_variant_helpers(
       return -1;
     if (fprintf(
             file,
-            "  if (cmeta_data_value_init_zero(&%s, &payload->%s) != CMETA_OK) {\n",
+            "  if (cmeta_data_value_init_zero(&%s, &payload->%s) != CMETA_OK) {\n"
+            "    DataBindStatus cleanup_status = DATA_BIND_OK;\n",
             field->native_data_symbol, field->member_name) < 0)
       return -1;
-    for (j = i; j != 0u; --j) {
-      const databind_compiler_service_native_error_field *prior =
-          &error->fields[j - 1u];
-      if (prior->native_data_symbol != NULL &&
-          fprintf(
-              file,
-              "    (void)cmeta_data_value_restore_zero(&%s, &payload->%s);\n",
-              prior->native_data_symbol, prior->member_name) < 0)
-        return -1;
-    }
+    if (native_emit_error_restore_sequence(
+            file, error, i, "payload", "cleanup_status", "    ") != 0)
+      return -1;
     if (fputs(
-            "    memset(payload, 0, sizeof(*payload));\n"
+            "    if (cleanup_status == DATA_BIND_OK)\n"
+            "      memset(payload, 0, sizeof(*payload));\n"
             "    return DATA_BIND_ERR_RUNTIME;\n"
             "  }\n",
             file) == EOF)
@@ -641,27 +667,19 @@ static int native_emit_error_variant_helpers(
   if (fprintf(
           file,
           "static inline DataBindStatus %s__error_%zu_clear(%s_t *payload) {\n"
+          "  DataBindStatus status = DATA_BIND_OK;\n"
           "  if (payload == NULL) return DATA_BIND_ERR_INVALID_ARG;\n",
           operation->symbol, ordinal, error->type_name) < 0)
     return -1;
 
-  for (i = error->field_count; i != 0u; --i) {
-    const databind_compiler_service_native_error_field *field =
-        &error->fields[i - 1u];
-    if (field->native_data_symbol == NULL) continue;
-    if (field->member_name == NULL || field->native_data_symbol == NULL)
-      return -1;
-    if (fprintf(
-            file,
-            "  if (cmeta_data_value_restore_zero(&%s, &payload->%s) != CMETA_OK)\n"
-            "    return DATA_BIND_ERR_RUNTIME;\n",
-            field->native_data_symbol, field->member_name) < 0)
-      return -1;
-  }
+  if (native_emit_error_restore_sequence(
+          file, error, error->field_count, "payload", "status", "  ") != 0)
+    return -1;
 
   if (fputs(
-          "  memset(payload, 0, sizeof(*payload));\n"
-          "  return DATA_BIND_OK;\n"
+          "  if (status == DATA_BIND_OK)\n"
+          "    memset(payload, 0, sizeof(*payload));\n"
+          "  return status;\n"
           "}\n",
           file) == EOF)
     return -1;
