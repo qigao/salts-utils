@@ -49,6 +49,28 @@ typedef enum IdlCollectionKind {
   IDL_COLLECTION_GROUP = 5
 } IdlCollectionKind;
 
+#define IDL_TYPE_REF_MAX_DEPTH 32u
+#define IDL_TYPE_REF_MAX_NODES 128u
+#define IDL_TYPE_REF_MAX_BYTES 4096u
+#define IDL_TYPE_REF_MAX_ARGUMENTS 2u
+
+/* Borrowed logical type syntax; native identity and lifecycle remain CMeta-owned.
+ * Spans are valid until their source text or owning Contract is destroyed. */
+typedef struct IdlTypeRef {
+  IdlCollectionKind collection_kind;
+  const char *name;
+  size_t name_length;
+  size_t argument_count;
+  const char *arguments[IDL_TYPE_REF_MAX_ARGUMENTS];
+  size_t argument_lengths[IDL_TYPE_REF_MAX_ARGUMENTS];
+} IdlTypeRef;
+
+/* Parse a complete compact type expression, e.g. list<map<string,User>>.
+ * Accepts named leaves and list/set/map applications. Whitespace, malformed
+ * arity and the named resource limits return 0 without modifying out_type.
+ * This is a compiler/plan-construction query, never an item execution query. */
+int idl_type_ref_parse(const char *text, size_t length, IdlTypeRef *out_type);
+
 typedef enum IdlCapabilityKind {
   IDL_CAPABILITY_SERVICE = 1,
   IDL_CAPABILITY_CHANNEL = 2

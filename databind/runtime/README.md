@@ -43,7 +43,7 @@ entry，仅在 ARRAY_END 提交 count，在整条消息完成后发布一次。G
 覆盖嵌套 owner 的独立复制、释放、重复 clear、状态位复位和解码中途超限后的清理。
 native storage 测试也直接使用 canonical native API，验证平台原生标量身份、
 受管 string/bytes，以及 provider 定义的非全零 semantic zero 和恰好一次释放。
-当前最低 Salts 版本为 v1.8.26。容器声明与生成代码直接使用 `cmeta_type(...)`；旧 `typed(...)` 入口不再受支持。固定字节使用完整 CMeta exact fixed/buffer-v2 provider，精确长度赋值、借用读取、
+当前最低 Salts 版本为 v1.8.28。容器声明与生成代码直接使用 `cmeta_type(...)`；旧 `typed(...)` 入口不再受支持。固定字节使用完整 CMeta exact fixed/buffer-v2 provider，精确长度赋值、借用读取、
 独立 copy、清零源对象的无分配 move 与幂等 restore 共享同一 inline 存储。
 Binary FIXED BYTES 的 `scalar_bits` 为零，`wire_extent` 是唯一 wire 长度事实源；
 不添加长度前缀、不做端序转换。reader 借用完整 wire span 到 close，writer 在
@@ -77,6 +77,32 @@ DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema�
   bind/serialization 引擎。
 
 ## 设计边界
+
+嵌套泛型的原生 lowering 以不可变 Contract 中的递归逻辑类型为输入，在构建期按
+内层到外层生成具体 CSTL wrapper。每层直接引用内层的 canonical TypeDesc/DataDesc，
+COPY/MOVE/DESTROY 委托给 Salts 的 data-traits bridge。生成代码不增加容器生命周期
+算法、合成 record 或运行时泛型注册表。字段 declared type 与 wrapper 的 APPLY identity
+引用同一 SDK constructor 和递归参数身份；外部格式只由既有适配器解析。
+
+构建期类型查询借用 Contract 文本，深度、节点数、文本长度分别限制为
+`IDL_TYPE_REF_MAX_DEPTH`、`IDL_TYPE_REF_MAX_NODES` 和 `IDL_TYPE_REF_MAX_BYTES`。
+生成器只准入已提供 canonical 生命周期的组合；容器缺少比较/哈希能力时不能作为
+外层 Set 元素或 Map key。首批支持 List 和 string-key Map 的递归组合，叶类型限已发布
+完整生命周期的 scalar、string、uuid 与 record；尚未公开完整 provider 的 enum 仍拒绝生成。
+记录中的 optional/nullable 位仍归 MessagePlan，不改变
+元素类型身份，也不授予含状态位 record 的整值复制权限。元数据参数引用在既有 once
+初始化中按内层到外层构建，发布后不可变，执行期间不做字符串解析或名称查找。
+
+首批嵌套 MessagePlan 支持 JSON 与 YAML 往返，包括空内层容器。XML、CSV 和 Binary
+的现有表示能力不扩展；无法表示该类型时明确返回 schema/FormatPlan 错误。
+带 optional/nullable 容器字段的记录可初始化和清理，尚未准入整值转换。
+
+相比私有容器或扁平化存储，该方案增加构建期递归 lowering 和启动时 plan 资格验证，
+保留原生存储、错误传播和单一生命周期归属。复制失败只清理未提交的内层 owner，
+解码失败释放 staging，目标值和输出在完整成功后才发布。新增组合必须覆盖递归身份、
+C/C++ 布局、独立复制、源对象清空、恰好一次释放、部分复制回滚和文本 round-trip。
+已有单层字段的行为不变；依赖新组合的消费者必须重新生成并重编译。回滚先撤回这些
+消费者，清空所有活跃 owner，再回滚 SDK 与生成器，不能混用不同能力的生成产物。
 
 DataBind owns schema overlay, dynamic values and typed conversion semantics. CMeta remains the
 canonical native semantic type model. Within SaltsUtils, the format-neutral conversion core

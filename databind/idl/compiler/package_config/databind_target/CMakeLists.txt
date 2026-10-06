@@ -159,6 +159,26 @@ add_dependencies(installed_image
   installed_message)
 
 salts_idl_target(
+  TARGET installed_nested_generics
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/../../test_nested_native_generics.schema"
+  ARTIFACT_NAME "nested_native_generics"
+  ARTIFACTS MESSAGE)
+
+add_executable(installed_nested_generics_consumer
+  ../../test_nested_native_generics.c ../../test_nested_native_generics_cpp.cpp)
+target_compile_features(installed_nested_generics_consumer PRIVATE c_std_11 cxx_std_17)
+target_link_libraries(installed_nested_generics_consumer PRIVATE
+  Salts::TinyTest Salts::DataBind ${installed_nested_generics_NATIVE_TARGET})
+target_include_directories(installed_nested_generics_consumer PRIVATE
+  "${installed_nested_generics_GENERATED_DIR}")
+add_dependencies(installed_nested_generics_consumer installed_nested_generics_idl_codegen)
+add_dependencies(installed_nested_generics installed_nested_generics_consumer)
+add_dependencies(installed_image installed_nested_generics)
+add_test(NAME installed_nested_generics_consumer COMMAND installed_nested_generics_consumer)
+set_tests_properties(installed_nested_generics_consumer PROPERTIES
+  LABELS "databind;generic;installed;ownership;cpp")
+
+salts_idl_target(
   TARGET installed_service
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/service.schema"
   ARTIFACT_NAME "installed_service"

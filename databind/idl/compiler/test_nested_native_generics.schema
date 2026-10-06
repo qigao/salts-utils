@@ -1,0 +1,21 @@
+schema NestedNative;
+
+message User {
+  @Min(1) int32 id;
+  string name;
+}
+
+message Batch {
+  list<list<int32>> matrix;
+  list<map<string,User>> records;
+  map<string,list<User>> groups;
+}
+
+message Mirror {
+  list<list<int32>> values;
+}
+
+message Overlay {
+  optional list<list<int32>> matrix;
+  nullable map<string,list<User>> groups;
+}

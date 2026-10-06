@@ -20,6 +20,8 @@
 #include "schema_lexer.h"
 #include "schema_size.h"
 #include "schema_types.h"
+#include "idl_contract.h"
+#include <tstr.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -124,6 +126,65 @@ static char *join_map_inner_types(schema_parse_ctx_t *ctx,
     memcpy(joined + key_len + 1u, value_type, value_len);
     joined[total_len] = '\0';
     return joined;
+}
+
+static char *generic_type_text(schema_parse_ctx_t *ctx, schema_token_t name,
+                               const char *first, const char *second) {
+    enum { GENERIC_UNARY_DELIMITER_BYTES = 2u, GENERIC_BINARY_DELIMITER_BYTES = 3u };
+    size_t delimiter_bytes = second != NULL
+        ? GENERIC_BINARY_DELIMITER_BYTES : GENERIC_UNARY_DELIMITER_BYTES;
+    size_t first_length = first != NULL ? strlen(first) : 0u;
+    size_t second_length = second != NULL ? strlen(second) : 0u;
+    tstr storage;
+    tstr joined;
+    schema_token_t token = {0};
+    IdlTypeRef type;
+    char *result = NULL;
+    char *constructor = NULL;
+
+    if (ctx->error) return NULL;
+    if (first == NULL || name.value == NULL) {
+        grammar_oom(ctx);
+        return NULL;
+    }
+    if (name.length > IDL_TYPE_REF_MAX_BYTES - delimiter_bytes ||
+        first_length > IDL_TYPE_REF_MAX_BYTES - delimiter_bytes - name.length ||
+        second_length > IDL_TYPE_REF_MAX_BYTES - delimiter_bytes -
+                            name.length - first_length) {
+        ctx->error = 1;
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Generic type exceeds IDL_TYPE_REF_MAX_BYTES");
+        return NULL;
+    }
+    constructor = tok_strdup(name);
+    storage = tstr_dup("");
+    if (constructor == NULL || storage == NULL) {
+        free(constructor);
+        tstr_free(storage);
+        grammar_oom(ctx);
+        return NULL;
+    }
+    joined = second != NULL
+        ? tstr_cat_fmt(storage, "%s<%s,%s>", constructor, first, second)
+        : tstr_cat_fmt(storage, "%s<%s>", constructor, first);
+    free(constructor);
+    if (joined == NULL) {
+        tstr_free(storage);
+        grammar_oom(ctx);
+        return NULL;
+    }
+    if (!idl_type_ref_parse(joined, tstr_len(joined), &type)) {
+        ctx->error = 1;
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Unsupported generic constructor, arity or type resource limit");
+    } else {
+        token.value = joined;
+        token.length = tstr_len(joined);
+        result = tok_strdup(token);
+        if (result == NULL) grammar_oom(ctx);
+    }
+    tstr_free(joined);
+    return result;
 }
 
 static void add_string(schema_parse_ctx_t *ctx, Node *map, const char *name,
@@ -351,7 +412,16 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
         }
 
         if (strcmp(field_type, "map") == 0 && collection_inner && collection_inner[0]) {
-            map_value_type = strchr(collection_inner, ',');
+            const char *cursor;
+            size_t depth = 0u;
+            for (cursor = collection_inner; *cursor != '\0'; ++cursor) {
+                if (*cursor == '<') ++depth;
+                else if (*cursor == '>') --depth;
+                else if (*cursor == ',' && depth == 0u) {
+                    map_value_type = cursor;
+                    break;
+                }
+            }
             if (map_value_type != NULL) {
                 size_t key_len = (size_t)(map_value_type - collection_inner);
                 add_string_slice(ctx, field_map, "key_type", collection_inner, key_len);
@@ -1035,6 +1105,7 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %type attr_values {Node *}
 %type attr_value {Node *}
 %type field_default {char *}
+%type type_reference {char *}
 %type field_presence {int}
 %type field_nullability {int}
 %type service_errors {Node *}
@@ -1045,6 +1116,7 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %destructor validation_constraint { (void)ctx; node_free($$); }
 %destructor attr_items { (void)ctx; node_free($$); }
 %destructor field_default { (void)ctx; free($$); }
+%destructor type_reference { (void)ctx; free($$); }
 %destructor attr_item { (void)ctx; node_free($$); }
 %destructor attr_values { (void)ctx; node_free($$); }
 %destructor attr_value { (void)ctx; node_free($$); }
@@ -1497,23 +1569,40 @@ field_decl ::= field_presence(P) field_nullability(Z) validation_annotations(C) 
     free(field_name);
 }
 
-field_decl ::= field_presence(P) field_nullability(Z) validation_annotations(C) attribute_list(A) idl_ident(T) LT idl_ident(I) GT idl_ident(N) SEMI. {
+type_reference(A) ::= idl_ident(T). {
+    A = tok_strdup(T);
+    if (A == NULL) grammar_oom(ctx);
+}
+type_reference(A) ::= idl_ident(T) LT type_reference(I) GT. {
+    A = generic_type_text(ctx, T, I, NULL);
+    free(I);
+}
+type_reference(A) ::= idl_ident(T) LT type_reference(K) COMMA type_reference(V) GT. {
+    A = generic_type_text(ctx, T, K, V);
+    free(K);
+    free(V);
+}
+
+field_decl ::= field_presence(P) field_nullability(Z) validation_annotations(C) attribute_list(A) idl_ident(T) LT type_reference(I) GT idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
-    char *inner_type = tok_strdup(I);
+    char *inner_type = I;
+    char *application = generic_type_text(ctx, T, I, NULL);
     char *field_name = tok_strdup(N);
     int is_optional = P != 0;
     int is_nullable = Z != 0;
     add_field(ctx, type_name, field_name, 1, inner_type, "", C, A, 0, is_optional, is_nullable, NULL);
     free(type_name);
     free(inner_type);
+    free(application);
     free(field_name);
 }
 
-field_decl ::= field_presence(P) field_nullability(Z) validation_annotations(C) attribute_list(A) idl_ident(T) LT idl_ident(K) COMMA idl_ident(V) GT idl_ident(N) SEMI. {
+field_decl ::= field_presence(P) field_nullability(Z) validation_annotations(C) attribute_list(A) idl_ident(T) LT type_reference(K) COMMA type_reference(V) GT idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *field_name = tok_strdup(N);
-    char *key_type = tok_strdup(K);
-    char *value_type = tok_strdup(V);
+    char *key_type = K;
+    char *value_type = V;
+    char *application = generic_type_text(ctx, T, K, V);
     char *map_inner = NULL;
     int is_optional = P != 0;
     int is_nullable = Z != 0;
@@ -1540,6 +1629,7 @@ field_decl ::= field_presence(P) field_nullability(Z) validation_annotations(C) 
     free(field_name);
     free(key_type);
     free(value_type);
+    free(application);
 }
 
 /*

@@ -2921,7 +2921,12 @@ spec("tbe_compiler") {
           "schema Unowned; composite Leaf { optional uint32 state; } composite Record { Leaf[4] values; }",
           "schema Unowned; composite Leaf { optional uint32 state; } group Record { Leaf[4] values; }",
           "schema Unowned; composite Leaf { optional uint32 state; } message Record { Leaf[4] values; }",
-          "schema Unowned; composite Leaf { optional uint32 state; } message Record { list<uint32> items; Leaf[4] values; }"
+          "schema Unowned; composite Leaf { optional uint32 state; } message Record { list<uint32> items; Leaf[4] values; }",
+          "schema Unowned; message Leaf { optional uint32 state; } message Record { list<list<Leaf>> values; }",
+          "schema Unordered; message Record { set<list<int32>> values; }",
+          "schema Unordered; message Record { map<list<int32>,list<int32>> values; }",
+          "schema Unavailable; message Record { list<list<Unknown>> values; }",
+          "schema Unavailable; enum Level : uint8 { LOW = 1, HIGH = 2 } message Record { list<list<Level>> values; }"
       };
       static const char original_header[] = "existing header\n";
       static const char original_source[] = "existing source\n";

@@ -9,6 +9,7 @@ cmake_add_grammar(SCHEMA
 add_library(${IDL_TARGET} STATIC
   src/node_tree.c
   src/idl_contract.c
+  src/idl_type_ref.c
   src/idl_contract_internal.h
   src/schema_enum.c
   src/schema_type_ref.c

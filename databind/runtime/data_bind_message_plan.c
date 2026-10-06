@@ -5,8 +5,10 @@
 #include "data_bind_validation_plan.h"
 #include "data_bind_validation_plan_internal.h"
 #include "schema_cmeta.h"
+#include "idl_contract.h"
 
 #include <cmeta/type_traits.h>
+#include <cstl/typed.h>
 #include <salts_cmeta_data.h>
 #include <vstr.h>
 
@@ -338,12 +340,21 @@ static int message_logical_buffer_matches_native(
          ops->move != NULL;
 }
 
+static int message_generic_matches_native(
+    DataBind *codec, const IdlTypeRef *logical,
+    const cmeta_data_desc *native_data, unsigned depth);
+
 static int message_logical_value_matches_native(
     DataBind *codec, const char *type_name,
     const cmeta_data_desc *native_data, unsigned depth) {
   const cmeta_data_desc *builtin;
   DataBindSchemaField logical = DATA_BIND_SCHEMA_FIELD_INIT;
   if (type_name == NULL || native_data == NULL) return 0;
+  if (strchr(type_name, '<') != NULL) {
+    IdlTypeRef reference;
+    return idl_type_ref_parse(type_name, strlen(type_name), &reference) &&
+           message_generic_matches_native(codec, &reference, native_data, depth);
+  }
   if (native_data->kind == CMETA_DATA_STRUCT)
     return message_schema_record_matches_native(codec, type_name, native_data, depth);
   if (native_data->kind == CMETA_DATA_ENUM) {
@@ -479,6 +490,76 @@ static int message_logical_map_matches_native(
 
   return message_logical_value_matches_native(
       codec, schema_field->value_type, value, depth + 1u);
+}
+
+/* Qualification belongs to plan construction. Execution retains the exact
+ * canonical graph and does not parse expressions or resolve names per item. */
+static int message_generic_matches_native(
+    DataBind *codec, const IdlTypeRef *logical,
+    const cmeta_data_desc *native_data, unsigned depth) {
+  IdlTypeRef argument;
+  const cmeta_data_desc *value;
+  const cmeta_type_identity *identity;
+  const cmeta_generic_desc *constructor;
+  size_t value_index;
+  char name[256];
+  if (codec == NULL || logical == NULL || native_data == NULL ||
+      depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH)
+    return 0;
+  if (logical->collection_kind == IDL_COLLECTION_NONE) {
+    if (logical->name_length >= sizeof(name)) return 0;
+    memcpy(name, logical->name, logical->name_length);
+    name[logical->name_length] = '\0';
+    return message_logical_value_matches_native(codec, name, native_data, depth);
+  }
+  if (native_data->storage_type == NULL ||
+      cmeta_data_construct_ops_of(native_data) == NULL ||
+      !cmeta_data_value_copy_supported(native_data) ||
+      !cmeta_data_value_move_supported(native_data))
+    return 0;
+  identity = cmeta_type_identity_of(native_data->storage_type);
+  constructor = logical->collection_kind == IDL_COLLECTION_MAP
+      ? &stl_map_generic_desc : &stl_vec_generic_desc;
+  if (!cmeta_type_identity_valid(identity) ||
+      !cmeta_generic_desc_equal(cmeta_type_identity_constructor(identity), constructor))
+    return 0;
+  if (logical->collection_kind == IDL_COLLECTION_MAP) {
+    const cmeta_data_map_ops *ops = cmeta_data_map_ops_of(native_data);
+    const cmeta_data_desc *key = cmeta_data_map_key_data(native_data);
+    DataBindSchemaField key_field = DATA_BIND_SCHEMA_FIELD_INIT;
+    if (logical->argument_lengths[0] != sizeof("string") - 1u ||
+        memcmp(logical->arguments[0], "string", sizeof("string") - 1u) != 0 ||
+        native_data->kind != CMETA_DATA_MAP || ops == NULL ||
+        ops->collector == NULL || ops->accept == NULL ||
+        ops->borrow == NULL || ops->borrow->size == NULL || ops->borrow->next == NULL ||
+        key == NULL || !cmeta_data_desc_valid(key) || key->storage_type == NULL ||
+        !cmeta_type_identity_equal(cmeta_type_identity_argument(identity, 0u),
+                                   cmeta_type_identity_of(key->storage_type)))
+      return 0;
+    key_field.has_cmeta_kind = 1;
+    key_field.cmeta_kind = CMETA_DATA_STRING;
+    if (!message_logical_buffer_matches_native(&key_field, key)) return 0;
+    value = cmeta_data_map_value_data(native_data);
+    value_index = 1u;
+  } else if (logical->collection_kind == IDL_COLLECTION_LIST) {
+    const cmeta_data_collection_ops *ops = cmeta_data_collection_ops_of(native_data);
+    if (native_data->kind != CMETA_DATA_SEQUENCE || ops == NULL ||
+        ops->borrow == NULL ||
+        (ops->collector == NULL &&
+         (ops->struct_size < offsetof(cmeta_data_collection_ops, collector_init) +
+                                sizeof(ops->collector_init) ||
+          ops->collector_init == NULL)))
+      return 0;
+    value = cmeta_data_collection_element_data(native_data);
+    value_index = 0u;
+  } else return 0;
+  return value != NULL && cmeta_data_desc_valid(value) &&
+         value->storage_type != NULL &&
+         cmeta_type_identity_equal(cmeta_type_identity_argument(identity, value_index),
+                                    cmeta_type_identity_of(value->storage_type)) &&
+         idl_type_ref_parse(logical->arguments[value_index],
+                            logical->argument_lengths[value_index], &argument) &&
+         message_generic_matches_native(codec, &argument, value, depth + 1u);
 }
 
 static int message_enum_item_bits(

@@ -169,7 +169,9 @@ enum { {{schema.schema_name}}_WIRE_BIG_ENDIAN = {{schema.schema_wire_big_endian_
 {{#typed_source_enabled}}
 struct cmeta_data_desc;
 /* Canonical generated record metadata. These are the same descriptors returned
- * by *_cmeta_data(); typed CSTL record containers bind them directly. */
+ * by *_cmeta_data(); typed CSTL record containers bind them directly. Call the
+ * accessor or record init before reading the exported graph, so its once
+ * initialization has published all external references and generic arguments. */
 {{#composites}}{{#cmeta_graph_supported}}TBE_GENERATED_API extern const cmeta_type_desc {{name}}_CMETA_TYPE;
 TBE_GENERATED_API extern const cmeta_data_desc {{name}}_CMETA_DATA;
 {{/cmeta_graph_supported}}{{/composites}}
@@ -337,6 +339,9 @@ static inline const uint8_t *{{name}}_cursor_end(const {{name}}_cursor_t *cursor
 {{#composites}}
 {{#typed_source_enabled}}
 {{#fields}}
+{{#native_generic_declarations}}
+{{{native_generic_declarations}}}
+{{/native_generic_declarations}}
 {{#typed_needs_map_vector}}
 typedef struct {{typed_map_entry_type}} {
     tstr key;
@@ -734,6 +739,9 @@ static inline const uint8_t *{{owner_name}}_{{name}}_ptr(const {{owner_name}}_vi
 {{#groups}}
 {{#typed_source_enabled}}
 {{#fields}}
+{{#native_generic_declarations}}
+{{{native_generic_declarations}}}
+{{/native_generic_declarations}}
 {{#typed_needs_map_vector}}
 typedef struct {{typed_map_entry_type}} {
     tstr key;
@@ -1363,6 +1371,9 @@ static inline const uint8_t *{{owner_name}}_{{name}}_ptr(const {{owner_name}}_vi
 {{#messages}}
 {{#typed_source_enabled}}
 {{#fields}}
+{{#native_generic_declarations}}
+{{{native_generic_declarations}}}
+{{/native_generic_declarations}}
 {{#typed_needs_map_vector}}
 typedef struct {{typed_map_entry_type}} {
     tstr key;

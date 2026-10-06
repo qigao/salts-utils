@@ -532,6 +532,26 @@ salts_idl_target(
   ARTIFACT_NAME "message_native_artifact"
   ARTIFACTS MESSAGE)
 
+salts_idl_target(
+  TARGET databind_nested_native_generics_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_nested_native_generics.schema"
+  ARTIFACT_NAME "nested_native_generics"
+  ARTIFACTS MESSAGE)
+
+cmake_add_test(test_databind_nested_native_generics
+  SOURCES test_nested_native_generics.c test_nested_native_generics_cpp.cpp
+  LIBS Salts::DataBind Salts::TinyTest
+    ${databind_nested_native_generics_fixture_NATIVE_TARGET}
+  INCLUDES "${databind_nested_native_generics_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_nested_native_generics
+  databind_nested_native_generics_fixture_idl_codegen)
+set_target_properties(test_databind_nested_native_generics PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+set_tests_properties(test_databind_nested_native_generics PROPERTIES
+  LABELS "databind;compiler;generic;ownership;cpp")
+
 cmake_add_test(test_databind_message_native_artifact
   SOURCES
     test_public_message_native_artifact.c
