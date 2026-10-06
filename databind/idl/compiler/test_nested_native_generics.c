@@ -6,6 +6,18 @@
 #include <string.h>
 
 int nested_native_generics_cpp_inspect(void);
+int nested_native_generics_cpp_generic_owners(void);
+int nested_native_generics_cpp_recursive_identity(void);
+
+/* C++ 只声明存储布局；跨 TU 用例借用 C facade 生成的静态操作元数据。 */
+const cmeta_receiver_method_set *nested_native_generics_c_generic_methods(size_t field) {
+  const cmeta_receiver_method_set *sets[] = {
+    Flat_values_vec_t_receiver_method_set(),
+    Flat_ids_set_t_receiver_method_set(),
+    Flat_counters_map_t_receiver_method_set()
+  };
+  return field < sizeof(sets) / sizeof(sets[0]) ? sets[field] : NULL;
+}
 
 size_t nested_native_generics_c_size(void) {
   return sizeof(Batch_t);
@@ -33,6 +45,14 @@ static void check_generic_provider(const cmeta_data_desc *data,
 }
 
 spec("generated nested native generic containers") {
+  it("uses canonical generated Vec Set Map operation owners across C and C++") {
+    check_equal(nested_native_generics_cpp_generic_owners(), 0);
+  }
+
+  it("compares independently constructed recursive generic identities across C and C++") {
+    check_equal(nested_native_generics_cpp_recursive_identity(), 0);
+  }
+
   it("publishes recursive applied identity and exact canonical providers to C and C++") {
     const cmeta_data_desc *data = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;

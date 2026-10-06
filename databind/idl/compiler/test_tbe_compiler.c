@@ -2926,7 +2926,11 @@ spec("tbe_compiler") {
           "schema Unordered; message Record { set<list<int32>> values; }",
           "schema Unordered; message Record { map<list<int32>,list<int32>> values; }",
           "schema Unavailable; message Record { list<list<Unknown>> values; }",
-          "schema Unavailable; enum Level : uint8 { LOW = 1, HIGH = 2 } message Record { list<list<Level>> values; }"
+          "schema Unavailable; enum Level : uint8 { LOW = 1, HIGH = 2 } message Record { list<list<Level>> values; }",
+          "schema Unavailable; message Record { option<int32> value; }",
+          "schema Unavailable; message Record { pair<int32,int32> value; }",
+          "schema Unavailable; message Record { tuple<int32,string> value; }",
+          "schema Unavailable; message Record { result<int32,string> value; }"
       };
       static const char original_header[] = "existing header\n";
       static const char original_source[] = "existing source\n";
