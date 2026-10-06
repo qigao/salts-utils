@@ -552,6 +552,16 @@ set_target_properties(test_databind_nested_native_generics PROPERTIES
 set_tests_properties(test_databind_nested_native_generics PROPERTIES
   LABELS "databind;compiler;generic;ownership;cpp")
 
+cmake_add_test(test_databind_generated_text_cleanup
+  SOURCES test_generated_text_cleanup.c
+  LIBS Salts::DataBind Salts::TinyTest
+  INCLUDES "${databind_nested_native_generics_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_generated_text_cleanup
+  databind_nested_native_generics_fixture_idl_codegen)
+set_tests_properties(test_databind_generated_text_cleanup PROPERTIES
+  LABELS "databind;compiler;ownership;cleanup")
+
 cmake_add_test(test_databind_message_native_artifact
   SOURCES
     test_public_message_native_artifact.c

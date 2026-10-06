@@ -78,6 +78,19 @@ DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema�
 
 ## 设计边界
 
+生成的 text decode helper 在渲染前建立编译器私有 cleanup-action stack，
+取得顺序为暂存 allocation、workspace、FormatPlan、format reader、native 临时值。
+每个义务有显式 live 状态，退出代码从同一列表逆序生成；heap、workspace、format
+和 CMeta 值各自调用既有 owner 的 API，执行端只有直接 C 调用和固定数量的局部状态位。
+codec 拥有的 MessagePlan 和 canonical reader view 均为借用，不进入释放列表。
+
+MessagePlan 保证失败解码的回滚，helper 只在解码成功后接管临时值；成功 move 后
+立即解除源值义务，后续状态位复制失败也不会再次 restore 已移动的源值。
+reader 按既有格式边界先关闭并检查结果，再发布临时值，这是逆序退出之外的显式
+领域完成点；close 已消费 reader 义务，即使返回失败也不再重复关闭。
+取得或解析失败保留原 destination，发布 move 失败保持既有 destination semantic-zero
+行为和错误码。JSON/YAML/XML/CSV 的故障及正常路径由生成代码正式用例验证。
+
 单层 `list<T>`、`set<T>`、`map<string,T>` 的真实原生存储分别是 CSTL Vec、Set、Map，
 字段通过 `cmeta_declared_type` 发布对应 SDK constructor 和真实参数 TypeDesc。
 生成的 typed facade 的 `cmeta_receiver_method_set.owner` 使用同一 canonical constructor；

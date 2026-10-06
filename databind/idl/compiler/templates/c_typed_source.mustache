@@ -738,7 +738,7 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     size_t temporary_align;
     uintptr_t temporary_base;
     size_t temporary_padding;
-    int temporary_started = 0;
+{{native_text_cleanup.declarations}}
 
     if (codec == NULL || type_name == NULL || resolve == NULL ||
         provider == NULL || destination == NULL ||
@@ -774,6 +774,7 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         return {{schema.schema_name}}_schema_codec_error(
             error, DATA_BIND_ERR_OOM, type_name,
             "Unable to allocate generated native staging");
+    {{native_text_cleanup.heap.acquire}}
     temporary_base = (uintptr_t)temporary_allocation;
     temporary_padding = (size_t)(temporary_base % temporary_align);
     if (temporary_padding != 0u)
@@ -786,10 +787,12 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         &workspace, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
+    {{native_text_cleanup.workspace.acquire}}
     if (provider->format == DATA_BIND_FORMAT_CSV) {
         status = data_bind_format_plan_compile(
             codec, type_name, DATA_BIND_FORMAT_CSV, &format_plan, error);
         if (status != DATA_BIND_OK) goto cleanup;
+        {{native_text_cleanup.format_plan.acquire}}
         status = data_bind_builtin_format_reader_open_csv_row(
             data, len, csv_row, descriptor_depth, &reader, error);
         if (status != DATA_BIND_OK) goto cleanup;
@@ -798,16 +801,19 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
             status = data_bind_format_plan_compile_reader(
                 codec, type_name, DATA_BIND_FORMAT_XML, &format_plan, error);
             if (status != DATA_BIND_OK) goto cleanup;
+            {{native_text_cleanup.format_plan.acquire}}
         } else if (provider->format == DATA_BIND_FORMAT_JSON ||
                    provider->format == DATA_BIND_FORMAT_YAML) {
             status = data_bind_format_plan_compile(
                 codec, type_name, provider->format, &format_plan, error);
             if (status != DATA_BIND_OK) goto cleanup;
+            {{native_text_cleanup.format_plan.acquire}}
         }
         status = data_bind_format_reader_open(
             provider, data, len, descriptor_depth, &reader, error);
         if (status != DATA_BIND_OK) goto cleanup;
     }
+    {{native_text_cleanup.reader.acquire}}
 
     if (format_plan != NULL) {
         status = data_bind_format_canonical_reader_init(
@@ -824,10 +830,10 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         decode_reader = reader.reader;
     }
 
-    temporary_started = 1;
     status = data_bind_message_plan_decode_native_format(
         plan, &workspace.options, provider->format, decode_reader,
         temporary, object_size, &diagnostic);
+    {{native_text_cleanup.value.acquire}}
     /*
      * Historical generated CSV treats an empty required cell as a row/type
      * mismatch after omitting that cell from the logical object. MessagePlan's
@@ -837,6 +843,7 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     if (provider->format == DATA_BIND_FORMAT_CSV &&
         status == DATA_BIND_ERR_TYPE_NOT_FOUND)
         status = DATA_BIND_ERR_TYPE_MISMATCH;
+    {{native_text_cleanup.reader.release}}
     close_status = data_bind_format_reader_close(&reader);
     if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
         status = {{schema.schema_name}}_schema_codec_error(
@@ -881,6 +888,7 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
             "Generated native value publication failed");
         goto cleanup;
     }
+    {{native_text_cleanup.value.release}}
 
     if (!{{schema.schema_name}}_message_state_copy(
             binding.presence, binding.presence_count,
@@ -908,15 +916,7 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         error, DATA_BIND_OK, NULL, NULL);
 
 cleanup:
-    if (reader.provider != NULL)
-        (void)data_bind_format_reader_close(&reader);
-    if (status != DATA_BIND_OK && temporary != NULL && temporary_started) {
-        (void)cmeta_data_value_restore_zero(binding.data, temporary);
-        memset(temporary, 0, object_size);
-    }
-    free(temporary_allocation);
-    data_bind_format_plan_free(format_plan);
-    {{schema.schema_name}}_message_workspace_close(&workspace);
+{{native_text_cleanup.teardown}}
     return status;
 }
 
