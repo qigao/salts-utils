@@ -839,6 +839,10 @@ jobs:
           cmake --preset ci-android-release-user
           cmake --build --preset ci-android-release-user --target databind_public_consumer --parallel 2
           popd
+          pushd databind/idl/compiler/package_config/databind_target
+          cmake --preset ci-android-release-user
+          cmake --build --preset ci-android-release-user --target installed_nested_generics --parallel 2
+          popd
           pushd databind/idl/compiler/package_config/wasm_execution
           cmake --preset ci-android-release-user
           cmake --build --preset ci-android-release-user --target wasm_execution_consumer --parallel 2
@@ -935,6 +939,10 @@ jobs:
           pushd databind/idl/compiler/package_config/databind_public
           cmake --preset ci-ios-release-user
           cmake --build --preset ci-ios-release-user --target databind_public_consumer --parallel 2
+          popd
+          pushd databind/idl/compiler/package_config/databind_target
+          cmake --preset ci-ios-release-user
+          cmake --build --preset ci-ios-release-user --target installed_nested_generics --parallel 2
           popd
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
