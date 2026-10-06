@@ -35,6 +35,6 @@ target_include_directories(test_salts_serial_mock
 target_compile_definitions(test_salts_serial_mock
   PRIVATE SALTS_SERIAL_EXPORTS ${SALTS_SERIAL_PRIVATE_DEFS} SALTS_SERIAL_TESTING)
 target_link_libraries(test_salts_serial_mock
-  PRIVATE Salts::Core Salts::CSTL Salts::TinyTest ${SALTS_SERIAL_PLATFORM_LIBS})
+  PRIVATE Salts::Core Salts::CSTL Salts::TinyMock ${SALTS_SERIAL_PLATFORM_LIBS})
 add_test(NAME test_salts_serial_mock COMMAND test_salts_serial_mock)
 set_target_properties(test_salts_serial_mock PROPERTIES FOLDER "salts_serial/tests")

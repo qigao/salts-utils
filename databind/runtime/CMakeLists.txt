@@ -139,6 +139,7 @@ add_library(
   data_bind_value_internal.h
   data_bind_value_reader.c
   data_bind_value_reader.h
+  data_bind_value_reader_internal.h
   data_bind_record.c
   data_bind_builtin_format_provider.c
   data_bind_binary_layout.h
@@ -559,11 +560,6 @@ cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
   LIBS Salts::DataBindCMeta Salts::Schema Salts::TinyTest
   FOLDER "databind/runtime/tests")
-cmake_add_test(test_data_bind_cmeta_kind
-  SOURCES test_data_bind_cmeta_kind.c
-  LIBS Salts::DataBindCMeta Salts::TinyTest
-  FOLDER "databind/runtime/tests")
-
 cmake_add_test(test_data_bind_cflow
   SOURCES test_data_bind_cflow.c
   LIBS Salts::DataBindCFlow Salts::TinyTest
@@ -628,26 +624,40 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     LABELS "databind;cmeta;generated;lifecycle")
 
   set(BINARY_TAIL_ONLY_DIR "${CMAKE_CURRENT_BINARY_DIR}/binary_tail_only_generated")
-  add_custom_command(
-    OUTPUT "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.h"
-           "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.c"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_TAIL_ONLY_DIR}"
-    COMMAND $<TARGET_FILE:salts_idlc>
-            "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_tail_only.schema"
-            --lang c
-            --output "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.h"
-            --source-output "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.c"
-    DEPENDS salts_idlc "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_tail_only.schema"
-    VERBATIM)
+  foreach(binary_fixture IN ITEMS binary_tail_only binary_array_big)
+    add_custom_command(
+      OUTPUT "${BINARY_TAIL_ONLY_DIR}/${binary_fixture}_generated.h"
+             "${BINARY_TAIL_ONLY_DIR}/${binary_fixture}_generated.c"
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_TAIL_ONLY_DIR}"
+      COMMAND $<TARGET_FILE:salts_idlc>
+              "${CMAKE_CURRENT_SOURCE_DIR}/test_${binary_fixture}.schema"
+              --lang c
+              --output "${BINARY_TAIL_ONLY_DIR}/${binary_fixture}_generated.h"
+              --source-output "${BINARY_TAIL_ONLY_DIR}/${binary_fixture}_generated.c"
+      DEPENDS salts_idlc "${CMAKE_CURRENT_SOURCE_DIR}/test_${binary_fixture}.schema"
+      VERBATIM)
+  endforeach()
   cmake_add_test(test_binary_tail_only
     SOURCES test_binary_tail_only.c
             "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.c"
             "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.h"
+            "${BINARY_TAIL_ONLY_DIR}/binary_array_big_generated.c"
+            "${BINARY_TAIL_ONLY_DIR}/binary_array_big_generated.h"
     LIBS ${DATA_BIND_TEST_LIBS}
     INCLUDES "${BINARY_TAIL_ONLY_DIR}"
     FOLDER "databind/runtime/tests")
   set_tests_properties(test_binary_tail_only PROPERTIES
     LABELS "databind;binary;generated")
+
+  cmake_add_test(test_generated_message_plan
+    SOURCES test_generated_message_plan.c
+            "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.c"
+            "${BINARY_TAIL_ONLY_DIR}/binary_tail_only_generated.h"
+    LIBS ${DATA_BIND_TEST_LIBS}
+    INCLUDES "${BINARY_TAIL_ONLY_DIR}"
+    FOLDER "databind/runtime/tests")
+  set_tests_properties(test_generated_message_plan PROPERTIES
+    LABELS "databind;binary;generated;message-plan;ownership;concurrency")
 
   set(BINARY_ADMISSION_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/binary_admission_generated")
   set(BINARY_ADMISSION_GENERATED_HEADER "${BINARY_ADMISSION_GENERATED_DIR}/binary_admission_generated.h")

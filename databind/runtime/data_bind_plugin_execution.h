@@ -36,7 +36,7 @@ static inline int data_bind_plugin_operation_execution_admit(
   const cmeta_param_desc *response_param;
   size_t expected_params;
   DataBindNativeExecution execution =
-      (DataBindNativeExecution)DATA_BIND_NATIVE_EXECUTION_INIT;
+      DATA_BIND_NATIVE_EXECUTION_INIT;
 
   if (out == NULL) return 0;
   *out = execution;

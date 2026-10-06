@@ -14,7 +14,7 @@ add_subdirectory(idl)
 add_subdirectory(binding/compiler)
 add_subdirectory(producer)
 target_link_libraries(databind_binary_contract
-  PUBLIC Salts::IDL
+  PUBLIC Salts::IDL Salts::CSerde
   PRIVATE Salts::Schema Salts::Core)
 add_subdirectory(runtime)
 add_subdirectory(idl/compiler)

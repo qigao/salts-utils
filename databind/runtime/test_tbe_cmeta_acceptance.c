@@ -308,7 +308,7 @@ suite("real generated and runtime CMeta acceptance") {
     data_bind_free(codec);
   }
 
-  it("keeps deferred container native queries repeatably fail-closed") {
+  it("publishes generated container storage while schema-only queries remain fail-closed") {
     typedef DataBindStatus (*Getter)(const cmeta_data_desc **, DataBindError *);
     static const struct {
       const char *record;
@@ -347,14 +347,22 @@ suite("real generated and runtime CMeta acceptance") {
       unresolved_field(
           codec, cases[i].record, cases[i].index, cases[i].path);
 
-      check_equal(cases[i].get(&out, &error), DATA_BIND_ERR_SCHEMA);
-      check(out == &cmeta_data_int32);
-      check_equal(error.path, cases[i].record);
-      check_equal(cases[i].get(&out, &again), DATA_BIND_ERR_SCHEMA);
-      check(out == &cmeta_data_int32);
-      check_equal(again.code, error.code);
-      check_equal(again.path, error.path);
-      check_equal(again.message, error.message);
+      check_equal(cases[i].get(&out, &error), DATA_BIND_OK);
+      check_not_null(out);
+      check_true(cmeta_data_desc_valid(out));
+      {
+        const cmeta_data_struct_shape *shape = out->shape;
+        const cmeta_data_desc *repeated = NULL;
+        const cmeta_data_desc *container = shape->fields[cases[i].index].value;
+        check_equal(container->kind, cases[i].kind);
+        check_true(cmeta_data_desc_valid(container));
+        check_not_null(container->storage_type);
+        check_not_null(cmeta_data_construct_ops_of(container));
+        check_not_null(cmeta_data_collection_ops_of(container));
+        check_true(cmeta_data_desc_equal(cmeta_data_collection_element_data(container), &cmeta_data_int32));
+        check_equal(cases[i].get(&repeated, &again), DATA_BIND_OK);
+        check_true(cmeta_data_desc_equal(out, repeated));
+      }
     }
 
     data_bind_free(codec);
@@ -372,7 +380,6 @@ suite("real generated and runtime CMeta acceptance") {
     MapStorage_value_entry_t first = {0}, second = {0}, duplicate = {0};
     MapVisitState visited = {0};
     cmeta_data_map_borrow_cursor cursor;
-    cmeta_collector collector;
     stl_status duplicate_status;
     const void *key = NULL, *value = NULL;
     size_t size = 0u;
@@ -409,14 +416,15 @@ suite("real generated and runtime CMeta acceptance") {
     check(cmeta_data_desc_valid(map_data));
     check_equal(map_data->kind, CMETA_DATA_MAP);
     check_null(map_data->collection_ops);
-    check_not_null(strstr(map_data->stable_id, "databind.native.Graph.MapStorage_t.value.map"));
+    check_equal(map_data->stable_id, "MapStorage_value_map_t.data");
     ops = cmeta_data_map_ops_of(map_data);
     check_not_null(ops);
     if (!ops) {
       data_bind_free(codec);
       return;
     }
-    check_equal(ops->flags, CMETA_DATA_MAP_UNIQUE_KEYS | CMETA_DATA_MAP_ORDERED);
+    check_equal(ops->flags, CMETA_DATA_MAP_UNIQUE_KEYS | CMETA_DATA_MAP_ORDERED | CMETA_DATA_MAP_SORTED);
+    check_not_null(ops->collector);
 
     MapStorage_init(&object);
     first.key = tstr_dup("first");
@@ -432,8 +440,10 @@ suite("real generated and runtime CMeta acceptance") {
       data_bind_free(codec);
       return;
     }
-    check_equal(MapStorage_value_vec_t_push(&object.value, first), STL_OK);
-    check_equal(MapStorage_value_vec_t_push(&object.value, second), STL_OK);
+    check_equal(MapStorage_value_map_t_put(&object.value, first.key, first.value), STL_OK);
+    check_equal(MapStorage_value_map_t_put(&object.value, second.key, second.value), STL_OK);
+    tstr_free(first.key);
+    tstr_free(second.key);
     check(cmeta_data_desc_equal(ops->key(&object.value), &salts_tstr_cmeta_data));
     same_value_type(ops->value(&object.value), &cmeta_data_int32);
     check_equal(cmeta_data_map_foreach(map_data, &object.value, collect_map_entry,
@@ -446,7 +456,7 @@ suite("real generated and runtime CMeta acceptance") {
     visited = (MapVisitState){0};
     check_equal(cmeta_data_map_foreach(map_data, &object.value, collect_map_entry,
                                       &visited, 1u), CMETA_CAPACITY_EXCEEDED);
-    check_equal(visited.count, 0u);
+    check_equal(visited.count, 1u);
 
     check_equal(cmeta_data_map_borrow_begin(map_data, &object.value, &cursor), CMETA_OK);
     check_equal(cmeta_data_map_borrow_size(&cursor, &size), CMETA_OK);
@@ -455,31 +465,33 @@ suite("real generated and runtime CMeta acceptance") {
     check_equal(*(const tstr *)key, "first");
     check_equal(*(const int32_t *)value, 11);
     check_equal(cmeta_data_map_borrow_next(&cursor, &key, &value),
-                CMETA_GEN_VALUE_AND_DONE);
+                CMETA_GEN_VALUE);
     check_equal(*(const tstr *)key, "second");
     check_equal(*(const int32_t *)value, 22);
     check_equal(cmeta_data_map_borrow_next(&cursor, &key, &value), CMETA_GEN_DONE);
-    check_equal(cmeta_data_map_collector(map_data, &object.value, 2u, &collector),
-                CMETA_TRAIT_MISSING);
-
     duplicate.key = tstr_dup("first");
     duplicate.value = 33;
     check_not_null(duplicate.key);
     if (duplicate.key) {
-      duplicate_status = MapStorage_value_vec_t_push(&object.value, duplicate);
+      duplicate_status = MapStorage_value_map_t_put(&object.value, duplicate.key, duplicate.value);
+      tstr_free(duplicate.key);
       check_equal(duplicate_status, STL_OK);
       if (duplicate_status == STL_OK) {
         visited = (MapVisitState){0};
         check_equal(cmeta_data_map_foreach(map_data, &object.value,
-                                          collect_map_entry, &visited, 3u),
-                    CMETA_CALLBACK_ERROR);
-        check_equal(visited.count, 0u);
+                                          collect_map_entry, &visited, 2u),
+                    CMETA_OK);
+        check_equal(visited.count, 2u);
+        check_equal(visited.keys[0], "first");
+        check_equal(visited.values[0], 33);
+        check_equal(visited.keys[1], "second");
+        check_equal(visited.values[1], 22);
         check_equal(cmeta_data_map_borrow_begin(map_data, &object.value, &cursor),
                     CMETA_OK);
         check_equal(cmeta_data_map_borrow_next(&cursor, &key, &value),
-                    CMETA_GEN_ERROR);
-      } else {
-        tstr_free(duplicate.key);
+                    CMETA_GEN_VALUE);
+        check_equal(*(const tstr *)key, "first");
+        check_equal(*(const int32_t *)value, 33);
       }
     }
 

@@ -62,27 +62,28 @@ spec("DataBind schema reflection contract") {
     static const char schema[] =
         "message User {"
         " @Min(-5) @Max(150) int32 age;"
+        " uint32 unconstrained;"
         " @Size(min = 1, max = 100) string name;"
         " optional @Pattern(\"^[^@]+@[^@]+$\") string email;"
-        " uint32 unconstrained;"
         "}";
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBindSchemaConstraint reflected = DATA_BIND_SCHEMA_CONSTRAINT_INIT;
 
-    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
-                DATA_BIND_OK);
+    DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &error);
+    info("schema admission: %s (%s)", error.message, error.path);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
     if (codec == NULL) return;
 
     check_equal(data_bind_schema_field_constraint_count(codec, "User", 0u),
                 (size_t)2u);
     check_equal(data_bind_schema_field_constraint_count(codec, "User", 1u),
-                (size_t)1u);
+                (size_t)0u);
     check_equal(data_bind_schema_field_constraint_count(codec, "User", 2u),
                 (size_t)1u);
     check_equal(data_bind_schema_field_constraint_count(codec, "User", 3u),
-                (size_t)0u);
+                (size_t)1u);
 
     check(data_bind_schema_field_constraint_at(codec, "User", 0u, 0u,
                                                &reflected) == 1);
@@ -102,7 +103,7 @@ spec("DataBind schema reflection contract") {
     check_equal(reflected.value, "150");
 
     reflected = (DataBindSchemaConstraint)DATA_BIND_SCHEMA_CONSTRAINT_INIT;
-    check(data_bind_schema_field_constraint_at(codec, "User", 1u, 0u,
+    check(data_bind_schema_field_constraint_at(codec, "User", 2u, 0u,
                                                &reflected) == 1);
     check_equal(reflected.kind, DATA_BIND_SCHEMA_CONSTRAINT_SIZE);
     check_equal(reflected.kind_name, "size");
@@ -114,7 +115,7 @@ spec("DataBind schema reflection contract") {
     check_null(reflected.pattern);
 
     reflected = (DataBindSchemaConstraint)DATA_BIND_SCHEMA_CONSTRAINT_INIT;
-    check(data_bind_schema_field_constraint_at(codec, "User", 2u, 0u,
+    check(data_bind_schema_field_constraint_at(codec, "User", 3u, 0u,
                                                &reflected) == 1);
     check_equal(reflected.kind, DATA_BIND_SCHEMA_CONSTRAINT_PATTERN);
     check_equal(reflected.kind_name, "pattern");

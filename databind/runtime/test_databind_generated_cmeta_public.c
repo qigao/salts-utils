@@ -5,9 +5,13 @@
 #include <stdio.h>
 #include <string.h>
 
+static int exact_double(double actual, double expected) {
+  return memcmp(&actual, &expected, sizeof(actual)) == 0;
+}
+
 /* Public-only, release-build-safe checks: no private validator or generated
  * implementation include may make this consumer link accidentally. */
-int main(void) {
+static int verify_public_cmeta(void) {
   const struct cmeta_data_desc *data = NULL;
   const struct cmeta_data_desc *sentinel;
   DataBindError error = DATA_BIND_ERROR_INIT;
@@ -33,7 +37,7 @@ int main(void) {
     Sample_t lifecycle;
     memset(&lifecycle, 0xa5, sizeof(lifecycle));
     Sample_init(&lifecycle);
-    if (lifecycle.point.x != 0 || lifecycle.point.y != 0.0 ||
+    if (lifecycle.point.x != 0 || !exact_double(lifecycle.point.y, 0.0) ||
         lifecycle.state != 0 || lifecycle.count != 0)
       return 33;
     lifecycle.point.x = 9;
@@ -41,7 +45,7 @@ int main(void) {
     lifecycle.state = State_Ready;
     lifecycle.count = 17;
     Sample_clear(&lifecycle);
-    if (lifecycle.point.x != 0 || lifecycle.point.y != 0.0 ||
+    if (lifecycle.point.x != 0 || !exact_double(lifecycle.point.y, 0.0) ||
         lifecycle.state != 0 || lifecycle.count != 0)
       return 34;
   }
@@ -90,8 +94,8 @@ int main(void) {
           cmeta_data_enum_read_bits(value_data, &object.value, &bits) != CMETA_OK ||
           bits != i + 1u || object.value != items[i] ||
           EnumSymbolStorage_to_bin_into(codec, &object, wire, sizeof(wire), &wire_len,
-                                        &error) != DATA_BIND_ERR_SCHEMA ||
-          wire_len != 0u || wire[0] != 0u || wire[1] != 0u)
+                                        &error) != DATA_BIND_OK ||
+          wire_len != sizeof(wire) || wire[0] != i + 1u || wire[1] != 0u)
         { data_bind_free(codec); return 32; }
     }
     data_bind_free(codec);
@@ -202,13 +206,19 @@ int main(void) {
                                     UINT64_MAX) != CMETA_OK ||
         WideEnumStorage_to_bin_into(
             codec, &object, wire, sizeof(wire), &wire_len,
-            &error) != DATA_BIND_ERR_SCHEMA ||
-        wire_len != 0u ||
+            &error) != DATA_BIND_OK ||
+        wire_len != sizeof(wire) ||
         cmeta_data_enum_read_bits(enum_data, &object.value,
                                   &bits) != CMETA_OK ||
         bits != UINT64_MAX || object.value != UINT64_MAX;
+    for (size_t i = 0u; i < sizeof(wire); ++i)
+      if (wire[i] != UINT8_MAX) failed = 1;
     data_bind_free(codec);
-    if (failed) return 29;
+    if (failed) {
+      fprintf(stderr, "Wide enum Binary mismatch: code=%d length=%zu path=%s message=%s\n",
+              (int)error.code, wire_len, error.path, error.message);
+      return 29;
+    }
   }
   {
     const cmeta_data_desc *fixed = NULL;
@@ -270,7 +280,7 @@ int main(void) {
     Sample_init(&actual);
     if (Sample_from_json(
             codec, &actual, json, sizeof(json) - 1u, &error) != DATA_BIND_OK ||
-        actual.point.x != 3 || actual.point.y != 4.5 ||
+        actual.point.x != 3 || !exact_double(actual.point.y, 4.5) ||
         actual.state != State_Ready || actual.count != 7) {
       Sample_clear(&actual);
       data_bind_free(codec);
@@ -280,4 +290,11 @@ int main(void) {
     data_bind_free(codec);
   }
   return 0;
+}
+
+int main(void) {
+  int result = verify_public_cmeta();
+  if (result != 0)
+    fprintf(stderr, "Public generated CMeta verification failed at check %d\n", result);
+  return result;
 }

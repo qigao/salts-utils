@@ -8,6 +8,8 @@ on:
       - "cmake/ci/restore-native-sdk.ps1"
       - "packaging/nuget/**"
       - "CMakeLists.txt"
+      - "CMakeUserPresets.json"
+      - "presets/**"
       - "vcpkg.json"
       - "crypto/**"
       - "cmake/SaltsUtilsConfig.cmake.in"
@@ -28,6 +30,8 @@ on:
       - "cmake/ci/restore-native-sdk.ps1"
       - "packaging/nuget/**"
       - "CMakeLists.txt"
+      - "CMakeUserPresets.json"
+      - "presets/**"
       - "vcpkg.json"
       - "crypto/**"
       - "cmake/SaltsUtilsConfig.cmake.in"
@@ -119,19 +123,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build/xml-sanitize -G Ninja \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_QUALIFY_XML=ON \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF \
-            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DENABLE_SANITIZER_ADDRESS=ON \
-            -DENABLE_SANITIZER_UNDEFINED=ON
-          cmake --build build/xml-sanitize \
+          cmake --preset ci-linux-dev-user
+          cmake --build --preset ci-linux-dev-user \
             --target xml_parser_test xml_sax_parser_test test_databind_generated_cmeta_graph \
                      test_databind_generated_cmeta_public test_databind_generated_cmeta_public_cpp \
                      test_optional_scalar_lifecycle test_databind_message_native_artifact \
@@ -141,7 +134,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build/xml-sanitize --no-tests=error -R '^(xml_parser_test|xml_sax_parser_test|test_databind_generated_cmeta_graph|test_databind_generated_cmeta_public|test_databind_generated_cmeta_public_cpp|test_optional_scalar_lifecycle|test_databind_message_native_artifact|test_data_bind_native_nullable)$' --output-on-failure
+          ctest --preset ci-linux-dev-user --no-tests=error -R '^(xml_parser_test|xml_sax_parser_test|test_databind_generated_cmeta_graph|test_databind_generated_cmeta_public|test_databind_generated_cmeta_public_cpp|test_optional_scalar_lifecycle|test_databind_message_native_artifact|test_data_bind_native_nullable)$' --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
 
@@ -190,18 +183,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build/binding-plan -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON -DBUILD_EXAMPLES=OFF \
-            -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
-          cmake --build build/binding-plan \
-            --target test_data_bind_native_enum test_data_bind_native_scalar test_data_bind_native_message test_data_bind_native_collection_message test_data_bind_native_ownership_boundary test_data_bind_native_bytes_json test_data_bind_native_value_reader test_data_bind_native_value_reader_cpp test_data_bind_value_boundary test_data_bind_binary_native test_data_bind_binary_writer test_databind_generated_binary_admission test_binary_tail_only benchmark_data_bind_native test_data_bind_binding_plan test_data_bind_object_message_plan \
-                     test_data_bind_native_nullable \
+          cmake --preset ci-linux-release-user
+          cmake --build --preset ci-linux-release-user \
+            --target test_data_bind_native_control_records test_data_bind_native_enum test_data_bind_native_scalar test_data_bind_native_message test_data_bind_native_collection_message test_data_bind_native_ownership_boundary test_data_bind_native_bytes_json test_data_bind_native_value_reader test_data_bind_native_value_reader_cpp test_data_bind_value_boundary test_data_bind_binary_native test_data_bind_binary_writer test_databind_generated_binary_admission test_binary_tail_only benchmark_data_bind_native test_data_bind_binding_plan test_data_bind_object_message_plan \
+                     test_data_bind_native_nullable test_generated_message_plan \
                      test_data_bind_projection_plan test_data_bind_record_exact \
                      test_data_bind_binary_reader test_data_bind_opaque_plan \
                      test_databind_binary_reader_codegen test_databind_binary_layout_ir \
@@ -237,8 +222,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|benchmark_data_bind_native|test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_native_nullable|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_databind_binary_reader_codegen|test_databind_binary_layout_ir|test_databind_binary_var_data_transport|test_databind_opaque_transport|test_databind_opaque_service|test_databind_method_plan_binary_admission|test_databind_flowmq_plan_projection|test_data_bind_service_native_error|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_cmeta_public_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp|test_tbe_compiler|test_tbe_compiler_cmeta_fields|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_service_native_lowering|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact|test_databind_plugin_projection_rejection|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_tbe_cmeta_cli_gates)$' \
+          ctest --preset ci-linux-release-user --no-tests=error \
+            -R '^(test_data_bind_native_control_records|test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|test_generated_message_plan|benchmark_data_bind_native|test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_native_nullable|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_databind_binary_reader_codegen|test_databind_binary_layout_ir|test_databind_binary_var_data_transport|test_databind_opaque_transport|test_databind_opaque_service|test_databind_method_plan_binary_admission|test_databind_flowmq_plan_projection|test_data_bind_service_native_error|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_cmeta_public_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp|test_tbe_compiler|test_tbe_compiler_cmeta_fields|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_service_native_lowering|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact|test_databind_plugin_projection_rejection|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_tbe_cmeta_cli_gates)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
@@ -247,20 +232,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build/binding-plan-sanitize -G Ninja \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON -DBUILD_EXAMPLES=OFF \
-            -DENABLE_SANITIZER_ADDRESS=ON \
-            -DENABLE_SANITIZER_UNDEFINED=ON
-          UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-          cmake --build build/binding-plan-sanitize \
-            --target test_data_bind_native_enum test_data_bind_native_scalar test_data_bind_native_message test_data_bind_native_collection_message test_data_bind_native_ownership_boundary test_data_bind_native_bytes_json test_data_bind_native_value_reader test_data_bind_native_value_reader_cpp test_data_bind_value_boundary test_data_bind_binary_native test_data_bind_binary_writer test_databind_generated_binary_admission test_binary_tail_only benchmark_data_bind_native test_data_bind_native_container test_data_bind_native_storage_requirements test_data_bind_binary_reader test_data_bind_opaque_plan \
+          cmake --preset ci-linux-dev-user
+          cmake --build --preset ci-linux-dev-user \
+            --target test_data_bind_native_control_records test_data_bind_native_enum test_data_bind_native_scalar test_data_bind_native_message test_data_bind_native_collection_message test_data_bind_native_ownership_boundary test_data_bind_native_bytes_json test_data_bind_native_value_reader test_data_bind_native_value_reader_cpp test_data_bind_value_boundary test_data_bind_binary_native test_data_bind_binary_writer test_databind_generated_binary_admission test_binary_tail_only benchmark_data_bind_native test_data_bind_native_container test_data_bind_native_storage_requirements test_data_bind_binary_reader test_data_bind_opaque_plan \
                      test_data_bind_yaml_provider test_data_bind_xml_provider \
+                     test_generated_message_plan test_data_bind_binding_plan test_data_bind_object_message_plan \
                      test_data_bind_service_native_error \
                      test_databind_message_native_artifact \
                      test_databind_plugin_generic_descriptor_client \
@@ -274,10 +250,8 @@ jobs:
                      test_databind_generated_owned_buffers \
                      test_databind_generated_sequence_public_cpp \
             --parallel 2
-          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
-          UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-          ctest --test-dir build/binding-plan-sanitize --no-tests=error \
-            -R '^(test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|benchmark_data_bind_native|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_service_native_error|test_databind_message_native_artifact|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp)$' \
+          ctest --preset ci-linux-dev-user --no-tests=error \
+            -R '^(test_data_bind_native_control_records|test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|test_generated_message_plan|benchmark_data_bind_native|test_data_bind_binding_plan|test_data_bind_object_message_plan|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_service_native_error|test_databind_message_native_artifact|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
@@ -326,16 +300,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build/jinja-cmeta -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
-          cmake --build build/jinja-cmeta \
+          cmake --preset ci-linux-release-user
+          cmake --build --preset ci-linux-release-user \
             --target test_jinja_cmeta_cstl_collections \
                      test_jinja_cmeta_iterators \
                      test_jinja_cmeta_attributes \
@@ -350,7 +316,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/jinja-cmeta --no-tests=error \
+          ctest --preset ci-linux-release-user --no-tests=error \
             -R '^(test_jinja_cmeta_(cstl_collections|iterators|attributes|budgets|identity|templates|header_cpp))$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
@@ -360,6 +326,9 @@ jobs:
     name: Linux x64 SDK
     needs: metadata
     runs-on: ubuntu-24.04
+    env:
+      QIGAO_TARGET_TRIPLET: x64-linux
+      QIGAO_SDK_RID: linux-x64
     steps:
       - uses: actions/checkout@v4
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
@@ -390,114 +359,29 @@ jobs:
         run: |
           set -euxo pipefail
           prefix="$GITHUB_WORKSPACE/stage/sdk/linux-x64"
-          cmake -S . -B build/native-sdk -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DVCPKG_MANIFEST_FEATURES=capture \
-            -DSALTS_UTILS_ENABLE_CAPTURE=ON \
-            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DCMAKE_INSTALL_PREFIX="$prefix"
-          cmake --build build/native-sdk --parallel 2
-          cmake --install build/native-sdk
-          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -f "$prefix/include/data_bind_binding_plan.h"
-          test -f "$prefix/include/data_bind_projection_plan.h"
-          test -f "$prefix/include/data_bind_native_binding.h"
-          grep -q "DataBindNativeExecution" "$prefix/include/data_bind_native_binding.h"
-          grep -q "DataBindMessageNativeArtifact" "$prefix/include/data_bind_native_binding.h"
-          test -f "$prefix/include/data_bind_native.h"
-          grep -q "DataBindNativePlan" "$prefix/include/data_bind_native.h"
-          test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
-          test -f "$prefix/include/data_bind_plugin_catalog.h"
-          test -f "$prefix/include/data_bind_plugin_execution.h"
-          cat > build/native-execution-installed.c <<'EOF'
-          #include <data_bind_native_binding.h>
-          _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u,
-                         "unexpected DataBind native execution ABI");
-          int main(void) {
-            DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT;
-            return execution.size == sizeof(DataBindNativeExecution) &&
-                           execution.abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION
-                       ? 0
-                       : 1;
-          }
-          EOF
-          cc -std=c11 -Wall -Wextra -Werror \
-            -I"$prefix/include" -I"$SALTS_ROOT/include" \
-            build/native-execution-installed.c \
-            -o build/native-execution-installed
-          ./build/native-execution-installed
-
-          mkdir -p build/native-plan-installed
-          cat > build/native-plan-installed/main.c <<'EOF'
-          #include <data_bind_native.h>
-          _Static_assert(DATA_BIND_NATIVE_PLAN_ABI_VERSION == 1u,
-                         "unexpected DataBind native plan ABI");
-          int main(void) {
-            return data_bind_native_plan_data((DataBindNativePlan *)0) == 0
-                       ? 0
-                       : 1;
-          }
-          EOF
-          cat > build/native-plan-installed/CMakeLists.txt <<'EOF'
-          cmake_minimum_required(VERSION 3.20)
-          project(native_plan_installed C)
-          find_package(Salts CONFIG REQUIRED)
-          find_package(SaltsUtils CONFIG REQUIRED)
-          add_executable(native_plan_installed main.c)
-          target_link_libraries(native_plan_installed PRIVATE Salts::DataBindCore)
-          EOF
-          cmake -S build/native-plan-installed \
-            -B build/native-plan-installed-build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
-          cmake --build build/native-plan-installed-build --parallel 2
-          build/native-plan-installed-build/native_plan_installed
-
-          cmake -S databind/runtime/package_config/plugin_execution \
-            -B build/databind-plugin-execution-installed -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
-          cmake --build build/databind-plugin-execution-installed --parallel 2
-          build/databind-plugin-execution-installed/databind_plugin_execution_c
-          build/databind-plugin-execution-installed/databind_plugin_execution_cpp
-
-          cmake -S databind/producer/package_config \
-            -B build/databind-producer-installed -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
-          cmake --build build/databind-producer-installed \
-            --target databind_generated_plan_consumer --parallel 2
-          build/databind-producer-installed/databind_generated_plan_consumer
-
-          cmake -S databind/idl/compiler/package_config/databind_target \
-            -B build/databind-target-installed -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DCMAKE_PREFIX_PATH="$prefix"
-          cmake --build build/databind-target-installed \
-            --target installed_image --parallel 2
-
-          cmake -S databind/idl/compiler/package_config/wasm_execution \
-            -B build/databind-wasm-execution-installed -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DSALTS_UTILS_ROOT="$prefix" \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$TURBOWASM_ROOT"
-          cmake --build build/databind-wasm-execution-installed \
-            --target wasm_execution_consumer --parallel 2
-          LD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$TURBOWASM_ROOT/lib:${LD_LIBRARY_PATH:-}" \
-            build/databind-wasm-execution-installed/wasm_execution_consumer
-
+          cmake --preset ci-sdk-capture-release-user
+          cmake --build --preset install-ci-sdk-capture-release-user --parallel 2
+          export SALTS_UTILS_ROOT="$prefix"
+          pushd databind/runtime/package_config/plugin_execution
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
+          pushd databind/producer/package_config
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target databind_generated_plan_consumer --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
+          pushd databind/idl/compiler/package_config/databind_target
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
+          pushd databind/idl/compiler/package_config/wasm_execution
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target wasm_execution_consumer --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -505,6 +389,7 @@ jobs:
           arch=x64
           profile=release
           EOF
+
       - uses: actions/upload-artifact@v4
         with:
           name: salts-utils-sdk-linux-x64
@@ -516,6 +401,9 @@ jobs:
     name: Linux arm64 SDK
     needs: metadata
     runs-on: ubuntu-24.04-arm
+    env:
+      QIGAO_TARGET_TRIPLET: arm64-linux
+      QIGAO_SDK_RID: linux-arm64
     steps:
       - uses: actions/checkout@v4
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
@@ -548,77 +436,26 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash cmake/ci/restore-native-sdk.sh linux-arm64 linux-arm64
 
-      - name: Restore arm64-linux dependencies cache-only
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf "$GITHUB_WORKSPACE/vcpkg_installed"
-          "$VCPKG_ROOT/vcpkg" install \
-            --x-manifest-root=. \
-            --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed" \
-            --triplet arm64-linux \
-            --host-triplet arm64-linux \
-            --only-binarycaching
-          test -f "$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/include/simde/x86/sse2.h"
-          test -f "$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/include/zstd.h"
-          test -f "$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/include/miniaudio.h"
+
 
       - name: Configure, build and install SaltsUtils
         shell: bash
         run: |
           set -euxo pipefail
           prefix="$GITHUB_WORKSPACE/stage/sdk/linux-arm64"
-          cmake -S . -B build/native-sdk-arm64 -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=arm64-linux \
-            -DVCPKG_HOST_TRIPLET=arm64-linux \
-            -DVCPKG_MANIFEST_MODE=OFF \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DCMAKE_INSTALL_PREFIX="$prefix"
-          cmake --build build/native-sdk-arm64 --parallel 2
-          cmake --install build/native-sdk-arm64
-
-          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -f "$prefix/lib/cmake/SaltsUtils/IDL.cmake"
-          test -f "$prefix/include/data_bind_binding_plan.h"
-          test -f "$prefix/include/data_bind_projection_plan.h"
-          test -f "$prefix/include/data_bind_native.h"
-          test -f "$prefix/include/data_bind_native_binding.h"
-          test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
-          test -f "$prefix/include/data_bind_plugin_catalog.h"
-          test -f "$prefix/include/data_bind_plugin_execution.h"
-          test -x "$prefix/bin/salts-idlc"
-
-          cmake -S databind/producer/package_config \
-            -B build/databind-producer-arm64 -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=arm64-linux \
-            -DVCPKG_HOST_TRIPLET=arm64-linux \
-            -DVCPKG_MANIFEST_MODE=OFF \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
-          cmake --build build/databind-producer-arm64 \
-            --target databind_generated_plan_consumer --parallel 2
-          build/databind-producer-arm64/databind_generated_plan_consumer
-
-          cmake -S databind/idl/compiler/package_config/databind_target \
-            -B build/databind-target-arm64 -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=arm64-linux \
-            -DVCPKG_HOST_TRIPLET=arm64-linux \
-            -DVCPKG_MANIFEST_MODE=OFF \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
-          export LD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/lib:${LD_LIBRARY_PATH:-}"
-          cmake --build build/databind-target-arm64 \
-            --target installed_image --parallel 2
-
+          cmake --preset ci-sdk-release-user
+          cmake --build --preset install-ci-sdk-release-user --parallel 2
+          export SALTS_UTILS_ROOT="$prefix"
+          pushd databind/producer/package_config
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target databind_generated_plan_consumer --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
+          pushd databind/idl/compiler/package_config/databind_target
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -626,9 +463,21 @@ jobs:
           arch=arm64
           rid=linux-arm64
           triplet=arm64-linux
-          profile=release
           capture=off
+          profile=release
           EOF
+
+      - name: Preserve failed arm64 dependency admission evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: salts-utils-arm64-vcpkg-admission
+          path: |
+            vcpkg_installed/arm64-linux/share/simde/vcpkg_abi_info.txt
+            ${{ env.VCPKG_ROOT }}/buildtrees/simde/*vcpkg_abi_info.txt
+            databind/producer/package_config/build/native/vcpkg-manifest-install.log
+          if-no-files-found: error
+          retention-days: 3
 
       - uses: actions/upload-artifact@v4
         with:
@@ -666,6 +515,8 @@ jobs:
           esac
           echo "rid=$rid" >> "$GITHUB_OUTPUT"
           echo "triplet=$triplet" >> "$GITHUB_OUTPUT"
+          echo "QIGAO_TARGET_TRIPLET=$triplet" >> "$GITHUB_ENV"
+          echo "QIGAO_SDK_RID=$rid" >> "$GITHUB_ENV"
 
       - name: Restore latest published native SDKs
         shell: bash
@@ -677,69 +528,34 @@ jobs:
         run: |
           set -euxo pipefail
           prefix="$GITHUB_WORKSPACE/stage/sdk/${{ steps.env.outputs.rid }}"
-          cmake -S . -B build/native-sdk -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_ENABLE_CAPTURE=ON \
-            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DCMAKE_INSTALL_PREFIX="$prefix"
-          cmake --build build/native-sdk --parallel 2
-          cmake --install build/native-sdk
-          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -f "$prefix/include/data_bind_binding_plan.h"
-          test -f "$prefix/include/data_bind_projection_plan.h"
-          test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
-          test -f "$prefix/include/data_bind_plugin_catalog.h"
-          test -f "$prefix/include/data_bind_plugin_execution.h"
-          test -f "$prefix/include/salts_capture.h"
-          test -f "$prefix/include/salts_playback.h"
-          test -f "$prefix/lib/libsalts_capture.dylib"
-          test -f "$prefix/lib/libsalts_playback.dylib"
-
-          cmake -S databind/producer/package_config \
-            -B build/databind-producer-installed -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
-          cmake --build build/databind-producer-installed \
-            --target databind_generated_plan_consumer --parallel 2
-          build/databind-producer-installed/databind_generated_plan_consumer
-
-          cmake -S databind/runtime/package_config/plugin_execution \
-            -B build/databind-plugin-execution-installed -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
-          cmake --build build/databind-plugin-execution-installed --parallel 2
-          build/databind-plugin-execution-installed/databind_plugin_execution_c
-          build/databind-plugin-execution-installed/databind_plugin_execution_cpp
-
-          cmake -S databind/idl/compiler/package_config/databind_public \
-            -B build/databind-public-installed -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DCMAKE_PREFIX_PATH="$prefix"
-          cmake --build build/databind-public-installed \
-            --target databind_public_consumer --parallel 2
-
-          cmake -S databind/idl/compiler/package_config/wasm_execution \
-            -B build/databind-wasm-execution-installed -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DSALTS_UTILS_ROOT="$prefix" \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$TURBOWASM_ROOT"
-          cmake --build build/databind-wasm-execution-installed \
-            --target wasm_execution_consumer --parallel 2
-          DYLD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$TURBOWASM_ROOT/lib:${DYLD_LIBRARY_PATH:-}" \
-            build/databind-wasm-execution-installed/wasm_execution_consumer
-
+          cmake --preset ci-sdk-capture-release-user
+          cmake --build --preset install-ci-sdk-capture-release-user --parallel 2
+          export SALTS_UTILS_ROOT="$prefix"
+          pushd databind/producer/package_config
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target databind_generated_plan_consumer --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
+          pushd databind/runtime/package_config/plugin_execution
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
+          pushd databind/idl/compiler/package_config/databind_target
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
+          pushd databind/idl/compiler/package_config/databind_public
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target databind_public_consumer --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
+          pushd databind/idl/compiler/package_config/wasm_execution
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target wasm_execution_consumer --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
+          popd
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -747,6 +563,7 @@ jobs:
           arch=$RUNNER_ARCH
           profile=release
           EOF
+
       - uses: actions/upload-artifact@v4
         with:
           name: salts-utils-sdk-macos
@@ -759,6 +576,7 @@ jobs:
     needs: metadata
     runs-on: windows-2025
     env:
+      QIGAO_SDK_RID: windows-x64
       CCACHE_DIR: ${{ github.workspace }}\.ccache
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_COMPILERCHECK: content
@@ -798,22 +616,9 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           choco install nasm ninja -y --no-progress
-          $ninjaCommand = Get-Command ninja.exe -ErrorAction SilentlyContinue
-          $ninjaPath = if ($null -ne $ninjaCommand) {
-            $ninjaCommand.Source
-          } else {
-            $candidateRoot = Join-Path $env:ChocolateyInstall "lib\ninja"
-            $candidate = Get-ChildItem -LiteralPath $candidateRoot -Recurse -Filter ninja.exe -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-            if ($null -ne $candidate) { $candidate.FullName } else { $null }
-          }
-          if ([string]::IsNullOrWhiteSpace($ninjaPath) -or
-              -not (Test-Path -LiteralPath $ninjaPath -PathType Leaf)) {
-            throw "Chocolatey Ninja executable is unavailable"
-          }
-          & $ninjaPath --version
+          $ninjaCommand = Get-Command ninja.exe -ErrorAction Stop
+          & $ninjaCommand.Source --version
           if ($LASTEXITCODE -ne 0) { throw "Ninja executable probe failed" }
-          "NINJA_EXE=$ninjaPath" >> $env:GITHUB_ENV
           $vcpkgRoot = $env:VCPKG_ROOT
           if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
             throw "canonical VCPKG_ROOT is unavailable"
@@ -837,6 +642,7 @@ jobs:
             throw "Visual Studio x64 C++ toolchain not found"
           }
           "QIGAO_VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
+          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
@@ -850,63 +656,76 @@ jobs:
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           if errorlevel 1 exit /b 1
-          powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1" -Capture
+          cmake --preset ci-win-sdk-release-user
           if errorlevel 1 exit /b 1
-          set "PATH=%GITHUB_WORKSPACE%\build\native-sdk\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\%QIGAO_VCPKG_WINDOWS_TRIPLET%\bin;%PATH%"
-          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
-          if errorlevel 1 exit /b 1
-          cmake --build build\native-sdk --parallel
-          if errorlevel 1 exit /b 1
-          cmake --install build\native-sdk
+          cmake --build --preset install-ci-win-sdk-release-user --parallel 2
           if errorlevel 1 exit /b 1
 
       - name: Qualify generated Plugin clients and descriptor graph
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           if errorlevel 1 exit /b 1
-          set "PATH=%GITHUB_WORKSPACE%\build\plugin-generic-test\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\%QIGAO_VCPKG_WINDOWS_TRIPLET%\bin;%PATH%"
-          cmake -S . -B build\plugin-generic-test -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --preset ci-win-release-user
           if errorlevel 1 exit /b 1
-          cmake --build build\plugin-generic-test --target test_databind_plugin_generic_descriptor_client test_databind_plugin_generated_dso test_databind_plugin_generated_client test_databind_plugin_generated_client_cpp test_databind_plugin_typed_error_client test_databind_plugin_typed_error_client_cpp test_databind_plugin_owned_typed_error_client test_databind_plugin_owned_typed_error_client_cpp test_databind_plugin_projection_rejection --parallel 2
+          cmake --build --preset ci-win-release-user --target test_data_bind_native_control_records test_databind_plugin_generic_descriptor_client test_databind_plugin_generated_dso test_databind_plugin_generated_client test_databind_plugin_generated_client_cpp test_databind_plugin_typed_error_client test_databind_plugin_typed_error_client_cpp test_databind_plugin_owned_typed_error_client test_databind_plugin_owned_typed_error_client_cpp test_databind_plugin_projection_rejection test_generated_message_plan test_binary_tail_only test_data_bind_binary_reader test_data_bind_binary_writer --parallel 2
           if errorlevel 1 exit /b 1
-          ctest --test-dir build\plugin-generic-test -R "^(test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_databind_plugin_projection_rejection)$" --no-tests=error --output-on-failure
+          ctest --preset ci-win-release-user -R "^(test_data_bind_native_control_records|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_databind_plugin_projection_rejection|test_generated_message_plan|test_binary_tail_only|test_data_bind_binary_reader|test_data_bind_binary_writer)$" --output-on-failure
           if errorlevel 1 exit /b 1
 
       - name: Verify installed DataBind and salts_idl_target consumers
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           if errorlevel 1 exit /b 1
-          cmake -S databind\idl\compiler\package_config\databind_target -B build\databind-target-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          set "SALTS_UTILS_ROOT=%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
-          cmake --build build\databind-target-installed --target installed_image --parallel 2
+          pushd databind\idl\compiler\package_config\databind_target
           if errorlevel 1 exit /b 1
-          set "PATH=%GITHUB_WORKSPACE%\stage\sdk\windows-x64\bin;%SALTS_ROOT%\bin;%PATH%"
-          cmake -S databind\producer\package_config -B build\databind-producer-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64;%SALTS_ROOT%"
+          cmake --preset ci-native-release-user
           if errorlevel 1 exit /b 1
-          cmake --build build\databind-producer-installed --target databind_generated_plan_consumer --parallel 2
+          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
           if errorlevel 1 exit /b 1
-          build\databind-producer-installed\databind_generated_plan_consumer.exe
+          ctest --preset ci-native-release-user --output-on-failure
           if errorlevel 1 exit /b 1
-          cmake -S databind\runtime\package_config\plugin_execution -B build\databind-plugin-execution-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64;%SALTS_ROOT%"
+          popd
           if errorlevel 1 exit /b 1
-          cmake --build build\databind-plugin-execution-installed --parallel 2
+          pushd databind\producer\package_config
           if errorlevel 1 exit /b 1
-          build\databind-plugin-execution-installed\databind_plugin_execution_c.exe
+          cmake --preset ci-native-release-user
           if errorlevel 1 exit /b 1
-          build\databind-plugin-execution-installed\databind_plugin_execution_cpp.exe
+          cmake --build --preset ci-native-release-user --target databind_generated_plan_consumer --parallel 2
           if errorlevel 1 exit /b 1
-          cmake -S databind\idl\compiler\package_config\wasm_execution -B build\databind-wasm-execution-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DSALTS_UTILS_ROOT="%GITHUB_WORKSPACE%\stage\sdk\windows-x64" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64;%SALTS_ROOT%;%TURBOWASM_ROOT%"
+          ctest --preset ci-native-release-user --output-on-failure
           if errorlevel 1 exit /b 1
-          cmake --build build\databind-wasm-execution-installed --target wasm_execution_consumer --parallel 2
+          popd
           if errorlevel 1 exit /b 1
-          set "PATH=%GITHUB_WORKSPACE%\stage\sdk\windows-x64\bin;%SALTS_ROOT%\bin;%TURBOWASM_ROOT%\bin;%TURBOWASM_ROOT%\lib;%PATH%"
-          build\databind-wasm-execution-installed\wasm_execution_consumer.exe
+          pushd databind\runtime\package_config\plugin_execution
+          if errorlevel 1 exit /b 1
+          cmake --preset ci-native-release-user
+          if errorlevel 1 exit /b 1
+          cmake --build --preset ci-native-release-user --parallel 2
+          if errorlevel 1 exit /b 1
+          ctest --preset ci-native-release-user --output-on-failure
+          if errorlevel 1 exit /b 1
+          popd
+          if errorlevel 1 exit /b 1
+          pushd databind\idl\compiler\package_config\wasm_execution
+          if errorlevel 1 exit /b 1
+          cmake --preset ci-native-release-user
+          if errorlevel 1 exit /b 1
+          cmake --build --preset ci-native-release-user --target wasm_execution_consumer --parallel 2
+          if errorlevel 1 exit /b 1
+          ctest --preset ci-native-release-user --output-on-failure
+          if errorlevel 1 exit /b 1
+          popd
           if errorlevel 1 exit /b 1
 
       - name: Report and verify compiler cache statistics
@@ -958,6 +777,10 @@ jobs:
     name: Android arm64-v8a SDK
     needs: metadata
     runs-on: ubuntu-24.04
+    env:
+      QIGAO_TARGET_TRIPLET: arm64-android
+      QIGAO_HOST_TRIPLET: x64-linux
+      QIGAO_SDK_RID: android-arm64-v8a
     steps:
       - uses: actions/checkout@v4
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
@@ -977,126 +800,47 @@ jobs:
           test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
           test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
           test -n "${ANDROID_NDK_HOME:-}"
+          echo "Python3_EXECUTABLE=$(command -v python3)" >> "$GITHUB_ENV"
 
       - name: Restore latest published native SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash cmake/ci/restore-native-sdk.sh android-arm64-v8a linux-x64 1
-      - name: Build host Lemon
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/host-lemon --target lemon --parallel 2
+
+
       - name: Build current host salts-idlc
         shell: bash
         run: |
           set -euxo pipefail
-          SALTS_ROOT="$SALTS_HOST_ROOT" cmake -S . -B build/host-idlc -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-host" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
-          SALTS_ROOT="$SALTS_HOST_ROOT" cmake --build build/host-idlc \
-            --target salts_idlc --parallel 2
-          host_idlc="$(find "$GITHUB_WORKSPACE/build/host-idlc" -type f -name salts-idlc -perm -111 -print -quit)"
-          test -n "$host_idlc"
-          echo "SALTS_UTILS_HOST_IDLC=$host_idlc" >> "$GITHUB_ENV"
+          cmake --preset ci-host-release-user
+          cmake --build --preset ci-host-release-user --target salts_idlc lemon --parallel 2
+          echo "SALTS_UTILS_HOST_IDLC=$GITHUB_WORKSPACE/build/ci-host/bin/salts-idlc" >> "$GITHUB_ENV"
 
       - name: Configure and install Android SaltsUtils
         shell: bash
         run: |
           set -euxo pipefail
           prefix="$GITHUB_WORKSPACE/stage/sdk/android-arm64-v8a"
-          cmake -S . -B build/android-native-sdk -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_SYSTEM_NAME=Android \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DVCPKG_TARGET_TRIPLET=arm64-android \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -DANDROID_STL=c++_shared \
-            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
-            -DVCPKG_MANIFEST_FEATURES=capture \
-            -DSALTS_UTILS_ENABLE_CAPTURE=ON \
-            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DCMAKE_INSTALL_PREFIX="$prefix"
-          cmake --build build/android-native-sdk --parallel 2
-          cmake --install build/android-native-sdk
-          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -f "$prefix/include/data_bind_binding_plan.h"
-          test -f "$prefix/include/data_bind_projection_plan.h"
-          test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
-          test -f "$prefix/include/data_bind_plugin_catalog.h"
-          test -f "$prefix/include/data_bind_plugin_execution.h"
-
-          cmake -S databind/runtime/package_config/plugin_execution \
-            -B build/databind-plugin-execution-android -G Ninja \
-            -DCMAKE_SYSTEM_NAME=Android \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DVCPKG_TARGET_TRIPLET=arm64-android \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-26 \
-            -DANDROID_STL=c++_shared \
-            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
-          cmake --build build/databind-plugin-execution-android --parallel 2
-
-          cmake -S databind/producer/package_config \
-            -B build/databind-producer-android -G Ninja \
-            -DCMAKE_SYSTEM_NAME=Android \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DVCPKG_TARGET_TRIPLET=arm64-android \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-26 \
-            -DANDROID_STL=c++_shared \
-            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
-          cmake --build build/databind-producer-android \
-            --target databind_producer_generate --parallel 2
-
-          cmake -S databind/idl/compiler/package_config/databind_public \
-            -B build/databind-public-android -G Ninja \
-            -DCMAKE_SYSTEM_NAME=Android \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DVCPKG_TARGET_TRIPLET=arm64-android \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-26 \
-            -DANDROID_STL=c++_shared \
-            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
-          cmake --build build/databind-public-android \
-            --target databind_public_consumer --parallel 2
-
-          cmake -S databind/idl/compiler/package_config/wasm_execution \
-            -B build/databind-wasm-execution-android -G Ninja \
-            -DCMAKE_SYSTEM_NAME=Android \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DVCPKG_TARGET_TRIPLET=arm64-android \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-26 \
-            -DANDROID_STL=c++_shared \
-            -DPython3_EXECUTABLE="$(command -v python3)" \
-            -DSALTS_UTILS_ROOT="$prefix" \
-            -DSaltsUtils_IDLC_EXECUTABLE="$SALTS_UTILS_HOST_IDLC" \
-            -DSaltsUtils_IDLC_HOST_SALTS_ROOT="$SALTS_HOST_ROOT" \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$TURBOWASM_ROOT"
-          cmake --build build/databind-wasm-execution-android \
-            --target wasm_execution_consumer --parallel 2
-
+          cmake --preset ci-android-sdk-release-user
+          cmake --build --preset install-ci-android-sdk-release-user --parallel 2
+          export SALTS_UTILS_ROOT="$prefix"
+          pushd databind/runtime/package_config/plugin_execution
+          cmake --preset ci-android-release-user
+          cmake --build --preset ci-android-release-user --parallel 2
+          popd
+          pushd databind/producer/package_config
+          cmake --preset ci-android-release-user
+          cmake --build --preset ci-android-release-user --target databind_producer_generate --parallel 2
+          popd
+          pushd databind/idl/compiler/package_config/databind_public
+          cmake --preset ci-android-release-user
+          cmake --build --preset ci-android-release-user --target databind_public_consumer --parallel 2
+          popd
+          pushd databind/idl/compiler/package_config/wasm_execution
+          cmake --preset ci-android-release-user
+          cmake --build --preset ci-android-release-user --target wasm_execution_consumer --parallel 2
+          popd
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -1105,6 +849,7 @@ jobs:
           api=android-26
           profile=release
           EOF
+
       - uses: actions/upload-artifact@v4
         with:
           name: salts-utils-sdk-android-arm64-v8a
@@ -1125,6 +870,10 @@ jobs:
           - {name: simulator arm64, triplet: arm64-ios-simulator, rid: ios-simulator-arm64, sysroot: iphonesimulator}
     env:
       X_VCPKG_NUGET_ID_PREFIX: vcpkg-cache
+      QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
+      QIGAO_HOST_TRIPLET: arm64-osx
+      QIGAO_SDK_RID: ${{ matrix.rid }}
+      QIGAO_IOS_SYSROOT: ${{ matrix.sysroot }}
     steps:
       - uses: actions/checkout@v4
 
@@ -1153,141 +902,38 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash cmake/ci/restore-native-sdk.sh "${{ matrix.rid }}" macos-arm64
 
-      - name: Build host Lemon
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake -S tools/lemon -B "build/host-lemon-${{ matrix.rid }}" -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build "build/host-lemon-${{ matrix.rid }}" --target lemon --parallel 2
 
-      - name: Restore minimal host idlc dependencies
-        shell: bash
-        run: |
-          set -euxo pipefail
-          manifest="$RUNNER_TEMP/salts-utils-host-idlc-${{ matrix.rid }}"
-          install_root="$GITHUB_WORKSPACE/vcpkg_installed-host-${{ matrix.rid }}"
-          baseline="$(python3 -c 'import json; print(json.load(open("vcpkg.json", encoding="utf-8"))["builtin-baseline"])')"
-          rm -rf "$manifest" "$install_root"
-          mkdir -p "$manifest"
-          cat > "$manifest/vcpkg.json" <<EOF
-          {
-            "name": "salts-utils-host-idlc",
-            "version-string": "1",
-            "dependencies": ["simde"],
-            "builtin-baseline": "$baseline"
-          }
-          EOF
-          # Generic macOS host packages use the central host namespace;
-          # the vcpkg-cache_* prefix is reserved here for iOS target triplets.
-          X_VCPKG_NUGET_ID_PREFIX="" "$VCPKG_ROOT/vcpkg" install \
-            --x-manifest-root="$manifest" \
-            --x-install-root="$install_root" \
-            --triplet arm64-osx \
-            --only-binarycaching
-          test -f "$install_root/arm64-osx/include/simde/x86/sse2.h"
-          echo "SALTS_UTILS_HOST_VCPKG_INSTALLED=$install_root" >> "$GITHUB_ENV"
+
+
 
       - name: Build current host salts-idlc
         shell: bash
         run: |
           set -euxo pipefail
-          host_build="$GITHUB_WORKSPACE/build/host-idlc-${{ matrix.rid }}"
-          host_lemon="$GITHUB_WORKSPACE/build/host-lemon-${{ matrix.rid }}/lemon"
-          SALTS_ROOT="$SALTS_HOST_ROOT" cmake -S . -B "$host_build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_MANIFEST_MODE=OFF \
-            -DVCPKG_TARGET_TRIPLET=arm64-osx \
-            -DVCPKG_INSTALLED_DIR="$SALTS_UTILS_HOST_VCPKG_INSTALLED" \
-            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$host_lemon" \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DSALTS_UTILS_QUALIFY_DATABIND=ON \
-            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
-          SALTS_ROOT="$SALTS_HOST_ROOT" cmake --build "$host_build" \
-            --target salts_idlc --parallel 2
-          host_idlc="$(find "$host_build" -type f -name salts-idlc -perm -111 -print -quit)"
-          test -n "$host_idlc"
-          echo "SALTS_UTILS_HOST_IDLC=$host_idlc" >> "$GITHUB_ENV"
+          cmake --preset ci-host-release-user
+          cmake --build --preset ci-host-release-user --target salts_idlc lemon --parallel 2
+          echo "SALTS_UTILS_HOST_IDLC=$GITHUB_WORKSPACE/build/ci-host/bin/salts-idlc" >> "$GITHUB_ENV"
 
       - name: Configure and install iOS SaltsUtils
         shell: bash
         run: |
           set -euxo pipefail
-          build="$GITHUB_WORKSPACE/build/${{ matrix.rid }}"
           prefix="$GITHUB_WORKSPACE/stage/sdk/${{ matrix.rid }}"
-          cmake -S . -B "$build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon-${{ matrix.rid }}/lemon" \
-            -DSALTS_UTILS_BUILD_IDLC=OFF \
-            -DVCPKG_MANIFEST_FEATURES=capture \
-            -DSALTS_UTILS_ENABLE_CAPTURE=ON \
-            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DCMAKE_INSTALL_PREFIX="$prefix"
-          cmake --build "$build" --parallel 2
-          cmake --install "$build"
-
-          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -f "$prefix/lib/cmake/SaltsUtils/IDL.cmake"
-          test -f "$prefix/include/data_bind_binding_plan.h"
-          test -f "$prefix/include/data_bind_projection_plan.h"
-          test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
-          test -f "$prefix/include/data_bind_plugin_catalog.h"
-          test -f "$prefix/include/data_bind_plugin_execution.h"
-          test -f "$prefix/include/salts_capture.h"
-          test -f "$prefix/include/salts_playback.h"
-          test ! -e "$prefix/bin/salts-idlc"
-          test -n "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
-          test -n "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
-
-          cmake -S databind/runtime/package_config/plugin_execution \
-            -B "build/databind-plugin-execution-${{ matrix.rid }}" -G Ninja \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
-            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
-          cmake --build "build/databind-plugin-execution-${{ matrix.rid }}" --parallel 2
-
-          cmake -S databind/producer/package_config \
-            -B "build/databind-producer-${{ matrix.rid }}" -G Ninja \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
-            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts" \
-            -DSaltsUtils_IDLC_EXECUTABLE="$SALTS_UTILS_HOST_IDLC" \
-            -DSaltsUtils_IDLC_HOST_SALTS_ROOT="$SALTS_HOST_ROOT"
-          cmake --build "build/databind-producer-${{ matrix.rid }}" \
-            --target databind_producer_generate --parallel 2
-
-          cmake -S databind/idl/compiler/package_config/databind_public \
-            -B "build/databind-public-${{ matrix.rid }}" -G Ninja \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
-            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts" \
-            -DSaltsUtils_IDLC_EXECUTABLE="$SALTS_UTILS_HOST_IDLC" \
-            -DSaltsUtils_IDLC_HOST_SALTS_ROOT="$SALTS_HOST_ROOT"
-          cmake --build "build/databind-public-${{ matrix.rid }}" \
-            --target databind_public_consumer --parallel 2
-
+          cmake --preset ci-ios-sdk-release-user
+          cmake --build --preset install-ci-ios-sdk-release-user --parallel 2
+          export SALTS_UTILS_ROOT="$prefix"
+          pushd databind/runtime/package_config/plugin_execution
+          cmake --preset ci-ios-release-user
+          cmake --build --preset ci-ios-release-user --parallel 2
+          popd
+          pushd databind/producer/package_config
+          cmake --preset ci-ios-release-user
+          cmake --build --preset ci-ios-release-user --target databind_producer_generate --parallel 2
+          popd
+          pushd databind/idl/compiler/package_config/databind_public
+          cmake --preset ci-ios-release-user
+          cmake --build --preset ci-ios-release-user --target databind_public_consumer --parallel 2
+          popd
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -1459,6 +1105,8 @@ jobs:
     name: Qualify restored Linux arm64 package
     needs: [metadata, pack]
     runs-on: ubuntu-24.04-arm
+    env:
+      QIGAO_TARGET_TRIPLET: arm64-linux
     steps:
       - uses: actions/checkout@v4
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
@@ -1481,13 +1129,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash cmake/ci/restore-native-sdk.sh linux-arm64 linux-arm64
-
-      - name: Restore arm64-linux consumer dependencies cache-only
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf "$GITHUB_WORKSPACE/vcpkg_installed"
-          "$VCPKG_ROOT/vcpkg" install             --x-manifest-root=.             --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed"             --triplet arm64-linux             --host-triplet arm64-linux             --only-binarycaching
 
       - uses: actions/download-artifact@v4
         with:
@@ -1528,25 +1169,16 @@ jobs:
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$prefix/lib/cmake/SaltsUtils/IDL.cmake"
           test -x "$prefix/bin/salts-idlc"
-          echo "SALTS_UTILS_ARM64_ROOT=$prefix" >> "$GITHUB_ENV"
+          echo "SALTS_UTILS_ROOT=$prefix" >> "$GITHUB_ENV"
 
       - name: Build installed salts_idl_target consumer
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S databind/idl/compiler/package_config/databind_target \
-            -B build/restored-databind-target-arm64 -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=arm64-linux \
-            -DVCPKG_HOST_TRIPLET=arm64-linux \
-            -DVCPKG_MANIFEST_MODE=OFF \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DSaltsUtils_DIR="$SALTS_UTILS_ARM64_ROOT/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
-          export LD_LIBRARY_PATH="$SALTS_UTILS_ARM64_ROOT/lib:$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/arm64-linux/lib:${LD_LIBRARY_PATH:-}"
-          cmake --build build/restored-databind-target-arm64 \
-            --target installed_image --parallel 2
+          cd databind/idl/compiler/package_config/databind_target
+          cmake --preset ci-native-release-user
+          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
+          ctest --preset ci-native-release-user --output-on-failure
 
   publish:
     name: Publish package and GitHub Release

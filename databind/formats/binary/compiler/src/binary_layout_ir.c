@@ -1,5 +1,7 @@
 #include "binary_layout_ir.h"
 #include "schema_cmeta.h"
+#include "schema_size.h"
+#include <salts_cmeta_data.h>
 
 #include <limits.h>
 #include <stdint.h>
@@ -76,7 +78,15 @@ static databind_binary_layout_status binary_field_scalar_representation(
   }
 
   switch (semantic.kind) {
+  case CMETA_DATA_STRING:
+    field->scalar_kind = DATABIND_BINARY_SCALAR_STRING;
+    break;
   case CMETA_DATA_BYTES:
+    field->scalar_kind = DATABIND_BINARY_SCALAR_BYTES;
+    break;
+  case CMETA_DATA_CUSTOM:
+    if (!salts_uuid_cmeta_data_valid(semantic.data))
+      return DATABIND_BINARY_LAYOUT_OK;
     field->scalar_kind = DATABIND_BINARY_SCALAR_BYTES;
     break;
   case CMETA_DATA_BOOL:
@@ -150,6 +160,80 @@ static databind_binary_layout_status binary_field_scalar_representation(
   return DATABIND_BINARY_LAYOUT_OK;
 }
 
+static IdlField binary_element_field(const IdlField *field, const char *type_name) {
+  IdlField element = *field;
+  element.type_name = type_name;
+  element.collection_kind = IDL_COLLECTION_NONE;
+  element.inner_type = NULL;
+  element.key_type = NULL;
+  element.value_type = NULL;
+  element.length = NULL;
+  element.optional = 0;
+  element.nullable = 0;
+  return element;
+}
+
+static databind_binary_layout_status binary_field_array_representation(
+    const IdlContract *contract, const IdlField *typed_field,
+    databind_binary_field_layout *field,
+    databind_binary_layout_diagnostic *diagnostic) {
+  IdlField element = binary_element_field(typed_field, typed_field->inner_type);
+  databind_binary_field_layout element_layout = {0};
+  databind_binary_layout_status status;
+  size_t count = 0u;
+  if (typed_field->inner_type == NULL ||
+      !schema_parse_fixed_layout_size(typed_field->length, &count) || count == 0u ||
+      field->wire_extent == 0u || field->wire_extent % count != 0u) {
+    binary_diag(diagnostic, typed_field->name,
+                "Fixed Binary array count disagrees with its wire extent");
+    return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+  }
+  status = binary_field_scalar_representation(contract, &element,
+                                               &element_layout, diagnostic);
+  if (status != DATABIND_BINARY_LAYOUT_OK) return status;
+  field->array_count = count;
+  field->element_extent = field->wire_extent / count;
+  field->element_scalar_kind = element_layout.scalar_kind;
+  field->element_scalar_bits = element_layout.scalar_bits;
+  return DATABIND_BINARY_LAYOUT_OK;
+}
+
+static databind_binary_layout_status binary_field_counted_representation(
+    const IdlContract *contract, const IdlField *typed_field,
+    databind_binary_field_layout *field,
+    databind_binary_layout_diagnostic *diagnostic) {
+  const int map = typed_field->collection_kind == IDL_COLLECTION_MAP;
+  const char *element_type = map ? typed_field->value_type : typed_field->inner_type;
+  IdlField element = binary_element_field(typed_field, element_type);
+  databind_binary_field_layout semantic = {0};
+  databind_binary_layout_status status;
+  if ((!map && typed_field->collection_kind != IDL_COLLECTION_LIST &&
+               typed_field->collection_kind != IDL_COLLECTION_SET) || element_type == NULL) {
+    binary_diag(diagnostic, typed_field->name, "Counted Binary field has no canonical collection element");
+    return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+  }
+  status = binary_field_scalar_representation(contract, &element, &semantic, diagnostic);
+  if (status != DATABIND_BINARY_LAYOUT_OK) return status;
+  field->element_scalar_kind = semantic.scalar_kind;
+  field->element_scalar_bits = semantic.scalar_bits;
+  field->element_extent = semantic.scalar_bits / 8u;
+  if (map) {
+    IdlField key = binary_element_field(typed_field, typed_field->key_type);
+    semantic = (databind_binary_field_layout){0};
+    if (typed_field->key_type == NULL)
+      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+    status = binary_field_scalar_representation(contract, &key, &semantic, diagnostic);
+    if (status != DATABIND_BINARY_LAYOUT_OK) return status;
+    if (semantic.scalar_kind != DATABIND_BINARY_SCALAR_STRING) {
+      binary_diag(diagnostic, typed_field->name, "Counted Binary maps require canonical string keys");
+      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+    }
+    field->key_scalar_kind = semantic.scalar_kind;
+    field->key_scalar_bits = semantic.scalar_bits;
+  }
+  return DATABIND_BINARY_LAYOUT_OK;
+}
+
 static databind_binary_layout_status binary_field_var_data_representation(
     const IdlContract *contract,
     const IdlField *typed_field,
@@ -200,7 +284,9 @@ static int binary_ranges_overlap(
 
 static int binary_field_rank(databind_binary_field_layout_kind kind) {
   switch (kind) {
-    case DATABIND_BINARY_FIELD_FIXED: return 0;
+    case DATABIND_BINARY_FIELD_FIXED:
+    case DATABIND_BINARY_FIELD_COUNTED:
+    case DATABIND_BINARY_FIELD_CURSOR_FIXED: return 0;
     case DATABIND_BINARY_FIELD_GROUP: return 1;
     case DATABIND_BINARY_FIELD_VAR_DATA: return 2;
     default: return -1;
@@ -224,6 +310,7 @@ databind_binary_layout_status databind_binary_layout_validate(
   size_t state_extent;
   size_t i;
   int previous_rank = 0;
+  int cursor_fixed = 0;
 
   if (diagnostic != NULL) memset(diagnostic, 0, sizeof(*diagnostic));
   if (layout == NULL || layout->type_id == NULL || layout->type_id[0] == '\0' ||
@@ -247,12 +334,18 @@ databind_binary_layout_status databind_binary_layout_validate(
     size_t j;
 
     if (field->field_id == NULL || field->field_id[0] == '\0' || rank < 0 ||
-        (i != 0u && rank < previous_rank)) {
+        (i != 0u && rank < previous_rank && !cursor_fixed &&
+         field->kind != DATABIND_BINARY_FIELD_COUNTED)) {
       binary_diag(diagnostic, field->field_id,
                   "Binary field order or identity is invalid");
       return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
     }
     previous_rank = rank;
+    if ((field->kind == DATABIND_BINARY_FIELD_FIXED && cursor_fixed) ||
+        (field->kind == DATABIND_BINARY_FIELD_CURSOR_FIXED && !cursor_fixed)) {
+      binary_diag(diagnostic, field->field_id, "Binary fixed field addressing disagrees with its collection cursor");
+      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+    }
 
     if ((field->flags & DATABIND_BINARY_FIELD_OPTIONAL) != 0u &&
         (layout->presence_size == 0u ||
@@ -269,18 +362,33 @@ databind_binary_layout_status databind_binary_layout_validate(
       return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
     }
 
-    if (field->kind == DATABIND_BINARY_FIELD_FIXED) {
+    if (field->kind == DATABIND_BINARY_FIELD_FIXED || field->kind == DATABIND_BINARY_FIELD_CURSOR_FIXED) {
       if (field->wire_extent == 0u ||
-          !binary_size_add(field->wire_offset, field->wire_extent, &end) ||
-          end > layout->fixed_block_size ||
-          binary_ranges_overlap(field->wire_offset, field->wire_extent,
-                                0u, state_extent)) {
+          (field->kind == DATABIND_BINARY_FIELD_FIXED &&
+           (!binary_size_add(field->wire_offset, field->wire_extent, &end) ||
+            end > layout->fixed_block_size ||
+            binary_ranges_overlap(field->wire_offset, field->wire_extent, 0u, state_extent))) ||
+          (field->kind == DATABIND_BINARY_FIELD_CURSOR_FIXED && field->wire_offset != 0u)) {
         binary_diag(diagnostic, field->field_id,
                     "Fixed Binary field range is invalid");
         return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
       }
+      if (field->array_count != 0u &&
+          (field->scalar_kind != DATABIND_BINARY_SCALAR_NONE || field->scalar_bits != 0u ||
+           field->element_extent == 0u ||
+           field->array_count > SIZE_MAX / field->element_extent ||
+           field->array_count * field->element_extent != field->wire_extent ||
+           field->element_scalar_kind == DATABIND_BINARY_SCALAR_STRING ||
+           !binary_scalar_bits_valid(field->element_scalar_kind, field->element_scalar_bits) ||
+           (field->element_scalar_kind != DATABIND_BINARY_SCALAR_NONE &&
+            field->element_scalar_kind != DATABIND_BINARY_SCALAR_BYTES &&
+            field->element_extent != field->element_scalar_bits / 8u))) {
+        binary_diag(diagnostic, field->field_id,
+                    "Fixed Binary array representation disagrees with canonical semantics");
+        return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+      }
       if (!binary_scalar_bits_valid(
-              field->scalar_kind, field->scalar_bits)) {
+              field->scalar_kind, field->scalar_bits) || field->scalar_kind == DATABIND_BINARY_SCALAR_STRING) {
         binary_diag(diagnostic, field->field_id,
                     "Fixed Binary scalar representation is invalid");
         return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
@@ -290,6 +398,19 @@ databind_binary_layout_status databind_binary_layout_validate(
           field->wire_extent != (size_t)(field->scalar_bits / 8u)) {
         binary_diag(diagnostic, field->field_id,
                     "Fixed Binary scalar width disagrees with canonical semantics");
+        return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+      }
+    } else if (field->kind == DATABIND_BINARY_FIELD_COUNTED) {
+      cursor_fixed = 1;
+      if (field->tail_prefix_bytes != sizeof(uint32_t) || field->wire_offset != 0u ||
+          field->wire_extent != 0u || field->child_fixed_block_size != 0u ||
+          field->scalar_kind != DATABIND_BINARY_SCALAR_NONE || field->scalar_bits != 0u ||
+          field->array_count != 0u ||
+          !binary_scalar_bits_valid(field->element_scalar_kind, field->element_scalar_bits) ||
+          field->element_extent != field->element_scalar_bits / 8u ||
+          (field->key_scalar_kind != DATABIND_BINARY_SCALAR_NONE &&
+           field->key_scalar_kind != DATABIND_BINARY_SCALAR_STRING) || field->key_scalar_bits != 0u) {
+        binary_diag(diagnostic, field->field_id, "Counted Binary framing disagrees with canonical element semantics");
         return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
       }
     } else if (field->kind == DATABIND_BINARY_FIELD_GROUP) {
@@ -311,6 +432,16 @@ databind_binary_layout_status databind_binary_layout_validate(
                     "Binary variable-data layout is invalid");
         return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
       }
+    }
+    if ((field->array_count != 0u && field->kind != DATABIND_BINARY_FIELD_FIXED &&
+         field->kind != DATABIND_BINARY_FIELD_CURSOR_FIXED) ||
+        (field->array_count == 0u && field->kind != DATABIND_BINARY_FIELD_COUNTED &&
+         (field->element_extent != 0u || field->element_scalar_bits != 0u ||
+          field->element_scalar_kind != DATABIND_BINARY_SCALAR_NONE)) ||
+        (field->kind != DATABIND_BINARY_FIELD_COUNTED &&
+         (field->key_scalar_kind != DATABIND_BINARY_SCALAR_NONE || field->key_scalar_bits != 0u))) {
+      binary_diag(diagnostic, field->field_id, "Unexpected Binary array element metadata");
+      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
     }
 
     for (j = 0u; j < i; ++j) {
@@ -393,10 +524,19 @@ static databind_binary_layout_status binary_build_field(
     return binary_field_var_data_representation(
         contract, typed_field, field, diagnostic);
 
+  case DATABIND_BINARY_FORMAT_FIELD_COUNTED:
+    field->kind = DATABIND_BINARY_FIELD_COUNTED;
+    field->tail_prefix_bytes = wire_field->tail_prefix_bytes;
+    return binary_field_counted_representation(contract, typed_field, field, diagnostic);
+
+  case DATABIND_BINARY_FORMAT_FIELD_CURSOR_FIXED:
   case DATABIND_BINARY_FORMAT_FIELD_FIXED:
-    field->kind = DATABIND_BINARY_FIELD_FIXED;
+    field->kind = wire_field->kind == DATABIND_BINARY_FORMAT_FIELD_FIXED
+                      ? DATABIND_BINARY_FIELD_FIXED : DATABIND_BINARY_FIELD_CURSOR_FIXED;
     field->wire_offset = wire_field->wire_offset;
     field->wire_extent = wire_field->wire_extent;
+    if (typed_field->collection_kind == IDL_COLLECTION_ARRAY)
+      return binary_field_array_representation(contract, typed_field, field, diagnostic);
     return binary_field_scalar_representation(
         contract, typed_field, field, diagnostic);
 
@@ -448,6 +588,13 @@ databind_binary_layout_status databind_binary_layout_build(
   if (typed_record->field_count != candidate.field_count) {
     binary_diag(diagnostic, NULL,
                 "Typed Contract IR and TBE wire plan disagree on field count");
+    databind_binary_layout_destroy(&candidate);
+    return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+  }
+
+  if ((candidate.field_count != 0u && wire_type->fields == NULL) ||
+      candidate.field_count > SIZE_MAX / sizeof(*candidate.fields)) {
+    binary_diag(diagnostic, NULL, "Binary field table is invalid or exceeds its size budget");
     databind_binary_layout_destroy(&candidate);
     return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
   }

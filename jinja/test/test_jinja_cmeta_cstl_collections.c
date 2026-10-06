@@ -8,16 +8,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-typed(Vec, JinjaCMetaIntVec, int);
-typed(Deque, JinjaCMetaIntDeque, int);
-typed(List, JinjaCMetaIntList, int);
-typed(Set, JinjaCMetaIntSet, int);
-typed(HashSet, JinjaCMetaIntHashSet, int);
-typed(Map, JinjaCMetaIntMap, int, int);
-typed(HashMap, JinjaCMetaIntHashMap, int, int);
-typed(MultiMap, JinjaCMetaIntMultiMap, int, int);
-typed(BTree, JinjaCMetaIntBTree, int, int);
-typed(BPlusTree, JinjaCMetaIntBPlusTree, int, int);
+cmeta_type(Vec, JinjaCMetaIntVec, int);
+cmeta_type(Deque, JinjaCMetaIntDeque, int);
+cmeta_type(List, JinjaCMetaIntList, int);
+cmeta_type(Set, JinjaCMetaIntSet, int);
+cmeta_type(HashSet, JinjaCMetaIntHashSet, int);
+cmeta_type(Map, JinjaCMetaIntMap, int, int);
+cmeta_type(HashMap, JinjaCMetaIntHashMap, int, int);
+cmeta_type(MultiMap, JinjaCMetaIntMultiMap, int, int);
+cmeta_type(BTree, JinjaCMetaIntBTree, int, int);
+cmeta_type(BPlusTree, JinjaCMetaIntBPlusTree, int, int);
 
 typedef struct JinjaCMetaCstlRoot {
   JinjaCMetaIntVec vec;

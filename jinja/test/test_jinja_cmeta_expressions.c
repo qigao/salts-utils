@@ -756,7 +756,7 @@ spec("Jinja CMeta collections and runtime: expressions 3") {
     const vstr names[] = {vstr_from_cstr("Ada"), vstr_from_cstr("Lin")};
     JinjaTestMembershipRoot root = {{ages, 3u, sizeof(ages[0]), &cmeta_data_int},
                                     {names, 2u, sizeof(names[0]), jinja_cmeta_vstr_data()},
-                                    {NULL, 0u, 0u, NULL}};
+                                    {NULL, 0u, sizeof(int), &cmeta_data_int}};
     JinjaTestMembershipModel model;
     JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
         vstr_from_cstr("{{ 37 in ages }}|{{ 9 not in ages }}|{{ 'Ada' in names }}|"

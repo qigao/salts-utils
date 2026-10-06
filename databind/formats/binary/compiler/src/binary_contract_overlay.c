@@ -2,6 +2,7 @@
 #include "binary_format_plan.h"
 
 #include "binary_scalar_profile.h"
+#include "idl_contract_internal.h"
 #include "schema_size.h"
 
 #include <limits.h>
@@ -260,6 +261,8 @@ static int resolve_enum_fixed_size(const Node *root, const char *type_name, size
     return primitive_type_size(underlying_type, out);
 }
 
+static int record_has_only_fixed_fields(const Node *record);
+
 static int resolve_type_fixed_size(const Node *root, const char *type_name, size_t *out) {
     Node *record;
 
@@ -268,7 +271,8 @@ static int resolve_type_fixed_size(const Node *root, const char *type_name, size
     }
 
     record = find_composite_by_name(root, type_name);
-    if (!record || !map_has_named_child(record, "has_fixed_block_size")) {
+    if (!record || !map_has_named_child(record, "has_fixed_block_size") ||
+        !record_has_only_fixed_fields(record)) {
         return resolve_enum_fixed_size(root, type_name, out);
     }
 
@@ -317,6 +321,13 @@ static int resolve_field_fixed_size(const Node *root, const Node *field, size_t 
     return resolve_type_fixed_size(root, type_name, out);
 }
 
+static int binary_field_is_counted(const Node *field) {
+    const char *kind = map_find_string_value(field, "collection_kind");
+    return !map_has_named_child(field, "is_group_field") &&
+           map_has_named_child(field, "is_collection") && kind != NULL &&
+           (strcmp(kind, "list") == 0 || strcmp(kind, "set") == 0 || strcmp(kind, "map") == 0);
+}
+
 static int annotate_record_layout(const Node *root, Node *record) {
     Node *fields = map_find_named_child(record, "fields");
     size_t offset = 0;
@@ -332,7 +343,8 @@ static int annotate_record_layout(const Node *root, Node *record) {
         Node *field = fields->data.list.items[i];
         size_t field_size = 0;
 
-        if (map_has_named_child(field, "is_group_field") || map_has_named_child(field, "is_var_data")) {
+        if (map_has_named_child(field, "is_group_field") || map_has_named_child(field, "is_var_data") ||
+            binary_field_is_counted(field)) {
             break;
         }
 
@@ -441,7 +453,8 @@ static int record_has_only_fixed_fields(const Node *record) {
     for (size_t i = 0; i < fields->data.list.count; ++i) {
         Node *field = fields->data.list.items[i];
 
-        if (map_has_named_child(field, "is_group_field") || map_has_named_child(field, "is_var_data")) {
+        if (map_has_named_child(field, "is_group_field") || map_has_named_child(field, "is_var_data") ||
+            binary_field_is_counted(field)) {
             return 0;
         }
     }
@@ -1264,6 +1277,9 @@ static int binary_numeric_literal(const char *text) {
 }
 
 static int binary_annotate_field_profile(Node *field, tbe_error_t *error) {
+  static const char *const type_attributes[] = {
+      "type", "inner_type", "key_type", "value_type"
+  };
   const char *field_type = map_find_string_value(field, "type");
   const char *length_field = map_find_string_value(field, "length_field");
   const char *collection_kind = map_find_string_value(field, "collection_kind");
@@ -1273,11 +1289,14 @@ static int binary_annotate_field_profile(Node *field, tbe_error_t *error) {
 
   if (field_type == NULL) return 1;
 
-  if (strcmp(field_type, "varint") == 0) {
-    if (error != NULL)
-      tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
-                    "Unsupported type 'varint': Binary runtime/compiler support is not implemented");
-    return 0;
+  for (size_t i = 0u; i < sizeof(type_attributes) / sizeof(type_attributes[0]); ++i) {
+    const char *type = map_find_string_value(field, type_attributes[i]);
+    if (type != NULL && strcmp(type, "varint") == 0) {
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
+                      "Unsupported type 'varint': Binary runtime/compiler support is not implemented");
+      return 0;
+    }
   }
 
   builtin_type = databind_binary_scalar_profile_find(field_type);
@@ -1409,6 +1428,7 @@ static int binary_validate_record_fields(
     const Node *record, int composite, tbe_error_t *error) {
   const Node *fields = map_find_named_child(record, "fields");
   binary_field_section previous = BINARY_FIELD_SECTION_FIXED;
+  int counted_cursor = 0;
   size_t i;
   if (fields == NULL || fields->type != NODE_LIST) return 1;
 
@@ -1417,6 +1437,7 @@ static int binary_validate_record_fields(
     const char *name = map_find_string_value(field, "name");
     const char *type = map_find_string_value(field, "type");
     binary_field_section section = binary_field_section_of(field);
+    const int counted = binary_field_is_counted(field);
 
     if (!binary_field_collection_supported(field)) {
       if (error != NULL)
@@ -1425,14 +1446,14 @@ static int binary_validate_record_fields(
       return 0;
     }
 
-    if (composite && section != BINARY_FIELD_SECTION_FIXED) {
+    if (composite && (section != BINARY_FIELD_SECTION_FIXED || counted)) {
       if (error != NULL)
         tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
                       "Composite fields must be fixed-size");
       return 0;
     }
 
-    if (!composite && section < previous) {
+    if (!composite && !counted && !counted_cursor && section < previous) {
       char message[256];
       snprintf(message, sizeof(message),
                "Invalid Binary field order for field '%s' of type '%s': fixed, then group, then variable data",
@@ -1442,6 +1463,7 @@ static int binary_validate_record_fields(
         tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1, message);
       return 0;
     }
+    if (counted) counted_cursor = 1;
     if (section > previous) previous = section;
   }
   return 1;
@@ -1502,8 +1524,31 @@ int databind_binary_contract_apply(Node *root, tbe_error_t *error) {
 
 int databind_binary_contract_parse(
     const char *text, size_t len, Node *root, tbe_error_t *error) {
-  if (idl_parse(text, len, root, error) != 0) return -1;
-  return databind_binary_contract_apply(root, error);
+  Node *staged;
+  int status = -1;
+  if (root == NULL || root->type != NODE_MAP) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_INVALID_ARGUMENT, -1, -1,
+                    "Invalid Binary contract overlay root");
+    return -1;
+  }
+  staged = create_node_map(root->name);
+  if (staged == NULL) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                    "Unable to allocate Binary contract overlay");
+    return -1;
+  }
+  if (idl_parse(text, len, staged, error) != 0 ||
+      databind_binary_contract_apply(staged, error) != 0)
+    goto cleanup;
+  status = idl_contract_publish_tree(root, staged);
+  if (status != 0 && error != NULL)
+    tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                  "Unable to publish Binary contract overlay");
+cleanup:
+  node_free(staged);
+  return status;
 }
 
 static char *binary_plan_strdup(const char *text) {
@@ -1606,6 +1651,7 @@ static int binary_plan_build_field(
     const Node *wire_ir,
     const IdlField *typed_field,
     const Node *field_node,
+    int cursor_fixed,
     databind_binary_format_field_plan *out,
     tbe_error_t *error) {
   const char *name;
@@ -1670,6 +1716,19 @@ static int binary_plan_build_field(
     return 1;
   }
 
+  if (binary_field_is_counted(field_node)) {
+    out->kind = DATABIND_BINARY_FORMAT_FIELD_COUNTED;
+    out->tail_prefix_bytes = sizeof(uint32_t);
+    return 1;
+  }
+
+  if (cursor_fixed) {
+    out->kind = DATABIND_BINARY_FORMAT_FIELD_CURSOR_FIXED;
+    if (!resolve_field_fixed_size(wire_ir, field_node, &out->wire_extent) || out->wire_extent == 0u)
+      return binary_plan_fail(error, "Binary cursor field extent is unavailable");
+    return 1;
+  }
+
   out->kind = DATABIND_BINARY_FORMAT_FIELD_FIXED;
   if (!binary_plan_parse_size(field_node, "offset", &out->wire_offset, 1))
     return binary_plan_fail(error, "Binary fixed field offset is unavailable");
@@ -1684,35 +1743,104 @@ static int binary_plan_build_field(
   return 1;
 }
 
-int databind_binary_format_plan_build(
+/* A fixed metadata table, owned only during projection. Each reachable record
+ * is visited once; name resolution costs O(V * (V + E)), with O(V) workspace.
+ * States: 0 excluded, 1 pending, 2 included and traversed. */
+static int binary_plan_select_records(
+    const IdlContract *contract, const char *type_name,
+    unsigned char *selected, tbe_error_t *error) {
+  const IdlDataDecl *root;
+  size_t i, j, field_count = 0u;
+  int pending;
+  if (type_name == NULL) {
+    for (i = 0u; i < contract->data_count; ++i)
+      if (binary_plan_list_name(contract->data[i].kind) != NULL)
+        selected[i] = 2u;
+    return 1;
+  }
+  root = idl_contract_find_data(contract, type_name);
+  if (root == NULL || binary_plan_list_name(root->kind) == NULL)
+    return binary_plan_fail(error, "Binary root is not a supported record declaration");
+  selected[(size_t)(root - contract->data)] = 1u;
+  do {
+    pending = 0;
+    for (i = 0u; i < contract->data_count; ++i) {
+      const IdlDataDecl *decl = &contract->data[i];
+      if (selected[i] != 1u) continue;
+      if (decl->field_count > DATABIND_BINARY_FORMAT_MAX_FIELDS - field_count)
+        return binary_plan_fail(error, "Binary format projection exceeds its field budget");
+      if (decl->field_count != 0u && decl->fields == NULL)
+        return binary_plan_fail(error, "Binary record field metadata is missing");
+      field_count += decl->field_count;
+      selected[i] = 2u;
+      pending = 1;
+      for (j = 0u; j < decl->field_count; ++j) {
+        const IdlField *field = &decl->fields[j];
+        const char *dependency_name =
+            field->collection_kind == IDL_COLLECTION_MAP ? field->value_type :
+            field->collection_kind != IDL_COLLECTION_NONE ? field->inner_type :
+            field->type_name;
+        const IdlDataDecl *dependency = dependency_name != NULL
+            ? idl_contract_find_data(contract, dependency_name) : NULL;
+        if (dependency != NULL && binary_plan_list_name(dependency->kind) != NULL) {
+          size_t index = (size_t)(dependency - contract->data);
+          if (selected[index] == 0u) selected[index] = 1u;
+        }
+      }
+    }
+  } while (pending);
+  return 1;
+}
+
+static int binary_plan_build(
     const IdlContract *contract,
     const Node *wire_ir,
+    const char *type_name,
     databind_binary_format_plan *out,
     tbe_error_t *error) {
   databind_binary_format_plan candidate = {0};
   const Node *schema;
   const char *big_endian;
-  size_t eligible = 0u;
+  const char *current_type = NULL;
+  unsigned char *selected = NULL;
+  size_t eligible = 0u, field_count = 0u;
   size_t i, j, out_index = 0u;
 
   if (out != NULL) memset(out, 0, sizeof(*out));
-  if (contract == NULL || wire_ir == NULL || out == NULL)
+  if (contract == NULL || wire_ir == NULL || out == NULL ||
+      (contract->data_count != 0u && contract->data == NULL))
     return binary_plan_fail(error, "Invalid Binary format plan arguments");
+  if (contract->data_count > DATABIND_BINARY_FORMAT_MAX_TYPES)
+    return binary_plan_fail(error, "Binary format projection exceeds its type budget");
   if (!binary_validate_layout_policy((Node *)wire_ir, error))
     return 0;
 
-  for (i = 0u; i < contract->data_count; ++i)
-    if (binary_plan_list_name(contract->data[i].kind) != NULL)
+  selected = (unsigned char *)calloc(contract->data_count != 0u ? contract->data_count : 1u,
+                                     sizeof(*selected));
+  if (selected == NULL) goto oom;
+  if (!binary_plan_select_records(contract, type_name, selected, error)) goto fail;
+
+  for (i = 0u; i < contract->data_count; ++i) {
+    if (selected[i] != 0u) {
+      if (contract->data[i].field_count > DATABIND_BINARY_FORMAT_MAX_FIELDS - field_count) {
+        binary_plan_fail(error, "Binary format projection exceeds its field budget");
+        goto fail;
+      }
+      field_count += contract->data[i].field_count;
       ++eligible;
+    }
+  }
 
   if (eligible != 0u) {
+    if (eligible > SIZE_MAX / sizeof(*candidate.types))
+      goto oom;
     candidate.types =
         (databind_binary_format_type_plan *)calloc(eligible, sizeof(*candidate.types));
     if (candidate.types == NULL) {
       if (error != NULL)
         tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
                       "Failed to allocate Binary format plan");
-      return 0;
+      goto fail;
     }
   }
   candidate.type_count = eligible;
@@ -1724,9 +1852,11 @@ int databind_binary_format_plan_build(
 
   for (i = 0u; i < contract->data_count; ++i) {
     const IdlDataDecl *decl = &contract->data[i];
+    int cursor_fixed = 0;
     const Node *record;
     databind_binary_format_type_plan *type;
-    if (binary_plan_list_name(decl->kind) == NULL) continue;
+    if (selected[i] == 0u) continue;
+    current_type = decl->name;
 
     type = &candidate.types[out_index++];
     record = binary_plan_find_record(wire_ir, decl->kind, decl->name);
@@ -1745,35 +1875,61 @@ int databind_binary_format_plan_build(
             record, "null_bitmap_bytes", &type->null_size, 0))
       goto invalid;
 
-    type->field_count = decl->field_count;
-    if (type->field_count != 0u) {
+    if (decl->field_count != 0u) {
+      if (decl->field_count > SIZE_MAX / sizeof(*type->fields)) goto oom;
       type->fields = (databind_binary_format_field_plan *)calloc(
-          type->field_count, sizeof(*type->fields));
+          decl->field_count, sizeof(*type->fields));
       if (type->fields == NULL) goto oom;
     }
+    type->field_count = decl->field_count;
 
     for (j = 0u; j < decl->field_count; ++j) {
       const Node *field_node =
           binary_plan_find_field(record, decl->fields[j].name);
-      if (field_node == NULL ||
-          !binary_plan_build_field(
-              contract, wire_ir, &decl->fields[j], field_node,
+      if (field_node == NULL) goto invalid;
+      if (!binary_plan_build_field(
+              contract, wire_ir, &decl->fields[j], field_node, cursor_fixed,
               &type->fields[j], error))
         goto fail;
+      if (type->fields[j].kind == DATABIND_BINARY_FORMAT_FIELD_COUNTED)
+        cursor_fixed = 1;
     }
   }
 
   *out = candidate;
+  free(selected);
   return 1;
 
 invalid:
-  binary_plan_fail(error, "Binary wire overlay is incomplete");
+  if (error != NULL) {
+    char message[sizeof(error->message)];
+    snprintf(message, sizeof(message), "Binary wire overlay is incomplete for '%s'",
+             current_type != NULL ? current_type : "");
+    binary_plan_fail(error, message);
+  }
   goto fail;
 oom:
   if (error != NULL)
     tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
                   "Failed to allocate Binary format plan");
 fail:
+  free(selected);
   databind_binary_format_plan_destroy(&candidate);
   return 0;
+}
+
+int databind_binary_format_plan_build(
+    const IdlContract *contract, const Node *wire_ir,
+    databind_binary_format_plan *out, tbe_error_t *error) {
+  return binary_plan_build(contract, wire_ir, NULL, out, error);
+}
+
+int databind_binary_format_plan_build_root(
+    const IdlContract *contract, const Node *wire_ir, const char *type_name,
+    databind_binary_format_plan *out, tbe_error_t *error) {
+  if (type_name == NULL) {
+    if (out != NULL) memset(out, 0, sizeof(*out));
+    return binary_plan_fail(error, "Binary root type is required");
+  }
+  return binary_plan_build(contract, wire_ir, type_name, out, error);
 }

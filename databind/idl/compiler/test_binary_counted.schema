@@ -1,0 +1,38 @@
+schema BinaryCounted [version(1), byte_order(big)];
+
+enum CountedCode <int16> {
+  Zero = 0;
+  One = 1;
+}
+
+composite CountedEntry {
+  uint16 id;
+  uint8 tag;
+}
+
+message Counted {
+  uint16 prefix;
+  list<uint32> values;
+  int16 trailer;
+  set<int8> unique_values;
+  uint16[2] samples;
+  map<string,string> labels;
+  bool finished;
+  string note;
+}
+
+message CountedDomains {
+  list<CountedCode> codes;
+  map<string,uint64> counts;
+  list<string> names;
+}
+
+message CountedState {
+  optional nullable list<uint16> values;
+  uint32 last;
+}
+
+message CountedRecords {
+  list<CountedEntry> entries;
+  uint16 last;
+}

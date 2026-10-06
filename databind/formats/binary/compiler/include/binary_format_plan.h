@@ -7,10 +7,19 @@
 extern "C" {
 #endif
 
+enum {
+  DATABIND_BINARY_FORMAT_MAX_TYPES = 4096u,
+  DATABIND_BINARY_FORMAT_MAX_FIELDS = 65536u
+};
+
 typedef enum databind_binary_format_field_plan_kind {
   DATABIND_BINARY_FORMAT_FIELD_FIXED = 0,
   DATABIND_BINARY_FORMAT_FIELD_GROUP = 1,
-  DATABIND_BINARY_FORMAT_FIELD_VAR_DATA = 2
+  DATABIND_BINARY_FORMAT_FIELD_VAR_DATA = 2,
+  /* u32 count followed by list/set values or map key/value pairs. */
+  DATABIND_BINARY_FORMAT_FIELD_COUNTED = 3,
+  /* Exact-width field at the current cursor after a counted collection. */
+  DATABIND_BINARY_FORMAT_FIELD_CURSOR_FIXED = 4
 } databind_binary_format_field_plan_kind;
 
 enum {

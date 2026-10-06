@@ -10716,6 +10716,10 @@ static JINJA_CMETA_STATUS jinja_filtered_cache_until(JINJA_CMETA_PROVIDER *provi
     } else if (source->expression_kind == JINJA_CMETA_EXPRESSION_RANGE) {
       if (source->range.count > provider->shared.node_capacity) return JINJA_CMETA_ERR_CAPACITY;
       count = (size_t)source->range.count;
+    } else if (jinja_expression_is_collection(source->expression_kind)) {
+      count = source->collection_item_count;
+    } else if (source->expression_kind == JINJA_CMETA_EXPRESSION_DICT) {
+      count = source->owned_sequence.count;
     } else {
       if (source->object == NULL) return JINJA_CMETA_ERR_RENDER;
       if (jinja_is_collection_desc(source->desc))

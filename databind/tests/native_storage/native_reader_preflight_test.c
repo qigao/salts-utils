@@ -395,6 +395,9 @@ spec("DataBind native workspace measurement before source dispatch") {
     require_measurement_failure(NULL, DATA_BIND_ERR_INVALID_ARG);
   }
   it("validates output ABI and leaves invalid control records untouched") {
+    measured.abi_version = DATA_BIND_NATIVE_ABI_VERSION - 1u;
+    require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_INVALID_ARG);
+    measured.abi_version = DATA_BIND_NATIVE_ABI_VERSION;
     measured.abi_version += 1u;
     require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_INVALID_ARG);
     measured.abi_version = DATA_BIND_NATIVE_ABI_VERSION;
@@ -414,18 +417,25 @@ spec("DataBind native workspace measurement before source dispatch") {
     options.workspace_bytes = 8u;
     require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_INVALID_ARG);
   }
-  it("preserves a larger valid result header and does not charge zero payload") {
+  it("rejects an extended result record without partial publication") {
     struct ExtendedRequirements { DataBindNativeRequirements base; size_t tail; } out;
     out.base = measured;
     out.base.size = sizeof(out);
     out.tail = 91u;
+    DataBindNativeRequirements before = out.base;
     options.max_owned_bytes = 0u;
     check_equal(data_bind_native_measure(&options, &salts_tstr_cmeta_data,
-                &out.base, &diagnostic), DATA_BIND_OK);
+                &out.base, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    check_equal(memcmp(&out.base, &before, sizeof(before)), 0);
     check_equal(out.base.size, sizeof(out));
     check_equal(out.tail, 91u);
-    check_equal(out.base.staging_bytes, sizeof(tstr));
-    check_equal(out.base.descriptor_nodes, 1u);
+  }
+  it("does not charge zero payload while measuring an exact current record") {
+    options.max_owned_bytes = 0u;
+    check_equal(data_bind_native_measure(&options, &salts_tstr_cmeta_data,
+                &measured, &diagnostic), DATA_BIND_OK);
+    check_equal(measured.staging_bytes, sizeof(tstr));
+    check_equal(measured.descriptor_nodes, 1u);
     check_equal(diagnostic.error.code, DATA_BIND_OK);
   }
 }

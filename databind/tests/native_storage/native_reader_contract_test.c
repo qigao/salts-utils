@@ -111,7 +111,7 @@ spec("DataBind direct reader to native contract") {
     check_equal(second, -9);
     check_equal(probe.calls, 2u);
     check_equal(diagnostic.error.code, DATA_BIND_OK);
-    check_equal(diagnostic.source_status, CSERDE_OK);
+    check_equal(diagnostic.endpoint_status, CSERDE_OK);
   }
 
   it("binds a schema-free Struct by canonical field names and owns transient text") {
@@ -197,7 +197,7 @@ spec("DataBind direct reader to native contract") {
     check_equal(decode(&cmeta_data_int32, &value, sizeof(value)), DATA_BIND_ERR_TYPE_MISMATCH);
     check_equal(probe.calls, 1u);
     check_equal(value, 0);
-    check_equal(diagnostic.source_status, CSERDE_OK);
+    check_equal(diagnostic.endpoint_status, CSERDE_OK);
   }
 
   it("binds a Boolean token to native C bool without bool8 substitution") {
@@ -215,7 +215,7 @@ spec("DataBind direct reader to native contract") {
     int value = 0;
     open_source(steps, 1u);
     check_equal(decode(&cmeta_data_int, &value, sizeof(value)), DATA_BIND_ERR_IO);
-    check_equal(diagnostic.source_status, CSERDE_SOURCE_ERROR);
+    check_equal(diagnostic.endpoint_status, CSERDE_SOURCE_ERROR);
     check_equal(diagnostic.error.code, DATA_BIND_ERR_IO);
     check_equal(probe.calls, 1u);
     check_equal(reader.state, CSERDE_READER_FAILED);
@@ -227,7 +227,7 @@ spec("DataBind direct reader to native contract") {
         native_reader_probe_token(CSERDE_MAP_BEGIN), string_token("name"), string_token("Alice")};
     open_source(steps, 3u);
     check_equal(decode(&row_data, &row, sizeof(row)), DATA_BIND_ERR_PARSE);
-    check_equal(diagnostic.source_status, CSERDE_DONE);
+    check_equal(diagnostic.endpoint_status, CSERDE_DONE);
     check_equal(probe.calls, 4u);
     check_empty_row();
   }

@@ -21,17 +21,22 @@ install(
   FILES_MATCHING
   PATTERN "*.h")
 
-# Compiler-side Binary contract overlay. This target is internal and is linked
-# only by compiler/test tooling; Salts::IDL and Salts::DataBind do not depend on it.
+# Private Binary layout compilation, shared by idlc and runtime-known schemas.
+# Wire facts belong here; the target exposes no native storage/lifecycle engine.
 add_library(databind_binary_contract STATIC
-  compiler/src/binary_contract_overlay.c)
+  compiler/src/binary_contract_overlay.c
+  compiler/src/binary_layout_ir.c
+  compiler/src/binary_layout_lowering.c)
 target_compile_features(databind_binary_contract PUBLIC c_std_11)
 target_include_directories(databind_binary_contract
   PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/compiler/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/internal>
   PRIVATE
+    ${DATABIND_SOURCE_ROOT}/runtime
     ${DATABIND_SOURCE_ROOT}/schema/include
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${DATABIND_SOURCE_ROOT}/idl/parser)
 set_target_properties(databind_binary_contract PROPERTIES
   POSITION_INDEPENDENT_CODE ON

@@ -821,7 +821,12 @@ suite("Data Bind") {
 
       if (codec) {
         when("parsing binary data") {
-          DataBindValue *v = data_bind_parse(codec, "Event", expected.bytes, sizeof(expected.bytes));
+          DataBindValue *v = NULL;
+          DataBindError error = DATA_BIND_ERROR_INIT;
+          DataBindStatus status = test_data_bind_parse_status(
+              codec, "Event", expected.bytes, sizeof(expected.bytes), &v, &error);
+          info("UUID Binary decode: %s (%s)", error.message, error.path);
+          check_equal(status, DATA_BIND_OK);
 
           then("uuid should bind from its fixed 16 byte payload") {
             const DataBindValue *id;
@@ -836,6 +841,21 @@ suite("Data Bind") {
           }
 
           data_bind_value_free(v);
+        }
+
+        when("round-tripping the canonical UUID Binary representation") {
+          DataBindObject *object = NULL;
+          DataBindError error = DATA_BIND_ERROR_INIT;
+          uint8_t *encoded = NULL;
+          size_t length = 0u;
+          check_equal(data_bind_object_from_bin(codec, "Event", expected.bytes,
+              sizeof(expected.bytes), &object, &error), DATA_BIND_OK);
+          check_equal(data_bind_object_serialize_bin(
+              codec, object, &encoded, &length, &error), DATA_BIND_OK);
+          check_equal(length, sizeof(expected.bytes));
+          check_equal(encoded, expected.bytes, sizeof(expected.bytes));
+          data_bind_serialized_free(encoded);
+          data_bind_object_free(object);
         }
 
         when("binding JSON YAML CSV and XML text") {

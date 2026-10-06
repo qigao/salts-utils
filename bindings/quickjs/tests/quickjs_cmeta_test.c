@@ -220,8 +220,8 @@ static const cmeta_data_desc quickjs_test_record_data = {
     .shape = &quickjs_test_record_shape
 };
 
-typed(Vec, quickjs_test_vec, int);
-typed(Map, quickjs_test_map, int, int);
+cmeta_type(Vec, quickjs_test_vec, int);
+cmeta_type(Map, quickjs_test_map, int, int);
 
 typedef struct quickjs_test_map_capture {
   int keys[2];

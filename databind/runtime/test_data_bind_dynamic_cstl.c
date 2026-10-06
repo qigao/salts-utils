@@ -156,6 +156,87 @@ static DataBindRecordAction inspect_stream_identity(void *user_data,
 }
 
 spec("data_bind dynamic CSTL storage") {
+  group("positional Binary collection compatibility") {
+    static DataBind *codec;
+    static DataBindObject *source;
+    static DataBindObject *decoded;
+    static uint8_t *wire;
+    static const char type[] = "CursorWire";
+    static const char schema[] =
+        "message CursorWire { uint16 prefix; list<uint32> values; int16 trailer;"
+        " map<string,string> labels; uint32 suffix; }";
+    static const char json[] =
+        "{\"prefix\":4660,\"values\":[7,9],\"trailer\":-2,"
+        "\"labels\":{\"z\":\"Z\",\"a\":\"\"},\"suffix\":2309737967}";
+    static const uint8_t expected[] = {
+        0x34u, 0x12u,
+        2u, 0u, 0u, 0u, 7u, 0u, 0u, 0u, 9u, 0u, 0u, 0u,
+        0xfeu, 0xffu,
+        2u, 0u, 0u, 0u,
+        1u, 0u, 0u, 0u, 'z', 1u, 0u, 0u, 0u, 'Z',
+        1u, 0u, 0u, 0u, 'a', 0u, 0u, 0u, 0u,
+        0xefu, 0xcdu, 0xabu, 0x89u};
+    before_each() {
+      codec = NULL;
+      source = NULL;
+      decoded = NULL;
+      wire = NULL;
+      check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1u, &codec, NULL), DATA_BIND_OK);
+      check_equal(data_bind_object_from_json(codec, type, json, sizeof(json) - 1u, &source, NULL), DATA_BIND_OK);
+    }
+    after_each() {
+      data_bind_binary_free(wire);
+      data_bind_object_free(decoded);
+      data_bind_object_free(source);
+      data_bind_free(codec);
+    }
+
+    it("keeps trailing fixed fields after counted list and map payloads in exact wire order") {
+      size_t length = 0u;
+      uint8_t bounded[sizeof(expected)];
+      check_equal(data_bind_object_serialize_bin(codec, source, &wire, &length, NULL), DATA_BIND_OK);
+      check_equal(length, sizeof(expected));
+      check_equal(wire, expected, sizeof(expected));
+      check_equal(data_bind_object_serialize_bin_into(codec, source, bounded, sizeof(bounded),
+                                                     &length, NULL), DATA_BIND_OK);
+      check_equal(length, sizeof(expected));
+      check_equal(bounded, expected, sizeof(expected));
+      check_equal(data_bind_object_from_bin(codec, type, expected, sizeof(expected), &decoded, NULL), DATA_BIND_OK);
+      const DataBindValue *root = data_bind_object_value(decoded);
+      check_equal(data_bind_value_as_int(data_bind_value_get(root, "prefix")), 4660);
+      check_equal(data_bind_value_as_int(data_bind_value_get(root, "trailer")), -2);
+      const DataBindValue *values = data_bind_value_get(root, "values");
+      check_equal(data_bind_value_count(values), (size_t)2u);
+      check_equal(data_bind_value_as_int(data_bind_value_at(values, 1u)), 9);
+      const DataBindValue *labels = data_bind_value_get(root, "labels");
+      check_equal(data_bind_value_count(labels), (size_t)2u);
+      check_equal(data_bind_value_map_entry_at(labels, 0u).key, "z");
+      check_equal(data_bind_value_map_entry_at(labels, 1u).key, "a");
+      uint64_t suffix = 0u;
+      check_equal(data_bind_value_get_uint64(data_bind_value_get(root, "suffix"), &suffix), DATA_BIND_OK);
+      check_equal(suffix, UINT64_C(2309737967));
+    }
+
+    it("reports the exact required size without publishing into a short destination") {
+      enum { SENTINEL = 0xa5u };
+      uint8_t bounded[sizeof(expected)];
+      uint8_t original[sizeof(expected)];
+      size_t length = 0u;
+      memset(bounded, SENTINEL, sizeof(bounded));
+      memcpy(original, bounded, sizeof(original));
+      check_equal(data_bind_object_serialize_bin_into(codec, source, bounded, sizeof(bounded) - 1u,
+                                                     &length, NULL), DATA_BIND_ERR_BUFFER_TOO_SMALL);
+      check_equal(length, sizeof(expected));
+      check_equal(bounded, original, sizeof(original));
+      check_equal(data_bind_object_serialize_bin_into(codec, source, bounded, sizeof(bounded),
+                                                     &length, NULL), DATA_BIND_OK);
+      check_equal(bounded, expected, sizeof(expected));
+      check_equal(data_bind_object_from_bin(codec, type, expected, sizeof(expected) - 1u,
+                                           &decoded, NULL), DATA_BIND_ERR_PARSE);
+      check_null(decoded);
+    }
+  }
+
   it("versions every borrowed container range and rejects traversal after mutation") {
     const cmeta_range_flags ordered_flags =
         CMETA_RANGE_SIZED | CMETA_RANGE_ORDERED | CMETA_RANGE_REUSABLE;

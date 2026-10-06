@@ -35,7 +35,7 @@ Salts
   └── salts-net: protocol and network tooling
 ```
 
-SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). `Salts::IDL` owns transport-neutral contracts, `Salts::Schema` owns the Data subset, and `Salts::DataBind` owns binding. TBE is a format/backend, not the owner of IDL or Schema.
+SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). `Salts::IDL` owns transport-neutral contracts, `Salts::Schema` owns the Data subset, and `Salts::DataBind` owns binding. Binary is a format/backend, not the owner of IDL or Schema.
 
 ## Main capabilities
 
@@ -69,15 +69,16 @@ Schema   Data-only logical shape -> CMeta projection          (SaltsUtils)
 DataBind logical/native binding + BindingPlan runtime         (SaltsUtils)
 ```
 
-Compiler projections consume one typed `IdlContract`. TBE-specific wire facts
-live in `TbeFormatPlan`; transport state remains in transport runtimes.
+Compiler projections consume one typed `IdlContract`. Binary wire facts
+live in `databind_binary_format_plan` and lower through BinaryLayoutIR;
+transport state remains in transport runtimes.
 DataBind does not own parser syntax, network sessions, Plugin loading or CFlow
 execution.
 
 
 ## CMake
 
-Build SaltsUtils against a matching installed Salts profile through `SALTS_ROOT`. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
+Build SaltsUtils against a matching installed Salts 1.8.25 or newer profile through `SALTS_ROOT`. Generated fixed arrays use its canonical CMeta array provider and element lifecycle traits. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED
@@ -135,9 +136,9 @@ Mustache and Jinja CMeta have independent source, tests, documentation, and inst
 
 The Unicode component uses generated data with a fixed Unicode version and exposes UTF-8 scalar and identifier/whitespace property APIs without embedding template-engine semantics.
 
-### IDL, Schema, DataBind and the TBE format compiler
+### IDL, Schema, DataBind and the Binary format compiler
 
-`Salts::IDL` defines contracts and feeds the `salts-idlc` compiler. `Salts::Schema` owns Data-only shape/CMeta projection. `Salts::DataBind` owns native/dynamic binding, immutable BindingPlan execution and rollback. TBE is a format compiler that produces typed wire facts rather than changing IDL semantics.
+`Salts::IDL` defines contracts and feeds the `salts-idlc` compiler. `Salts::Schema` owns Data-only shape/CMeta projection. `Salts::DataBind` owns native/dynamic binding, immutable BindingPlan execution and rollback. Binary is a format compiler that produces typed wire facts rather than changing IDL semantics.
 
 **CMeta owns native type identity; IDL owns logical contracts; Schema owns data shape; DataBind owns binding.**
 
@@ -160,6 +161,51 @@ cmake --build --preset install-linux-release-user
 ```
 
 Windows uses the corresponding `win-*` presets. The `databind/` subtree is a component, not an alternative standalone configure/install entry point.
+
+### Installed consumer validation
+
+The existing package consumers have their own configure/build/test presets and
+vcpkg manifests. On Windows, run these commands from a Visual Studio developer
+PowerShell at the repository root:
+
+```powershell
+cmake --preset win-sdk-package-user
+cmake --build --preset install-win-sdk-package-user
+$env:SALTS_UTILS_ROOT = "$PWD/stage/sdk/windows-x64"
+Push-Location databind/idl/compiler/package_config/databind_target
+cmake --preset win-release-user
+cmake --build --preset win-release-user
+ctest --preset win-release-user
+Pop-Location
+```
+
+The eight CTest entries exercise installed generated messages, services and
+FlowMQ projections. The Binary consumer checks literal wire bytes, bounded
+output and decoded byte-buffer ownership after input reuse and codec destruction.
+The Producer, Plugin and public CMeta consumer projects also expose these presets.
+CI uses `ci-native-release-user` with explicit `SALTS_ROOT`, `SALTS_UTILS_ROOT`,
+`QIGAO_TARGET_TRIPLET` and `QIGAO_VCPKG_TOOLCHAIN_FILE` inputs. Each consumer selects
+that exact SDK; a cached package directory cannot select another installation.
+
+### Cross-compilation host tools
+
+Cross-compilation requires an existing host Lemon executable through
+`SALTS_UTILS_HOST_LEMON_EXECUTABLE`. The build fails immediately when that input is
+missing; it does not create a separate host build or select another compiler.
+Before configuring a local Windows-hosted Android preset, prepare the host tool:
+
+```sh
+cmake --preset win-release-user
+cmake --build --preset win-release-user --target lemon
+cmake --preset android-arm64-v8a-release-win
+cmake --build --preset android-arm64-v8a-release-win
+```
+
+The Android Windows presets reference `build/Msvc-Release/bin/lemon.exe` explicitly.
+Android/iOS CI builds `lemon` and `salts_idlc` with `ci-host-release-user` before
+configuring the target SDK and passes the completed host compiler to installed
+consumer generation. This removes the former implicit host-build path; callers
+of other cross-compilation profiles must supply the completed host executable.
 
 ## Design rules
 

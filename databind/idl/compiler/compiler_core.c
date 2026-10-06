@@ -11,6 +11,7 @@
 #include "idl_contract_internal.h"
 #include "binary_contract_overlay.h"
 #include "binary_reader_codegen.h"
+#include "binary_layout_lowering.h"
 #include "schema_cmeta.h"
 #include <salts_cmeta_data.h>
 #include <salts_cmeta_fixed_width.h>
@@ -864,9 +865,25 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
         "native_element_type_ref", "native_element_data_ref");
     if (tbe_compiler_has_child(field, "is_fixed_size")) {
       const char *count = tbe_compiler_string_value(field, "length_field");
+      char base[768];
+      char symbol[800];
+      int written;
       snprintf(declaration, sizeof(declaration), "%s %s[%s];", c_type, c_name,
                count ? count : "0");
       tbe_compiler_set_string(field, "typed_fixed_count", count ? count : "0");
+      written = snprintf(base, sizeof(base), "tbe_fixed_array_%zu_%s_%zu_%s",
+                         strlen(owner), owner, strlen(c_name), c_name);
+      if (written < 0 || (size_t)written >= sizeof(base)) return;
+      tbe_compiler_set_string(field, "native_fixed_array_name", base);
+      written = snprintf(symbol, sizeof(symbol), "%s_storage", base);
+      if (written < 0 || (size_t)written >= sizeof(symbol)) return;
+      tbe_compiler_set_string(field, "native_c_type", symbol);
+      written = snprintf(symbol, sizeof(symbol), "%s_cmeta_data", base);
+      if (written < 0 || (size_t)written >= sizeof(symbol)) return;
+      tbe_compiler_set_string(field, "native_data_symbol", symbol);
+      written = snprintf(symbol, sizeof(symbol), "%s_cmeta_type", base);
+      if (written < 0 || (size_t)written >= sizeof(symbol)) return;
+      tbe_compiler_set_string(field, "native_type_symbol", symbol);
     } else if (semantic->kind == CMETA_DATA_MAP) {
       const char *key_type = tbe_compiler_string_value(field, "key_type");
       const char *value_type = tbe_compiler_string_value(field, "value_type");
@@ -1063,6 +1080,12 @@ static void tbe_compiler_annotate_native_requirement(
       tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
       tbe_compiler_string_value(field, "native_map_value_data_symbol") != NULL) {
     requirement = DATABIND_COMPILER_NATIVE_MAP_PROVIDER;
+  } else if (semantic->kind == CMETA_DATA_SEQUENCE &&
+             tbe_compiler_has_child(field, "native_fixed_array_name") &&
+             tbe_compiler_string_value(field, "native_element_data_ref") != NULL &&
+             tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+             tbe_compiler_string_value(field, "native_type_symbol") != NULL) {
+    requirement = DATABIND_COMPILER_NATIVE_SEQUENCE_PROVIDER;
   } else if (semantic->kind == CMETA_DATA_SEQUENCE &&
              tbe_compiler_has_child(field, "is_list") &&
              !tbe_compiler_has_child(field, "is_optional") &&
@@ -1322,6 +1345,54 @@ static int tbe_compiler_cmeta_classify_record(
         (tbe_compiler_has_child(field, "is_group_field") &&
          !tbe_compiler_has_child(field, "native_cstl_sequence")))
       goto unsupported;
+
+    if (tbe_compiler_has_child(field, "native_fixed_array_name")) {
+      const char *inner_type = tbe_compiler_string_value(field, "inner_type");
+      size_t count = 0u;
+      if (inner_type == NULL ||
+          !tbe_compiler_parse_size(tbe_compiler_string_value(field, "typed_fixed_count"), &count) ||
+          count == 0u ||
+          tbe_compiler_string_value(field, "native_element_data_ref") == NULL ||
+          tbe_compiler_string_value(field, "native_data_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_type_symbol") == NULL)
+        goto unsupported;
+      target = tbe_compiler_find_any_record(context->root, inner_type);
+      if (target != NULL) {
+        target_index = tbe_compiler_cmeta_record_index(context, target);
+        /* An inline owning array requires full element copy/move/destroy.
+         * Local presence overlays are not part of canonical record traits. */
+        if (target_index == SIZE_MAX ||
+            !tbe_compiler_cmeta_classify_record(context, target_index) ||
+            !tbe_compiler_has_child(target, "cmeta_lifecycle_supported") ||
+            context->depths[target_index] >= TBE_COMPILER_CMETA_MAX_DEPTH)
+          goto unsupported;
+        if (context->depths[target_index] + 1u > max_depth)
+          max_depth = context->depths[target_index] + 1u;
+        if (native_budget) {
+          size_t candidate_depth;
+          if (context->native_depths[target_index] > SIZE_MAX - 2u ||
+              native_nodes > SIZE_MAX - 1u ||
+              native_nodes + 1u > SIZE_MAX - context->native_nodes[target_index])
+            goto unsupported;
+          candidate_depth = context->native_depths[target_index] + 2u;
+          native_nodes += 1u + context->native_nodes[target_index];
+          if (candidate_depth > native_depth) native_depth = candidate_depth;
+        }
+      } else {
+        Node *enum_type = tbe_compiler_find_record(context->root, "enums", inner_type);
+        scalar = tbe_compiler_scalar_projection(inner_type);
+        if (!((scalar != NULL && scalar->native_data_symbol != NULL) ||
+              strcmp(inner_type, "string") == 0 || strcmp(inner_type, "uuid") == 0 ||
+              (enum_type != NULL && tbe_compiler_has_child(enum_type, "native_enum_supported"))))
+          goto unsupported;
+        if (native_budget) {
+          if (native_nodes > SIZE_MAX - 2u) goto unsupported;
+          native_nodes += 2u;
+          if (native_depth < 3u) native_depth = 3u;
+        }
+      }
+      continue;
+    }
 
     if (tbe_compiler_has_child(field, "is_list") ||
         tbe_compiler_has_child(field, "is_group_field")) {
@@ -2125,40 +2196,61 @@ static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
   }
 }
 
-static void tbe_compiler_annotate_binary_reader_messages(
+static int tbe_compiler_annotate_binary_reader_messages(
     Node *root, const IdlContract *contract,
-    const databind_binary_format_plan *binary_format) {
+    const Node *wire_ir) {
   Node *messages;
   size_t i;
-  if (root == NULL || contract == NULL || binary_format == NULL) return;
+  if (root == NULL || contract == NULL || wire_ir == NULL) return -1;
   messages = tbe_compiler_find_child(root, "messages");
-  if (messages == NULL || messages->type != NODE_LIST) return;
+  if (messages == NULL || messages->type != NODE_LIST) return 0;
   for (i = 0u; i < messages->data.list.count; ++i) {
     Node *record = messages->data.list.items[i];
     const char *name = tbe_compiler_string_value(record, "name");
+    databind_binary_format_plan format = {0};
+    databind_binary_execution_graph *graph = NULL;
+    databind_binary_layout_status admission;
+    tbe_error_t error = {0};
     tbe_compiler_remove_children(record, "binary_reader_supported");
     tbe_compiler_remove_children(record, "binary_overlay_supported");
-    if (name != NULL &&
-        databind_compiler_binary_reader_admit(
-            contract, binary_format, name) == 0) {
-      (void)tbe_compiler_set_string(
-          record, "binary_reader_supported", "1");
+    if (name == NULL) return -1;
+    /* Native artifacts advertise Binary independently for each root. A
+     * rejected wire shape receives the explicit unavailable Binary API;
+     * infrastructure/allocation failures abort generation. */
+    if (!databind_binary_format_plan_build_root(contract, wire_ir, name, &format, &error)) {
+      if (error.code != TBE_ERR_SEMANTIC_ERROR) {
+        fprintf(stderr, "Failed to project Binary root %s: %s\n", name, error.message);
+        return -1;
+      }
+      continue;
+    }
+    admission = databind_binary_execution_graph_build(contract, &format, name, &graph, NULL);
+    databind_binary_execution_graph_destroy(graph);
+    databind_binary_format_plan_destroy(&format);
+    if (admission == DATABIND_BINARY_LAYOUT_OUT_OF_MEMORY ||
+        admission == DATABIND_BINARY_LAYOUT_INVALID_ARGUMENT ||
+        admission == DATABIND_BINARY_LAYOUT_TYPE_NOT_FOUND) return -1;
+    if (admission == DATABIND_BINARY_LAYOUT_OK) {
+      if (tbe_compiler_set_string(record, "binary_reader_supported", "1") != 0)
+        return -1;
+      /* Canonical physical move and MessagePlan state publication also apply
+       * to scalar/owned-buffer records without generated member lifecycles. */
       if (tbe_compiler_has_child(record, "cmeta_local_overlay_lifecycle") &&
-          (tbe_compiler_has_child(record, "native_cstl_storage") ||
-           tbe_compiler_has_child(record, "cmeta_member_lifecycle")))
-        (void)tbe_compiler_set_string(record, "binary_overlay_supported", "1");
+          tbe_compiler_set_string(record, "binary_overlay_supported", "1") != 0)
+        return -1;
     }
   }
+  return 0;
 }
 
 static int tbe_compiler_append_binary_readers(
     const char *path, Node *root, const IdlContract *contract,
-    const databind_binary_format_plan *binary_format) {
+    const Node *wire_ir) {
   Node *messages;
   FILE *file;
   size_t i;
   if (path == NULL || root == NULL || contract == NULL ||
-      binary_format == NULL)
+      wire_ir == NULL)
     return -1;
   messages = tbe_compiler_find_child(root, "messages");
   if (messages == NULL || messages->type != NODE_LIST) return 0;
@@ -2167,15 +2259,20 @@ static int tbe_compiler_append_binary_readers(
   for (i = 0u; i < messages->data.list.count; ++i) {
     Node *record = messages->data.list.items[i];
     const char *name = tbe_compiler_string_value(record, "name");
+    databind_binary_format_plan format = {0};
+    tbe_error_t error = {0};
+    int emitted;
     if (name == NULL ||
         !tbe_compiler_has_child(record, "binary_reader_supported"))
       continue;
-    if (fputc('\n', file) == EOF ||
-        databind_compiler_binary_reader_emit(
-            file, contract, binary_format, name, name) != 0) {
+    if (!databind_binary_format_plan_build_root(contract, wire_ir, name, &format, &error)) {
       fclose(file);
       return -1;
     }
+    emitted = fputc('\n', file) != EOF
+        ? databind_compiler_binary_reader_emit(file, contract, &format, name, name) : -1;
+    databind_binary_format_plan_destroy(&format);
+    if (emitted != 0) { fclose(file); return -1; }
   }
   return fclose(file) == 0 ? 0 : -1;
 }
@@ -2292,12 +2389,16 @@ static int tbe_compiler_has_local_overlay_lifecycle(Node *root, Node *record) {
         tbe_compiler_has_child(field, "native_cstl_sequence") &&
         native_data != NULL &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL;
+    const int fixed_array =
+        tbe_compiler_has_child(field, "native_fixed_array_name") &&
+        native_data != NULL &&
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL;
     if (type == NULL ||
-        tbe_compiler_has_child(field, "is_collection") ||
+        (tbe_compiler_has_child(field, "is_collection") && !fixed_array) ||
         (tbe_compiler_has_child(field, "is_group_field") && !owned_group) ||
         (tbe_compiler_scalar_projection(type) == NULL && !owned_storage &&
          !fixed_bytes && !nested_lifecycle && !nested_overlay && !native_enum &&
-         !native_uuid && !owned_group)) {
+         !native_uuid && !owned_group && !fixed_array)) {
       return 0;
     }
     if (tbe_compiler_has_child(field, "is_optional") ||
@@ -2337,12 +2438,32 @@ static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {
   const char *type = tbe_compiler_string_value(field, "type");
   Node *record;
   if (type == NULL) return 0;
+  if (tbe_compiler_has_child(field, "native_fixed_array_name") ||
+      tbe_compiler_has_child(field, "native_fixed_bytes_name")) {
+    size_t count = 0u;
+    if (!tbe_compiler_parse_size(
+            tbe_compiler_string_value(field, "typed_fixed_count"), &count) ||
+        count == 0u)
+      return 0;
+    if (tbe_compiler_has_child(field, "native_fixed_array_name")) {
+      const char *inner = tbe_compiler_string_value(field, "inner_type");
+      if (inner == NULL ||
+          tbe_compiler_string_value(field, "native_element_type_ref") == NULL ||
+          tbe_compiler_string_value(field, "native_element_data_ref") == NULL)
+        return 0;
+      record = tbe_compiler_find_any_record(root, inner);
+      if (record != NULL &&
+          !tbe_compiler_has_child(record, "cmeta_lifecycle_supported"))
+        return 0;
+    }
+  }
   /* Storage promotion has already proved the exact element/key/value traits.
    * A semantic overlay may keep the parent graph unpublished without taking
    * away the individual container provider's owning lifecycle. */
   if (tbe_compiler_has_child(field, "native_cstl_sequence") ||
       tbe_compiler_has_child(field, "native_cstl_set") ||
-      tbe_compiler_has_child(field, "native_cstl_map"))
+      tbe_compiler_has_child(field, "native_cstl_map") ||
+      tbe_compiler_has_child(field, "native_fixed_array_name"))
     return tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
            tbe_compiler_string_value(field, "native_type_symbol") != NULL;
   if (tbe_compiler_has_child(field, "is_collection") ||
@@ -2373,6 +2494,7 @@ static int tbe_compiler_requires_member_lifecycle(Node *root, Node *fields) {
     /* Keep generated init/clear delegated to the exact fixed provider,
      * including records whose local presence state prevents container traits. */
     if (tbe_compiler_string_value(field, "native_fixed_bytes_name") != NULL ||
+        tbe_compiler_string_value(field, "native_fixed_array_name") != NULL ||
         (nested != NULL && tbe_compiler_has_child(nested, "cmeta_member_lifecycle")))
       return 1;
   }
@@ -3197,23 +3319,12 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       goto cleanup;
     }
     tbe_error_init(&format_error);
-    if (!databind_binary_format_plan_build(
+    if (tbe_compiler_projection_requires_binary(options) &&
+        !databind_binary_format_plan_build(
             contract, projection_root, &binary_format, &format_error)) {
-      /*
-       * Binary is one FormatPlan, not an artifact prerequisite. Native,
-       * Plugin and WASM generation may still emit canonical C/CMeta artifacts
-       * for schemas whose Binary wire projection is intentionally unsupported.
-       * Current transport backends consume the Binary plan explicitly, so only
-       * a selected transport makes this failure fatal.
-       */
-      if (tbe_compiler_projection_requires_binary(options)) {
-        fprintf(stderr, "Failed to compile TBE format plan: %s\n",
-                format_error.message);
-        status = 1;
-        goto cleanup;
-      }
-      databind_binary_format_plan_destroy(&binary_format);
-      memset(&binary_format, 0, sizeof(binary_format));
+      fprintf(stderr, "Failed to compile Binary format plan: %s\n", format_error.message);
+      status = 1;
+      goto cleanup;
     }
   }
 
@@ -3278,8 +3389,11 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       status = 1;
       goto cleanup;
     }
-    tbe_compiler_annotate_binary_reader_messages(
-        root, contract, &binary_format);
+    if (tbe_compiler_annotate_binary_reader_messages(root, contract, projection_root) != 0) {
+      fprintf(stderr, "Failed to evaluate generated Binary message admission\n");
+      status = 1;
+      goto cleanup;
+    }
   }
 
   if (options->guest_output_path) {
@@ -3341,7 +3455,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     }
     if (status == 0 &&
         tbe_compiler_append_binary_readers(
-            options->source_output_path, root, contract, &binary_format) != 0) {
+            options->source_output_path, root, contract, projection_root) != 0) {
       fprintf(stderr, "Failed to append generated Binary reader providers\n");
       status = 1;
     }

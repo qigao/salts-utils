@@ -254,13 +254,13 @@ spec("DataBind native scalar contracts") {
     ScalarStorage value = {.f32 = NAN};
     ScalarOutput output;
     check_equal(encode_scalar(&cmeta_data_float, &value, &output), DATA_BIND_ERR_SCHEMA);
-    check_equal(diagnostic.source_status, CSERDE_UNSUPPORTED);
+    check_equal(diagnostic.endpoint_status, CSERDE_UNSUPPORTED);
     check_true(isnan(value.f32));
     check_equal(output.size, 0u);
     cmeta_data_value_destroy(&cmeta_data_float, &value);
     value.f64 = INFINITY;
     check_equal(encode_scalar(&cmeta_data_double, &value, &output), DATA_BIND_ERR_SCHEMA);
-    check_equal(diagnostic.source_status, CSERDE_UNSUPPORTED);
+    check_equal(diagnostic.endpoint_status, CSERDE_UNSUPPORTED);
     check_true(isinf(value.f64));
     check_greater(value.f64, 0.0);
     check_equal(output.size, 0u);

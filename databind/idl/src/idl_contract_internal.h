@@ -8,4 +8,8 @@
 int idl_contract_build_from_tree(
     const Node *root, IdlContract **out_contract, IdlDiagnostic *diagnostic);
 
+/* Transfer a validated schema tree, retaining caller-owned non-schema nodes.
+ * Failure consumes neither root. Success transfers parsed children to root. */
+int idl_contract_publish_tree(Node *root, Node *parsed);
+
 #endif

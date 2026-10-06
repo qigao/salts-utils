@@ -10,7 +10,7 @@
 #include <string.h>
 
 static void check_fixed_width_descriptor(const char *name,
-                                         const char *stable_id,
+                                         const cmeta_data_desc *canonical,
                                          cmeta_data_kind kind,
                                          uint8_t bits) {
   const cmeta_data_desc *data = schema_cmeta_builtin_data(name);
@@ -18,10 +18,13 @@ static void check_fixed_width_descriptor(const char *name,
   check_true(data != NULL);
   if (data == NULL) return;
 
-  check_equal(data->struct_size, sizeof(cmeta_data_desc));
+  check_true(cmeta_data_desc_valid(data));
+  check_greater_equal(data->struct_size,
+                      offsetof(cmeta_data_desc, shape) + sizeof(data->shape));
   check_equal(data->abi_version, CMETA_DATA_DESC_ABI_VERSION);
+  check_true(data == canonical);
   check_true(data->stable_id != NULL);
-  if (data->stable_id != NULL) check_true(strcmp(data->stable_id, stable_id) == 0);
+  if (data->stable_id != NULL) check_true(strcmp(data->stable_id, canonical->stable_id) == 0);
   check_equal(data->kind, kind);
   check_true(data->storage_type != NULL);
   check_true(data->shape != NULL);
@@ -53,26 +56,26 @@ static void check_float_descriptor(const char *name,
 suite("schema_cmeta") {
   describe("canonical builtin scalar lowering") {
     it("maps signed integer aliases to exact-width Core descriptor semantics") {
-      check_fixed_width_descriptor("int8", "salts.int8.data", CMETA_DATA_SINT, 8u);
-      check_fixed_width_descriptor("i8", "salts.int8.data", CMETA_DATA_SINT, 8u);
-      check_fixed_width_descriptor("int16", "salts.int16.data", CMETA_DATA_SINT, 16u);
-      check_fixed_width_descriptor("i16", "salts.int16.data", CMETA_DATA_SINT, 16u);
-      check_fixed_width_descriptor("int32", "salts.int32.data", CMETA_DATA_SINT, 32u);
-      check_fixed_width_descriptor("i32", "salts.int32.data", CMETA_DATA_SINT, 32u);
-      check_fixed_width_descriptor("int64", "salts.int64.data", CMETA_DATA_SINT, 64u);
-      check_fixed_width_descriptor("i64", "salts.int64.data", CMETA_DATA_SINT, 64u);
+      check_fixed_width_descriptor("int8", &cmeta_data_int8, CMETA_DATA_SINT, 8u);
+      check_fixed_width_descriptor("i8", &cmeta_data_int8, CMETA_DATA_SINT, 8u);
+      check_fixed_width_descriptor("int16", &cmeta_data_int16, CMETA_DATA_SINT, 16u);
+      check_fixed_width_descriptor("i16", &cmeta_data_int16, CMETA_DATA_SINT, 16u);
+      check_fixed_width_descriptor("int32", &cmeta_data_int32, CMETA_DATA_SINT, 32u);
+      check_fixed_width_descriptor("i32", &cmeta_data_int32, CMETA_DATA_SINT, 32u);
+      check_fixed_width_descriptor("int64", &cmeta_data_int64, CMETA_DATA_SINT, 64u);
+      check_fixed_width_descriptor("i64", &cmeta_data_int64, CMETA_DATA_SINT, 64u);
     }
 
     it("maps unsigned integer aliases to exact-width Core descriptor semantics") {
-      check_fixed_width_descriptor("uint8", "salts.uint8.data", CMETA_DATA_UINT, 8u);
-      check_fixed_width_descriptor("u8", "salts.uint8.data", CMETA_DATA_UINT, 8u);
-      check_fixed_width_descriptor("byte", "salts.uint8.data", CMETA_DATA_UINT, 8u);
-      check_fixed_width_descriptor("uint16", "salts.uint16.data", CMETA_DATA_UINT, 16u);
-      check_fixed_width_descriptor("u16", "salts.uint16.data", CMETA_DATA_UINT, 16u);
-      check_fixed_width_descriptor("uint32", "salts.uint32.data", CMETA_DATA_UINT, 32u);
-      check_fixed_width_descriptor("u32", "salts.uint32.data", CMETA_DATA_UINT, 32u);
-      check_fixed_width_descriptor("uint64", "salts.uint64.data", CMETA_DATA_UINT, 64u);
-      check_fixed_width_descriptor("u64", "salts.uint64.data", CMETA_DATA_UINT, 64u);
+      check_fixed_width_descriptor("uint8", &cmeta_data_uint8, CMETA_DATA_UINT, 8u);
+      check_fixed_width_descriptor("u8", &cmeta_data_uint8, CMETA_DATA_UINT, 8u);
+      check_fixed_width_descriptor("byte", &cmeta_data_uint8, CMETA_DATA_UINT, 8u);
+      check_fixed_width_descriptor("uint16", &cmeta_data_uint16, CMETA_DATA_UINT, 16u);
+      check_fixed_width_descriptor("u16", &cmeta_data_uint16, CMETA_DATA_UINT, 16u);
+      check_fixed_width_descriptor("uint32", &cmeta_data_uint32, CMETA_DATA_UINT, 32u);
+      check_fixed_width_descriptor("u32", &cmeta_data_uint32, CMETA_DATA_UINT, 32u);
+      check_fixed_width_descriptor("uint64", &cmeta_data_uint64, CMETA_DATA_UINT, 64u);
+      check_fixed_width_descriptor("u64", &cmeta_data_uint64, CMETA_DATA_UINT, 64u);
     }
 
     it("maps bool to the canonical CMeta boolean storage descriptor") {

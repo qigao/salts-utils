@@ -16,8 +16,12 @@
 #include "idl.h"
 #include "idl_contract.h"
 #include "binary_contract_overlay.h"
+#include "binary_layout_lowering.h"
 #include "tbe_error.h"
-#include "data_bind_binary_wire.h"
+#include "data_bind_binary_writer.h"
+#include "data_bind_binary_reader.h"
+#include "data_bind_value_reader_internal.h"
+#include "data_bind_message_plan.h"
 #include <json_parser.h>
 #include <csv_parser.h>
 #include <dsv_filter.h>
@@ -210,11 +214,47 @@ static int value_pool_put(DataBindValue *value) {
   return 0;
 }
 
+typedef struct db_prepared_message_plan {
+  const DataBindMessageNativeArtifact *artifact;
+  DataBindMessagePlan *plan;
+} db_prepared_message_plan_t;
+
+/* Slot copies borrow the plan; the codec releases each published owner once. */
+static bool db_prepared_message_slot_copy(void *destination, const void *source) {
+  if (destination == NULL || source == NULL) return false;
+  *(db_prepared_message_plan_t *)destination = *(const db_prepared_message_plan_t *)source;
+  return true;
+}
+static void db_prepared_message_slot_move(void *destination, void *source) {
+  *(db_prepared_message_plan_t *)destination = *(db_prepared_message_plan_t *)source;
+  *(db_prepared_message_plan_t *)source = (db_prepared_message_plan_t){0};
+}
+static void db_prepared_message_slot_release_borrow(void *slot) { (void)slot; }
+static const cmeta_type_traits DB_PREPARED_MESSAGE_PLAN_TRAITS = {
+    .flags = CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY,
+    .copy_construct = db_prepared_message_slot_copy,
+    .move_construct = db_prepared_message_slot_move,
+    .destroy = db_prepared_message_slot_release_borrow};
+static const cmeta_type_desc DB_PREPARED_MESSAGE_PLAN_TYPE = {
+    "salts-utils.databind.prepared-message-plan", sizeof(db_prepared_message_plan_t),
+    _Alignof(db_prepared_message_plan_t), CMETA_T_OBJECT, NULL,
+    &DB_PREPARED_MESSAGE_PLAN_TRAITS, NULL};
+cmeta_type(Vec, db_prepared_message_plan_vec_t, db_prepared_message_plan_t,
+      &DB_PREPARED_MESSAGE_PLAN_TYPE, NULL);
+
 struct DataBind {
   IdlContract *contract;
-  Node *schema_root; /* transitional Binary/render tree; not semantic authority */
+  Node *schema_root; /* Binary format overlay/render tree; Contract owns semantics. */
   uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
+  salts_mutex_t prepared_mutex;
+  db_prepared_message_plan_vec_t prepared_messages;
+  size_t prepared_message_count;
+  size_t prepared_field_count;
 };
+
+static DataBindStatus db_binary_execution_plan(
+    DataBind *codec, const char *type_name,
+    databind_binary_execution_graph **out_graph, DataBindError *error);
 
 static const IdlDataDecl *db_idl_data_decl(
     const DataBind *codec, const char *type_name) {
@@ -383,62 +423,6 @@ struct DataBindObject {
   char *type_name;
   DataBindValue *value;
   uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
-};
-
-typedef enum {
-  EF_INT,
-  EF_U32,
-  EF_I64,
-  EF_U64,
-  EF_DBL,
-  EF_BOOL,
-  EF_UUID,
-  EF_STR,
-  EF_FIX_BYTES,
-  EF_VAR_BYTES,
-  EF_LIST_INT,
-  EF_LIST_U32,
-  EF_LIST_I64,
-  EF_LIST_U64,
-  EF_LIST_DBL,
-  EF_LIST_BOOL,
-  EF_LIST_STR,
-  EF_LIST_OBJ,
-  EF_SET_INT,
-  EF_SET_U32,
-  EF_SET_I64,
-  EF_SET_U64,
-  EF_SET_DBL,
-  EF_SET_BOOL,
-  EF_SET_STR,
-  EF_MAP_STR_STR,
-  EF_MAP_STR_INT,
-  EF_MAP_STR_U32,
-  EF_MAP_STR_I64,
-  EF_MAP_STR_U64,
-  EF_MAP_STR_DBL,
-  EF_MAP_STR_BOOL,
-  EF_GROUP,
-  EF_OBJECT
-} emit_kind_t;
-
-typedef struct emit_field emit_field_t;
-typedef struct {
-  emit_field_t *items;
-  size_t count;
-  size_t capacity;
-} emit_field_array_t;
-struct emit_field {
-  char *name;
-  emit_kind_t kind;
-  int size;
-  data_bind_wire_type_t wire_type;
-  unsigned char is_float : 1;
-  unsigned char is_64 : 1;
-  unsigned char has_set_bytes : 1;
-  size_t fixed_count;
-  int group_dim;
-  emit_field_array_t children;
 };
 
 /* Derived view over the shared schema_builtin_type.h table. The init writes are
@@ -5565,1297 +5549,6 @@ static int fill_schema_field(
   return idl_field->name != NULL;
 }
 
-static int emit_field_array_push(emit_field_array_t *fields, emit_field_t field) {
-  emit_field_t *new_items;
-  size_t new_capacity;
-  if (fields->count == fields->capacity) {
-    new_capacity = fields->capacity == 0 ? 8 : fields->capacity * 2;
-    new_items = (emit_field_t *)realloc(fields->items, new_capacity * sizeof(*new_items));
-    if (new_items == NULL) return 0;
-    fields->items = new_items;
-    fields->capacity = new_capacity;
-  }
-  fields->items[fields->count++] = field;
-  return 1;
-}
-
-static void emit_field_array_free(emit_field_array_t *fields) {
-  size_t i;
-  if (fields == NULL) return;
-  for (i = 0; i < fields->count; i++) {
-    free(fields->items[i].name);
-    emit_field_array_free(&fields->items[i].children);
-  }
-  free(fields->items);
-  fields->items = NULL;
-  fields->count = 0;
-  fields->capacity = 0;
-}
-
-static int append_emit_field(emit_field_array_t *fields, const char *name, emit_kind_t kind,
-                             const type_meta_t *meta, int size, int has_set_bytes,
-                             size_t fixed_count, int group_dim, emit_field_array_t *children) {
-  emit_field_t field;
-  size_t name_len = strlen(name);
-  memset(&field, 0, sizeof(field));
-  field.name = (char *)malloc(name_len + 1);
-  if (field.name == NULL) return 0;
-  memcpy(field.name, name, name_len + 1);
-  field.kind = kind;
-  field.size = size;
-  field.wire_type = meta != NULL ? meta->wire_type : DB_WIRE_UNDEFINED;
-  field.is_float = meta != NULL ? meta->is_float : 0;
-  field.is_64 = meta != NULL ? meta->is_64 : 0;
-  field.has_set_bytes = (unsigned char)has_set_bytes;
-  field.fixed_count = fixed_count;
-  field.group_dim = group_dim;
-  if (children != NULL) {
-    field.children = *children;
-    memset(children, 0, sizeof(*children));
-  }
-  if (!emit_field_array_push(fields, field)) {
-    free(field.name);
-    emit_field_array_free(&field.children);
-    return 0;
-  }
-  return 1;
-}
-
-static int build_fields(emit_field_array_t *fields, Node *src_fields, Node *schema_root,
-                         const char *prefix, int has_set_bytes);
-static int build_record_fields_v1(emit_field_array_t *fields, Node *src_fields, Node *schema_root,
-                                  const char *prefix, int has_set_bytes);
-
-/* Schema validation limits to prevent malicious schemas */
-#define MAX_FIELD_NESTING_DEPTH 32
-#define MAX_FIELD_OFFSET_BYTES (1024 * 1024 * 1024) /* 1GB */
-#define MAX_TOTAL_FIELDS 10000
-
-typedef struct schema_validation_context {
-  int nesting_depth;
-  size_t total_fields;
-  size_t max_offset;
-  char visited_types[256][128]; /* Track visited types to detect cycles */
-  size_t visited_count;
-  char error[256];
-} schema_validation_context_t;
-
-static int schema_validation_type_visited(schema_validation_context_t *ctx, const char *type_name) {
-  size_t i;
-  if (type_name == NULL) return 0;
-  for (i = 0; i < ctx->visited_count; i++) {
-    if (strcmp(ctx->visited_types[i], type_name) == 0) return 1;
-  }
-  return 0;
-}
-
-static int schema_validation_mark_visited(schema_validation_context_t *ctx, const char *type_name) {
-  if (type_name == NULL) return 0;
-  if (ctx->visited_count >= 256) {
-    snprintf(ctx->error, sizeof(ctx->error), "Too many nested types (max 256)");
-    return 0;
-  }
-  snprintf(ctx->visited_types[ctx->visited_count], 128, "%s", type_name);
-  ctx->visited_count++;
-  return 1;
-}
-
-static void schema_validation_unmark_visited(schema_validation_context_t *ctx) {
-  if (ctx->visited_count > 0) ctx->visited_count--;
-}
-
-static int validate_field_offset_safe(schema_validation_context_t *ctx, size_t offset,
-                                      size_t size) {
-  if (offset > MAX_FIELD_OFFSET_BYTES) {
-    snprintf(ctx->error, sizeof(ctx->error), "Field offset %zu exceeds maximum %d bytes", offset,
-             MAX_FIELD_OFFSET_BYTES);
-    return 0;
-  }
-  if (size > 0 && offset + size > MAX_FIELD_OFFSET_BYTES) {
-    snprintf(ctx->error, sizeof(ctx->error), "Field range [%zu, %zu) exceeds maximum", offset,
-             offset + size);
-    return 0;
-  }
-  if (offset + size > ctx->max_offset) {
-    ctx->max_offset = offset + size;
-  }
-  return 1;
-}
-
-static int validate_schema_fields(schema_validation_context_t *ctx, Node *src_fields,
-                                  Node *schema_root, const char *parent_type);
-
-static int validate_composite_or_group_type(schema_validation_context_t *ctx, Node *schema_root,
-                                            const char *type_name, const char *list_name) {
-  Node *record;
-  int saved_depth;
-  int result;
-
-  if (type_name == NULL) return 1;
-
-  /* Check for circular reference */
-  if (schema_validation_type_visited(ctx, type_name)) {
-    snprintf(ctx->error, sizeof(ctx->error), "Circular type reference detected: %s", type_name);
-    return 0;
-  }
-
-  record = find_named_record(schema_root, list_name, type_name);
-  if (record == NULL) return 1; /* Not found is not a validation error */
-
-  /* Check nesting depth */
-  if (ctx->nesting_depth >= MAX_FIELD_NESTING_DEPTH) {
-    snprintf(ctx->error, sizeof(ctx->error), "Field nesting depth exceeds maximum %d (in type %s)",
-             MAX_FIELD_NESTING_DEPTH, type_name);
-    return 0;
-  }
-
-  /* Mark as visited and recurse */
-  if (!schema_validation_mark_visited(ctx, type_name)) return 0;
-
-  saved_depth = ctx->nesting_depth;
-  ctx->nesting_depth++;
-  result = validate_schema_fields(ctx, find_child(record, "fields"), schema_root, type_name);
-  ctx->nesting_depth = saved_depth;
-
-  schema_validation_unmark_visited(ctx);
-  return result;
-}
-
-static int validate_schema_fields(schema_validation_context_t *ctx, Node *src_fields,
-                                  Node *schema_root, const char *parent_type) {
-  size_t i;
-  if (src_fields == NULL || src_fields->type != NODE_LIST) return 1;
-
-  for (i = 0; i < src_fields->data.list.count; i++) {
-    Node *field = src_fields->data.list.items[i];
-    const char *field_name = get_string_val(find_child(field, "name"));
-    const char *field_type = get_string_val(find_child(field, "type"));
-    Node *offset_node = find_child(field, "offset");
-    Node *size_node = find_child(field, "size");
-
-    if (field_name == NULL) continue;
-
-    /* Count total fields */
-    ctx->total_fields++;
-    if (ctx->total_fields > MAX_TOTAL_FIELDS) {
-      snprintf(ctx->error, sizeof(ctx->error), "Total field count exceeds maximum %d",
-               MAX_TOTAL_FIELDS);
-      return 0;
-    }
-
-    /* Validate offset if present */
-    if (offset_node != NULL && offset_node->type == NODE_STRING) {
-      const char *offset_str = get_string_val(offset_node);
-      const char *size_str = size_node != NULL ? get_string_val(size_node) : NULL;
-      if (offset_str != NULL) {
-        int offset_int = parse_positive_int(offset_str);
-        int size_int = size_str != NULL ? parse_positive_int(size_str) : 0;
-        if (offset_int >= 0 && size_int >= 0) {
-          if (!validate_field_offset_safe(ctx, (size_t)offset_int, (size_t)size_int)) return 0;
-        }
-      }
-    }
-
-    /* Validate composite references */
-    if (field_flag(field, "is_composite_ref")) {
-      if (!validate_composite_or_group_type(ctx, schema_root, field_type, "composites")) return 0;
-      continue;
-    }
-
-    /* Validate group references */
-    if (field_flag(field, "is_group_field")) {
-      const char *group_type = get_string_val(find_child(field, "group_type"));
-      if (!validate_composite_or_group_type(ctx, schema_root, group_type, "groups")) return 0;
-      continue;
-    }
-
-    /* Validate collection inner types */
-    if (field_flag(field, "is_collection")) {
-      const char *inner_type = get_string_val(find_child(field, "inner_type"));
-      if (inner_type != NULL) {
-        if (!validate_composite_or_group_type(ctx, schema_root, inner_type, "composites")) return 0;
-      }
-    }
-  }
-  return 1;
-}
-
-static void build_full_field_name(const char *prefix, const char *field_name, char *out,
-                                  size_t out_size) {
-  if (prefix != NULL && prefix[0] != '\0') snprintf(out, out_size, "%s.%s", prefix, field_name);
-  else snprintf(out, out_size, "%s", field_name);
-}
-
-static int build_composite_emit_fields(emit_field_array_t *fields, Node *field, Node *schema_root,
-                                        const char *full_name, int has_set_bytes,
-                                        int record_mode) {
-  const char *field_type = get_string_val(find_child(field, "type"));
-  Node *composite = find_named_record(schema_root, "composites", field_type);
-  if (composite == NULL) return 1;
-  if (record_mode) {
-    emit_field_array_t child_fields = {0};
-    if (!build_record_fields_v1(&child_fields, find_child(composite, "fields"), schema_root, NULL,
-                                has_set_bytes)) {
-      emit_field_array_free(&child_fields);
-      return 0;
-    }
-    if (!append_emit_field(fields, full_name, EF_OBJECT, NULL, 0, 0, 0, 0, &child_fields)) {
-      emit_field_array_free(&child_fields);
-      return 0;
-    }
-    return 1;
-  }
-  return build_fields(fields, find_child(composite, "fields"), schema_root, full_name,
-                      has_set_bytes);
-}
-
-static int build_group_emit_field(emit_field_array_t *fields, Node *field, Node *schema_root,
-                                   const char *full_name, int has_set_bytes, int record_mode) {
-  emit_field_array_t child_fields = {0};
-  Node *group =
-      find_named_record(schema_root, "groups", get_string_val(find_child(field, "group_type")));
-  int entry_size =
-      group != NULL ? parse_positive_int(get_string_val(find_child(group, "fixed_block_size"))) : 0;
-  int group_dim = parse_positive_int(get_string_val(find_child(field, "group_dimension_size")));
-
-  if (group == NULL || entry_size <= 0) return 1;
-  if (group_dim <= 0) group_dim = 4;
-
-  if (!(record_mode ? build_record_fields_v1(&child_fields, find_child(group, "fields"),
-                                             schema_root, NULL, has_set_bytes)
-                    : build_fields(&child_fields, find_child(group, "fields"), schema_root, NULL,
-                                   has_set_bytes))) {
-    emit_field_array_free(&child_fields);
-    return 0;
-  }
-  if (!append_emit_field(fields, full_name, EF_GROUP, NULL, entry_size, 0, 0, group_dim,
-                         &child_fields)) {
-    emit_field_array_free(&child_fields);
-    return 0;
-  }
-  return 1;
-}
-
-static int build_map_collection_emit_field(emit_field_array_t *fields, Node *field,
-                                           Node *schema_root, const char *full_name) {
-  const char *key_type = get_string_val(find_child(field, "key_type"));
-  const char *value_type = get_string_val(find_child(field, "value_type"));
-  const type_meta_t *meta = NULL;
-
-  if (key_type == NULL || value_type == NULL) return 1;
-  if (strcmp(key_type, "string") != 0) return 1;
-  if (strcmp(value_type, "string") == 0)
-    return append_emit_field(fields, full_name, EF_MAP_STR_STR, NULL, 0, 0, 0, 0, NULL);
-  if (strcmp(value_type, "bool") == 0)
-    return append_emit_field(fields, full_name, EF_MAP_STR_BOOL, find_type_meta("bool"), 1, 0, 0, 0,
-                             NULL);
-
-  meta = find_scalar_meta(schema_root, value_type);
-  if (meta == NULL) return 1;
-  if (meta->is_float)
-    return append_emit_field(fields, full_name, EF_MAP_STR_DBL, meta, meta->size, 0, 0, 0, NULL);
-  return append_emit_field(
-      fields, full_name,
-      meta->wire_type == DB_WIRE_U64
-          ? EF_MAP_STR_U64
-          : (meta->wire_type == DB_WIRE_U32 ? EF_MAP_STR_U32
-                                         : (meta->is_64 ? EF_MAP_STR_I64 : EF_MAP_STR_INT)),
-      meta, meta->size, 0, 0, 0, NULL);
-}
-
-static int build_list_or_set_collection_emit_field(emit_field_array_t *fields, Node *field,
-                                                    Node *schema_root, const char *full_name,
-                                                    const char *collection_kind,
-                                                    const char *inner_type, int count,
-                                                    int record_mode) {
-  const type_meta_t *meta = NULL;
-
-  if (strcmp(collection_kind, "list") != 0 && strcmp(collection_kind, "set") != 0 &&
-      strcmp(collection_kind, "array") != 0)
-    return 1;
-  if (inner_type == NULL) return 1;
-  if (field_flag(field, "is_fixed_size") && count <= 0) return 1;
-
-  if (strcmp(collection_kind, "set") != 0) {
-    Node *composite = find_named_record(schema_root, "composites", inner_type);
-    if (composite != NULL) {
-      emit_field_array_t child_fields = {0};
-      int element_size =
-          parse_positive_int(get_string_val(find_child(composite, "fixed_block_size")));
-      if (element_size <= 0) return 1;
-      if (!(record_mode ? build_record_fields_v1(&child_fields, find_child(composite, "fields"),
-                                                 schema_root, NULL, 0)
-                        : build_fields(&child_fields, find_child(composite, "fields"), schema_root,
-                                       NULL, 0))) {
-        emit_field_array_free(&child_fields);
-        return 0;
-      }
-      if (!append_emit_field(fields, full_name, EF_LIST_OBJ, NULL, element_size, 0,
-                             field_flag(field, "is_fixed_size") ? (size_t)count : 0, 0,
-                             &child_fields)) {
-        emit_field_array_free(&child_fields);
-        return 0;
-      }
-      return 1;
-    }
-  }
-
-  if (strcmp(inner_type, "string") == 0) {
-    emit_kind_t kind = strcmp(collection_kind, "set") == 0 ? EF_SET_STR : EF_LIST_STR;
-    return append_emit_field(fields, full_name, kind, NULL, 0, 0,
-                             field_flag(field, "is_fixed_size") ? (size_t)count : 0, 0, NULL);
-  }
-
-  meta = find_scalar_meta(schema_root, inner_type);
-  if (meta == NULL) return 1;
-  if (strcmp(collection_kind, "set") == 0) {
-    emit_kind_t kind;
-    if (meta->is_float) kind = EF_SET_DBL;
-    else if (strcmp(inner_type, "bool") == 0) kind = EF_SET_BOOL;
-    else if (meta->wire_type == DB_WIRE_U64) kind = EF_SET_U64;
-    else if (meta->wire_type == DB_WIRE_U32) kind = EF_SET_U32;
-    else if (meta->is_64) kind = EF_SET_I64;
-    else kind = EF_SET_INT;
-    return append_emit_field(fields, full_name, kind, meta, meta->size, 0, 0, 0, NULL);
-  }
-
-  return append_emit_field(
-      fields, full_name,
-      strcmp(inner_type, "bool") == 0
-          ? EF_LIST_BOOL
-          : (meta->is_float
-                 ? EF_LIST_DBL
-                 : (meta->wire_type == DB_WIRE_U64 ? EF_LIST_U64
-                                                   : (meta->wire_type == DB_WIRE_U32
-                                                       ? EF_LIST_U32
-                                                       : (meta->is_64 ? EF_LIST_I64
-                                                                      : EF_LIST_INT)))),
-      meta, meta->size, 0, field_flag(field, "is_fixed_size") ? (size_t)count : 0, 0, NULL);
-}
-
-static int build_collection_emit_field(emit_field_array_t *fields, Node *field, Node *schema_root,
-                                        const char *full_name, int record_mode) {
-  const char *collection_kind = get_string_val(find_child(field, "collection_kind"));
-  const char *field_type = get_string_val(find_child(field, "type"));
-  const char *inner_type = get_string_val(find_child(field, "inner_type"));
-  int count = parse_positive_int(get_string_val(find_child(field, "length_field")));
-
-  if (collection_kind == NULL) collection_kind = field_type;
-  if (strcmp(collection_kind, "map") == 0)
-    return build_map_collection_emit_field(fields, field, schema_root, full_name);
-
-  return build_list_or_set_collection_emit_field(fields, field, schema_root, full_name,
-                                                  collection_kind, inner_type, count, record_mode);
-}
-
-static int build_var_or_scalar_emit_field(emit_field_array_t *fields, Node *field,
-                                          Node *schema_root, const char *full_name,
-                                          const char *field_type, int has_set_bytes) {
-  if (field_flag(field, "is_var_data")) {
-    emit_kind_t kind = field_flag(field, "is_bytes") ? EF_VAR_BYTES : EF_STR;
-    return append_emit_field(fields, full_name, kind, NULL, 0, has_set_bytes, 0, 0, NULL);
-  }
-
-  if (field_flag(field, "is_bytes")) {
-    int size = parse_positive_int(get_string_val(find_child(field, "size_bytes")));
-    if (size <= 0) return 1;
-    return append_emit_field(fields, full_name, EF_FIX_BYTES, NULL, size, has_set_bytes, 0, 0,
-                             NULL);
-  }
-
-  if (field_flag(field, "is_uuid") || strcmp(field_type, "uuid") == 0) {
-    return append_emit_field(fields, full_name, EF_UUID, NULL, 16, 0, 0, 0, NULL);
-  }
-
-  if (field_flag(field, "is_enum_ref")) {
-    const type_meta_t *meta = find_enum_meta(schema_root, field_type);
-    if (meta == NULL) return 1;
-    return append_emit_field(fields, full_name,
-                             meta->wire_type == DB_WIRE_U64 ? EF_U64
-                                                           : (meta->wire_type == DB_WIRE_U32
-                                                               ? EF_U32
-                                                               : (meta->is_64 ? EF_I64 : EF_INT)),
-                             meta, meta->size, 0, 0, 0, NULL);
-  }
-
-  {
-    const type_meta_t *meta = find_type_meta(field_type);
-    if (meta == NULL) return 1;
-    return append_emit_field(fields, full_name,
-                             strcmp(field_type, "bool") == 0
-                                 ? EF_BOOL
-                                 : (meta->is_float
-                                        ? EF_DBL
-                                        : (meta->wire_type == DB_WIRE_U64
-                                               ? EF_U64
-                                               : (meta->wire_type == DB_WIRE_U32
-                                                      ? EF_U32
-                                                      : (meta->is_64 ? EF_I64 : EF_INT)))),
-                             meta, meta->size, 0, 0, 0, NULL);
-  }
-}
-
-static int build_fields_mode_v1(emit_field_array_t *fields, Node *src_fields, Node *schema_root,
-                                const char *prefix, int has_set_bytes, int record_mode) {
-  size_t i;
-  if (src_fields == NULL || src_fields->type != NODE_LIST) return 1;
-  for (i = 0; i < src_fields->data.list.count; i++) {
-    Node *field = src_fields->data.list.items[i];
-    const char *field_name = get_string_val(find_child(field, "name"));
-    const char *field_type = get_string_val(find_child(field, "type"));
-    char full_name[512];
-    if (field_name == NULL || field_type == NULL) continue;
-    build_full_field_name(prefix, field_name, full_name, sizeof(full_name));
-
-    if (field_flag(field, "is_composite_ref")) {
-      if (!build_composite_emit_fields(fields, field, schema_root, full_name, has_set_bytes,
-                                       record_mode))
-        return 0;
-      continue;
-    }
-
-    if (field_flag(field, "is_group_field")) {
-      if (!build_group_emit_field(fields, field, schema_root, full_name, has_set_bytes, record_mode))
-        return 0;
-      continue;
-    }
-
-    if (field_flag(field, "is_collection")) {
-      if (!build_collection_emit_field(fields, field, schema_root, full_name, record_mode)) return 0;
-      continue;
-    }
-
-    if (!build_var_or_scalar_emit_field(fields, field, schema_root, full_name, field_type,
-                                        has_set_bytes))
-      return 0;
-  }
-  return 1;
-}
-
-static int build_fields(emit_field_array_t *fields, Node *src_fields, Node *schema_root,
-                        const char *prefix, int has_set_bytes) {
-  return build_fields_mode_v1(fields, src_fields, schema_root, prefix, has_set_bytes, 0);
-}
-
-static int build_record_fields_v1(emit_field_array_t *fields, Node *src_fields, Node *schema_root,
-                                  const char *prefix, int has_set_bytes) {
-  return build_fields_mode_v1(fields, src_fields, schema_root, prefix, has_set_bytes, 1);
-}
-
-typedef struct data_bind_binary_writer {
-  uint8_t *data;
-  size_t capacity;
-  size_t offset;
-  DataBindError *error;
-} data_bind_binary_writer_t;
-
-static const DataBindValue *db_binary_object_get_n(const DataBindValue *object, const char *name,
-                                                   size_t name_len) {
-  size_t i;
-  if (object == NULL || object->kind != DATA_BIND_VALUE_OBJECT || name == NULL) return NULL;
-  for (i = 0; i < vec_size(&object->data.object.fields); ++i) {
-    const db_field_slot_t *field =
-        (const db_field_slot_t *)vec_at_const(&object->data.object.fields, i);
-    if (field == NULL || field->name == NULL) return NULL;
-    if (strlen(field->name) == name_len && memcmp(field->name, name, name_len) == 0)
-      return field->value;
-  }
-  return NULL;
-}
-
-static const DataBindValue *db_binary_value_at_path(const DataBindValue *object, const char *path) {
-  const DataBindValue *value;
-  const char *segment;
-  const char *dot;
-  if (object == NULL || path == NULL) return NULL;
-  value = db_binary_object_get_n(object, path, strlen(path));
-  if (value != NULL) return value;
-  value = object;
-  segment = path;
-  while (segment[0] != '\0') {
-    dot = strchr(segment, '.');
-    value = db_binary_object_get_n(value, segment,
-                                   dot != NULL ? (size_t)(dot - segment) : strlen(segment));
-    if (value == NULL || dot == NULL) return value;
-    segment = dot + 1;
-  }
-  return NULL;
-}
-
-static DataBindStatus db_binary_writer_reserve(data_bind_binary_writer_t *writer, size_t size,
-                                               const char *path, uint8_t **out) {
-  size_t start;
-  if (writer == NULL || size > SIZE_MAX - writer->offset)
-    return db_error_set(writer != NULL ? writer->error : NULL, DATA_BIND_ERR_RUNTIME, path, -1, -1,
-                        "Binary output size overflow");
-  start = writer->offset;
-  writer->offset += size;
-  if (out != NULL) *out = writer->data != NULL ? writer->data + start : NULL;
-  if (writer->data != NULL && writer->offset > writer->capacity)
-    return db_error_set(writer->error, DATA_BIND_ERR_INVALID_ARG, path, -1, -1,
-                        "Binary output buffer is too small");
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_write_bytes(data_bind_binary_writer_t *writer, const void *data,
-                                            size_t size, const char *path) {
-  uint8_t *dst = NULL;
-  DataBindStatus status;
-  if (size != 0 && data == NULL)
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, path, -1, -1,
-                        "Binary value has no data");
-  status = db_binary_writer_reserve(writer, size, path, &dst);
-  if (status == DATA_BIND_OK && dst != NULL && size != 0) memcpy(dst, data, size);
-  return status;
-}
-
-static DataBindStatus db_binary_write_zeros(data_bind_binary_writer_t *writer, size_t size,
-                                            const char *path) {
-  uint8_t *dst = NULL;
-  DataBindStatus status = db_binary_writer_reserve(writer, size, path, &dst);
-  if (status == DATA_BIND_OK && dst != NULL && size != 0) memset(dst, 0, size);
-  return status;
-}
-
-static DataBindStatus db_binary_write_u16(data_bind_binary_writer_t *writer, uint16_t value,
-                                          const char *path) {
-  uint8_t *dst = NULL;
-  DataBindStatus status = db_binary_writer_reserve(writer, sizeof(value), path, &dst);
-  if (status == DATA_BIND_OK && dst != NULL) data_bind_binary_wire_write_u16(dst, 0, value);
-  return status;
-}
-
-static DataBindStatus db_binary_write_u32(data_bind_binary_writer_t *writer, uint32_t value,
-                                          const char *path) {
-  uint8_t *dst = NULL;
-  DataBindStatus status = db_binary_writer_reserve(writer, sizeof(value), path, &dst);
-  if (status == DATA_BIND_OK && dst != NULL) data_bind_binary_wire_write_u32(dst, 0, value);
-  return status;
-}
-
-static int db_binary_integer_value(const DataBindValue *value, int64_t *out) {
-  if (value == NULL || out == NULL) return 0;
-  if (value->kind == DATA_BIND_VALUE_INT) {
-    *out = value->data.int_val;
-    return 1;
-  }
-  if (value->kind == DATA_BIND_VALUE_INT64) {
-    *out = value->data.int64_val;
-    return 1;
-  }
-  return 0;
-}
-
-static int db_binary_integer_fits(data_bind_wire_type_t type, int64_t value) {
-  switch (type) {
-  case DB_WIRE_U8:
-    return value >= 0 && (uint64_t)value <= UINT8_MAX;
-  case DB_WIRE_I8:
-    return value >= INT8_MIN && value <= INT8_MAX;
-  case DB_WIRE_U16:
-    return value >= 0 && (uint64_t)value <= UINT16_MAX;
-  case DB_WIRE_I16:
-    return value >= INT16_MIN && value <= INT16_MAX;
-  case DB_WIRE_U32:
-    return value >= 0 && (uint64_t)value <= UINT32_MAX;
-  case DB_WIRE_I32:
-    return value >= INT32_MIN && value <= INT32_MAX;
-  case DB_WIRE_U64:
-    return value >= 0;
-  case DB_WIRE_I64:
-    return 1;
-  default:
-    return 0;
-  }
-}
-
-static DataBindStatus db_binary_write_integer(data_bind_binary_writer_t *writer,
-                                              data_bind_wire_type_t type,
-                                              int size, const DataBindValue *value,
-                                              const char *path) {
-  uint8_t *dst = NULL;
-  int64_t integer;
-  DataBindStatus status;
-  if (type == DB_WIRE_U64 && value != NULL && value->kind == DATA_BIND_VALUE_UINT64) {
-    status = db_binary_writer_reserve(writer, (size_t)size, path, &dst);
-    if (status == DATA_BIND_OK && dst != NULL)
-      data_bind_binary_wire_write_u64(dst, 0, value->data.uint64_val);
-    return status;
-  }
-  if (!db_binary_integer_value(value, &integer) || !db_binary_integer_fits(type, integer))
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, path, -1, -1,
-                        "Integer value does not fit the schema wire type");
-  status = db_binary_writer_reserve(writer, (size_t)size, path, &dst);
-  if (status != DATA_BIND_OK || dst == NULL) return status;
-  switch (type) {
-  case DB_WIRE_U8:
-    data_bind_binary_wire_write_u8(dst, 0, (uint8_t)integer);
-    break;
-  case DB_WIRE_I8:
-    data_bind_binary_wire_write_i8(dst, 0, (int8_t)integer);
-    break;
-  case DB_WIRE_U16:
-    data_bind_binary_wire_write_u16(dst, 0, (uint16_t)integer);
-    break;
-  case DB_WIRE_I16:
-    data_bind_binary_wire_write_i16(dst, 0, (int16_t)integer);
-    break;
-  case DB_WIRE_U32:
-    data_bind_binary_wire_write_u32(dst, 0, (uint32_t)integer);
-    break;
-  case DB_WIRE_I32:
-    data_bind_binary_wire_write_i32(dst, 0, (int32_t)integer);
-    break;
-  case DB_WIRE_U64:
-    data_bind_binary_wire_write_u64(dst, 0, (uint64_t)integer);
-    break;
-  case DB_WIRE_I64:
-    data_bind_binary_wire_write_i64(dst, 0, integer);
-    break;
-  default:
-    return db_error_set(writer->error, DATA_BIND_ERR_SCHEMA, path, -1, -1,
-                        "Unsupported integer wire type");
-  }
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_write_number(data_bind_binary_writer_t *writer,
-                                             const emit_field_t *field,
-                                             const DataBindValue *value) {
-  uint8_t *dst = NULL;
-  double number;
-  DataBindStatus status;
-  if (value == NULL || value->kind != DATA_BIND_VALUE_DOUBLE || !isfinite(value->data.double_val))
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                        "Floating-point field requires a finite number");
-  number = value->data.double_val;
-  if (field->wire_type == DB_WIRE_F32 && (number < -FLT_MAX || number > FLT_MAX))
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                        "Floating-point value does not fit float32");
-  status = db_binary_writer_reserve(writer, (size_t)field->size, field->name, &dst);
-  if (status != DATA_BIND_OK || dst == NULL) return status;
-  if (field->wire_type == DB_WIRE_F32) data_bind_binary_wire_write_f32(dst, 0, (float)number);
-  else data_bind_binary_wire_write_f64(dst, 0, number);
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_write_var_data(data_bind_binary_writer_t *writer, const void *data,
-                                               size_t size, const char *path) {
-  DataBindStatus status;
-  if (size > UINT32_MAX)
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, path, -1, -1,
-                        "Variable binary value exceeds uint32 length");
-  status = db_binary_write_u32(writer, (uint32_t)size, path);
-  return status == DATA_BIND_OK ? db_binary_write_bytes(writer, data, size, path) : status;
-}
-
-static DataBindStatus db_binary_write_fields(data_bind_binary_writer_t *writer,
-                                             const emit_field_array_t *fields,
-                                             const DataBindValue *object);
-
-static DataBindStatus db_binary_write_scalar(data_bind_binary_writer_t *writer,
-                                             const emit_field_t *field,
-                                             const DataBindValue *value) {
-  if (value == NULL)
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                        "Required binary field is missing");
-  switch (field->kind) {
-  case EF_INT:
-  case EF_U32:
-  case EF_I64:
-  case EF_U64:
-    return db_binary_write_integer(writer, field->wire_type, field->size, value, field->name);
-  case EF_BOOL: {
-    uint8_t boolean;
-    if (value->kind != DATA_BIND_VALUE_BOOL)
-      return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                          "Boolean field has the wrong value type");
-    boolean = value->data.bool_val != 0;
-    return db_binary_write_bytes(writer, &boolean, sizeof(boolean), field->name);
-  }
-  case EF_DBL:
-    return db_binary_write_number(writer, field, value);
-  case EF_UUID:
-    if (value->kind != DATA_BIND_VALUE_UUID)
-      return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                          "UUID field has the wrong value type");
-    return db_binary_write_bytes(writer, value->data.uuid_val.bytes, SALTS_UUID_SIZE, field->name);
-  case EF_FIX_BYTES:
-    if (value->kind != DATA_BIND_VALUE_BYTES || value->data.bytes_val.len != (size_t)field->size)
-      return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                          "Fixed bytes field length does not match the schema");
-    return db_binary_write_bytes(writer, value->data.bytes_val.ptr, value->data.bytes_val.len,
-                                 field->name);
-  case EF_STR:
-    if (value->kind != DATA_BIND_VALUE_STRING)
-      return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                          "String field has the wrong value type");
-    return db_binary_write_var_data(writer, value->data.string_val.ptr,
-                                    value->data.string_val.len, field->name);
-  case EF_VAR_BYTES:
-    if (value->kind != DATA_BIND_VALUE_BYTES)
-      return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                          "Bytes field has the wrong value type");
-    return db_binary_write_var_data(writer, value->data.bytes_val.ptr, value->data.bytes_val.len,
-                                    field->name);
-  default:
-    return db_error_set(writer->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
-                        "Unsupported scalar binary field");
-  }
-}
-
-static int db_binary_is_list_kind(emit_kind_t kind) {
-  return kind >= EF_LIST_INT && kind <= EF_LIST_OBJ;
-}
-
-static int db_binary_is_set_kind(emit_kind_t kind) {
-  return kind >= EF_SET_INT && kind <= EF_SET_STR;
-}
-
-static DataBindStatus db_binary_write_collection_item(data_bind_binary_writer_t *writer,
-                                                      const emit_field_t *field,
-                                                      const DataBindValue *item) {
-  emit_field_t scalar = *field;
-  switch (field->kind) {
-  case EF_LIST_INT:
-  case EF_SET_INT:
-    scalar.kind = EF_INT;
-    return db_binary_write_scalar(writer, &scalar, item);
-  case EF_LIST_U32:
-  case EF_SET_U32:
-    scalar.kind = EF_U32;
-    return db_binary_write_scalar(writer, &scalar, item);
-  case EF_LIST_I64:
-  case EF_SET_I64:
-    scalar.kind = EF_I64;
-    return db_binary_write_scalar(writer, &scalar, item);
-  case EF_LIST_U64:
-  case EF_SET_U64:
-    scalar.kind = EF_U64;
-    return db_binary_write_scalar(writer, &scalar, item);
-  case EF_LIST_DBL:
-  case EF_SET_DBL:
-    scalar.kind = EF_DBL;
-    return db_binary_write_scalar(writer, &scalar, item);
-  case EF_LIST_BOOL:
-  case EF_SET_BOOL:
-    scalar.kind = EF_BOOL;
-    return db_binary_write_scalar(writer, &scalar, item);
-  case EF_LIST_STR:
-  case EF_SET_STR:
-    scalar.kind = EF_STR;
-    return db_binary_write_scalar(writer, &scalar, item);
-  case EF_LIST_OBJ:
-    if (item == NULL || item->kind != DATA_BIND_VALUE_OBJECT)
-      return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                          "Composite collection item has the wrong value type");
-    return db_binary_write_fields(writer, &field->children, item);
-  default:
-    return db_error_set(writer->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
-                        "Unsupported binary collection item");
-  }
-}
-
-static DataBindStatus db_binary_write_collection(data_bind_binary_writer_t *writer,
-                                                 const emit_field_t *field,
-                                                 const DataBindValue *value) {
-  const vec_t *values;
-  size_t i;
-  size_t count;
-  DataBindStatus status;
-  DataBindValueKind expected =
-      db_binary_is_set_kind(field->kind) ? DATA_BIND_VALUE_SET : DATA_BIND_VALUE_LIST;
-  if (value == NULL || value->kind != expected)
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                        "Collection field has the wrong value type");
-  values = dbv_ordered_values_const(value);
-  count = vec_size(values);
-  if (field->fixed_count != 0) {
-    if (count != field->fixed_count)
-      return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                          "Fixed collection length does not match the schema");
-  } else {
-    if (count > UINT32_MAX)
-      return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                          "Collection exceeds uint32 item count");
-    status = db_binary_write_u32(writer, (uint32_t)count, field->name);
-    if (status != DATA_BIND_OK) return status;
-  }
-  for (i = 0; i < count; ++i) {
-    const db_owned_value_slot_t *slot =
-        (const db_owned_value_slot_t *)vec_at_const(values, i);
-    status = db_binary_write_collection_item(writer, field,
-                                             slot != NULL ? slot->value : NULL);
-    if (status != DATA_BIND_OK) return status;
-  }
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_write_map(data_bind_binary_writer_t *writer,
-                                          const emit_field_t *field, const DataBindValue *value) {
-  const vec_t *entries;
-  size_t i;
-  DataBindStatus status;
-  emit_field_t scalar = *field;
-  if (value == NULL || value->kind != DATA_BIND_VALUE_MAP)
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                        "Map field has the wrong value type or too many entries");
-  entries = &value->data.map.ordered_entries;
-  if (vec_size(entries) > UINT32_MAX)
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                        "Map field has the wrong value type or too many entries");
-  status = db_binary_write_u32(writer, (uint32_t)vec_size(entries), field->name);
-  if (status != DATA_BIND_OK) return status;
-  for (i = 0; i < vec_size(entries); ++i) {
-    const db_map_entry_slot_t *entry =
-        (const db_map_entry_slot_t *)vec_at_const(entries, i);
-    if (entry == NULL || entry->public_key_text == NULL || entry->value == NULL)
-      return db_error_set(writer->error, DATA_BIND_ERR_RUNTIME, field->name,
-                          -1, -1, "Map entry storage is invalid");
-    status = db_binary_write_var_data(writer, entry->public_key_text,
-                                      strlen(entry->public_key_text), field->name);
-    if (status != DATA_BIND_OK) return status;
-    if (field->kind == EF_MAP_STR_STR) scalar.kind = EF_STR;
-    else if (field->kind == EF_MAP_STR_INT) scalar.kind = EF_INT;
-    else if (field->kind == EF_MAP_STR_U32) scalar.kind = EF_U32;
-    else if (field->kind == EF_MAP_STR_I64) scalar.kind = EF_I64;
-    else if (field->kind == EF_MAP_STR_U64) scalar.kind = EF_U64;
-    else if (field->kind == EF_MAP_STR_DBL) scalar.kind = EF_DBL;
-    else scalar.kind = EF_BOOL;
-    status = db_binary_write_scalar(writer, &scalar, entry->value);
-    if (status != DATA_BIND_OK) return status;
-  }
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_write_group(data_bind_binary_writer_t *writer,
-                                            const emit_field_t *field, const DataBindValue *value) {
-  size_t i;
-  size_t count;
-  DataBindStatus status;
-  count = value != NULL ? vec_size(&value->data.sequence.values) : 0u;
-  if (value == NULL || value->kind != DATA_BIND_VALUE_LIST || field->group_dim < 4 ||
-      field->size <= 0 || field->size > UINT16_MAX || count > UINT16_MAX)
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                        "Group value does not fit the schema dimensions");
-  status = db_binary_write_u16(writer, (uint16_t)field->size, field->name);
-  if (status == DATA_BIND_OK)
-    status = db_binary_write_u16(writer, (uint16_t)count, field->name);
-  if (status == DATA_BIND_OK && field->group_dim > 4)
-    status = db_binary_write_zeros(writer, (size_t)field->group_dim - 4u, field->name);
-  if (status != DATA_BIND_OK) return status;
-  for (i = 0; i < count; ++i) {
-    const db_owned_value_slot_t *slot =
-        (const db_owned_value_slot_t *)vec_at_const(&value->data.sequence.values, i);
-    const DataBindValue *entry = slot != NULL ? slot->value : NULL;
-    size_t start = writer->offset;
-    if (entry == NULL || entry->kind != DATA_BIND_VALUE_OBJECT)
-      return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                          "Group entry has the wrong value type");
-    status = db_binary_write_fields(writer, &field->children, entry);
-    if (status != DATA_BIND_OK) return status;
-    if (writer->offset - start > (size_t)field->size)
-      return db_error_set(writer->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
-                          "Group fields exceed the declared block length");
-    status =
-        db_binary_write_zeros(writer, (size_t)field->size - (writer->offset - start), field->name);
-    if (status != DATA_BIND_OK) return status;
-  }
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_write_fields(data_bind_binary_writer_t *writer,
-                                             const emit_field_array_t *fields,
-                                             const DataBindValue *object) {
-  size_t i;
-  if (object == NULL || object->kind != DATA_BIND_VALUE_OBJECT)
-    return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, "binary", -1, -1,
-                        "Binary root value must be an object");
-  for (i = 0; i < fields->count; ++i) {
-    const emit_field_t *field = &fields->items[i];
-    const DataBindValue *value = db_binary_value_at_path(object, field->name);
-    DataBindStatus status;
-    if (field->kind <= EF_VAR_BYTES) status = db_binary_write_scalar(writer, field, value);
-    else if (db_binary_is_list_kind(field->kind) || db_binary_is_set_kind(field->kind))
-      status = db_binary_write_collection(writer, field, value);
-    else if (field->kind >= EF_MAP_STR_STR && field->kind <= EF_MAP_STR_BOOL)
-      status = db_binary_write_map(writer, field, value);
-    else if (field->kind == EF_GROUP) status = db_binary_write_group(writer, field, value);
-    else
-      status = db_error_set(writer->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
-                            "Unsupported binary field kind");
-    if (status != DATA_BIND_OK) return status;
-  }
-  return DATA_BIND_OK;
-}
-
-typedef struct data_bind_binary_reader {
-  const uint8_t *data;
-  size_t length;
-  size_t offset;
-  DataBindError *error;
-} data_bind_binary_reader_t;
-
-static DataBindStatus db_binary_reader_take(data_bind_binary_reader_t *reader, size_t size,
-                                            const char *path, const uint8_t **out) {
-  if (out != NULL) *out = NULL;
-  if (reader == NULL || size > reader->length - (reader->offset <= reader->length
-                                                     ? reader->offset
-                                                     : reader->length))
-    return db_error_set(reader != NULL ? reader->error : NULL, DATA_BIND_ERR_PARSE, path, -1, -1,
-                        "Binary input is truncated");
-  if (out != NULL) *out = reader->data + reader->offset;
-  reader->offset += size;
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_read_u32(data_bind_binary_reader_t *reader, const char *path,
-                                         uint32_t *out) {
-  const uint8_t *data;
-  DataBindStatus status;
-  if (out == NULL)
-    return db_error_set(reader != NULL ? reader->error : NULL, DATA_BIND_ERR_INVALID_ARG, path, -1,
-                        -1, "Invalid binary integer output");
-  status = db_binary_reader_take(reader, sizeof(uint32_t), path, &data);
-  if (status == DATA_BIND_OK) *out = data_bind_binary_wire_read_u32(data, 0);
-  return status;
-}
-
-static DataBindStatus db_binary_read_scalar(data_bind_binary_reader_t *reader,
-                                            const emit_field_t *field, DataBindValue **out_value) {
-  const uint8_t *data = NULL;
-  DataBindValue *value = NULL;
-  DataBindStatus status;
-  uint32_t length;
-  if (out_value != NULL) *out_value = NULL;
-  if (reader == NULL || field == NULL || out_value == NULL)
-    return db_error_set(reader != NULL ? reader->error : NULL, DATA_BIND_ERR_INVALID_ARG, NULL, -1,
-                        -1, "Invalid binary scalar arguments");
-
-  if (field->kind == EF_STR || field->kind == EF_VAR_BYTES) {
-    status = db_binary_read_u32(reader, field->name, &length);
-    if (status != DATA_BIND_OK) return status;
-    status = db_binary_reader_take(reader, length, field->name, &data);
-    if (status != DATA_BIND_OK) return status;
-    if (field->kind == EF_VAR_BYTES)
-      value = dbv_bytes(data, length);
-    else {
-      if (!vstr_utf8_valid(vstr_from_buf((const char *)data, length)))
-        return db_error_set(reader->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
-                            "Binary string field is not valid UTF-8");
-      value = dbv_string_n((const char *)data, length);
-    }
-  } else {
-    status = db_binary_reader_take(reader, (size_t)field->size, field->name, &data);
-    if (status != DATA_BIND_OK) return status;
-    switch (field->kind) {
-    case EF_INT:
-    case EF_U32:
-    case EF_I64:
-    case EF_U64:
-      switch (field->wire_type) {
-      case DB_WIRE_U8: value = dbv_int((int32_t)data_bind_binary_wire_read_u8(data, 0)); break;
-      case DB_WIRE_I8: value = dbv_int((int32_t)data_bind_binary_wire_read_i8(data, 0)); break;
-      case DB_WIRE_U16: value = dbv_int((int32_t)data_bind_binary_wire_read_u16(data, 0)); break;
-      case DB_WIRE_I16: value = dbv_int((int32_t)data_bind_binary_wire_read_i16(data, 0)); break;
-      case DB_WIRE_U32: value = dbv_uint32_compat(data_bind_binary_wire_read_u32(data, 0)); break;
-      case DB_WIRE_I32: value = dbv_int(data_bind_binary_wire_read_i32(data, 0)); break;
-      case DB_WIRE_U64: value = dbv_uint64(data_bind_binary_wire_read_u64(data, 0)); break;
-      case DB_WIRE_I64: value = dbv_int64(data_bind_binary_wire_read_i64(data, 0)); break;
-      default:
-        return db_error_set(reader->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
-                            "Unsupported integer wire type");
-      }
-      break;
-    case EF_BOOL: value = dbv_bool(data_bind_binary_wire_read_u8(data, 0) != 0); break;
-    case EF_DBL:
-      value = dbv_double(field->wire_type == DB_WIRE_F32
-                             ? (double)data_bind_binary_wire_read_f32(data, 0)
-                             : data_bind_binary_wire_read_f64(data, 0));
-      break;
-    case EF_UUID: value = dbv_uuid_bytes(data); break;
-    case EF_FIX_BYTES: value = dbv_bytes(data, (size_t)field->size); break;
-    default:
-      return db_error_set(reader->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
-                          "Unsupported scalar binary field");
-    }
-  }
-  if (value == NULL)
-    return db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
-                        "Out of memory parsing binary field");
-  *out_value = value;
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_read_fields(data_bind_binary_reader_t *reader,
-                                            const emit_field_array_t *fields,
-                                            DataBindValue **out_object);
-
-static DataBindStatus db_binary_read_collection_item(data_bind_binary_reader_t *reader,
-                                                     const emit_field_t *field,
-                                                     DataBindValue **out_value) {
-  emit_field_t scalar = *field;
-  switch (field->kind) {
-  case EF_LIST_INT:
-  case EF_SET_INT: scalar.kind = EF_INT; break;
-  case EF_LIST_U32:
-  case EF_SET_U32: scalar.kind = EF_U32; break;
-  case EF_LIST_I64:
-  case EF_SET_I64: scalar.kind = EF_I64; break;
-  case EF_LIST_U64:
-  case EF_SET_U64: scalar.kind = EF_U64; break;
-  case EF_LIST_DBL:
-  case EF_SET_DBL: scalar.kind = EF_DBL; break;
-  case EF_LIST_BOOL:
-  case EF_SET_BOOL: scalar.kind = EF_BOOL; break;
-  case EF_LIST_STR:
-  case EF_SET_STR: scalar.kind = EF_STR; break;
-  case EF_LIST_OBJ: return db_binary_read_fields(reader, &field->children, out_value);
-  default:
-    return db_error_set(reader->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
-                        "Unsupported binary collection item");
-  }
-  return db_binary_read_scalar(reader, &scalar, out_value);
-}
-
-static DataBindStatus db_binary_read_collection(data_bind_binary_reader_t *reader,
-                                                const emit_field_t *field,
-                                                DataBindValue **out_value) {
-  DataBindValue *collection;
-  DataBindStatus status;
-  uint32_t encoded_count = 0;
-  size_t count;
-  size_t i;
-  if (field->fixed_count != 0)
-    count = field->fixed_count;
-  else {
-    status = db_binary_read_u32(reader, field->name, &encoded_count);
-    if (status != DATA_BIND_OK) return status;
-    count = encoded_count;
-  }
-  collection =
-      dbv_new(db_binary_is_set_kind(field->kind) ? DATA_BIND_VALUE_SET : DATA_BIND_VALUE_LIST);
-  if (collection == NULL)
-    return db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
-                        "Out of memory parsing binary collection");
-  for (i = 0; i < count; ++i) {
-    DataBindValue *item = NULL;
-    status = db_binary_read_collection_item(reader, field, &item);
-    if (status != DATA_BIND_OK || dbv_collection_push(collection, item) != DATA_BIND_OK) {
-      if (status == DATA_BIND_OK)
-        status = db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
-                              "Out of memory storing binary collection item");
-      data_bind_value_free(item);
-      data_bind_value_free(collection);
-      return status;
-    }
-  }
-  *out_value = collection;
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_read_map(data_bind_binary_reader_t *reader,
-                                         const emit_field_t *field, DataBindValue **out_value) {
-  DataBindValue *map = dbv_new(DATA_BIND_VALUE_MAP);
-  DataBindStatus status;
-  uint32_t count;
-  uint32_t i;
-  emit_field_t scalar = *field;
-  if (map == NULL)
-    return db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
-                        "Out of memory parsing binary map");
-  status = db_binary_read_u32(reader, field->name, &count);
-  for (i = 0; status == DATA_BIND_OK && i < count; ++i) {
-    const uint8_t *key_data = NULL;
-    uint32_t key_length;
-    char *key = NULL;
-    DataBindValue *item = NULL;
-    status = db_binary_read_u32(reader, field->name, &key_length);
-    if (status == DATA_BIND_OK)
-      status = db_binary_reader_take(reader, key_length, field->name, &key_data);
-    if (status != DATA_BIND_OK) break;
-    key = (char *)malloc((size_t)key_length + 1u);
-    if (key == NULL) {
-      status = db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
-                            "Out of memory parsing binary map key");
-      break;
-    }
-    memcpy(key, key_data, key_length);
-    key[key_length] = '\0';
-    if (field->kind == EF_MAP_STR_STR) scalar.kind = EF_STR;
-    else if (field->kind == EF_MAP_STR_INT) scalar.kind = EF_INT;
-    else if (field->kind == EF_MAP_STR_U32) scalar.kind = EF_U32;
-    else if (field->kind == EF_MAP_STR_I64) scalar.kind = EF_I64;
-    else if (field->kind == EF_MAP_STR_U64) scalar.kind = EF_U64;
-    else if (field->kind == EF_MAP_STR_DBL) scalar.kind = EF_DBL;
-    else scalar.kind = EF_BOOL;
-    status = db_binary_read_scalar(reader, &scalar, &item);
-    if (status == DATA_BIND_OK && !dbv_string_map_set(map, key, item)) {
-      data_bind_value_free(item);
-      status = db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
-                            "Out of memory storing binary map item");
-    }
-    free(key);
-  }
-  if (status != DATA_BIND_OK) {
-    data_bind_value_free(map);
-    return status;
-  }
-  *out_value = map;
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_read_group(data_bind_binary_reader_t *reader,
-                                           const emit_field_t *field, DataBindValue **out_value) {
-  const uint8_t *dimension;
-  DataBindValue *list = NULL;
-  DataBindStatus status;
-  uint16_t block_length;
-  uint16_t count;
-  size_t i;
-  if (field->group_dim < 4)
-    return db_error_set(reader->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
-                        "Invalid group dimension size");
-  status = db_binary_reader_take(reader, (size_t)field->group_dim, field->name, &dimension);
-  if (status != DATA_BIND_OK) return status;
-  block_length = data_bind_binary_wire_read_u16(dimension, 0);
-  count = data_bind_binary_wire_read_u16(dimension + 2u, 0);
-  if (block_length < (uint16_t)field->size)
-    return db_error_set(reader->error, DATA_BIND_ERR_PARSE, field->name, -1, -1,
-                        "Group block length is smaller than the schema layout");
-  list = dbv_new(DATA_BIND_VALUE_LIST);
-  if (list == NULL)
-    return db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
-                        "Out of memory parsing binary group");
-  for (i = 0; i < count; ++i) {
-    size_t start = reader->offset;
-    DataBindValue *entry = NULL;
-    status = db_binary_read_fields(reader, &field->children, &entry);
-    if (status == DATA_BIND_OK && reader->offset - start > block_length)
-      status = db_error_set(reader->error, DATA_BIND_ERR_PARSE, field->name, -1, -1,
-                            "Group fields exceed the encoded block length");
-    if (status == DATA_BIND_OK)
-      status = db_binary_reader_take(reader, block_length - (reader->offset - start), field->name,
-                                     NULL);
-    if (status != DATA_BIND_OK || dbv_collection_push(list, entry) != DATA_BIND_OK) {
-      if (status == DATA_BIND_OK)
-        status = db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
-                              "Out of memory storing binary group entry");
-      data_bind_value_free(entry);
-      data_bind_value_free(list);
-      return status;
-    }
-  }
-  *out_value = list;
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_read_fields(data_bind_binary_reader_t *reader,
-                                            const emit_field_array_t *fields,
-                                            DataBindValue **out_object) {
-  DataBindValue *object = dbv_new(DATA_BIND_VALUE_OBJECT);
-  DataBindStatus status = DATA_BIND_OK;
-  size_t i;
-  if (out_object != NULL) *out_object = NULL;
-  if (object == NULL)
-    return db_error_set(reader->error, DATA_BIND_ERR_OOM, "binary", -1, -1,
-                        "Out of memory parsing binary object");
-  for (i = 0; i < fields->count; ++i) {
-    const emit_field_t *field = &fields->items[i];
-    DataBindValue *value = NULL;
-    if (field->kind <= EF_VAR_BYTES)
-      status = db_binary_read_scalar(reader, field, &value);
-    else if (field->kind == EF_OBJECT)
-      status = db_binary_read_fields(reader, &field->children, &value);
-    else if (db_binary_is_list_kind(field->kind) || db_binary_is_set_kind(field->kind))
-      status = db_binary_read_collection(reader, field, &value);
-    else if (field->kind >= EF_MAP_STR_STR && field->kind <= EF_MAP_STR_BOOL)
-      status = db_binary_read_map(reader, field, &value);
-    else if (field->kind == EF_GROUP)
-      status = db_binary_read_group(reader, field, &value);
-    else
-      status = db_error_set(reader->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
-                            "Unsupported binary field kind");
-    if (status != DATA_BIND_OK ||
-        dbv_object_set(object, field->name, value) != DATA_BIND_OK) {
-      if (status == DATA_BIND_OK)
-        status = db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
-                              "Out of memory storing binary field");
-      data_bind_value_free(value);
-      data_bind_value_free(object);
-      return status;
-    }
-  }
-  *out_object = object;
-  return DATA_BIND_OK;
-}
-
-static int db_binary_field_supported(Node *schema_root, Node *field) {
-  const char *type = get_string_val(find_child(field, "type"));
-  if (type == NULL || field_flag(field, "is_optional") ||
-      field_flag(field, "is_nullable"))
-    return 0;
-  if (field_flag(field, "is_composite_ref")) {
-    Node *record = find_named_record(schema_root, "composites", type);
-    Node *children = record != NULL ? find_child(record, "fields") : NULL;
-    size_t i;
-    if (children == NULL || children->type != NODE_LIST) return 0;
-    for (i = 0; i < children->data.list.count; ++i)
-      if (!db_binary_field_supported(schema_root, children->data.list.items[i])) return 0;
-    return 1;
-  }
-  if (field_flag(field, "is_group_field")) {
-    Node *record =
-        find_named_record(schema_root, "groups", get_string_val(find_child(field, "group_type")));
-    Node *children = record != NULL ? find_child(record, "fields") : NULL;
-    size_t i;
-    if (children == NULL || children->type != NODE_LIST ||
-        parse_positive_int(get_string_val(find_child(record, "fixed_block_size"))) <= 0)
-      return 0;
-    for (i = 0; i < children->data.list.count; ++i)
-      if (!db_binary_field_supported(schema_root, children->data.list.items[i])) return 0;
-    return 1;
-  }
-  if (field_flag(field, "is_collection")) {
-    const char *kind = get_string_val(find_child(field, "collection_kind"));
-    const char *inner = get_string_val(find_child(field, "inner_type"));
-    const char *key = get_string_val(find_child(field, "key_type"));
-    const char *mapped = get_string_val(find_child(field, "value_type"));
-    const type_meta_t *meta;
-    if (kind == NULL) kind = type;
-    if (strcmp(kind, "map") == 0) {
-      if (key == NULL || mapped == NULL || strcmp(key, "string") != 0) return 0;
-      if (strcmp(mapped, "string") == 0 || strcmp(mapped, "bool") == 0) return 1;
-      meta = find_scalar_meta(schema_root, mapped);
-      return meta != NULL;
-    }
-    if (inner == NULL ||
-        (strcmp(kind, "list") != 0 && strcmp(kind, "set") != 0 && strcmp(kind, "array") != 0))
-      return 0;
-    if (strcmp(kind, "set") != 0) {
-      Node *record = find_named_record(schema_root, "composites", inner);
-      if (record != NULL) {
-        Node *children = find_child(record, "fields");
-        size_t i;
-        if (children == NULL || children->type != NODE_LIST) return 0;
-        for (i = 0; i < children->data.list.count; ++i)
-          if (!db_binary_field_supported(schema_root, children->data.list.items[i])) return 0;
-        return 1;
-      }
-    }
-    if (strcmp(inner, "string") == 0) return 1;
-    meta = find_scalar_meta(schema_root, inner);
-    return meta != NULL;
-  }
-  if (field_flag(field, "is_var_data"))
-    return field_flag(field, "is_string") || field_flag(field, "is_bytes");
-  if (field_flag(field, "is_bytes"))
-    return parse_positive_int(get_string_val(find_child(field, "size_bytes"))) > 0;
-  if (field_flag(field, "is_uuid") || strcmp(type, "uuid") == 0) return 1;
-  if (field_flag(field, "is_enum_ref")) return find_enum_meta(schema_root, type) != NULL;
-  return find_type_meta(type) != NULL;
-}
-
 static DataBindStatus data_bind_object_check_schema(const DataBind *codec,
                                                     const DataBindObject *object,
                                                     const char *format,
@@ -6869,86 +5562,6 @@ static DataBindStatus data_bind_object_check_schema(const DataBind *codec,
                         object->type_name != NULL ? object->type_name : format, -1, -1,
                         "Object schema fingerprint does not match the codec");
   return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_plan(DataBind *codec, const DataBindObject *object,
-                                     emit_field_array_t *fields, DataBindError *error) {
-  Node *message;
-  Node *schema_fields;
-  const char *byte_order;
-  size_t i;
-  if (codec == NULL || object == NULL || object->type_name == NULL || object->value == NULL ||
-      fields == NULL)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "binary", -1, -1,
-                        "Invalid binary serialize arguments");
-  {
-    DataBindStatus status = data_bind_object_check_schema(codec, object, "binary", error);
-    if (status != DATA_BIND_OK) return status;
-  }
-  message = find_named_record(codec->schema_root, "messages", object->type_name);
-  if (message == NULL)
-    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, object->type_name, -1, -1,
-                        "Binary schema message was not found");
-  byte_order = get_string_val(find_child(codec->schema_root, "wire_byte_order"));
-  if (byte_order != NULL && strcmp(byte_order, "little") != 0)
-    return db_error_set(error, DATA_BIND_ERR_SCHEMA, object->type_name, -1, -1,
-                        "Dynamic binary codec currently requires little-endian schema order");
-  schema_fields = find_child(message, "fields");
-  if (schema_fields == NULL || schema_fields->type != NODE_LIST)
-    return db_error_set(error, DATA_BIND_ERR_SCHEMA, object->type_name, -1, -1,
-                        "Binary schema message has no field list");
-  for (i = 0; i < schema_fields->data.list.count; ++i) {
-    Node *field = schema_fields->data.list.items[i];
-    if (!db_binary_field_supported(codec->schema_root, field))
-      return db_error_set(error, DATA_BIND_ERR_SCHEMA, get_string_val(find_child(field, "name")),
-                          -1, -1, "Schema field has no supported dynamic binary representation");
-  }
-  if (!build_fields(fields, schema_fields, codec->schema_root, NULL, 1))
-    return db_error_set(error, DATA_BIND_ERR_OOM, object->type_name, -1, -1,
-                        "Out of memory building binary serialization plan");
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_read_plan(DataBind *codec, const char *type_name,
-                                          emit_field_array_t *fields, DataBindError *error) {
-  Node *message;
-  Node *schema_fields;
-  const char *byte_order;
-  size_t i;
-  if (codec == NULL || type_name == NULL || fields == NULL)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "binary", -1, -1,
-                        "Invalid binary parse arguments");
-  message = find_named_record(codec->schema_root, "messages", type_name);
-  if (message == NULL)
-    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name, -1, -1,
-                        "Binary schema message '%s' was not found", type_name);
-  byte_order = get_string_val(find_child(codec->schema_root, "wire_byte_order"));
-  if (byte_order != NULL && strcmp(byte_order, "little") != 0)
-    return db_error_set(error, DATA_BIND_ERR_SCHEMA, type_name, -1, -1,
-                        "Dynamic binary codec currently requires little-endian schema order");
-  schema_fields = find_child(message, "fields");
-  if (schema_fields == NULL || schema_fields->type != NODE_LIST)
-    return db_error_set(error, DATA_BIND_ERR_SCHEMA, type_name, -1, -1,
-                        "Binary schema message has no field list");
-  for (i = 0; i < schema_fields->data.list.count; ++i) {
-    Node *field = schema_fields->data.list.items[i];
-    if (!db_binary_field_supported(codec->schema_root, field))
-      return db_error_set(error, DATA_BIND_ERR_SCHEMA, get_string_val(find_child(field, "name")),
-                          -1, -1, "Schema field has no supported dynamic binary representation");
-  }
-  if (!build_record_fields_v1(fields, schema_fields, codec->schema_root, NULL, 1))
-    return db_error_set(error, DATA_BIND_ERR_OOM, type_name, -1, -1,
-                        "Out of memory building binary parse plan");
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus db_binary_measure(const emit_field_array_t *fields,
-                                        const DataBindValue *value, size_t *out_len,
-                                        DataBindError *error) {
-  data_bind_binary_writer_t writer = {NULL, 0, 0, error};
-  DataBindStatus status = db_binary_write_fields(&writer, fields, value);
-  if (out_len != NULL) *out_len = status == DATA_BIND_OK ? writer.offset : 0;
-  return status;
 }
 
 static DataBindStatus parse_idl_contract_text(
@@ -7086,6 +5699,25 @@ static DataBindStatus data_bind_create_from_root(
         "Failed to fingerprint parsed schema");
   }
 
+  status = db_status_from_stl(db_prepared_message_plan_vec_t_init(
+      &codec->prepared_messages, DATA_BIND_MESSAGE_PLAN_MAX_PREPARED));
+  if (status != DATA_BIND_OK) {
+    node_free(schema_root);
+    idl_contract_destroy(contract);
+    free(codec);
+    return db_error_set(error, status, NULL, -1, -1,
+                        "Could not initialize codec MessagePlan storage");
+  }
+  salts_mutex_init(&codec->prepared_mutex);
+  if (codec->prepared_mutex == NULL) {
+    db_prepared_message_plan_vec_t_destroy(&codec->prepared_messages);
+    node_free(schema_root);
+    idl_contract_destroy(contract);
+    free(codec);
+    return db_error_set(error, DATA_BIND_ERR_OOM, NULL, -1, -1,
+                        "Could not initialize codec MessagePlan mutex");
+  }
+
   db_error_clear(error);
   *out_codec = codec;
   return DATA_BIND_OK;
@@ -7161,10 +5793,135 @@ DataBindStatus data_bind_create_from_text(
 }
 
 void data_bind_free(DataBind *codec) {
+  size_t i;
   if (codec == NULL) return;
+  for (i = 0u; i < codec->prepared_message_count; ++i)
+    data_bind_message_plan_free(
+        db_prepared_message_plan_vec_t_at(&codec->prepared_messages, i)->plan);
+  db_prepared_message_plan_vec_t_destroy(&codec->prepared_messages);
+  salts_mutex_destroy(&codec->prepared_mutex);
   node_free(codec->schema_root);
   idl_contract_destroy(codec->contract);
   free(codec);
+}
+
+/* O(P) address-only lookup, P <= MAX_PREPARED. No schema/native traversal. */
+static DataBindMessagePlan *db_prepared_message_find_locked(
+    DataBind *codec, const DataBindMessageNativeArtifact *artifact) {
+  size_t i;
+  for (i = 0u; i < codec->prepared_message_count; ++i) {
+    const db_prepared_message_plan_t *slot =
+        db_prepared_message_plan_vec_t_at_const(&codec->prepared_messages, i);
+    if (slot->artifact == artifact) return slot->plan;
+  }
+  return NULL;
+}
+
+DataBindStatus data_bind_message_plan_acquire_generated(
+    DataBind *codec, const DataBindMessageNativeArtifact *artifact,
+    const DataBindMessagePlan **out_plan, DataBindError *error) {
+  DataBindMessagePlan *plan = NULL;
+  DataBindMessagePlan *existing;
+  DataBindNativeTypeBinding binding = DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+  DataBindMessagePlanDiagnostic diagnostic = DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+  db_prepared_message_plan_vec_t reserved = {0};
+  DataBindStatus status;
+  size_t fields;
+  size_t i;
+  int reserve_table;
+  int reserved_started = 0;
+
+  if (out_plan != NULL) *out_plan = NULL;
+  db_error_clear(error);
+  if (codec == NULL || out_plan == NULL ||
+      !data_bind_message_native_artifact_valid(artifact))
+    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
+                        "Invalid generated MessagePlan artifact");
+
+  salts_mutex_lock(&codec->prepared_mutex);
+  existing = db_prepared_message_find_locked(codec, artifact);
+  reserve_table = db_prepared_message_plan_vec_t_capacity(&codec->prepared_messages) == 0u;
+  status = codec->prepared_message_count >=
+               DATA_BIND_MESSAGE_PLAN_MAX_PREPARED ?
+               DATA_BIND_ERR_LIMIT : DATA_BIND_OK;
+  salts_mutex_unlock(&codec->prepared_mutex);
+  if (existing != NULL) {
+    *out_plan = existing;
+    return DATA_BIND_OK;
+  }
+  if (status != DATA_BIND_OK)
+    return db_error_set(error, status, artifact->type_name, -1, -1,
+                        "Codec prepared MessagePlan capacity exhausted");
+
+  {
+    DataBindError binding_error = DATA_BIND_ERROR_INIT;
+    status = artifact->native_binding(&binding, &binding_error);
+    if (status != DATA_BIND_OK)
+      return db_error_set(error, status,
+          binding_error.path[0] != '\0' ? binding_error.path : artifact->type_name,
+          binding_error.line, binding_error.column, "%s",
+          binding_error.message[0] != '\0' ? binding_error.message :
+              "Generated native binding resolution failed");
+  }
+  status = data_bind_message_plan_compile(
+      codec, artifact->type_name, &binding, &plan, &diagnostic);
+  if (status != DATA_BIND_OK)
+    return db_error_set(error, status, diagnostic.schema_field, -1, -1,
+                        "%s", diagnostic.message);
+  fields = data_bind_message_plan_field_count(plan);
+  if (fields > DATA_BIND_MESSAGE_PLAN_MAX_PREPARED_FIELDS) {
+    status = DATA_BIND_ERR_LIMIT;
+    goto cleanup;
+  }
+
+  if (reserve_table) {
+    status = db_status_from_stl(db_prepared_message_plan_vec_t_init(
+        &reserved, DATA_BIND_MESSAGE_PLAN_MAX_PREPARED));
+    if (status != DATA_BIND_OK) goto cleanup;
+    reserved_started = 1;
+    status = db_status_from_stl(db_prepared_message_plan_vec_t_reserve(
+        &reserved, DATA_BIND_MESSAGE_PLAN_MAX_PREPARED));
+    if (status != DATA_BIND_OK) goto cleanup;
+    for (i = 0u; i < DATA_BIND_MESSAGE_PLAN_MAX_PREPARED; ++i) {
+      db_prepared_message_plan_t empty = {0};
+      status = db_status_from_stl(db_prepared_message_plan_vec_t_push(&reserved, empty));
+      if (status != DATA_BIND_OK) goto cleanup;
+    }
+  }
+
+  salts_mutex_lock(&codec->prepared_mutex);
+  existing = db_prepared_message_find_locked(codec, artifact);
+  if (existing != NULL) {
+    *out_plan = existing;
+  } else if (codec->prepared_message_count >=
+                 DATA_BIND_MESSAGE_PLAN_MAX_PREPARED ||
+             fields > DATA_BIND_MESSAGE_PLAN_MAX_PREPARED_FIELDS -
+                          codec->prepared_field_count) {
+    status = DATA_BIND_ERR_LIMIT;
+  } else {
+    db_prepared_message_plan_t slot = {artifact, plan};
+    if (db_prepared_message_plan_vec_t_capacity(&codec->prepared_messages) == 0u) {
+      /* Every slot was constructed outside the lock. Publication below only
+       * assigns a borrowed pair; it cannot allocate or invoke provider traits. */
+      codec->prepared_messages = reserved;
+      reserved_started = 0;
+    }
+    *db_prepared_message_plan_vec_t_at(
+        &codec->prepared_messages, codec->prepared_message_count) = slot;
+    ++codec->prepared_message_count;
+    codec->prepared_field_count += fields;
+    *out_plan = plan;
+    plan = NULL;
+  }
+  salts_mutex_unlock(&codec->prepared_mutex);
+
+cleanup:
+  data_bind_message_plan_free(plan);
+  if (reserved_started) db_prepared_message_plan_vec_t_destroy(&reserved);
+  if (status != DATA_BIND_OK)
+    return db_error_set(error, status, artifact->type_name, -1, -1,
+                        "Could not publish generated MessagePlan within codec capacity");
+  return DATA_BIND_OK;
 }
 
 void data_bind_set_value_pool_enabled(int enabled) {
@@ -7207,40 +5964,237 @@ void data_bind_get_value_pool_stats(size_t *allocated, size_t *reused) {
     *reused = atomic_load_explicit(&g_value_pool_reused_count, memory_order_relaxed);
 }
 
+typedef struct db_cserde_value_decoder {
+  DataBind *codec;
+  cserde_reader *reader;
+  DataBindError *error;
+  size_t nodes;
+  size_t view_bytes;
+} db_cserde_value_decoder;
+
+static DataBindStatus db_cserde_value_next(db_cserde_value_decoder *decoder,
+                                          cserde_token *token) {
+  cserde_status status = cserde_reader_next(decoder->reader, token);
+  return status == CSERDE_OK ? DATA_BIND_OK :
+      db_error_set(decoder->error,
+                   status == CSERDE_LIMIT_EXCEEDED ? DATA_BIND_ERR_LIMIT : DATA_BIND_ERR_PARSE,
+                   "binary", -1, -1, "Canonical Binary token stream ended unexpectedly");
+}
+
+static DataBindStatus db_cserde_value_decode(
+    db_cserde_value_decoder *decoder, const cserde_token *token,
+    const char *type_name, const IdlField *field, size_t depth,
+    DataBindValue **out_value);
+
+static DataBindStatus db_cserde_record_decode(
+    db_cserde_value_decoder *decoder, const char *type_name, size_t depth,
+    DataBindValue **out_value) {
+  const IdlDataDecl *record = db_idl_data_decl(decoder->codec, type_name);
+  DataBindValue *object = NULL;
+  DataBindStatus status = DATA_BIND_OK;
+  cserde_token token;
+  size_t next_field = 0u;
+  if (record == NULL)
+    return db_error_set(decoder->error, DATA_BIND_ERR_SCHEMA, type_name, -1, -1,
+                        "Canonical Binary record has no Contract declaration");
+  object = dbv_new(DATA_BIND_VALUE_OBJECT);
+  if (object == NULL) return DATA_BIND_ERR_OOM;
+  for (;;) {
+    const IdlField *member = NULL;
+    DataBindValue *value = NULL;
+    size_t i;
+    status = db_cserde_value_next(decoder, &token);
+    if (status != DATA_BIND_OK) break;
+    if (token.kind == CSERDE_MAP_END) {
+      *out_value = object;
+      return DATA_BIND_OK;
+    }
+    if (token.kind == CSERDE_STRING) {
+      for (i = next_field; i < record->field_count; ++i) {
+        const IdlField *candidate = &record->fields[i];
+        size_t name_length = strlen(candidate->name);
+        if (token.value.slice.size == name_length &&
+            memcmp(token.value.slice.data, candidate->name, name_length) == 0) {
+          member = candidate;
+          next_field = i + 1u;
+          break;
+        }
+      }
+    }
+    if (member == NULL) {
+      status = db_error_set(decoder->error, DATA_BIND_ERR_SCHEMA, type_name, -1, -1,
+                            "Binary record key does not match canonical Contract order");
+      break;
+    }
+    status = db_cserde_value_next(decoder, &token);
+    if (status == DATA_BIND_OK)
+      status = db_cserde_value_decode(decoder, &token, member->type_name,
+                                      member, depth + 1u, &value);
+    if (status == DATA_BIND_OK) status = dbv_object_set(object, member->name, value);
+    if (status != DATA_BIND_OK) {
+      data_bind_value_free(value);
+      break;
+    }
+  }
+  data_bind_value_free(object);
+  return status;
+}
+
+static DataBindStatus db_cserde_collection_decode(
+    db_cserde_value_decoder *decoder, const IdlField *field, size_t depth,
+    DataBindValue **out_value) {
+  const int is_map = field->collection_kind == IDL_COLLECTION_MAP;
+  const char *element_type = is_map ? field->value_type : field->inner_type;
+  DataBindValue *collection = dbv_new(is_map ? DATA_BIND_VALUE_MAP :
+      field->collection_kind == IDL_COLLECTION_SET ? DATA_BIND_VALUE_SET : DATA_BIND_VALUE_LIST);
+  DataBindStatus status = DATA_BIND_OK;
+  cserde_token token;
+  if (collection == NULL) return DATA_BIND_ERR_OOM;
+  for (;;) {
+    DataBindValue *value = NULL;
+    DataBindValue *key = NULL;
+    status = db_cserde_value_next(decoder, &token);
+    if (status != DATA_BIND_OK) break;
+    if (token.kind == (is_map ? CSERDE_MAP_END : CSERDE_ARRAY_END)) {
+      *out_value = collection;
+      return DATA_BIND_OK;
+    }
+    if (is_map) {
+      status = db_cserde_value_decode(decoder, &token, field->key_type, NULL,
+                                      depth + 1u, &key);
+      if (status == DATA_BIND_OK &&
+          (key->kind != DATA_BIND_VALUE_STRING ||
+           memchr(key->data.string_val.ptr, '\0', key->data.string_val.len) != NULL))
+        status = db_error_set(decoder->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
+                              -1, -1, "Binary map key is invalid");
+      if (status == DATA_BIND_OK) status = db_cserde_value_next(decoder, &token);
+    }
+    if (status == DATA_BIND_OK)
+      status = db_cserde_value_decode(decoder, &token, element_type, NULL,
+                                      depth + 1u, &value);
+    if (status == DATA_BIND_OK) {
+      if (is_map) {
+        if (!dbv_string_map_set(collection, key->data.string_val.ptr, value))
+          status = DATA_BIND_ERR_OOM;
+      } else {
+        status = dbv_collection_push(collection, value);
+      }
+      if (status == DATA_BIND_OK) value = NULL;
+    }
+    data_bind_value_free(key);
+    data_bind_value_free(value);
+    if (status != DATA_BIND_OK) break;
+  }
+  data_bind_value_free(collection);
+  return status;
+}
+
+/* The canonical reader owns wire interpretation; this adapter copies semantic
+ * tokens into existing CSTL-backed value owners. Every staging owner is freed
+ * on failure, and the complete graph is published only after reader DONE. */
+static DataBindStatus db_cserde_value_decode(
+    db_cserde_value_decoder *decoder, const cserde_token *token,
+    const char *type_name, const IdlField *field, size_t depth,
+    DataBindValue **out_value) {
+  DataBindValue *value = NULL;
+  const IdlDataDecl *named = db_idl_data_decl(decoder->codec, type_name);
+  const cmeta_data_desc *data = schema_cmeta_builtin_data(
+      named != NULL && named->underlying_type != NULL ? named->underlying_type : type_name);
+  unsigned integer_bits = data != NULL &&
+      (data->kind == CMETA_DATA_SINT || data->kind == CMETA_DATA_UINT) && data->shape != NULL
+          ? ((const cmeta_data_integer_shape *)data->shape)->bits : 0u;
+  *out_value = NULL;
+  if (((token->kind == CSERDE_MAP_BEGIN || token->kind == CSERDE_ARRAY_BEGIN) &&
+       depth >= DATA_BIND_BINARY_LAYOUT_MAX_DEPTH) ||
+      decoder->nodes == DATA_BIND_VALUE_READER_DEFAULT_ITEMS)
+    return db_error_set(decoder->error, DATA_BIND_ERR_LIMIT, type_name, -1, -1,
+                        "Binary value exceeds its depth or node budget");
+  ++decoder->nodes;
+  if (token->kind == CSERDE_NULL) {
+    value = dbv_new(DATA_BIND_VALUE_NULL);
+  } else if (field != NULL && field->collection_kind != IDL_COLLECTION_NONE) {
+    if (token->kind != (field->collection_kind == IDL_COLLECTION_MAP ?
+                        CSERDE_MAP_BEGIN : CSERDE_ARRAY_BEGIN))
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    return db_cserde_collection_decode(decoder, field, depth, out_value);
+  } else if (token->kind == CSERDE_MAP_BEGIN) {
+    return db_cserde_record_decode(decoder, type_name, depth, out_value);
+  } else {
+    switch (token->kind) {
+    case CSERDE_BOOL: value = dbv_bool(token->value.boolean); break;
+    case CSERDE_SINT:
+      value = integer_bits == 64u ? dbv_int64(token->value.sint) :
+              token->value.sint >= INT32_MIN && token->value.sint <= INT32_MAX ?
+                  dbv_int((int32_t)token->value.sint) : dbv_int64(token->value.sint);
+      break;
+    case CSERDE_UINT:
+      value = integer_bits == 64u ? dbv_uint64(token->value.uint) :
+              token->value.uint <= UINT32_MAX ? dbv_uint32_compat((uint32_t)token->value.uint) :
+                  dbv_uint64(token->value.uint);
+      break;
+    case CSERDE_FLOAT: value = dbv_double(token->value.floating); break;
+    case CSERDE_STRING:
+    case CSERDE_BYTES:
+      if (token->value.slice.size > DATA_BIND_VALUE_READER_DEFAULT_VIEW_BYTES - decoder->view_bytes)
+        return DATA_BIND_ERR_LIMIT;
+      decoder->view_bytes += token->value.slice.size;
+      if (token->kind == CSERDE_STRING) {
+        if (!vstr_utf8_valid(vstr_from_buf((const char *)token->value.slice.data, token->value.slice.size)))
+          return DATA_BIND_ERR_TYPE_MISMATCH;
+        value = dbv_string_n((const char *)token->value.slice.data, token->value.slice.size);
+      } else if (type_name != NULL && strcmp(type_name, "uuid") == 0) {
+        if (token->value.slice.size != DATA_BIND_UUID_SIZE) return DATA_BIND_ERR_TYPE_MISMATCH;
+        value = dbv_uuid_bytes(token->value.slice.data);
+      } else {
+        value = dbv_bytes(token->value.slice.data, token->value.slice.size);
+      }
+      break;
+    default: return DATA_BIND_ERR_TYPE_MISMATCH;
+    }
+  }
+  if (value == NULL) return DATA_BIND_ERR_OOM;
+  *out_value = value;
+  return DATA_BIND_OK;
+}
+
 DataBindStatus data_bind_parse(DataBind *codec, const char *type_name, const uint8_t *buf,
                                size_t len, DataBindValue **out_value, DataBindError *error) {
-  emit_field_array_t fields = {0};
-  data_bind_binary_reader_t reader;
+  databind_binary_execution_graph *graph = NULL;
+  cserde_reader *reader = NULL;
+  void *reader_owner = NULL;
+  db_cserde_value_decoder decoder = {codec, NULL, error, 0u, 0u};
+  cserde_token token;
   DataBindValue *result = NULL;
   DataBindStatus status;
   if (out_value != NULL) *out_value = NULL;
   if (codec == NULL || type_name == NULL || buf == NULL || out_value == NULL)
     return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG, "Invalid binary bind arguments");
-  status = db_binary_read_plan(codec, type_name, &fields, error);
+  db_error_clear(error);
+  status = db_binary_execution_plan(codec, type_name, &graph, error);
   if (status != DATA_BIND_OK) return status;
-  reader.data = buf;
-  reader.length = len;
-  reader.offset = 0;
-  reader.error = error;
-  status = db_binary_read_fields(&reader, &fields, &result);
-  if (status == DATA_BIND_OK && reader.offset != len)
+  status = data_bind_binary_reader_open(databind_binary_execution_graph_root(graph),
+                                        buf, len, 0u, &reader, &reader_owner, error);
+  if (status != DATA_BIND_OK) goto cleanup;
+  decoder.reader = reader;
+  status = db_cserde_value_next(&decoder, &token);
+  if (status == DATA_BIND_OK)
+    status = db_cserde_value_decode(&decoder, &token, type_name, NULL, 0u, &result);
+  if (status == DATA_BIND_OK && cserde_reader_next(reader, &token) != CSERDE_DONE)
     status = db_error_set(error, DATA_BIND_ERR_PARSE, "binary", -1, -1,
-                          "Binary input has trailing bytes");
+                          "Binary token stream has trailing values");
   if (status == DATA_BIND_OK) {
     status = db_dynamic_publish_result(codec, type_name, 0, result, out_value,
                                        error, "binary");
     result = NULL;
   }
+cleanup:
   data_bind_value_free(result);
-  emit_field_array_free(&fields);
+  data_bind_binary_reader_close(reader, reader_owner);
+  databind_binary_execution_graph_destroy(graph);
+  if (status != DATA_BIND_OK && db_error_code_or(error, DATA_BIND_OK) == DATA_BIND_OK)
+    return db_error_set(error, status, type_name, -1, -1,
+                        "Binary semantic value staging failed");
   return status;
-}
-
-static DataBindStatus data_bind_parse_record_v1(DataBind *codec, const char *type_name,
-                                                 const uint8_t *buf, size_t len,
-                                                 DataBindValue **out_value,
-                                                 DataBindError *error) {
-  return data_bind_parse(codec, type_name, buf, len, out_value, error);
 }
 
 static int data_bind_stream_xml_name_char(char ch) {
@@ -10840,7 +9794,7 @@ DataBindStatus data_bind_record_from_bin(DataBind *codec, const char *type_name,
   if (out_object == NULL)
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
                         "Invalid DataBind Record output");
-  status = data_bind_parse_record_v1(codec, type_name, data, len, &value, error);
+  status = data_bind_parse(codec, type_name, data, len, &value, error);
   if (status != DATA_BIND_OK) return status;
   if (value == NULL || value->kind != DATA_BIND_VALUE_OBJECT) {
     data_bind_value_free(value);
@@ -10912,78 +9866,158 @@ const DataBindValue *data_bind_object_value(const DataBindObject *object) {
   return object != NULL ? object->value : NULL;
 }
 
+typedef struct db_binary_output {
+  uint8_t *data;
+  size_t length;
+  DataBindStatus status;
+} db_binary_output;
+
+static int db_binary_output_accept(const void *data, size_t length, void *user) {
+  db_binary_output *output = (db_binary_output *)user;
+  uint8_t *copy;
+  if (output == NULL || output->data != NULL || (data == NULL && length != 0u)) return -1;
+  copy = (uint8_t *)malloc(length != 0u ? length : 1u);
+  if (copy == NULL) {
+    output->status = DATA_BIND_ERR_OOM;
+    return -1;
+  }
+  if (length != 0u) memcpy(copy, data, length);
+  output->data = copy;
+  output->length = length;
+  return 0;
+}
+
+static DataBindStatus db_binary_execution_plan(
+    DataBind *codec, const char *type_name,
+    databind_binary_execution_graph **out_graph, DataBindError *error) {
+  databind_binary_format_plan format = {0};
+  databind_binary_layout_diagnostic diagnostic = {0};
+  databind_binary_layout_status lowering;
+  tbe_error_t format_error = {0};
+  DataBindStatus status = DATA_BIND_OK;
+  *out_graph = NULL;
+  if (codec == NULL || codec->contract == NULL || codec->schema_root == NULL ||
+      type_name == NULL)
+    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "binary", -1, -1,
+                        "Invalid Binary execution plan arguments");
+  if (idl_contract_find_data(codec->contract, type_name) == NULL)
+    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name, -1, -1,
+                        "Binary root type was not found: %s", type_name);
+  if (!databind_binary_format_plan_build_root(
+          codec->contract, codec->schema_root, type_name, &format, &format_error)) {
+    status = db_error_set(error,
+                          format_error.code == TBE_ERR_OUT_OF_MEMORY ? DATA_BIND_ERR_OOM :
+                          DATA_BIND_ERR_SCHEMA, type_name,
+                          format_error.line, format_error.column, "%s",
+                          format_error.message[0] != '\0' ? format_error.message :
+                          "Binary format plan could not be built");
+    goto cleanup;
+  }
+  lowering = databind_binary_execution_graph_build(
+      codec->contract, &format, type_name, out_graph, &diagnostic);
+  if (lowering != DATABIND_BINARY_LAYOUT_OK)
+    status = db_error_set(error,
+                          lowering == DATABIND_BINARY_LAYOUT_OUT_OF_MEMORY ? DATA_BIND_ERR_OOM :
+                          lowering == DATABIND_BINARY_LAYOUT_TYPE_NOT_FOUND ? DATA_BIND_ERR_TYPE_NOT_FOUND :
+                          DATA_BIND_ERR_SCHEMA,
+                          diagnostic.field[0] != '\0' ? diagnostic.field : type_name,
+                          -1, -1, "%s", diagnostic.text[0] != '\0' ? diagnostic.text :
+                          "Binary layout cannot be lowered");
+cleanup:
+  databind_binary_format_plan_destroy(&format);
+  return status;
+}
+
+static DataBindStatus db_binary_encode_object(
+    DataBind *codec, const DataBindObject *object, db_binary_output *output,
+    DataBindError *error) {
+  databind_binary_execution_graph *graph = NULL;
+  const DataBindBinaryLayoutPlan *plan;
+  cserde_reader *reader = NULL;
+  cserde_writer *writer = NULL;
+  void *writer_owner = NULL;
+  cserde_token token;
+  cserde_status token_status = CSERDE_OK;
+  DataBindStatus status;
+  if (codec == NULL || object == NULL || object->type_name == NULL ||
+      object->value == NULL || output == NULL)
+    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "binary", -1, -1,
+                        "Invalid Binary object arguments");
+  status = data_bind_object_check_schema(codec, object, "binary", error);
+  if (status != DATA_BIND_OK) return status;
+  status = db_binary_execution_plan(codec, object->type_name, &graph, error);
+  if (status != DATA_BIND_OK) return status;
+  plan = databind_binary_execution_graph_root(graph);
+  status = data_bind_internal_value_reader_open_typed(object->value, NULL, &reader, error);
+  if (status != DATA_BIND_OK) goto cleanup;
+  status = data_bind_binary_writer_open(plan, db_binary_output_accept, output,
+                                        0u, &writer, &writer_owner, error);
+  if (status != DATA_BIND_OK) goto cleanup;
+  while ((token_status = cserde_reader_next(reader, &token)) == CSERDE_OK) {
+    token_status = cserde_writer_write(writer, &token);
+    if (token_status != CSERDE_OK) break;
+  }
+  if (token_status == CSERDE_DONE)
+    status = data_bind_binary_writer_close(writer, writer_owner, error);
+  else {
+    data_bind_binary_writer_close(writer, writer_owner, NULL);
+    status = db_error_set(error, token_status == CSERDE_LIMIT_EXCEEDED ? DATA_BIND_ERR_LIMIT :
+                                token_status == CSERDE_SOURCE_ERROR ? DATA_BIND_ERR_TYPE_MISMATCH :
+                                DATA_BIND_ERR_SCHEMA,
+                          object->type_name, -1, -1,
+                          "Binary value tokens do not match the validated layout");
+  }
+  writer = NULL;
+  writer_owner = NULL;
+  if (status != DATA_BIND_OK && output->status != DATA_BIND_OK)
+    status = db_error_set(error, output->status, object->type_name, -1, -1,
+                          "Could not retain encoded Binary output");
+cleanup:
+  data_bind_value_reader_close(reader);
+  databind_binary_execution_graph_destroy(graph);
+  if (status != DATA_BIND_OK) {
+    free(output->data);
+    *output = (db_binary_output){0};
+  }
+  return status;
+}
+
 DataBindStatus data_bind_object_serialize_bin_into(DataBind *codec, const DataBindObject *object,
                                                    uint8_t *output, size_t capacity,
                                                    size_t *out_len, DataBindError *error) {
-  emit_field_array_t fields = {0};
-  data_bind_binary_writer_t writer;
+  db_binary_output encoded = {0};
   DataBindStatus status;
-  size_t required = 0;
-  if (out_len != NULL) *out_len = 0;
-  if (out_len == NULL || (output == NULL && capacity != 0))
+  if (out_len != NULL) *out_len = 0u;
+  if (out_len == NULL || (output == NULL && capacity != 0u))
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "binary", -1, -1,
                         "Invalid binary output buffer arguments");
-  status = db_binary_plan(codec, object, &fields, error);
+  status = db_binary_encode_object(codec, object, &encoded, error);
   if (status != DATA_BIND_OK) return status;
-  status = db_binary_measure(&fields, object->value, &required, error);
-  if (status != DATA_BIND_OK) goto cleanup;
-  *out_len = required;
-  if (capacity < required) {
+  *out_len = encoded.length;
+  if (capacity < encoded.length)
     status = db_error_set(error, DATA_BIND_ERR_BUFFER_TOO_SMALL, "binary", -1, -1,
                           "Binary output buffer is too small");
-    goto cleanup;
-  }
-  writer.data = output;
-  writer.capacity = capacity;
-  writer.offset = 0;
-  writer.error = error;
-  status = db_binary_write_fields(&writer, &fields, object->value);
-  if (status == DATA_BIND_OK) db_error_clear(error);
-
-cleanup:
-  emit_field_array_free(&fields);
+  else if (encoded.length != 0u)
+    memcpy(output, encoded.data, encoded.length);
+  free(encoded.data);
   return status;
 }
 
 DataBindStatus data_bind_object_serialize_bin(DataBind *codec, const DataBindObject *object,
                                               uint8_t **out_bin, size_t *out_len,
                                               DataBindError *error) {
-  emit_field_array_t fields = {0};
-  data_bind_binary_writer_t writer;
+  db_binary_output encoded = {0};
   DataBindStatus status;
-  uint8_t *data = NULL;
-  size_t required = 0;
   if (out_bin != NULL) *out_bin = NULL;
-  if (out_len != NULL) *out_len = 0;
+  if (out_len != NULL) *out_len = 0u;
   if (out_bin == NULL || out_len == NULL)
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "binary", -1, -1,
                         "Invalid binary output arguments");
-  status = db_binary_plan(codec, object, &fields, error);
+  status = db_binary_encode_object(codec, object, &encoded, error);
   if (status != DATA_BIND_OK) return status;
-  status = db_binary_measure(&fields, object->value, &required, error);
-  if (status != DATA_BIND_OK) goto cleanup;
-  data = (uint8_t *)malloc(required != 0 ? required : 1);
-  if (data == NULL) {
-    status = db_error_set(error, DATA_BIND_ERR_OOM, object->type_name, -1, -1,
-                          "Out of memory serializing binary object");
-    goto cleanup;
-  }
-  writer.data = data;
-  writer.capacity = required;
-  writer.offset = 0;
-  writer.error = error;
-  status = db_binary_write_fields(&writer, &fields, object->value);
-  if (status == DATA_BIND_OK) {
-    *out_bin = data;
-    *out_len = required;
-    data = NULL;
-    db_error_clear(error);
-  }
-
-cleanup:
-  free(data);
-  emit_field_array_free(&fields);
-  return status;
+  *out_bin = encoded.data;
+  *out_len = encoded.length;
+  return DATA_BIND_OK;
 }
 
 static DataBindValue *object_field_value_mutable(DataBindValue *object, const char *name,
@@ -11579,7 +10613,7 @@ static const cmeta_type_desc DATA_BIND_CSV_CELL_TYPE = {
     "salts-utils.databind.csv-cell", sizeof(data_bind_csv_cell_t),
     _Alignof(data_bind_csv_cell_t), CMETA_T_OBJECT, NULL,
     &DATA_BIND_CSV_CELL_TRAITS, NULL};
-typed(Vec, data_bind_csv_cell_vec_t, data_bind_csv_cell_t,
+cmeta_type(Vec, data_bind_csv_cell_vec_t, data_bind_csv_cell_t,
       &DATA_BIND_CSV_CELL_TYPE, NULL);
 
 static void data_bind_csv_cells_destroy(data_bind_csv_cell_vec_t *cells) {

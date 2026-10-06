@@ -13,6 +13,8 @@ option(BUILD_EXAMPLES "Build example programs" ON)
 option(BUILD_TESTS "Build test suite" ON)
 option(SALTS_UTILS_BUILD_IDLC
        "Build and install the host salts-idlc compiler executable" ON)
+set(SALTS_UTILS_HOST_LEMON_EXECUTABLE "" CACHE FILEPATH
+    "Host Lemon executable required while cross-compiling")
 cmake_dependent_option(BUILD_BENCHMARKS "Build benchmark executables" ON
                        "BUILD_TESTS" OFF)
 

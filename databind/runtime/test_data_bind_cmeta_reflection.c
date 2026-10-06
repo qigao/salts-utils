@@ -1,7 +1,7 @@
 #include "data_bind.h"
 #include "tinytest.h"
 #include <cmeta/data.h>
-#include <cmeta/data.h>
+#include <salts_cmeta_data.h>
 #include <string.h>
 
 /* Mutations caught: the legacy flag/string classifier masks canonical kind;
@@ -48,21 +48,21 @@ static size_t reflection_field(DataBind *codec, const char *name, DataBindSchema
 suite("databind_cmeta_reflection") {
     it("publishes canonical kinds and descriptors while preserving the schema overlay") {
 #ifdef DATA_BIND_SCHEMA_CMETA_REFLECTION
-        static const struct { const char *name; cmeta_data_kind kind; const char *label; const char *id; } cases[] = {
-            {"id", CMETA_DATA_SINT, "scalar", "salts.int32.data"},
-            {"count", CMETA_DATA_SINT, "scalar", "salts.int32.data"},
+        const struct { const char *name; cmeta_data_kind kind; const char *label; const cmeta_data_desc *data; } cases[] = {
+            {"id", CMETA_DATA_SINT, "scalar", &cmeta_data_int32},
+            {"count", CMETA_DATA_SINT, "scalar", &cmeta_data_int32},
             {"point", CMETA_DATA_STRUCT, "composite", NULL},
             {"state", CMETA_DATA_ENUM, "enum", NULL},
             {"permission", CMETA_DATA_ENUM, "enum", NULL},
-            {"identity", CMETA_DATA_CUSTOM, "custom", "salts.uuid.data"},
-            {"enabled", CMETA_DATA_BOOL, "scalar", "cmeta.bool.data"},
+            {"identity", CMETA_DATA_CUSTOM, "custom", &salts_uuid_cmeta_data},
+            {"enabled", CMETA_DATA_BOOL, "scalar", &cmeta_data_bool},
             {"choice", CMETA_DATA_VARIANT, "union", NULL},
             {"timestamp", CMETA_DATA_CUSTOM, "custom", NULL},
             {"title", CMETA_DATA_STRING, "string", NULL},
             {"payload", CMETA_DATA_BYTES, "bytes", NULL},
-            {"items", CMETA_DATA_SEQUENCE, "list", "cmeta.data.sequence"},
-            {"unique", CMETA_DATA_SET, "set", "cmeta.data.set"},
-            {"lookup", CMETA_DATA_MAP, "map", "cmeta.data.map"}
+            {"items", CMETA_DATA_SEQUENCE, "list", &cmeta_data_sequence},
+            {"unique", CMETA_DATA_SET, "set", &cmeta_data_set},
+            {"lookup", CMETA_DATA_MAP, "map", &cmeta_data_map}
         };
         DataBind *codec = reflection_codec();
         DataBindSchemaField field;
@@ -76,9 +76,16 @@ suite("databind_cmeta_reflection") {
             check_equal(field.kind, cases[i].label);
             check_equal(field.is_enum, cases[i].kind == CMETA_DATA_ENUM);
             check_equal(field.is_map, cases[i].kind == CMETA_DATA_MAP);
-            if (cases[i].id) {
+            if (cases[i].data) {
                 check_not_null(field.cmeta_data);
-                if (field.cmeta_data) check_equal(field.cmeta_data->stable_id, cases[i].id);
+                if (field.cmeta_data) {
+                    check_equal(field.cmeta_data->stable_id, cases[i].data->stable_id);
+                    check_equal(field.cmeta_data->kind, cases[i].data->kind);
+                    if (cases[i].data->storage_type != NULL)
+                        check(cmeta_type_equal(field.cmeta_data->storage_type,
+                                               cases[i].data->storage_type));
+                    else check_null(field.cmeta_data->storage_type);
+                }
             } else check_null(field.cmeta_data);
         }
         reflection_field(codec, "count", &field);
@@ -135,7 +142,8 @@ suite("databind_cmeta_reflection") {
         check_equal(error.path, "");
         check_not_null(out);
         if (out) {
-            check_equal(out->stable_id, "salts.int32.data");
+            check_equal(out->stable_id, cmeta_data_int32.stable_id);
+            check_equal(out->kind, cmeta_data_int32.kind);
             check(cmeta_type_equal(out->storage_type, &cmeta_type_int32));
         }
         const cmeta_data_desc *published = out;

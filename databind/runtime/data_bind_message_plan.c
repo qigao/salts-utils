@@ -7,6 +7,7 @@
 #include "schema_cmeta.h"
 
 #include <cmeta/type_traits.h>
+#include <salts_cmeta_data.h>
 #include <vstr.h>
 
 #include <errno.h>
@@ -51,36 +52,23 @@ struct DataBindMessagePlan {
   char *type_name;
   DataBindMessagePlanMode mode;
   const DataBindNativeTypeBinding *native;
+  DataBindNativeTypeBinding native_value;
   const cmeta_data_desc *object_data;
   DataBindMessageFieldPlan *fields;
   size_t field_count;
   DataBindValidationPlan *validation;
 };
 
-static size_t message_out_size(size_t requested, size_t full) {
-  return requested != 0u && requested < full ? requested : full;
-}
-
 static int message_diag_header_valid(
     const DataBindMessagePlanDiagnostic *diagnostic) {
   return diagnostic == NULL ||
-         diagnostic->size >=
-             offsetof(DataBindMessagePlanDiagnostic, status) +
-                 sizeof(diagnostic->status);
+         (diagnostic->size == sizeof(*diagnostic) &&
+          diagnostic->abi_version == DATA_BIND_MESSAGE_PLAN_ABI_VERSION);
 }
 
 static void message_diag_clear(DataBindMessagePlanDiagnostic *diagnostic) {
-  size_t size;
   if (diagnostic == NULL) return;
-  size = message_out_size(diagnostic->size, sizeof(*diagnostic));
-  memset(diagnostic, 0, size);
-  if (size >= sizeof(size_t)) diagnostic->size = size;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, abi_version) +
-                  sizeof(diagnostic->abi_version))
-    diagnostic->abi_version = DATA_BIND_MESSAGE_PLAN_ABI_VERSION;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, status) +
-                  sizeof(diagnostic->status))
-    diagnostic->status = DATA_BIND_OK;
+  *diagnostic = (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
 }
 
 static DataBindStatus message_fail(
@@ -90,28 +78,14 @@ static DataBindStatus message_fail(
     const char *fmt,
     ...) {
   va_list ap;
-  size_t size;
-
   if (diagnostic == NULL) return status;
-  size = message_out_size(diagnostic->size, sizeof(*diagnostic));
-  memset(diagnostic, 0, size);
-  if (size >= sizeof(size_t)) diagnostic->size = size;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, abi_version) +
-                  sizeof(diagnostic->abi_version))
-    diagnostic->abi_version = DATA_BIND_MESSAGE_PLAN_ABI_VERSION;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, status) +
-                  sizeof(diagnostic->status))
-    diagnostic->status = status;
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, schema_field) +
-                  sizeof(diagnostic->schema_field))
-    snprintf(diagnostic->schema_field, sizeof(diagnostic->schema_field),
-             "%s", field != NULL ? field : "");
-  if (size >= offsetof(DataBindMessagePlanDiagnostic, message) +
-                  sizeof(diagnostic->message)) {
-    va_start(ap, fmt);
-    vsnprintf(diagnostic->message, sizeof(diagnostic->message), fmt, ap);
-    va_end(ap);
-  }
+  message_diag_clear(diagnostic);
+  diagnostic->status = status;
+  snprintf(diagnostic->schema_field, sizeof(diagnostic->schema_field),
+           "%s", field != NULL ? field : "");
+  va_start(ap, fmt);
+  vsnprintf(diagnostic->message, sizeof(diagnostic->message), fmt, ap);
+  va_end(ap);
   return status;
 }
 
@@ -160,7 +134,7 @@ static DataBindStatus message_cmeta_status(cmeta_status status) {
 static int message_object_state_provider_valid(
     const DataBindMessageObjectStateProvider *provider) {
   return provider != NULL &&
-         provider->size >= sizeof(*provider) &&
+         provider->size == sizeof(*provider) &&
          provider->abi_version == DATA_BIND_MESSAGE_PLAN_ABI_VERSION &&
          provider->get_state != NULL &&
          provider->set_state != NULL;
@@ -244,7 +218,7 @@ static int message_state_metadata_valid(
       int found = 0;
       size_t j;
 
-      if (left->size < sizeof(*left) ||
+      if (left->size != sizeof(*left) ||
           left->field_name == NULL || left->field_name[0] == '\0' ||
           left->bit > 7u ||
           left->byte_offset >= binding->data->storage_type->size) {
@@ -335,6 +309,9 @@ enum { DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH = 32u };
 static int message_schema_record_matches_native(
     DataBind *codec, const char *type_name,
     const cmeta_data_desc *native_data, unsigned depth);
+static int message_logical_enum_matches_native(
+    DataBind *codec, const DataBindSchemaField *schema_field,
+    const cmeta_data_desc *native_data);
 
 static int message_logical_buffer_matches_native(
     const DataBindSchemaField *schema_field,
@@ -361,24 +338,56 @@ static int message_logical_buffer_matches_native(
          ops->move != NULL;
 }
 
+static int message_logical_value_matches_native(
+    DataBind *codec, const char *type_name,
+    const cmeta_data_desc *native_data, unsigned depth) {
+  const cmeta_data_desc *builtin;
+  DataBindSchemaField logical = DATA_BIND_SCHEMA_FIELD_INIT;
+  if (type_name == NULL || native_data == NULL) return 0;
+  if (native_data->kind == CMETA_DATA_STRUCT)
+    return message_schema_record_matches_native(codec, type_name, native_data, depth);
+  if (native_data->kind == CMETA_DATA_ENUM) {
+    logical.type = type_name;
+    logical.is_enum = 1;
+    return message_logical_enum_matches_native(codec, &logical, native_data);
+  }
+  if (strcmp(type_name, "string") == 0 || strcmp(type_name, "bytes") == 0) {
+    logical.has_cmeta_kind = 1;
+    logical.cmeta_kind = strcmp(type_name, "string") == 0 ? CMETA_DATA_STRING : CMETA_DATA_BYTES;
+    return message_logical_buffer_matches_native(&logical, native_data);
+  }
+  builtin = schema_cmeta_builtin_data(type_name);
+  return builtin != NULL &&
+         (cmeta_data_desc_equal(builtin, native_data) ||
+          (builtin->kind == CMETA_DATA_BOOL &&
+           cmeta_data_desc_equal(native_data, &salts_bool8_cmeta_data)));
+}
+
 static int message_logical_sequence_matches_native(
     DataBind *codec, const DataBindSchemaField *schema_field,
     const cmeta_data_desc *native_data, unsigned depth) {
   const cmeta_data_collection_ops *ops;
   const cmeta_data_desc *element;
-  const cmeta_data_desc *builtin;
+  int fixed_array;
+  int set;
+
+  fixed_array = schema_field != NULL && schema_field->collection_kind != NULL &&
+                strcmp(schema_field->collection_kind, "array") == 0;
+  set = schema_field != NULL && schema_field->collection_kind != NULL &&
+        strcmp(schema_field->collection_kind, "set") == 0;
 
   if (codec == NULL || schema_field == NULL || native_data == NULL ||
       depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH ||
       (!schema_field->is_collection && !schema_field->is_group) ||
       schema_field->collection_kind == NULL ||
-      strcmp(schema_field->collection_kind,
-             schema_field->is_group ? "group" : "list") != 0 ||
+      (!fixed_array && strcmp(schema_field->collection_kind,
+             schema_field->is_group ? "group" : set ? "set" : "list") != 0 ||
+       (fixed_array && schema_field->is_group)) ||
       schema_field->inner_type == NULL ||
       schema_field->inner_type[0] == '\0' ||
       !schema_field->has_cmeta_kind ||
-      schema_field->cmeta_kind != CMETA_DATA_SEQUENCE ||
-      native_data->kind != CMETA_DATA_SEQUENCE ||
+      schema_field->cmeta_kind != (set ? CMETA_DATA_SET : CMETA_DATA_SEQUENCE) ||
+      native_data->kind != schema_field->cmeta_kind ||
       native_data->storage_type == NULL ||
       !cmeta_data_value_move_supported(native_data) ||
       !cmeta_data_value_copy_supported(native_data))
@@ -388,21 +397,40 @@ static int message_logical_sequence_matches_native(
   element = cmeta_data_collection_element_data(native_data);
   if (ops == NULL || element == NULL ||
       cmeta_data_construct_ops_of(native_data) == NULL ||
-      ops->collector == NULL || ops->borrow == NULL ||
+      (ops->collector == NULL &&
+       (ops->struct_size < offsetof(cmeta_data_collection_ops, collector_init) +
+                               sizeof(ops->collector_init) ||
+        ops->collector_init == NULL)) || ops->borrow == NULL ||
       !cmeta_data_desc_valid(element))
     return 0;
 
-  if (element->kind != CMETA_DATA_STRUCT) {
-    if (schema_field->is_group) return 0;
-    builtin = schema_cmeta_builtin_data(schema_field->inner_type);
-    return builtin != NULL && cmeta_data_desc_equal(builtin, element);
+  if (fixed_array) {
+    uint64_t count = 0u;
+    int negative = 0;
+    const uint32_t inline_flags = CMETA_DATA_COLLECTION_CONTIGUOUS |
+                                  CMETA_DATA_COLLECTION_ORDERED |
+                                  CMETA_DATA_COLLECTION_RANDOM_ACCESS;
+    /* This compares native inline capacity with logical Contract cardinality.
+     * It never supplies a wire offset or wire stride. */
+    if (!schema_field->is_fixed_size || schema_field->length == NULL ||
+        !data_bind_internal_parse_integer_magnitude(
+            schema_field->length, strlen(schema_field->length), SIZE_MAX, 0, &count, &negative) ||
+        count == 0u || negative || element->storage_type == NULL ||
+        element->storage_type->size == 0u ||
+        count > SIZE_MAX / element->storage_type->size ||
+        (size_t)count * element->storage_type->size != native_data->storage_type->size ||
+        (ops->flags & inline_flags) != inline_flags ||
+        ops->struct_size < offsetof(cmeta_data_collection_ops, is_zero) + sizeof(ops->is_zero) ||
+        ops->is_zero == NULL || ops->collector_init == NULL)
+      return 0;
   }
 
-  return message_schema_record_matches_native(
+  if (schema_field->is_group && element->kind != CMETA_DATA_STRUCT) return 0;
+  return message_logical_value_matches_native(
       codec, schema_field->inner_type, element, depth + 1u);
 }
 
-static int message_logical_record_map_matches_native(
+static int message_logical_map_matches_native(
     DataBind *codec, const DataBindSchemaField *schema_field,
     const cmeta_data_desc *native_data, unsigned depth) {
   DataBindSchemaField key_field = DATA_BIND_SCHEMA_FIELD_INIT;
@@ -436,8 +464,7 @@ static int message_logical_record_map_matches_native(
       ops->borrow == NULL || ops->borrow->size == NULL ||
       ops->borrow->next == NULL ||
       !cmeta_data_desc_valid(key) ||
-      !cmeta_data_desc_valid(value) ||
-      value->kind != CMETA_DATA_STRUCT)
+      !cmeta_data_desc_valid(value))
     return 0;
 
   /*
@@ -450,7 +477,7 @@ static int message_logical_record_map_matches_native(
   if (!message_logical_buffer_matches_native(&key_field, key))
     return 0;
 
-  return message_schema_record_matches_native(
+  return message_logical_value_matches_native(
       codec, schema_field->value_type, value, depth + 1u);
 }
 
@@ -552,12 +579,14 @@ static int message_schema_field_matches_native(
   if (schema_field->is_collection || schema_field->is_group) {
     if (schema_field->collection_kind != NULL &&
         (strcmp(schema_field->collection_kind, "list") == 0 ||
+         strcmp(schema_field->collection_kind, "array") == 0 ||
+         strcmp(schema_field->collection_kind, "set") == 0 ||
          schema_field->is_group))
       return message_logical_sequence_matches_native(
           codec, schema_field, native_data, depth);
     if (schema_field->collection_kind != NULL &&
         strcmp(schema_field->collection_kind, "map") == 0)
-      return message_logical_record_map_matches_native(
+      return message_logical_map_matches_native(
           codec, schema_field, native_data, depth);
     return 0;
   }
@@ -655,15 +684,19 @@ static DataBindStatus message_compile_fields(
           codec, type_name, native, shape, diagnostic))
     return diagnostic != NULL ? diagnostic->status : DATA_BIND_ERR_SCHEMA;
 
-  plan->field_count = schema_type.field_count;
-  if (plan->field_count != 0u) {
+  if (schema_type.field_count > DATA_BIND_MESSAGE_PLAN_MAX_PREPARED_FIELDS ||
+      schema_type.field_count > SIZE_MAX / sizeof(*plan->fields))
+    return message_fail(diagnostic, DATA_BIND_ERR_LIMIT, type_name,
+                        "MessagePlan field capacity exceeded");
+  if (schema_type.field_count != 0u) {
     plan->fields = (DataBindMessageFieldPlan *)calloc(
-        plan->field_count, sizeof(*plan->fields));
+        schema_type.field_count, sizeof(*plan->fields));
     if (plan->fields == NULL)
       return message_fail(
           diagnostic, DATA_BIND_ERR_OOM, type_name,
           "Could not allocate MessagePlan fields");
   }
+  plan->field_count = schema_type.field_count;
 
   for (i = 0u; i < plan->field_count; ++i) {
     DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
@@ -766,15 +799,19 @@ static DataBindStatus message_compile_object_fields(
         diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, type_name,
         "Object field count does not match DataBind IDL type '%s'", type_name);
 
-  plan->field_count = schema_type.field_count;
-  if (plan->field_count != 0u) {
+  if (schema_type.field_count > DATA_BIND_MESSAGE_PLAN_MAX_PREPARED_FIELDS ||
+      schema_type.field_count > SIZE_MAX / sizeof(*plan->fields))
+    return message_fail(diagnostic, DATA_BIND_ERR_LIMIT, type_name,
+                        "MessagePlan field capacity exceeded");
+  if (schema_type.field_count != 0u) {
     plan->fields = (DataBindMessageFieldPlan *)calloc(
-        plan->field_count, sizeof(*plan->fields));
+        schema_type.field_count, sizeof(*plan->fields));
     if (plan->fields == NULL)
       return message_fail(
           diagnostic, DATA_BIND_ERR_OOM, type_name,
           "Could not allocate provider-backed MessagePlan fields");
   }
+  plan->field_count = schema_type.field_count;
 
   for (i = 0u; i < plan->field_count; ++i) {
     DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
@@ -1058,9 +1095,7 @@ DataBindStatus data_bind_message_plan_compile(
 
   if (codec == NULL || type_name == NULL || type_name[0] == '\0' ||
       native == NULL || out_plan == NULL ||
-      native->size <
-          offsetof(DataBindNativeTypeBinding, null_count) +
-              sizeof(native->null_count) ||
+      native->size != sizeof(*native) ||
       native->abi_version != DATA_BIND_NATIVE_BINDING_ABI_VERSION ||
       native->idl_type_name == NULL ||
       strcmp(native->idl_type_name, type_name) != 0 ||
@@ -1081,7 +1116,9 @@ DataBindStatus data_bind_message_plan_compile(
 
   plan->type_name = message_strdup(type_name);
   plan->mode = DATA_BIND_MESSAGE_PLAN_NATIVE;
-  plan->native = native;
+  plan->native_value = *native;
+  plan->native_value.idl_type_name = plan->type_name;
+  plan->native = &plan->native_value;
   plan->object_data = NULL;
   if (plan->type_name == NULL) {
     status = message_fail(
@@ -1717,7 +1754,7 @@ static DataBindStatus message_decode_native_impl(
       plan->native->data == NULL ||
       native_options == NULL || reader == NULL ||
       destination == NULL ||
-      native_options->size < sizeof(*native_options) ||
+      native_options->size != sizeof(*native_options) ||
       native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
       native_options->workspace == NULL)
     return message_fail(
@@ -2395,7 +2432,7 @@ static DataBindStatus message_decode_object_impl(
 
   if (!message_object_compatible(plan, object) ||
       native_options == NULL || reader == NULL ||
-      native_options->size < sizeof(*native_options) ||
+      native_options->size != sizeof(*native_options) ||
       native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
       native_options->workspace == NULL)
     return message_fail(
@@ -2588,7 +2625,7 @@ DataBindStatus data_bind_message_plan_encode_native(
       plan->native == NULL || plan->native->data == NULL ||
       plan->native->data->storage_type == NULL ||
       native_options == NULL || source == NULL || writer == NULL ||
-      native_options->size < sizeof(*native_options) ||
+      native_options->size != sizeof(*native_options) ||
       native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
       required_bytes == 0u || source_bytes < required_bytes)
     return message_fail(
@@ -2695,7 +2732,7 @@ DataBindStatus data_bind_message_plan_encode_object(
 
   if (!message_object_compatible(plan, object) ||
       native_options == NULL || writer == NULL ||
-      native_options->size < sizeof(*native_options) ||
+      native_options->size != sizeof(*native_options) ||
       native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
     return message_fail(
         diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,

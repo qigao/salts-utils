@@ -3,7 +3,11 @@
  */
 
 #include "tinytest.h"
-#include "tinymock.h"
+#define TINYMOCK_GENERATE_FUNCTION_OVERRIDES 1
+#define TINYMOCK_SELECTIVE_FUNCTION_OVERRIDES 1
+#define TINYMOCK_SELECTED_FUNCTION_fake_nonblocking_read TINYMOCk_PP_PROBE_()
+#define TINYMOCK_SELECTED_FUNCTION_fake_nonblocking_write TINYMOCk_PP_PROBE_()
+#include "tinymock_function.h"
 #include "tlog.h"
 #include "salts_serial_internal.h"
 #include "salts_serial_test.h"
@@ -14,10 +18,18 @@
 static int fake_handle_marker = 0;
 #define FAKE_HANDLE ((salts_port_handle_t *)&fake_handle_marker)
 
-/* TinyMock's portable value carrier supports int/void pointers, not incomplete
- * backend handle pointers or enum return types in MSVC's _Generic. */
-TINYMOCk_MOCK(int, fake_nonblocking_read, void *, void *, size_t)
-TINYMOCk_MOCK(int, fake_nonblocking_write, void *, const void *, size_t)
+/* Test-owned function declarations script the backend adapters; the selected
+ * override set leaves production thread and serial declarations untouched. */
+FunctionDecl(value, int, fake_nonblocking_read,
+             (void *, handle, CMETA_PARAM_IN, &cmeta_type_void_ptr, CMETA_ABI_OBJECT_POINTER),
+             (void *, buffer, CMETA_PARAM_IN, &cmeta_type_void_ptr, CMETA_ABI_OBJECT_POINTER),
+             (size_t, count, CMETA_PARAM_IN, &cmeta_type_size, CMETA_ABI_SCALAR));
+FunctionDecl(value, int, fake_nonblocking_write,
+             (void *, handle, CMETA_PARAM_IN, &cmeta_type_void_ptr, CMETA_ABI_OBJECT_POINTER),
+             (const void *, buffer, CMETA_PARAM_IN, &cmeta_type_void_ptr, CMETA_ABI_OBJECT_POINTER),
+             (size_t, count, CMETA_PARAM_IN, &cmeta_type_size, CMETA_ABI_SCALAR));
+TINYMOCk_FUNCTION_DECLARE(fake_nonblocking_read);
+TINYMOCk_FUNCTION_DECLARE(fake_nonblocking_write);
 
 static unsigned char fake_rx_data[16];
 static size_t fake_rx_len;
@@ -89,23 +101,36 @@ static const salts_serial_backend_ops_t fake_backend_ops = {
 };
 
 suite("salts_serial mocked backend") {
+  static salts_serial_t *serial;
+
   before_each() {
+    int scripted_result = SALTS_SERIAL_OK;
+    serial = NULL;
     memset(fake_rx_data, 0, sizeof(fake_rx_data));
     memset(fake_tx_data, 0, sizeof(fake_tx_data));
     fake_rx_len = 0;
     fake_tx_len = 0;
 
-    mock_fake_nonblocking_read_reset();
-    mock_fake_nonblocking_read_set_default_return(TINYMOCk_RETURN(SALTS_SERIAL_OK));
-    mock_fake_nonblocking_write_reset();
-    mock_fake_nonblocking_write_set_default_return(TINYMOCk_RETURN(SALTS_SERIAL_OK));
+    TINYMOCk_FUNCTION_RESET(fake_nonblocking_read);
+    TINYMOCk_FUNCTION_RESET(fake_nonblocking_write);
+    check_true(TINYMOCk_FUNCTION_SET_RETURN(fake_nonblocking_read, scripted_result));
+    check_true(TINYMOCk_FUNCTION_SET_RETURN(fake_nonblocking_write, scripted_result));
 
     salts_serial_set_backend_ops_for_testing(&fake_backend_ops);
   }
 
+  after_each() {
+    /* Destroy joins the sole pump worker before its borrowed mock history and
+     * return state are released, including fatal assertion paths. */
+    salts_serial_destroy(serial);
+    serial = NULL;
+    salts_serial_set_backend_ops_for_testing(NULL);
+    TINYMOCk_FUNCTION_DESTROY(fake_nonblocking_read);
+    TINYMOCk_FUNCTION_DESTROY(fake_nonblocking_write);
+  }
+
   it("pumps mocked rx bytes into the rx SPSC ring") {
     salts_serial_config_t config;
-    salts_serial_t *serial = NULL;
     char out[4] = {0};
     size_t bytes_read = 0;
 
@@ -118,11 +143,6 @@ suite("salts_serial mocked backend") {
     fake_rx_data[1] = 'B';
     fake_rx_data[2] = 'C';
     fake_rx_len = 3;
-
-    mock_fake_nonblocking_read_expect(tinymock_expected_arg_any(),
-                                      tinymock_expected_arg_any(),
-                                      tinymock_expected_arg_any(),
-                                      TINYMOCk_RETURN(SALTS_SERIAL_OK));
 
     check_equal(salts_serial_create(&serial, &config), SALTS_SERIAL_OK);
     check_not_null(serial);
@@ -138,26 +158,21 @@ suite("salts_serial mocked backend") {
     check_equal(bytes_read, 3);
     check_equal(out, "ABC", 3);
 
-    mock_fake_nonblocking_read_verify();
-    salts_serial_destroy(serial);
+    TINYMOCk_FUNCTION_VERIFY_AT_LEAST(fake_nonblocking_read, 1u);
+    check_true(TINYMOCk_FUNCTION_ARG_POINTER_EQUAL(
+        fake_nonblocking_read, 0u, "handle", FAKE_HANDLE));
 
     TLOG_DEBUGF("mocked rx pump delivered {} bytes", bytes_read);
   }
 
   it("drains tx bytes through the mocked backend") {
     salts_serial_config_t config;
-    salts_serial_t *serial = NULL;
     size_t bytes_buffered = 0;
 
     salts_serial_config_default(&config);
     config.rx_buffer_size = 8;
     config.tx_buffer_size = 8;
     config.poll_interval_ms = 5;
-
-    mock_fake_nonblocking_write_expect(tinymock_expected_arg_any(),
-                                       tinymock_expected_arg_any(),
-                                       tinymock_expected_arg_any(),
-                                       TINYMOCk_RETURN(SALTS_SERIAL_OK));
 
     check_equal(salts_serial_create(&serial, &config), SALTS_SERIAL_OK);
     check_not_null(serial);
@@ -174,8 +189,9 @@ suite("salts_serial mocked backend") {
     check_equal(fake_tx_len, 2);
     check_equal(fake_tx_data, "XY", 2);
 
-    mock_fake_nonblocking_write_verify();
-    salts_serial_destroy(serial);
+    TINYMOCk_FUNCTION_VERIFY_AT_LEAST(fake_nonblocking_write, 1u);
+    check_true(TINYMOCk_FUNCTION_ARG_POINTER_EQUAL(
+        fake_nonblocking_write, 0u, "handle", FAKE_HANDLE));
 
     TLOG_DEBUGF("mocked tx pump drained {} bytes", fake_tx_len);
   }

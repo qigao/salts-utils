@@ -46,10 +46,12 @@ cyclic, overlapping, mismatched and unsupported graphs still fail validation.
 Measurement cannot predict payload-dependent allocation success.
 
 `container_depth` counts only Struct frames, zero for scalar/enum/buffer roots;
-`descriptor_depth` includes scalar leaves. The requirements record is new in the
-unreleased #111 feature, so its added field must be consumed with the matching
-header and `DATA_BIND_NATIVE_REQUIREMENTS_INIT`. Existing options/diagnostic
-records and their ABI are unchanged.
+`descriptor_depth` includes scalar leaves. Native options, requirements and
+diagnostics require the exact current record size and native ABI 2. Use the
+matching headers and INIT macros; old ABI 1, shortened prefixes and extended
+records are rejected before source I/O or provider callbacks. Diagnostics expose
+`endpoint_status` for the reader or writer that failed. There is no old field
+alias or compatibility execution path.
 
 ## Aggregate and per-value limits share one decoder
 

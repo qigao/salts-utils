@@ -433,7 +433,7 @@ spec("optional local lifecycle uses canonical CMeta") {
     check_equal(value._nulls[0], 0u);
   }
 
-  it("keeps unsupported JSON conversion closed") {
+  it("preserves absent null and value state through canonical JSON conversion") {
     static const char input[] =
         "{\"nullable_value\":null,\"tri_value\":9}";
     DataBind *codec = NULL;
@@ -448,23 +448,26 @@ spec("optional local lifecycle uses canonical CMeta") {
     if (codec != NULL) {
       check_equal(ScalarState_from_json(
                       codec, &value, input, sizeof(input) - 1u, &error),
-                  DATA_BIND_ERR_SCHEMA);
+                  DATA_BIND_OK);
       check_equal(value.optional_value, 0);
       check_equal(value.nullable_value, 0u);
-      check_equal(value.tri_value, 0u);
+      check_equal(value.tri_value, 9u);
+      check_equal(value._presence[0], (uint8_t)(1u << ScalarState_OPTIONAL_tri_value));
+      check_equal(value._nulls[0], (uint8_t)(1u << ScalarState_NULLABLE_nullable_value));
       check_equal(ScalarState_to_json(
                       codec, &value, &json, &json_len, &error),
-                  DATA_BIND_ERR_SCHEMA);
-      check_null(json);
-      check_equal(json_len, (size_t)0u);
+                  DATA_BIND_OK);
+      check_equal(json_len, sizeof(input) - 1u);
+      check_equal(json, input);
     }
     data_bind_serialized_free(json);
     ScalarState_clear(&value);
     data_bind_free(codec);
   }
 
-  it("keeps owned string JSON conversion closed without changing storage") {
+  it("retains owned strings on rejection and replaces them after complete validation") {
     static const char input[] = "{\"count\":5,\"label\":\"new\"}";
+    static const char complete[] = "{\"count\":5,\"label\":\"new\",\"note\":null}";
     DataBind *codec = NULL;
     OwnedState_t value;
     tstr original;
@@ -480,14 +483,23 @@ spec("optional local lifecycle uses canonical CMeta") {
     if (codec != NULL && original != NULL) {
       check_equal(OwnedState_from_json(
                       codec, &value, input, sizeof(input) - 1u, &error),
-                  DATA_BIND_ERR_SCHEMA);
+                  DATA_BIND_ERR_TYPE_NOT_FOUND);
       check(value.label == original);
+      check_equal(value.label, "keep");
+      check_equal(OwnedState_from_json(codec, &value, complete, sizeof(complete) - 1u, &error),
+                  DATA_BIND_OK);
+      check_equal(value.label, "new");
+      check_null(value.note);
+      check_equal(value.count, 5u);
+      check_equal(value._presence[0], (uint8_t)(1u << OwnedState_OPTIONAL_label));
+      check_equal(value._nulls[0], (uint8_t)(1u << OwnedState_NULLABLE_note));
       check_equal(OwnedState_to_json(codec, &value, &json, &json_len, &error),
-                  DATA_BIND_ERR_SCHEMA);
-      check_null(json);
-      check_equal(json_len, (size_t)0u);
+                  DATA_BIND_OK);
+      check_equal(json_len, sizeof(complete) - 1u);
+      check_equal(json, complete);
     }
     data_bind_serialized_free(json);
+    OwnedState_clear(&value);
     OwnedState_clear(&value);
     data_bind_free(codec);
   }

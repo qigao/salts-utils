@@ -227,7 +227,7 @@ spec("DataBind public Message native artifact") {
     check_equal(
         Event_from_json(NULL, &event, json, sizeof(json) - 1u, &error),
         DATA_BIND_ERR_SCHEMA);
-    check_contains(error.message, "Legacy typed conversion");
+    check_contains(error.message, "Canonical native conversion");
     check_equal(Event_values_vec_t_size(&event.values), (size_t)1u);
     check_equal(Event_ids_set_t_size(&event.ids), (size_t)1u);
     if (source != NULL) {
@@ -305,7 +305,7 @@ spec("DataBind public Message native artifact") {
         OverlayContainers_from_json(
             NULL, &value, json, sizeof(json) - 1u, &error),
         DATA_BIND_ERR_SCHEMA);
-    check_contains(error.message, "Legacy typed conversion");
+    check_contains(error.message, "Canonical native conversion");
 
     check_equal(
         OverlayContainers_values_vec_t_size(&value.values), (size_t)1u);

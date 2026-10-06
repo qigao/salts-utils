@@ -35,6 +35,7 @@ set_tests_properties(test_data_bind_reader_probe PROPERTIES TIMEOUT 60)
 add_executable(test_data_bind_native_reader native_reader_contract_test.c
   native_reader_preflight_test.c native_reader_bitmap_test.c)
 add_executable(test_data_bind_native_reader_cpp native_reader_cpp_contract.cpp)
+add_executable(test_data_bind_native_control_records native_control_record_test.c)
 add_executable(test_data_bind_native_lifecycle native_lifecycle_contract_test.c)
 add_executable(test_data_bind_native_enum native_enum_contract_test.c)
 add_executable(test_data_bind_native_writer native_writer_contract_test.c)
@@ -43,6 +44,7 @@ add_executable(test_data_bind_native_variant native_variant_contract_test.c)
 foreach(target IN ITEMS
     test_data_bind_native_reader
     test_data_bind_native_reader_cpp
+    test_data_bind_native_control_records
     test_data_bind_native_lifecycle
     test_data_bind_native_enum
     test_data_bind_native_writer
@@ -62,6 +64,9 @@ foreach(target IN ITEMS
   set_tests_properties(${target} PROPERTIES TIMEOUT 60)
 endforeach()
 target_link_libraries(test_data_bind_native_reader PRIVATE Salts::TinyTest)
+target_link_libraries(test_data_bind_native_control_records PRIVATE Salts::TinyTest)
+set_tests_properties(test_data_bind_native_control_records PROPERTIES
+  LABELS "databind;cmeta;native;abi")
 target_link_libraries(test_data_bind_native_lifecycle PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_enum PRIVATE Salts::TinyTest Salts::DataBind)
 cmake_set_test_runtime_path(test_data_bind_native_enum test_data_bind_native_enum)

@@ -23,8 +23,8 @@ enum {
   LIST_SIZE_LIMIT = 4
 };
 
-typed(Vec, NativeListValues, uint32_t, &cmeta_type_uint32, &cmeta_data_uint32);
-typed(Map, NativeJsonKeys, tstr, uint32_t,
+cmeta_type(Vec, NativeListValues, uint32_t, &cmeta_type_uint32, &cmeta_data_uint32);
+cmeta_type(Map, NativeJsonKeys, tstr, uint32_t,
       SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_DATA_REF,
       &cmeta_type_uint32, &cmeta_data_uint32);
 

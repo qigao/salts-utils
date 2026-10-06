@@ -1,6 +1,7 @@
 # Build directories and binary files
 build*/
 install/
+/stage/
 bin/
 out/
 cmake-build-*/

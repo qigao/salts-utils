@@ -70,7 +70,7 @@ const cmeta_type_desc jinja_instruction_type = {
     "jinja.Instruction", sizeof(JINJA_CMETA_INSTRUCTION), _Alignof(JINJA_CMETA_INSTRUCTION),
     CMETA_T_OBJECT, NULL, &jinja_instruction_traits, NULL};
 
-typed(Vec, JinjaInstructions, JINJA_CMETA_INSTRUCTION);
+cmeta_type(Vec, JinjaInstructions, JINJA_CMETA_INSTRUCTION);
 
 static bool jinja_translation_copy(void *destination, const void *source) {
   if (destination == NULL || source == NULL) return false;
@@ -120,8 +120,8 @@ const cmeta_type_desc jinja_translation_binding_type = {
     _Alignof(JINJA_CMETA_TRANSLATION_BINDING), CMETA_T_OBJECT, NULL,
     &jinja_translation_binding_traits, NULL};
 
-typed(Vec, JinjaTranslations, JINJA_CMETA_TRANSLATION);
-typed(Vec, JinjaTranslationBindings, JINJA_CMETA_TRANSLATION_BINDING);
+cmeta_type(Vec, JinjaTranslations, JINJA_CMETA_TRANSLATION);
+cmeta_type(Vec, JinjaTranslationBindings, JINJA_CMETA_TRANSLATION_BINDING);
 
 struct JINJA_BLOCK_NAME {
   vstr name;
@@ -160,7 +160,7 @@ const cmeta_type_desc jinja_block_name_type = {
     "jinja.BlockName", sizeof(JINJA_BLOCK_NAME), _Alignof(JINJA_BLOCK_NAME),
     CMETA_T_OBJECT, NULL, &jinja_block_name_traits, NULL};
 
-typed(Vec, JinjaBlockNames, JINJA_BLOCK_NAME);
+cmeta_type(Vec, JinjaBlockNames, JINJA_BLOCK_NAME);
 
 typedef struct JINJA_FUNCTION_BUILDER {
   vstr source;

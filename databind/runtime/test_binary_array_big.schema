@@ -1,0 +1,24 @@
+schema BigArray [version(1), byte_order(big)];
+
+enum BigArrayCode <int16> {
+    Negative = -2;
+    Zero = 0;
+    One = 1;
+}
+
+message BigScalarArrayWire {
+    bool[2] ready;
+    int16[3] deltas;
+    float[2] ratios;
+    optional nullable uint16[3] samples;
+    BigArrayCode[2] codes;
+}
+
+composite BigArrayEntry {
+    uint16 code;
+    uint8[2] tags;
+}
+
+message BigRecordArrayWire {
+    BigArrayEntry[2] entries;
+}

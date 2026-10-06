@@ -29,7 +29,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
 
 if(SALTS_UTILS_BUILD_IDLC)
 cmake_add_executable(salts_idlc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c native_service_projection.c plugin_projection.c wasm_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c opaque_plan_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c native_service_projection.c plugin_projection.c wasm_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_reader_codegen.c opaque_plan_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS databind_binding_compiler Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/idl/compiler")
 target_include_directories(salts_idlc
@@ -131,7 +131,6 @@ cmake_add_test(test_databind_openapi_projection
   SOURCES
     test_openapi_projection.c
     compiler_core.c
-    binary_layout_ir.c
     binary_reader_codegen.c
     projection.c
     openapi_projection.c
@@ -166,7 +165,6 @@ add_executable(databind_method_plan_projection_fixture_gen
   test_method_plan_projection_generate.c
   projection.c
   method_plan_projection.c
-  binary_layout_ir.c
   opaque_plan_codegen.c
   compiler_core.c
   binary_reader_codegen.c
@@ -233,7 +231,6 @@ cmake_add_test(test_databind_projection_registry
     test_projection_registry.c
     projection.c
     compiler_core.c
-    binary_layout_ir.c
     binary_reader_codegen.c
     database_schema.c
     mustache_helpers.c
@@ -268,7 +265,6 @@ cmake_add_test(test_databind_projection_frontend
     method_plan_projection.c
     socket_plan_projection.c
     flowmq_plan_projection.c
-    binary_layout_ir.c
     binary_reader_codegen.c
     opaque_plan_codegen.c
   LIBS
@@ -296,7 +292,6 @@ cmake_add_test(test_databind_socket_plan_projection
     test_socket_plan_projection.c
     projection.c
     socket_plan_projection.c
-    binary_layout_ir.c
     binary_reader_codegen.c
     opaque_plan_codegen.c
     compiler_core.c
@@ -324,7 +319,6 @@ cmake_add_test(test_databind_message_native
   SOURCES
     test_message_native.c
     compiler_core.c
-    binary_layout_ir.c
     binary_reader_codegen.c
     projection.c
     database_schema.c
@@ -353,7 +347,6 @@ cmake_add_test(test_databind_flowmq_plan_projection
     test_flowmq_plan_projection.c
     projection.c
     flowmq_plan_projection.c
-    binary_layout_ir.c
     binary_reader_codegen.c
     opaque_plan_codegen.c
     compiler_core.c
@@ -395,7 +388,6 @@ cmake_add_executable(databind_service_native_codegen_fixture_tool
   SOURCES
     test_service_native_codegen_tool.c
     compiler_core.c
-    binary_layout_ir.c
     binary_reader_codegen.c
     projection.c
     service_native.c
@@ -1075,7 +1067,6 @@ cmake_add_test(test_databind_plugin_projection_rejection
   SOURCES
     test_plugin_projection_rejection.c
     compiler_core.c
-    binary_layout_ir.c
     binary_reader_codegen.c
     projection.c
     service_native.c
@@ -1103,7 +1094,6 @@ cmake_add_test(test_databind_wasm_projection
   SOURCES
     test_wasm_projection.c
     compiler_core.c
-    binary_layout_ir.c
     binary_reader_codegen.c
     projection.c
     service_native.c
@@ -1141,7 +1131,7 @@ set_tests_properties(test_database_schema_contract PROPERTIES
   LABELS "databind;compiler;database;idl-contract")
 
 cmake_add_test(test_tbe_compiler
-  SOURCES test_tbe_compiler.c compiler_core.c binary_layout_ir.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c
+  SOURCES test_tbe_compiler.c compiler_core.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
@@ -1159,14 +1149,14 @@ target_include_directories(test_tbe_compiler
           ${DATABIND_SOURCE_ROOT}/formats/binary/include)
 
 cmake_add_test(test_tbe_compiler_schema_boundary
-  SOURCES test_schema_boundary.c compiler_core.c binary_layout_ir.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c
+  SOURCES test_schema_boundary.c compiler_core.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/idl/compiler")
 target_include_directories(test_tbe_compiler_schema_boundary
   PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 cmake_add_test(test_tbe_compiler_cmeta_fields
-  SOURCES test_cmeta_field_projection.c compiler_core.c binary_layout_ir.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c
+  SOURCES test_cmeta_field_projection.c compiler_core.c binary_reader_codegen.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/idl/compiler")
 target_include_directories(test_tbe_compiler_cmeta_fields
@@ -1176,7 +1166,6 @@ cmake_add_test(test_databind_method_plan_binary_admission
     test_method_plan_binary_admission.c
     projection.c
     method_plan_projection.c
-    binary_layout_ir.c
     opaque_plan_codegen.c
     compiler_core.c
     binary_reader_codegen.c
@@ -1204,7 +1193,6 @@ cmake_add_test(test_databind_binary_reader_codegen
   SOURCES
     test_binary_reader_codegen.c
     binary_reader_codegen.c
-    binary_layout_ir.c
     compiler_core.c
     projection.c
     database_schema.c
@@ -1218,6 +1206,7 @@ cmake_add_test(test_databind_binary_reader_codegen
     BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
     BINARY_VAR_DATA_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_reader_var_data.schema"
     BINARY_GROUP_SCHEMA="${DATABIND_SOURCE_ROOT}/runtime/test_binary_tail_only.schema"
+    BINARY_ARRAY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_fixed_array.schema"
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
@@ -1233,7 +1222,6 @@ set_tests_properties(test_databind_binary_reader_codegen PROPERTIES
 cmake_add_test(test_databind_binary_layout_ir
   SOURCES
     test_binary_layout_ir.c
-    binary_layout_ir.c
     compiler_core.c
     binary_reader_codegen.c
     projection.c
@@ -1241,6 +1229,7 @@ cmake_add_test(test_databind_binary_layout_ir
     mustache_helpers.c
   LIBS
     Salts::IDL
+    Salts::DataBind
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
@@ -1248,6 +1237,8 @@ cmake_add_test(test_databind_binary_layout_ir
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
     BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
     BINARY_VAR_DATA_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_reader_var_data.schema"
+    BINARY_ARRAY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_fixed_array.schema"
+    BINARY_COUNTED_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_counted.schema"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -1275,6 +1266,7 @@ if(BUILD_TESTS)
       test_databind_socket_plan_projection
       test_databind_message_native
       test_databind_flowmq_plan_projection
+      test_databind_wasm_projection
       databind_service_native_codegen_fixture_tool
       test_databind_plugin_projection_rejection)
     if(TARGET ${binding_compiler_consumer})

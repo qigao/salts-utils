@@ -34,9 +34,9 @@ typedef struct NativeContainerTokenSource {
   size_t index;
 } NativeContainerTokenSource;
 
-typed(Vec, NativeIntVec, int);
-typed(Set, NativeIntSet, int);
-typed(Map, NativeIntLongMap, int, long);
+cmeta_type(Vec, NativeIntVec, int);
+cmeta_type(Set, NativeIntSet, int);
+cmeta_type(Map, NativeIntLongMap, int, long);
 
 typedef struct NativeTextRecord {
   tstr text;
@@ -60,12 +60,12 @@ static const cmeta_struct_desc NATIVE_TEXT_RECORD_LAYOUT = {
 static const cmeta_data_struct_shape NATIVE_TEXT_RECORD_SHAPE = {
     &NATIVE_TEXT_RECORD_LAYOUT, NATIVE_TEXT_RECORD_FIELDS, 1u};
 
-typed(Vec, NativeTextRecordVec, NativeTextRecord,
+cmeta_type(Vec, NativeTextRecordVec, NativeTextRecord,
       &NATIVE_TEXT_RECORD_TYPE, &NATIVE_TEXT_RECORD_DATA);
 
-typed(Set, NativeTextSet, tstr,
+cmeta_type(Set, NativeTextSet, tstr,
       SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_DATA_REF);
-typed(Map, NativeTextRecordMap, tstr, NativeTextRecord,
+cmeta_type(Map, NativeTextRecordMap, tstr, NativeTextRecord,
       SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_DATA_REF,
       &NATIVE_TEXT_RECORD_TYPE, &NATIVE_TEXT_RECORD_DATA);
 

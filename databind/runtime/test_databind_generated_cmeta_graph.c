@@ -772,14 +772,14 @@ spec("generated native CMeta graph") {
     check_null(encoded);
     check_equal(encoded_len, (size_t)0u);
 
-    /*
-     * UUID still has no canonical Binary token lowering. Generated Binary must
-     * fail closed even when the neighboring fixed bytes have a complete provider.
-     */
+    /* Binary layout admits UUID bytes; the neighboring Bool8 storage still
+     * fails native schema admission, before any wire output is published. */
     error = (DataBindError)DATA_BIND_ERROR_INIT;
-    check_equal(FixedValues_to_bin(
-                    codec, &destination, &wire, &wire_len, &error),
-                DATA_BIND_ERR_SCHEMA);
+    DataBindStatus binary_status = FixedValues_to_bin(
+        codec, &destination, &wire, &wire_len, &error);
+    info("fixed-value Binary encode: %s (%s)", error.message, error.path);
+    check_equal(binary_status, DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(error.path, "enabled");
     check_null(wire);
     check_equal(wire_len, (size_t)0u);
 
@@ -874,7 +874,9 @@ spec("generated native CMeta graph") {
     check_equal(signed64_storage, INT64_MIN);
   }
 
-  it("preserves UINT64_MAX in canonical bits while Binary remains unavailable") {
+  it("preserves UINT64_MAX through canonical bits and Binary wire bytes") {
+    static const uint8_t expected_wire[] = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     DataBind *codec = NULL;
     const cmeta_data_desc *data = NULL;
     const cmeta_data_desc *enum_data;
@@ -912,13 +914,19 @@ spec("generated native CMeta graph") {
 
     check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
     check_not_null(codec);
-    if (codec != NULL)
+    if (codec != NULL) {
       check_equal(WideEnumStorage_to_bin(
                       codec, &object, &wire, &wire_len, &error),
-                  DATA_BIND_ERR_SCHEMA);
-    check_null(wire);
-    check_equal(wire_len, (size_t)0u);
-    check_equal(decoded.value, (WideDomain_t)0);
+                  DATA_BIND_OK);
+      check_not_null(wire);
+      check_equal(wire_len, sizeof(expected_wire));
+      if (wire != NULL && wire_len == sizeof(expected_wire)) {
+        check_equal(wire, expected_wire, sizeof(expected_wire));
+        check_equal(WideEnumStorage_from_bin(
+            codec, &decoded, wire, wire_len, &error), DATA_BIND_OK);
+        check(decoded.value == UINT64_MAX);
+      }
+    }
     data_bind_binary_free(wire);
     WideEnumStorage_clear(&decoded);
     WideEnumStorage_clear(&object);

@@ -1,7 +1,15 @@
 cmake_minimum_required(VERSION 3.27)
 project(DataBindProducerInstalledConsumer LANGUAGES C)
 
-find_package(SaltsUtils CONFIG REQUIRED)
+enable_testing()
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+if(NOT IS_DIRECTORY "$ENV{SALTS_UTILS_ROOT}")
+  message(FATAL_ERROR "SALTS_UTILS_ROOT must name the installed SaltsUtils SDK")
+endif()
+unset(SaltsUtils_DIR CACHE)
+file(TO_CMAKE_PATH "$ENV{SALTS_UTILS_ROOT}" SALTS_UTILS_SDK_PATH)
+find_package(SaltsUtils CONFIG REQUIRED PATHS "${SALTS_UTILS_SDK_PATH}"
+             NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 if(NOT TARGET Salts::DataBindProducer)
   message(FATAL_ERROR "missing installed Salts::DataBindProducer")
@@ -46,6 +54,8 @@ set_source_files_properties("${GENERATED_PLAN}"
   PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE)
 add_dependencies(databind_generated_plan_consumer
   databind_producer_generated)
+add_test(NAME databind_generated_plan_consumer
+         COMMAND databind_generated_plan_consumer)
 
 get_target_property(_consumer_links
   databind_generated_plan_consumer LINK_LIBRARIES)
