@@ -303,6 +303,8 @@ int main(int argc, char **argv) {
     char *init = NULL;
     char *clear = NULL;
     char *move = NULL;
+    char *clear_bytes = NULL;
+    char *clear_string = NULL;
 
     if (databind_compiler_parse_contract_file(
             argv[7], &cleanup_root, &cleanup_contract,
@@ -357,7 +359,17 @@ int main(int argc, char **argv) {
     }
 
     *move = '\0';
-    if (strstr(clear, "DataBindStatus status = DATA_BIND_OK;") == NULL ||
+    clear_bytes = strstr(
+        clear,
+        "cmeta_data_value_restore_zero(&stl_byte_buffer_cmeta_data, "
+        "&payload->payload)");
+    clear_string = strstr(
+        clear,
+        "cmeta_data_value_restore_zero(&salts_tstr_cmeta_data, "
+        "&payload->detail)");
+    if (clear_bytes == NULL || clear_string == NULL ||
+        clear_bytes >= clear_string ||
+        strstr(clear, "DataBindStatus status = DATA_BIND_OK;") == NULL ||
         text_count(clear, "cmeta_data_value_restore_zero(") != 2u ||
         text_count(clear, "status = DATA_BIND_ERR_RUNTIME;") != 2u ||
         strstr(clear, "if (status == DATA_BIND_OK)\n"
