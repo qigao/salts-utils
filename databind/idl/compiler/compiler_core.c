@@ -18,6 +18,7 @@
 #include "tbe_error.h"
 #include "salts_fs.h"
 #include "salts_uuid.h"
+#include <tstr.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -766,6 +767,240 @@ static int databind_compiler_annotate_map_value_provider(
       "native_map_value_data_ref");
 }
 
+typedef struct databind_generic_lower_context {
+  Node *root;
+  Node *types;
+  const char *owner;
+  const char *field;
+} databind_generic_lower_context;
+
+typedef struct databind_generic_storage {
+  char c_type[256];
+  char type_symbol[288];
+  char data_symbol[288];
+  char type_ref[320];
+  char data_ref[320];
+} databind_generic_storage;
+
+static int databind_generic_copy_text(char *destination, size_t capacity,
+                                      const char *source) {
+  size_t length = source != NULL ? strlen(source) : 0u;
+  if (source == NULL || length >= capacity) return 0;
+  memcpy(destination, source, length + 1u);
+  return 1;
+}
+
+/* Build-time projection only. The resulting graph names concrete SDK
+ * providers; no item operation consults these logical names or Node objects. */
+static int databind_generic_lower(databind_generic_lower_context *context,
+                                  const IdlTypeRef *type,
+                                  databind_generic_storage *out) {
+  databind_generic_storage value = {0};
+  Node *node = NULL;
+  IdlTypeRef child;
+  char leaf[256];
+  char identity[320];
+  int written;
+  int is_map = type->collection_kind == IDL_COLLECTION_MAP;
+
+  if (type->collection_kind == IDL_COLLECTION_NONE) {
+    if (type->name_length >= sizeof(leaf)) return 0;
+    memcpy(leaf, type->name, type->name_length);
+    leaf[type->name_length] = '\0';
+    /* Enum providers are translation-unit local and cannot yet be referenced
+     * by a nested wrapper declaration in the public generated header. */
+    if (tbe_compiler_find_record(context->root, "enums", leaf) != NULL) return 0;
+    node = create_node_map(NULL);
+    if (node == NULL) return 0;
+    if (!tbe_compiler_native_named_c_type(context->root, leaf,
+                                         out->c_type, sizeof(out->c_type)) ||
+        databind_compiler_annotate_named_native_semantic(context->root, node,
+            leaf, "type_symbol", "data_symbol") != 0 ||
+        databind_compiler_annotate_named_native_refs(context->root, node,
+            leaf, "type_ref", "data_ref") != 0 ||
+        !databind_generic_copy_text(out->type_symbol, sizeof(out->type_symbol),
+            tbe_compiler_string_value(node, "type_symbol")) ||
+        !databind_generic_copy_text(out->data_symbol, sizeof(out->data_symbol),
+            tbe_compiler_string_value(node, "data_symbol")) ||
+        !databind_generic_copy_text(out->type_ref, sizeof(out->type_ref),
+            tbe_compiler_string_value(node, "type_ref")) ||
+        !databind_generic_copy_text(out->data_ref, sizeof(out->data_ref),
+            tbe_compiler_string_value(node, "data_ref"))) {
+      node_free(node);
+      return 0;
+    }
+    node_free(node);
+    return 1;
+  }
+  if ((type->collection_kind != IDL_COLLECTION_LIST && !is_map) ||
+      context->types->data.list.count >= IDL_TYPE_REF_MAX_NODES ||
+      (is_map && (type->argument_lengths[0] != sizeof("string") - 1u ||
+                  memcmp(type->arguments[0], "string", sizeof("string") - 1u) != 0)) ||
+      !idl_type_ref_parse(type->arguments[is_map ? 1u : 0u],
+                          type->argument_lengths[is_map ? 1u : 0u], &child) ||
+      !databind_generic_lower(context, &child, &value))
+    return 0;
+
+  written = snprintf(out->c_type, sizeof(out->c_type),
+      "tbeNested_%zu_%s_%zu_%s_%zu_t", strlen(context->owner), context->owner,
+      strlen(context->field), context->field, context->types->data.list.count);
+  if (written < 0 || (size_t)written >= sizeof(out->c_type)) return 0;
+  written = snprintf(out->type_symbol, sizeof(out->type_symbol),
+                      "%s_cmeta_type", out->c_type);
+  if (written < 0 || (size_t)written >= sizeof(out->type_symbol)) return 0;
+  written = snprintf(out->data_symbol, sizeof(out->data_symbol), "%s_%s_data",
+                      out->c_type, is_map ? "map" : "collection");
+  if (written < 0 || (size_t)written >= sizeof(out->data_symbol)) return 0;
+  written = snprintf(out->type_ref, sizeof(out->type_ref), "&%s", out->type_symbol);
+  if (written < 0 || (size_t)written >= sizeof(out->type_ref)) return 0;
+  written = snprintf(out->data_ref, sizeof(out->data_ref), "&%s", out->data_symbol);
+  if (written < 0 || (size_t)written >= sizeof(out->data_ref)) return 0;
+  written = snprintf(identity, sizeof(identity), "%s_ID", out->c_type);
+  if (written < 0 || (size_t)written >= sizeof(identity)) return 0;
+
+  node = create_node_map(NULL);
+  if (node == NULL) return 0;
+  if (tbe_compiler_set_string(node, "name", out->c_type) != 0 ||
+      tbe_compiler_set_string(node, "identity", identity) != 0 ||
+      tbe_compiler_set_string(node, "constructor", is_map
+          ? "&stl_map_generic_desc" : "&stl_vec_generic_desc") != 0 ||
+      tbe_compiler_set_string(node, "arity", is_map ? "2" : "1") != 0 ||
+      tbe_compiler_set_string(node, "kind", is_map ? "Map" : "Vec") != 0 ||
+      tbe_compiler_set_string(node, "value_c_type", value.c_type) != 0 ||
+      tbe_compiler_set_string(node, "value_type_ref", value.type_ref) != 0 ||
+      tbe_compiler_set_string(node, "value_data_ref", value.data_ref) != 0 ||
+      tbe_compiler_set_string(node, "value_type_symbol", value.type_symbol) != 0 ||
+      tbe_compiler_set_string(node, "value_data_symbol", value.data_symbol) != 0 ||
+      tbe_compiler_set_string(node, "arg0", is_map
+          ? "SALTS_TSTR_CMETA_TYPE_REF" : value.type_ref) != 0 ||
+      (is_map && tbe_compiler_set_string(node, "arg1", value.type_ref) != 0) ||
+      list_add(context->types, node) != 0) {
+    node_free(node);
+    return 0;
+  }
+  return 1;
+}
+
+static tstr databind_generic_declarations(Node *types) {
+  tstr result = tstr_dup("");
+  size_t index;
+  if (result == NULL) return NULL;
+  for (index = 0u; index < types->data.list.count; ++index) {
+    Node *type = types->data.list.items[index];
+    const char *name = tbe_compiler_string_value(type, "name");
+    const char *identity = tbe_compiler_string_value(type, "identity");
+    const char *kind = tbe_compiler_string_value(type, "kind");
+    const char *value = tbe_compiler_string_value(type, "value_c_type");
+    const char *value_type = tbe_compiler_string_value(type, "value_type_ref");
+    const char *value_data = tbe_compiler_string_value(type, "value_data_ref");
+    tstr appended = tstr_cat_fmt(result,
+        "TBE_GENERATED_API extern const cmeta_type_identity %s;\n"
+        "#ifdef __cplusplus\n"
+        "cstl_typed_decl(%s, %s, %s%s);\n"
+        "#else\n"
+        "cmeta_type(%s, %s, %s%s, %s%s, %s, &%s);\n"
+        "#endif\n", identity, kind, name,
+        strcmp(kind, "Map") == 0 ? "tstr, " : "", value,
+        kind, name, strcmp(kind, "Map") == 0 ? "tstr, " : "", value,
+        strcmp(kind, "Map") == 0
+            ? "SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_DATA_REF, " : "",
+        value_type, value_data, identity);
+    if (appended == NULL) { tstr_free(result); return NULL; }
+    result = appended;
+  }
+  return result;
+}
+
+static int databind_compiler_annotate_nested_generic(Node *root, Node *field) {
+  const char *owner = tbe_compiler_string_value(field, "owner_name");
+  const char *name = tbe_compiler_string_value(field, "name");
+  const char *member = tbe_compiler_string_value(field, "c_name");
+  const char *kind = tbe_compiler_string_value(field, "type");
+  const char *inner = tbe_compiler_string_value(field, "inner_type");
+  const char *key = tbe_compiler_string_value(field, "key_type");
+  int is_map = tbe_compiler_has_child(field, "is_map");
+  databind_generic_lower_context context = {root, NULL, owner, name};
+  databind_generic_storage storage = {0};
+  IdlTypeRef type;
+  Node *global;
+  Node *outer;
+  Node *owner_record;
+  tstr expression = NULL;
+  tstr declarations = NULL;
+  char declaration[512];
+  size_t index;
+  int status = 0;
+
+  /* Re-annotation must not publish a previous success after partial lowering. */
+  tbe_compiler_remove_children(field, "native_nested_generic");
+  tbe_compiler_remove_children(field, "native_generic_declarations");
+  tbe_compiler_remove_children(field, "native_generic_logical_type");
+  if (owner == NULL || name == NULL || member == NULL || kind == NULL ||
+      inner == NULL || (is_map && key == NULL)) return 0;
+  expression = tstr_dup("");
+  if (expression == NULL) goto cleanup;
+  {
+    tstr appended = is_map
+        ? tstr_cat_fmt(expression, "%s<%s,%s>", kind, key, inner)
+        : tstr_cat_fmt(expression, "%s<%s>", kind, inner);
+    if (appended == NULL) goto cleanup;
+    expression = appended;
+  }
+  context.types = create_node_list(NULL);
+  if (context.types == NULL ||
+      !idl_type_ref_parse(expression, tstr_len(expression), &type) ||
+      !databind_generic_lower(&context, &type, &storage)) goto cleanup;
+  declarations = databind_generic_declarations(context.types);
+  if (declarations == NULL) goto cleanup;
+  outer = context.types->data.list.items[context.types->data.list.count - 1u];
+  if (snprintf(declaration, sizeof(declaration), "%s %s;", storage.c_type, member) < 0 ||
+      strlen(storage.c_type) + strlen(member) + sizeof(" ;") > sizeof(declaration))
+    goto cleanup;
+  if (tbe_compiler_set_string(field, "native_generic_declarations", declarations) != 0 ||
+      tbe_compiler_set_string(field, "native_generic_logical_type", expression) != 0 ||
+      tbe_compiler_set_string(field, "typed_declaration", declaration) != 0 ||
+      tbe_compiler_set_string(field, "typed_vector_type", storage.c_type) != 0 ||
+      tbe_compiler_set_string(field, "native_c_type", storage.c_type) != 0 ||
+      tbe_compiler_set_string(field, "native_type_symbol", storage.type_symbol) != 0 ||
+      tbe_compiler_set_string(field, "native_data_symbol", storage.data_symbol) != 0 ||
+      tbe_compiler_set_string(field, is_map ? "native_cstl_map" : "native_cstl_sequence", "1") != 0 ||
+      tbe_compiler_set_string(field, "native_element_type_ref",
+          tbe_compiler_string_value(outer, "value_type_ref")) != 0 ||
+      tbe_compiler_set_string(field, "native_element_data_ref",
+          tbe_compiler_string_value(outer, "value_data_ref")) != 0 ||
+      (is_map && (tbe_compiler_set_string(field, "native_map_key_type_ref", "SALTS_TSTR_CMETA_TYPE_REF") != 0 ||
+                  tbe_compiler_set_string(field, "native_map_key_data_ref", "SALTS_TSTR_CMETA_DATA_REF") != 0 ||
+                  tbe_compiler_set_string(field, "native_map_value_type_ref",
+                      tbe_compiler_string_value(outer, "value_type_ref")) != 0 ||
+                  tbe_compiler_set_string(field, "native_map_value_data_ref",
+                      tbe_compiler_string_value(outer, "value_data_ref")) != 0 ||
+                  tbe_compiler_set_string(field, "native_map_value_data_symbol",
+                      tbe_compiler_string_value(outer, "value_data_symbol")) != 0)))
+    goto cleanup;
+  global = tbe_compiler_find_child(root, "native_generic_types");
+  if (global == NULL) {
+    global = create_node_list("native_generic_types");
+    if (global == NULL) goto cleanup;
+    if (map_add(root, global) != 0) { node_free(global); goto cleanup; }
+  }
+  for (index = 0u; index < context.types->data.list.count; ++index) {
+    if (list_add(global, context.types->data.list.items[index]) != 0) goto cleanup;
+    context.types->data.list.items[index] = NULL;
+  }
+  owner_record = tbe_compiler_find_record(root, "composites", owner);
+  if (owner_record == NULL) owner_record = tbe_compiler_find_record(root, "groups", owner);
+  if (owner_record == NULL) owner_record = tbe_compiler_find_record(root, "messages", owner);
+  if (owner_record == NULL ||
+      tbe_compiler_set_string(owner_record, "native_cstl_storage", "1") != 0 ||
+      tbe_compiler_set_string(field, "native_nested_generic", "1") != 0) goto cleanup;
+  status = 1;
+cleanup:
+  tstr_free(declarations);
+  tstr_free(expression);
+  node_free(context.types);
+  return status;
+}
+
 static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
                                              const schema_cmeta_field_type *semantic) {
   const char *name = tbe_compiler_string_value(field, "name");
@@ -850,6 +1085,10 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     const char *storage_element = semantic->kind == CMETA_DATA_MAP
         ? tbe_compiler_string_value(field, "value_type")
         : inner;
+    if (storage_element != NULL && strchr(storage_element, '<') != NULL) {
+      (void)databind_compiler_annotate_nested_generic(root, field);
+      return;
+    }
     if (!tbe_compiler_native_named_c_type(root, storage_element, c_type,
                                            sizeof(c_type))) {
       snprintf(declaration, sizeof(declaration), "%s_t %s;", inner ? inner : "unknown", c_name);
@@ -1306,6 +1545,69 @@ static Node *tbe_compiler_find_any_record(Node *root, const char *name) {
   return record;
 }
 
+typedef struct databind_generic_budget {
+  size_t depth;
+  size_t nodes;
+  size_t record_depth;
+} databind_generic_budget;
+
+static int tbe_compiler_cmeta_classify_record(
+    tbe_compiler_cmeta_classify_context_t *context, size_t index);
+
+static int databind_generic_classify(
+    tbe_compiler_cmeta_classify_context_t *context, const IdlTypeRef *type,
+    databind_generic_budget *out) {
+  Node *record;
+  const tbe_compiler_scalar_projection_t *scalar;
+  char name[256];
+  size_t index;
+  if (type->collection_kind != IDL_COLLECTION_NONE) {
+    IdlTypeRef child;
+    databind_generic_budget budget;
+    int is_map = type->collection_kind == IDL_COLLECTION_MAP;
+    size_t own_nodes = is_map ? 2u : 1u;
+    if ((!is_map && type->collection_kind != IDL_COLLECTION_LIST) ||
+        (is_map && (type->argument_lengths[0] != sizeof("string") - 1u ||
+                    memcmp(type->arguments[0], "string", sizeof("string") - 1u) != 0)) ||
+        !idl_type_ref_parse(type->arguments[is_map ? 1u : 0u],
+                            type->argument_lengths[is_map ? 1u : 0u], &child) ||
+        !databind_generic_classify(context, &child, &budget) ||
+        budget.depth >= TBE_COMPILER_CMETA_MAX_DEPTH ||
+        budget.nodes > SIZE_MAX - own_nodes)
+      return 0;
+    out->depth = budget.depth + 1u;
+    out->nodes = budget.nodes + own_nodes;
+    out->record_depth = budget.record_depth;
+    return 1;
+  }
+  if (type->name_length >= sizeof(name)) return 0;
+  memcpy(name, type->name, type->name_length);
+  name[type->name_length] = '\0';
+  record = tbe_compiler_find_any_record(context->root, name);
+  if (record != NULL) {
+    index = tbe_compiler_cmeta_record_index(context, record);
+    if (index == SIZE_MAX ||
+        !tbe_compiler_cmeta_classify_record(context, index) ||
+        !tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ||
+        context->depths[index] >= TBE_COMPILER_CMETA_MAX_DEPTH)
+      return 0;
+    out->record_depth = context->depths[index] + 1u;
+    out->depth = context->lifecycle ? out->record_depth : context->native_depths[index];
+    out->nodes = context->lifecycle ? 1u : context->native_nodes[index];
+    return out->depth != 0u && out->nodes != 0u;
+  }
+  scalar = tbe_compiler_scalar_projection(name);
+  record = tbe_compiler_find_record(context->root, "enums", name);
+  if (!((scalar != NULL && scalar->native_data_symbol != NULL) ||
+        strcmp(name, "string") == 0 || strcmp(name, "uuid") == 0 ||
+        (record != NULL && tbe_compiler_has_child(record, "native_enum_supported"))))
+    return 0;
+  out->depth = 1u;
+  out->nodes = 1u;
+  out->record_depth = 0u;
+  return 1;
+}
+
 static int tbe_compiler_cmeta_classify_record(
     tbe_compiler_cmeta_classify_context_t *context, size_t index) {
   Node *record;
@@ -1345,6 +1647,24 @@ static int tbe_compiler_cmeta_classify_record(
         (tbe_compiler_has_child(field, "is_group_field") &&
          !tbe_compiler_has_child(field, "native_cstl_sequence")))
       goto unsupported;
+
+    if (tbe_compiler_has_child(field, "native_nested_generic")) {
+      const char *expression = tbe_compiler_string_value(field, "native_generic_logical_type");
+      IdlTypeRef logical;
+      databind_generic_budget budget;
+      if (expression == NULL ||
+          !idl_type_ref_parse(expression, strlen(expression), &logical) ||
+          !databind_generic_classify(context, &logical, &budget) ||
+          budget.depth >= TBE_COMPILER_CMETA_MAX_DEPTH ||
+          native_nodes > SIZE_MAX - budget.nodes)
+        goto unsupported;
+      if (budget.record_depth > max_depth) max_depth = budget.record_depth;
+      if (native_budget) {
+        native_nodes += budget.nodes;
+        if (budget.depth + 1u > native_depth) native_depth = budget.depth + 1u;
+      }
+      continue;
+    }
 
     if (tbe_compiler_has_child(field, "native_fixed_array_name")) {
       const char *inner_type = tbe_compiler_string_value(field, "inner_type");
@@ -2434,10 +2754,41 @@ static void tbe_compiler_annotate_local_overlay_lifecycle(Node *root) {
   } while (changed);
 }
 
+static int databind_nested_generic_lifecycle_supported(Node *root, Node *field) {
+  const char *expression = tbe_compiler_string_value(field, "native_generic_logical_type");
+  IdlTypeRef type;
+  char name[256];
+  Node *record;
+  const tbe_compiler_scalar_projection_t *scalar;
+  if (expression == NULL ||
+      !idl_type_ref_parse(expression, strlen(expression), &type)) return 0;
+  while (type.collection_kind != IDL_COLLECTION_NONE) {
+    int is_map = type.collection_kind == IDL_COLLECTION_MAP;
+    if ((!is_map && type.collection_kind != IDL_COLLECTION_LIST) ||
+        (is_map && (type.argument_lengths[0] != sizeof("string") - 1u ||
+                    memcmp(type.arguments[0], "string", sizeof("string") - 1u) != 0)) ||
+        !idl_type_ref_parse(type.arguments[is_map ? 1u : 0u],
+                            type.argument_lengths[is_map ? 1u : 0u], &type)) return 0;
+  }
+  if (type.name_length >= sizeof(name)) return 0;
+  memcpy(name, type.name, type.name_length);
+  name[type.name_length] = '\0';
+  record = tbe_compiler_find_any_record(root, name);
+  if (record != NULL)
+    return tbe_compiler_has_child(record, "cmeta_lifecycle_supported");
+  scalar = tbe_compiler_scalar_projection(name);
+  return (scalar != NULL && scalar->native_data_symbol != NULL) ||
+         strcmp(name, "string") == 0 || strcmp(name, "uuid") == 0;
+}
+
 static int tbe_compiler_member_lifecycle_field(Node *root, Node *field) {
   const char *type = tbe_compiler_string_value(field, "type");
   Node *record;
   if (type == NULL) return 0;
+  /* Nested declarations name storage before record traits are classified.
+   * Local presence cleanup cannot authorize an owning element copy. */
+  if (tbe_compiler_has_child(field, "native_nested_generic") &&
+      !databind_nested_generic_lifecycle_supported(root, field)) return 0;
   if (tbe_compiler_has_child(field, "native_fixed_array_name") ||
       tbe_compiler_has_child(field, "native_fixed_bytes_name")) {
     size_t count = 0u;
@@ -2602,6 +2953,7 @@ static int tbe_compiler_append_member_lifecycles(const char *path, Node *root) {
 void tbe_compiler_annotate_language_types(
     const IdlContract *contract, Node *root) {
   if (contract == NULL || root == NULL) return;
+  tbe_compiler_remove_children(root, "native_generic_types");
   tbe_compiler_annotate_schema_types(root);
   tbe_compiler_annotate_enum_types(root);
   tbe_compiler_annotate_record_list_types(root, contract, "composites");
@@ -2692,6 +3044,11 @@ static int tbe_compiler_native_lifecycle_supported(Node *record) {
 static int tbe_compiler_native_field_type_supported(Node *root, Node *field) {
   const char *type = tbe_compiler_string_value(field, "type");
   char c_type[256];
+  if (tbe_compiler_has_child(field, "native_nested_generic"))
+    return databind_nested_generic_lifecycle_supported(root, field) &&
+           tbe_compiler_string_value(field, "native_generic_declarations") != NULL &&
+           tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
+           tbe_compiler_string_value(field, "native_data_symbol") != NULL;
   if (tbe_compiler_has_child(field, "is_group_field")) return 1;
   if (tbe_compiler_has_child(field, "is_collection")) {
     if (tbe_compiler_has_child(field, "is_map")) {

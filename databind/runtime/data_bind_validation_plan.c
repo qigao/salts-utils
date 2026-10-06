@@ -1,6 +1,7 @@
 #include "data_bind_validation_plan.h"
 #include "data_bind_validation_plan_internal.h"
 #include "data_bind_native_internal.h"
+#include "idl_contract.h"
 
 #include "re.h"
 
@@ -47,6 +48,8 @@ typedef struct DataBindValidationChild {
   char *field_name;
   DataBindValidationChildKind kind;
   struct DataBindValidationPlan *plan;
+  DataBindValidationChildKind *path;
+  size_t path_count;
 } DataBindValidationChild;
 
 struct DataBindValidationPlan {
@@ -227,6 +230,7 @@ void data_bind_validation_plan_free(DataBindValidationPlan *plan) {
     validation_rule_clear(&plan->rules[i]);
   for (i = 0u; i < plan->child_count; ++i) {
     free(plan->children[i].field_name);
+    free(plan->children[i].path);
     data_bind_validation_plan_free(plan->children[i].plan);
   }
   free(plan->children);
@@ -367,6 +371,9 @@ typedef struct DataBindValidationCompileContext {
 typedef struct DataBindValidationChildSpec {
   DataBindValidationChildKind kind;
   const char *type_name;
+  char leaf_name[256];
+  DataBindValidationChildKind path[DATA_BIND_VALIDATION_MAX_DEPTH];
+  size_t path_count;
 } DataBindValidationChildSpec;
 
 static int validation_record_kind(DataBindSchemaKind kind) {
@@ -404,6 +411,34 @@ static int validation_child_spec(
     kind = DATA_BIND_VALIDATION_CHILD_OBJECT;
   }
 
+  if (candidate != NULL && strchr(candidate, '<') != NULL) {
+    IdlTypeRef type;
+    if (!idl_type_ref_parse(candidate, strlen(candidate), &type)) return 0;
+    while (type.collection_kind != IDL_COLLECTION_NONE) {
+      size_t argument = 0u;
+      DataBindValidationChildKind container;
+      if (type.collection_kind == IDL_COLLECTION_LIST)
+        container = DATA_BIND_VALIDATION_CHILD_SEQUENCE;
+      else if (type.collection_kind == IDL_COLLECTION_SET)
+        container = DATA_BIND_VALIDATION_CHILD_SET;
+      else if (type.collection_kind == IDL_COLLECTION_MAP) {
+        if (type.argument_lengths[0] != sizeof("string") - 1u ||
+            memcmp(type.arguments[0], "string", sizeof("string") - 1u) != 0)
+          return 0;
+        container = DATA_BIND_VALIDATION_CHILD_MAP_VALUES;
+        argument = 1u;
+      } else return 0;
+      if (out->path_count >= DATA_BIND_VALIDATION_MAX_DEPTH) return 0;
+      out->path[out->path_count++] = container;
+      if (!idl_type_ref_parse(type.arguments[argument],
+                              type.argument_lengths[argument], &type))
+        return 0;
+    }
+    if (type.name_length >= sizeof(out->leaf_name)) return 0;
+    memcpy(out->leaf_name, type.name, type.name_length);
+    out->leaf_name[type.name_length] = '\0';
+    candidate = out->leaf_name;
+  }
   if (candidate == NULL ||
       !data_bind_schema_find_type(codec, candidate, &child_type) ||
       !validation_record_kind(child_type.kind))
@@ -592,9 +627,16 @@ static DataBindStatus validation_plan_compile_internal(
 
     if (validation_child_spec(codec, &field, &child_spec)) {
       DataBindValidationPlan *child_plan = NULL;
+      DataBindValidationCompileContext child_context = context;
+      if (child_spec.path_count > DATA_BIND_VALIDATION_MAX_DEPTH - child_context.depth) {
+        data_bind_validation_plan_free(plan);
+        return validation_error(error, DATA_BIND_ERR_LIMIT, type_name,
+            "Nested generic ValidationPlan depth exceeds the bounded limit");
+      }
+      child_context.depth += child_spec.path_count;
       DataBindStatus status = validation_plan_compile_internal(
           codec, child_spec.type_name, &child_plan, error,
-          &context, remaining_rules);
+          &child_context, remaining_rules);
       if (status != DATA_BIND_OK) {
         data_bind_validation_plan_free(plan);
         return status;
@@ -607,7 +649,19 @@ static DataBindStatus validation_plan_compile_internal(
         child->field_name = validation_strdup(field.name);
         child->kind = child_spec.kind;
         child->plan = child_plan;
-        if (child->field_name == NULL) {
+        if (child_spec.path_count != 0u) {
+          child->path = (DataBindValidationChildKind *)malloc(
+              child_spec.path_count * sizeof(*child->path));
+          if (child->path != NULL) {
+            memcpy(child->path, child_spec.path,
+                   child_spec.path_count * sizeof(*child->path));
+            child->path_count = child_spec.path_count;
+          }
+        }
+        if (child->field_name == NULL ||
+            (child_spec.path_count != 0u && child->path == NULL)) {
+          free(child->field_name);
+          free(child->path);
           data_bind_validation_plan_free(child_plan);
           child->plan = NULL;
           data_bind_validation_plan_free(plan);
@@ -961,6 +1015,26 @@ static DataBindStatus validation_plan_validate_native_at(
 static DataBindStatus validation_child_validate_native_at(
     const DataBindValidationChild *child, const cmeta_data_desc *data,
     const void *source, const char *field_path, unsigned depth,
+    DataBindError *error);
+
+static DataBindStatus validation_child_native_element_at(
+    const DataBindValidationChild *child, const cmeta_data_desc *data,
+    const void *source, const char *path, unsigned depth, DataBindError *error) {
+  DataBindValidationChild next;
+  if (child->path_count == 0u)
+    return validation_plan_validate_native_at(child->plan, data, source,
+                                               path, depth, error);
+  /* A traversal view borrows the immutable compiled path and leaf plan. */
+  next = *child;
+  next.kind = child->path[0];
+  next.path = child->path + 1u;
+  next.path_count = child->path_count - 1u;
+  return validation_child_validate_native_at(&next, data, source, path, depth, error);
+}
+
+static DataBindStatus validation_child_validate_native_at(
+    const DataBindValidationChild *child, const cmeta_data_desc *data,
+    const void *source, const char *field_path, unsigned depth,
     DataBindError *error) {
   if (child == NULL || child->plan == NULL || data == NULL ||
       source == NULL || field_path == NULL)
@@ -1024,8 +1098,8 @@ static DataBindStatus validation_child_validate_native_at(
               item_path, field_path, item_index))
         return validation_path_overflow(error, field_path);
 
-      status = validation_plan_validate_native_at(
-          child->plan, element_data, element, item_path,
+      status = validation_child_native_element_at(
+          child, element_data, element, item_path,
           depth + 1u, error);
       if (status != DATA_BIND_OK) return status;
       ++item_index;
@@ -1072,8 +1146,8 @@ static DataBindStatus validation_child_validate_native_at(
               item_path, field_path, item_index))
         return validation_path_overflow(error, field_path);
 
-      status = validation_plan_validate_native_at(
-          child->plan, value_data, value, item_path,
+      status = validation_child_native_element_at(
+          child, value_data, value, item_path,
           depth + 1u, error);
       if (status != DATA_BIND_OK) return status;
       ++item_index;
@@ -1177,6 +1251,68 @@ DataBindStatus data_bind_validation_plan_internal_validate_native_child(
 
 static DataBindStatus validation_plan_validate_at(
     const DataBindValidationPlan *plan, const DataBindValue *value,
+    const char *prefix, unsigned depth, DataBindError *error);
+
+static DataBindStatus validation_child_value_at(
+    const DataBindValidationChild *child, const DataBindValue *value,
+    const char *path, unsigned depth, DataBindError *error) {
+  DataBindValueKind expected;
+  size_t count;
+  size_t index;
+  if (child == NULL || child->plan == NULL || value == NULL || path == NULL)
+    return validation_error(error, DATA_BIND_ERR_INVALID_ARG, path,
+                            "Invalid nested ValidationPlan traversal");
+  if (depth > DATA_BIND_VALIDATION_MAX_DEPTH)
+    return validation_error(error, DATA_BIND_ERR_LIMIT, path,
+                            "ValidationPlan execution depth exceeds the bounded limit");
+  if (child->kind == DATA_BIND_VALIDATION_CHILD_OBJECT) {
+    if (data_bind_value_kind(value) != DATA_BIND_VALUE_OBJECT)
+      return validation_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                              "Nested ValidationPlan expected an object value");
+    return validation_plan_validate_at(child->plan, value, path, depth + 1u, error);
+  }
+  switch (child->kind) {
+    case DATA_BIND_VALIDATION_CHILD_SEQUENCE: expected = DATA_BIND_VALUE_LIST; break;
+    case DATA_BIND_VALIDATION_CHILD_SET: expected = DATA_BIND_VALUE_SET; break;
+    case DATA_BIND_VALIDATION_CHILD_MAP_VALUES: expected = DATA_BIND_VALUE_MAP; break;
+    default:
+      return validation_error(error, DATA_BIND_ERR_RUNTIME, path,
+                              "ValidationPlan contains an unknown nested binding");
+  }
+  if (data_bind_value_kind(value) != expected)
+    return validation_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                            "Nested ValidationPlan container kind does not match");
+  count = data_bind_value_count(value);
+  for (index = 0u; index < count; ++index) {
+    const DataBindValue *item = expected == DATA_BIND_VALUE_MAP
+        ? data_bind_value_map_entry_at(value, index).value
+        : data_bind_value_at(value, index);
+    char item_path[260];
+    DataBindStatus status;
+    if (!validation_path_index(item_path, path, index))
+      return validation_path_overflow(error, path);
+    if (item == NULL)
+      return validation_error(error, DATA_BIND_ERR_TYPE_MISMATCH, item_path,
+                              "Nested ValidationPlan element is missing");
+    if (child->path_count != 0u) {
+      DataBindValidationChild next = *child;
+      next.kind = child->path[0];
+      next.path = child->path + 1u;
+      next.path_count = child->path_count - 1u;
+      status = validation_child_value_at(&next, item, item_path, depth + 1u, error);
+    } else {
+      if (data_bind_value_kind(item) != DATA_BIND_VALUE_OBJECT)
+        return validation_error(error, DATA_BIND_ERR_TYPE_MISMATCH, item_path,
+                                "Nested ValidationPlan expected an object element");
+      status = validation_plan_validate_at(child->plan, item, item_path, depth + 1u, error);
+    }
+    if (status != DATA_BIND_OK) return status;
+  }
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus validation_plan_validate_at(
+    const DataBindValidationPlan *plan, const DataBindValue *value,
     const char *prefix, unsigned depth, DataBindError *error) {
   size_t i;
 
@@ -1273,102 +1409,16 @@ static DataBindStatus validation_plan_validate_at(
 
   for (i = 0u; i < plan->child_count; ++i) {
     const DataBindValidationChild *child = &plan->children[i];
-    const DataBindValue *field =
-        data_bind_value_get(value, child->field_name);
+    const DataBindValue *field = data_bind_value_get(value, child->field_name);
     char field_path[260];
-
-    if (field == NULL ||
-        data_bind_value_kind(field) == DATA_BIND_VALUE_NULL)
+    DataBindStatus status;
+    if (field == NULL || data_bind_value_kind(field) == DATA_BIND_VALUE_NULL)
       continue;
-    if (!validation_path_field(
-            field_path, prefix, child->field_name))
+    if (!validation_path_field(field_path, prefix, child->field_name))
       return validation_path_overflow(error, prefix);
-
-    if (child->kind == DATA_BIND_VALIDATION_CHILD_OBJECT) {
-      DataBindStatus status;
-      if (data_bind_value_kind(field) != DATA_BIND_VALUE_OBJECT)
-        return validation_error(
-            error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
-            "Nested ValidationPlan expected an object value");
-      status = validation_plan_validate_at(
-          child->plan, field, field_path, depth + 1u, error);
-      if (status != DATA_BIND_OK) return status;
-      continue;
-    }
-
-    if (child->kind == DATA_BIND_VALIDATION_CHILD_SEQUENCE ||
-        child->kind == DATA_BIND_VALIDATION_CHILD_SET) {
-      DataBindValueKind expected_kind =
-          child->kind == DATA_BIND_VALIDATION_CHILD_SET
-              ? DATA_BIND_VALUE_SET
-              : DATA_BIND_VALUE_LIST;
-      size_t count;
-      size_t item_index;
-
-      if (data_bind_value_kind(field) != expected_kind)
-        return validation_error(
-            error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
-            child->kind == DATA_BIND_VALIDATION_CHILD_SET
-                ? "Nested ValidationPlan expected a set value"
-                : "Nested ValidationPlan expected a list value");
-
-      count = data_bind_value_count(field);
-      for (item_index = 0u; item_index < count; ++item_index) {
-        const DataBindValue *item =
-            data_bind_value_at(field, item_index);
-        char item_path[260];
-        DataBindStatus status;
-
-        if (!validation_path_index(
-                item_path, field_path, item_index))
-          return validation_path_overflow(error, field_path);
-        if (item == NULL ||
-            data_bind_value_kind(item) != DATA_BIND_VALUE_OBJECT)
-          return validation_error(
-              error, DATA_BIND_ERR_TYPE_MISMATCH, item_path,
-              "Nested ValidationPlan expected an object element");
-        status = validation_plan_validate_at(
-            child->plan, item, item_path, depth + 1u, error);
-        if (status != DATA_BIND_OK) return status;
-      }
-      continue;
-    }
-
-    if (child->kind == DATA_BIND_VALIDATION_CHILD_MAP_VALUES) {
-      size_t count;
-      size_t item_index;
-
-      if (data_bind_value_kind(field) != DATA_BIND_VALUE_MAP)
-        return validation_error(
-            error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
-            "Nested ValidationPlan expected a map value");
-      count = data_bind_value_count(field);
-      for (item_index = 0u; item_index < count; ++item_index) {
-        DataBindMapEntry entry =
-            data_bind_value_map_entry_at(field, item_index);
-        char item_path[260];
-        DataBindStatus status;
-
-        if (!validation_path_index(
-                item_path, field_path, item_index))
-          return validation_path_overflow(error, field_path);
-        if (entry.value == NULL ||
-            data_bind_value_kind(entry.value) != DATA_BIND_VALUE_OBJECT)
-          return validation_error(
-              error, DATA_BIND_ERR_TYPE_MISMATCH, item_path,
-              "Nested ValidationPlan expected an object map value");
-        status = validation_plan_validate_at(
-            child->plan, entry.value, item_path, depth + 1u, error);
-        if (status != DATA_BIND_OK) return status;
-      }
-      continue;
-    }
-
-    return validation_error(
-        error, DATA_BIND_ERR_RUNTIME, field_path,
-        "ValidationPlan contains an unknown nested binding");
+    status = validation_child_value_at(child, field, field_path, depth, error);
+    if (status != DATA_BIND_OK) return status;
   }
-
   return DATA_BIND_OK;
 }
 

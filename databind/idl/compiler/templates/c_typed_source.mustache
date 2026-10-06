@@ -237,6 +237,12 @@ DATABIND_DEFINE_FIXED_ARRAY({{native_fixed_array_name}}, {{native_c_type}}, {{ty
 /* Generated container semantics are provided directly by canonical Salts
  * typed CSTL descriptors emitted in the public generated header. */
 
+{{#native_generic_types}}
+static const cmeta_type_identity *{{identity}}_ARGS[{{arity}}u];
+TBE_GENERATED_API const cmeta_type_identity {{identity}} =
+    CMETA_TYPE_ID_APPLY_INIT({{constructor}}, {{identity}}_ARGS);
+{{/native_generic_types}}
+
 {{#composites}}
 {{#cmeta_lifecycle_supported}}
 CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
@@ -490,6 +496,9 @@ DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *e
 {{/messages}}
 
 static void {{schema.schema_name}}_CMETA_INIT_FIELDS_ALL(void) {
+{{#native_generic_types}}    {{identity}}_ARGS[0] = ({{arg0}})->identity;
+{{#arg1}}    {{identity}}_ARGS[1] = ({{arg1}})->identity;
+{{/arg1}}{{/native_generic_types}}
 {{#composites}}    {{name}}_CMETA_INIT_FIELDS();
 {{/composites}}{{#groups}}    {{name}}_CMETA_INIT_FIELDS();
 {{/groups}}{{#messages}}    {{name}}_CMETA_INIT_FIELDS();

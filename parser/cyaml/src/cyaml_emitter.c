@@ -753,7 +753,9 @@ static bool emit_node(emitter_t* e, const cyaml_node_t* root, int start_depth)
                     if (!emit_tag(e, n))
                         EM_FAIL();
                 }
-                bool use_flow = (n->style == (cyaml_style_t)CYAML_FLOW || e->opts.coll == CYAML_FLOW);
+                /* Empty collections have no block representation: emitting
+                 * only indentation would change their type to YAML null. */
+                bool use_flow = (n->seq.count == 0 || n->style == (cyaml_style_t)CYAML_FLOW || e->opts.coll == CYAML_FLOW);
                 bool convert_to_block = (!e->opts.preserve_style && !EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->seq.count > 0);
                 if (convert_to_block || !use_flow) {
                     EM_PUSH(n, EMITF_BLOCK_SEQ, f->depth, 0);
@@ -776,7 +778,7 @@ static bool emit_node(emitter_t* e, const cyaml_node_t* root, int start_depth)
                     if (!emit_tag(e, n))
                         EM_FAIL();
                 }
-                bool use_flow = (n->style == (cyaml_style_t)CYAML_FLOW || e->opts.coll == CYAML_FLOW);
+                bool use_flow = (n->map.count == 0 || n->style == (cyaml_style_t)CYAML_FLOW || e->opts.coll == CYAML_FLOW);
                 bool convert_to_block = (!e->opts.preserve_style && !EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->map.count > 0);
                 if (convert_to_block || !use_flow) {
                     EM_PUSH(n, EMITF_BLOCK_MAP, f->depth, 0);
@@ -939,7 +941,8 @@ static bool emit_node(emitter_t* e, const cyaml_node_t* root, int start_depth)
                 free(vs);
             }
             bool val_is_block = false;
-            if (val && (val->type == CYAML_MAP || val->type == CYAML_SEQ)) {
+            if (val && ((val->type == CYAML_MAP && val->map.count > 0) ||
+                        (val->type == CYAML_SEQ && val->seq.count > 0))) {
                 if (val->style != (cyaml_style_t)CYAML_FLOW) {
                     val_is_block = true;
                 } else if (!e->opts.preserve_style && !EMIT_IS_DUMP(e)) {
@@ -953,7 +956,7 @@ static bool emit_node(emitter_t* e, const cyaml_node_t* root, int start_depth)
                     EM_FAIL();
                 f->child_idx++;
                 f->state = EMITF_BLOCK_MAP;
-            } else if (key_is_complex && val->type == CYAML_SEQ) {
+            } else if (key_is_complex && val->type == CYAML_SEQ && val->seq.count > 0) {
                 if (!emit_cstr(e, ": "))
                     EM_FAIL();
                 f->state = EMITF_BLOCK_MAP_COMMENT;

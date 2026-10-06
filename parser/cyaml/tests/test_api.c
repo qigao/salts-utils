@@ -1159,6 +1159,48 @@ void test_cyaml_emit_with_options(void)
     cyaml_free(doc);
 }
 
+void test_cyaml_emit_empty_collections(void)
+{
+    enum { EMPTY_SEQUENCE, EMPTY_MAP, NESTED_SEQUENCE, NESTED_MAP, SHAPE_COUNT };
+    static const cyaml_emit_opts_t options[] = {
+        { .indent = 2, .coll = CYAML_BLOCK },
+        { .indent = 2, .coll = CYAML_BLOCK, .preserve_style = true },
+        { .indent = 2, .coll = CYAML_FLOW }
+    };
+    for (size_t shape = 0; shape < SHAPE_COUNT; ++shape) {
+        cyaml_doc_t* doc = cyaml_doc_new();
+        check_not_null(doc);
+        cyaml_node_t* root = (shape == EMPTY_SEQUENCE || shape == NESTED_SEQUENCE)
+            ? cyaml_new_seq(doc) : cyaml_new_map(doc);
+        check_not_null(root);
+        cyaml_set_root(doc, root);
+        if (shape == NESTED_SEQUENCE) {
+            check_true(cyaml_seq_push(root, cyaml_new_seq(doc)));
+            check_true(cyaml_seq_push(root, cyaml_new_map(doc)));
+        } else if (shape == NESTED_MAP) {
+            check_true(cyaml_map_set(doc, root, "sequence", cyaml_new_seq(doc)));
+            check_true(cyaml_map_set(doc, root, "mapping", cyaml_new_map(doc)));
+        }
+        char* expected = cyaml_json(doc, 0, NULL);
+        check_not_null(expected);
+        for (size_t mode = 0; mode < sizeof(options) / sizeof(options[0]); ++mode) {
+            size_t len = 0;
+            char* output = cyaml_emit(doc, &options[mode], &len);
+            check_not_null(output);
+            cyaml_doc_t* parsed = cyaml_parse(output, len, NULL, NULL);
+            check_not_null(parsed);
+            char* actual = cyaml_json(parsed, 0, NULL);
+            check_not_null(actual);
+            check_equal(actual, expected);
+            free(actual);
+            cyaml_free(parsed);
+            free(output);
+        }
+        free(expected);
+        cyaml_free(doc);
+    }
+}
+
 void test_cyaml_emit_null_doc(void)
 {
     size_t len;
@@ -2490,6 +2532,7 @@ suite("cyaml API") {
     group("serialization") {
         CYAML_CASE(cyaml_emit_simple);
         CYAML_CASE(cyaml_emit_with_options);
+        CYAML_CASE(cyaml_emit_empty_collections);
         CYAML_CASE(cyaml_emit_null_doc);
         CYAML_CASE(cyaml_stream_emit);
         CYAML_CASE(cyaml_dump);
