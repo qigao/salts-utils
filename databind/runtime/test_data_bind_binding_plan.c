@@ -3,6 +3,7 @@
 #include "tinytest.h"
 
 #include <cmeta/data.h>
+#include <cflow/executor.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -151,6 +152,35 @@ FunctionDeclAs(
     value, AddResponse, &ADD_RESPONSE_TYPE, calc_value_return,
     (const AddRequest *, request,
      CMETA_PARAM_IN | CMETA_PARAM_BORROWED, &ADD_REQUEST_PTR_TYPE));
+
+typedef struct DeferredCallProbe {
+  DataBindBindingCallLifetime *lifetime;
+  AddResponse *response;
+  unsigned run_calls;
+  unsigned cancel_calls;
+  unsigned finalize_calls;
+  int native_status;
+  DataBindStatus restore_status;
+} DeferredCallProbe;
+
+static void deferred_call_run(void *context) {
+  DeferredCallProbe *probe = (DeferredCallProbe *)context;
+  ++probe->run_calls;
+  probe->response->sum = 7u;
+  probe->native_status = -1;
+}
+
+static void deferred_call_cancel(void *context) {
+  DeferredCallProbe *probe = (DeferredCallProbe *)context;
+  ++probe->cancel_calls;
+}
+
+static void deferred_call_finalize(void *context) {
+  DeferredCallProbe *probe = (DeferredCallProbe *)context;
+  DataBindBindingPlanDiagnostic diagnostic = DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+  ++probe->finalize_calls;
+  probe->restore_status = data_bind_binding_call_restore_zero(probe->lifetime, &diagnostic);
+}
 
 static DataBind *create_codec(void) {
   static const char schema[] =
@@ -1884,6 +1914,74 @@ spec("DataBind canonical Service BindingPlan") {
 
     data_bind_binding_plan_free(plan);
     data_bind_free(codec);
+  }
+
+  it("terminates deferred failed invocations cancellation and rejected admission once") {
+    enum { CALL_EXECUTE_FAILURE, CALL_CANCEL_PENDING, CALL_REJECT_ADMISSION, CALL_MODE_COUNT };
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection http = projection("http-deferred-call", &scratch, http_project);
+    DataBindServiceNativeBinding native = native_binding(FunctionMeta(calc_add_root));
+    DataBindBindingPlanDiagnostic diagnostic = DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    TestProvider state = {0};
+    DataBindBindingProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options = native_options(workspace, sizeof(workspace));
+    unsigned mode;
+    check_equal(data_bind_binding_plan_compile_service(
+        codec, "Calc", "Add", &http, &native, &plan, &diagnostic), DATA_BIND_OK);
+    data_bind_free(codec);
+    for (mode = 0u; mode < CALL_MODE_COUNT; ++mode) {
+      cflow_executor executor = {0};
+      cflow_executor_control control = {0};
+      AddRequest request = {0};
+      AddResponse response = {0};
+      void *params[] = {&request, &response};
+      const size_t param_bytes[] = {sizeof(request), sizeof(response)};
+      DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+      DataBindBindingCallLifetime lifetime = DATA_BIND_BINDING_CALL_LIFETIME_INIT;
+      DeferredCallProbe probe = {.lifetime = &lifetime, .response = &response};
+      cflow_executor_task task = {
+          .run = deferred_call_run, .cancel = deferred_call_cancel,
+          .finalize = deferred_call_finalize, .user = &probe};
+      frame.request = &request;
+      frame.request_bytes = sizeof(request);
+      frame.params = params;
+      frame.param_bytes = param_bytes;
+      frame.param_count = 2u;
+      check_true(cflow_executor_manual_init_with_capacity(&executor, 1u));
+      check_true(cflow_executor_as_control(&executor, &control));
+      check_equal(data_bind_binding_plan_bind_call(
+          plan, &provider, &options, &frame, &lifetime, &diagnostic), DATA_BIND_OK);
+      if (mode == CALL_REJECT_ADMISSION) {
+        check_true(cflow_executor_control_shutdown(&control, CFLOW_EXECUTOR_SHUTDOWN_DRAIN));
+        check_equal(cflow_executor_try_post_task(&executor, &task), CFLOW_ADMISSION_CLOSED);
+        check_true(data_bind_binding_call_is_live(&lifetime));
+        check_equal(probe.finalize_calls, 0u);
+        deferred_call_finalize(&probe);
+      } else {
+        check_equal(cflow_executor_try_post_task(&executor, &task), CFLOW_ADMISSION_ACCEPTED);
+        check_true(data_bind_binding_call_is_live(&lifetime));
+        if (mode == CALL_CANCEL_PENDING)
+          check_true(cflow_executor_control_shutdown(&control, CFLOW_EXECUTOR_SHUTDOWN_CANCEL_PENDING));
+        else {
+          check_equal(cflow_executor_run_ready(&executor), (size_t)1u);
+          check_equal(probe.native_status, -1);
+        }
+      }
+      check_equal(probe.run_calls, mode == CALL_EXECUTE_FAILURE ? 1u : 0u);
+      check_equal(probe.cancel_calls, mode == CALL_CANCEL_PENDING ? 1u : 0u);
+      check_equal(probe.finalize_calls, 1u);
+      check_equal(probe.restore_status, DATA_BIND_OK);
+      check_false(data_bind_binding_call_is_live(&lifetime));
+      check_equal(request.left, 0u);
+      check_equal(request.presence, 0u);
+      check_equal(response.sum, 0u);
+      cflow_executor_destroy(&executor);
+      check_equal(probe.finalize_calls, 1u);
+    }
+    data_bind_binding_plan_free(plan);
   }
 
   it("tracks a whole call through egress failure and rejects repeated teardown") {
