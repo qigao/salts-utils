@@ -26,7 +26,6 @@
             "name": "android-win-paths",
             "hidden": true,
             "inherits": "ISWindows",
-            "toolchainFile": "$env{QIGAO_VCPKG_TOOLCHAIN_FILE}",
             "cacheVariables": {
                 "PKG_CONFIG_EXECUTABLE": "${sourceDir}/vcpkg_installed/x64-windows/tools/pkgconf/pkgconf.exe",
                 "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",

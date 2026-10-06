@@ -3,7 +3,7 @@
 
 #include <cmeta/object.h>
 #include <cmeta/struct.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -208,8 +208,8 @@ static const cmeta_data_desc TEXT_DYNAMIC_DATA = {
 };
 
 static void init_text_dynamic_cmeta(void) {
-  TEXT_DYNAMIC_LAYOUT_FIELDS[0].type = salts_tstr_cmeta_data.storage_type;
-  TEXT_DYNAMIC_FIELDS[0].value = &salts_tstr_cmeta_data;
+  TEXT_DYNAMIC_LAYOUT_FIELDS[0].type = cmeta_tstr_cmeta_data.storage_type;
+  TEXT_DYNAMIC_FIELDS[0].value = &cmeta_tstr_cmeta_data;
 }
 
 static cmeta_status text_dynamic_read(
@@ -235,7 +235,7 @@ static cmeta_status text_dynamic_assign(
   if (strcmp(field->name, "name") != 0) return CMETA_TRAIT_MISSING;
   ++provider->assigns;
   return cmeta_data_value_copy(
-      &salts_tstr_cmeta_data, &record->name_slot, value);
+      &cmeta_tstr_cmeta_data, &record->name_slot, value);
 }
 
 typedef struct TokenReader {
@@ -540,7 +540,7 @@ spec("DataBind provider-backed object MessagePlan") {
     init_text_dynamic_cmeta();
     check_equal(
         cmeta_data_value_init_zero(
-            &salts_tstr_cmeta_data, &record.name_slot),
+            &cmeta_tstr_cmeta_data, &record.name_slot),
         CMETA_OK);
     check_equal(
         data_bind_create_from_text(
@@ -577,7 +577,7 @@ spec("DataBind provider-backed object MessagePlan") {
     cmeta_object_release(&object);
     check_equal(
         cmeta_data_value_restore_zero(
-            &salts_tstr_cmeta_data, &record.name_slot),
+            &cmeta_tstr_cmeta_data, &record.name_slot),
         CMETA_OK);
     data_bind_message_plan_free(plan);
     data_bind_free(codec);
@@ -819,7 +819,7 @@ spec("DataBind provider-backed object MessagePlan") {
     memset(workspace, 0xA5, sizeof(workspace));
     check_equal(
         cmeta_data_value_init_zero(
-            &salts_tstr_cmeta_data, &record.name_slot),
+            &cmeta_tstr_cmeta_data, &record.name_slot),
         CMETA_OK);
     check_equal(
         data_bind_create_from_text(
@@ -855,7 +855,7 @@ spec("DataBind provider-backed object MessagePlan") {
     cmeta_object_release(&object);
     check_equal(
         cmeta_data_value_restore_zero(
-            &salts_tstr_cmeta_data, &record.name_slot),
+            &cmeta_tstr_cmeta_data, &record.name_slot),
         CMETA_OK);
     data_bind_message_plan_free(plan);
     data_bind_free(codec);

@@ -1,7 +1,7 @@
 #include <salts/fs_watch.h>
 #include <salts/error_codes.h>
 #include <salts/thread.h>
-#include <salts_fs.h>
+#include <cmeta_fs.h>
 #include <tinytest.h>
 
 #include <stdlib.h>
@@ -59,7 +59,7 @@ static int watch_drive_until(cflow_fs_watch *watch, watch_probe *probe,
         if (status != SALTS_OK)
             return status;
         if (delivered == 0u)
-            salts_sleep_ms(1u);
+            cmeta_sleep_ms(1u);
     }
     return probe->count >= minimum ? SALTS_OK : SALTS_ETIMEDOUT;
 }
@@ -95,7 +95,7 @@ static void watch_close_destroy(cflow_fs_watch *watch) {
         size_t delivered = 0u;
         check_equal(cflow_fs_watch_run_ready(watch, 8u, &delivered), SALTS_OK);
         if (delivered == 0u)
-            salts_sleep_ms(1u);
+            cmeta_sleep_ms(1u);
     }
     check_true(cflow_fs_watch_is_quiescent(watch));
     check_equal(cflow_fs_watch_destroy(watch), SALTS_OK);
@@ -160,9 +160,9 @@ spec("CFlow filesystem watch") {
         cflow_fs_watch_config config = watch_config(&probe, 8u);
 
         check_not_null(root);
-        check_equal(salts_fs_path_join(first, sizeof(first), root,
+        check_equal(cmeta_fs_path_join(first, sizeof(first), root,
                                        "first.txt"), SALTS_OK);
-        check_equal(salts_fs_path_join(second, sizeof(second), root,
+        check_equal(cmeta_fs_path_join(second, sizeof(second), root,
                                        "second.txt"), SALTS_OK);
         check_equal(cflow_fs_watch_open(NULL, root, &config), SALTS_EINVAL);
         check_equal(cflow_fs_watch_open(&watch, root, &config), SALTS_OK);
@@ -171,7 +171,7 @@ spec("CFlow filesystem watch") {
         check_true(probe_saw(&probe, CFLOW_FS_WATCH_CREATED, "first.txt") ||
                    probe_saw(&probe, CFLOW_FS_WATCH_MODIFIED, "first.txt"));
 
-        check_equal(salts_fs_rename(first, second), SALTS_OK);
+        check_equal(cmeta_fs_rename(first, second), SALTS_OK);
         check_equal(watch_drive_until(&watch, &probe, 2u), SALTS_OK);
 #if defined(_WIN32) || defined(__linux__)
         {
@@ -182,7 +182,7 @@ spec("CFlow filesystem watch") {
                 check_equal(cflow_fs_watch_run_ready(
                                 &watch, 8u, &delivered), SALTS_OK);
                 if (delivered == 0u)
-                    salts_sleep_ms(1u);
+                    cmeta_sleep_ms(1u);
             }
             check_true(probe_saw(&probe, CFLOW_FS_WATCH_RENAMED, "second.txt"));
         }
@@ -196,7 +196,7 @@ spec("CFlow filesystem watch") {
                 check_equal(cflow_fs_watch_run_ready(
                                 &watch, 8u, &delivered), SALTS_OK);
                 if (delivered == 0u)
-                    salts_sleep_ms(1u);
+                    cmeta_sleep_ms(1u);
             }
             check_true(probe_saw(&probe,
                                  CFLOW_FS_WATCH_RESCAN_REQUIRED, NULL));
@@ -221,7 +221,7 @@ spec("CFlow filesystem watch") {
                 check_equal(cflow_fs_watch_run_ready(
                                 &watch, 8u, &delivered), SALTS_OK);
                 if (delivered == 0u)
-                    salts_sleep_ms(1u);
+                    cmeta_sleep_ms(1u);
             }
 #if defined(__APPLE__)
             check_true(probe_saw(&probe, CFLOW_FS_WATCH_REMOVED, "second.txt") ||
@@ -254,11 +254,11 @@ spec("CFlow filesystem watch") {
         size_t attempts = 0u;
 
         check_not_null(root);
-        check_equal(salts_fs_path_join(first, sizeof(first), root,
+        check_equal(cmeta_fs_path_join(first, sizeof(first), root,
                                        "one.txt"), SALTS_OK);
-        check_equal(salts_fs_path_join(second, sizeof(second), root,
+        check_equal(cmeta_fs_path_join(second, sizeof(second), root,
                                        "two.txt"), SALTS_OK);
-        check_equal(salts_fs_path_join(during_rescan, sizeof(during_rescan),
+        check_equal(cmeta_fs_path_join(during_rescan, sizeof(during_rescan),
                                        root, "during-rescan.txt"), SALTS_OK);
         check_equal(cflow_fs_watch_open(&watch, root, &config), SALTS_OK);
         check_equal(tt_write_file(first, "1", 1u), SALTS_OK);
@@ -267,7 +267,7 @@ spec("CFlow filesystem watch") {
             check_true(cflow_fs_watch_get_stats(&watch, &stats));
             if (stats.awaiting_rescan)
                 break;
-            salts_sleep_ms(1u);
+            cmeta_sleep_ms(1u);
         }
         check_true(stats.awaiting_rescan);
         check_equal(watch_drive_until(&watch, &probe, 2u), SALTS_OK);
@@ -281,7 +281,7 @@ spec("CFlow filesystem watch") {
                 check_true(cflow_fs_watch_get_stats(&watch, &stats));
                 if (stats.suppressed > suppressed_at_delivery)
                     break;
-                salts_sleep_ms(1u);
+                cmeta_sleep_ms(1u);
             }
             check_true(stats.suppressed > suppressed_at_delivery);
         }
@@ -346,13 +346,13 @@ spec("CFlow filesystem watch") {
         config.recursive = true;
         config.watch_capacity = 8u;
         check_not_null(root);
-        check_equal(salts_fs_path_join(nested, sizeof(nested), root,
+        check_equal(cmeta_fs_path_join(nested, sizeof(nested), root,
                                        "nested"), SALTS_OK);
-        check_equal(salts_fs_path_join(child, sizeof(child), nested,
+        check_equal(cmeta_fs_path_join(child, sizeof(child), nested,
                                        "child.txt"), SALTS_OK);
-        check_equal(salts_fs_path_join(dynamic, sizeof(dynamic), root,
+        check_equal(cmeta_fs_path_join(dynamic, sizeof(dynamic), root,
                                        "dynamic"), SALTS_OK);
-        check_equal(salts_fs_path_join(dynamic_child, sizeof(dynamic_child),
+        check_equal(cmeta_fs_path_join(dynamic_child, sizeof(dynamic_child),
                                        dynamic, "later.txt"), SALTS_OK);
         check_equal(tt_make_dir(nested), SALTS_OK);
         check_equal(cflow_fs_watch_open(&watch, root, &config), SALTS_OK);
@@ -363,7 +363,7 @@ spec("CFlow filesystem watch") {
             check_equal(cflow_fs_watch_run_ready(
                             &watch, 8u, &delivered), SALTS_OK);
             if (delivered == 0u)
-                salts_sleep_ms(1u);
+                cmeta_sleep_ms(1u);
         }
         check_true(probe_saw(&probe, CFLOW_FS_WATCH_CREATED,
                              "nested/child.txt"));
@@ -375,7 +375,7 @@ spec("CFlow filesystem watch") {
             check_equal(cflow_fs_watch_run_ready(
                             &watch, 8u, &delivered), SALTS_OK);
             if (delivered == 0u)
-                salts_sleep_ms(1u);
+                cmeta_sleep_ms(1u);
         }
         check_true(probe_saw(&probe, CFLOW_FS_WATCH_CREATED, "dynamic"));
         check_equal(tt_write_file(dynamic_child, "y", 1u), SALTS_OK);
@@ -386,7 +386,7 @@ spec("CFlow filesystem watch") {
             check_equal(cflow_fs_watch_run_ready(
                             &watch, 8u, &delivered), SALTS_OK);
             if (delivered == 0u)
-                salts_sleep_ms(1u);
+                cmeta_sleep_ms(1u);
         }
         check_true(probe_saw(&probe, CFLOW_FS_WATCH_CREATED,
                              "dynamic/later.txt"));

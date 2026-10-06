@@ -28,7 +28,7 @@ typedef struct cflow_fs_slot {
     uint64_t request_id;
     cflow_fs_operation_kind operation;
     union {
-        salts_fs_stat_t *stat_out;
+        cmeta_fs_stat_t *stat_out;
         cflow_fs_dir_buffer *directory_out;
         int mode;
     } arguments;
@@ -42,7 +42,7 @@ struct cflow_fs_impl {
     char *paths;
     size_t capacity;
     size_t path_capacity;
-    salts_mutex_t gate;
+    cmeta_mutex_t gate;
     uint64_t next_request_id;
     cflow_fs_completion_fn completion;
     void *completion_user;
@@ -99,20 +99,20 @@ static void fs_slot_reset(cflow_fs_slot *slot) {
 
 static int fs_read_directory(cflow_fs_slot *slot) {
     cflow_fs_dir_buffer *out = slot->arguments.directory_out;
-    salts_fs_dir_t *directory = NULL;
-    salts_fs_dirent_t entry;
+    cmeta_fs_dir_t *directory = NULL;
+    cmeta_fs_dirent_t entry;
     size_t entry_count = 0u;
     size_t names_used = 0u;
     int status;
 
     out->entry_count = 0u;
     out->names_used = 0u;
-    status = salts_fs_opendir(slot->path, &directory);
+    status = cmeta_fs_opendir(slot->path, &directory);
     if (status != SALTS_OK)
         return status;
     for (;;) {
         size_t name_length;
-        status = salts_fs_readdir(directory, &entry);
+        status = cmeta_fs_readdir(directory, &entry);
         if (status <= 0)
             break;
         name_length = strlen(entry.name) + 1u;
@@ -128,7 +128,7 @@ static int fs_read_directory(cflow_fs_slot *slot) {
         ++entry_count;
     }
     {
-        const int close_status = salts_fs_closedir(directory);
+        const int close_status = cmeta_fs_closedir(directory);
         if (status == SALTS_OK && close_status != SALTS_OK)
             status = close_status;
     }
@@ -145,19 +145,19 @@ static int fs_read_directory(cflow_fs_slot *slot) {
 static int fs_execute(cflow_fs_slot *slot) {
     switch (slot->operation) {
         case CFLOW_FS_STAT:
-            return salts_fs_stat(slot->path, slot->arguments.stat_out);
+            return cmeta_fs_stat(slot->path, slot->arguments.stat_out);
         case CFLOW_FS_LSTAT:
-            return salts_fs_lstat(slot->path, slot->arguments.stat_out);
+            return cmeta_fs_lstat(slot->path, slot->arguments.stat_out);
         case CFLOW_FS_READ_DIRECTORY:
             return fs_read_directory(slot);
         case CFLOW_FS_MKDIR:
-            return salts_fs_mkdir(slot->path, slot->arguments.mode);
+            return cmeta_fs_mkdir(slot->path, slot->arguments.mode);
         case CFLOW_FS_RMDIR:
-            return salts_fs_rmdir(slot->path);
+            return cmeta_fs_rmdir(slot->path);
         case CFLOW_FS_RENAME:
-            return salts_fs_rename(slot->path, slot->second_path);
+            return cmeta_fs_rename(slot->path, slot->second_path);
         case CFLOW_FS_UNLINK:
-            return salts_fs_unlink(slot->path);
+            return cmeta_fs_unlink(slot->path);
         default:
             return SALTS_EINVAL;
     }
@@ -212,14 +212,14 @@ static cflow_fs_submit_result fs_submit(
         return fs_submit_result(CFLOW_FS_SUBMIT_CLOSED, 0u);
     }
 
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     if (atomic_load(&impl->close_requested)) {
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         atomic_fetch_add(&impl->rejected_closed, 1u);
         return fs_submit_result(CFLOW_FS_SUBMIT_CLOSED, 0u);
     }
     if (impl->next_request_id == UINT64_MAX) {
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return fs_submit_result(CFLOW_FS_SUBMIT_ID_EXHAUSTED, 0u);
     }
     for (index = 0u; index < impl->capacity; ++index) {
@@ -229,7 +229,7 @@ static cflow_fs_submit_result fs_submit(
         }
     }
     if (slot == NULL) {
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         atomic_fetch_add(&impl->rejected_full, 1u);
         return fs_submit_result(CFLOW_FS_SUBMIT_FULL, 0u);
     }
@@ -246,7 +246,7 @@ static cflow_fs_submit_result fs_submit(
     switch (operation) {
         case CFLOW_FS_STAT:
         case CFLOW_FS_LSTAT:
-            slot->arguments.stat_out = (salts_fs_stat_t *)output;
+            slot->arguments.stat_out = (cmeta_fs_stat_t *)output;
             break;
         case CFLOW_FS_READ_DIRECTORY:
             slot->arguments.directory_out = (cflow_fs_dir_buffer *)output;
@@ -260,7 +260,7 @@ static cflow_fs_submit_result fs_submit(
     }
     atomic_store(&slot->phase, CFLOW_FS_SLOT_QUEUED);
     atomic_fetch_add(&impl->in_use, 1u);
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
 
     task = (cflow_executor_task){
         .run = fs_worker_run,
@@ -270,10 +270,10 @@ static cflow_fs_submit_result fs_submit(
     };
     admission = cflow_executor_try_post_task(&impl->executor, &task);
     if (admission != CFLOW_ADMISSION_ACCEPTED) {
-        salts_mutex_lock(&impl->gate);
+        cmeta_mutex_lock(&impl->gate);
         fs_slot_reset(slot);
         atomic_fetch_sub(&impl->in_use, 1u);
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         if (admission == CFLOW_ADMISSION_FULL) {
             atomic_fetch_add(&impl->rejected_full, 1u);
             return fs_submit_result(CFLOW_FS_SUBMIT_FULL, 0u);
@@ -319,7 +319,7 @@ int cflow_fs_service_init(cflow_fs_service *service,
         free(impl);
         return SALTS_ENOMEM;
     }
-    salts_mutex_init(&impl->gate);
+    cmeta_mutex_init(&impl->gate);
     if (impl->gate == NULL) {
         free(impl->paths);
         free(impl->slots);
@@ -353,7 +353,7 @@ int cflow_fs_service_init(cflow_fs_service *service,
         !cflow_executor_as_control(&impl->executor, &impl->control)) {
         if (executor_initialized)
             cflow_executor_destroy(&impl->executor);
-        salts_mutex_destroy(&impl->gate);
+        cmeta_mutex_destroy(&impl->gate);
         free(impl->paths);
         free(impl->slots);
         free(impl);
@@ -364,14 +364,14 @@ int cflow_fs_service_init(cflow_fs_service *service,
 }
 
 cflow_fs_submit_result cflow_fs_try_stat(
-    cflow_fs_service *service, const char *path, salts_fs_stat_t *out) {
+    cflow_fs_service *service, const char *path, cmeta_fs_stat_t *out) {
     if (out == NULL)
         return fs_submit_result(CFLOW_FS_SUBMIT_INVALID_ARGUMENT, 0u);
     return fs_submit(service, CFLOW_FS_STAT, path, NULL, out, 0);
 }
 
 cflow_fs_submit_result cflow_fs_try_lstat(
-    cflow_fs_service *service, const char *path, salts_fs_stat_t *out) {
+    cflow_fs_service *service, const char *path, cmeta_fs_stat_t *out) {
     if (out == NULL)
         return fs_submit_result(CFLOW_FS_SUBMIT_INVALID_ARGUMENT, 0u);
     return fs_submit(service, CFLOW_FS_LSTAT, path, NULL, out, 0);
@@ -415,7 +415,7 @@ cflow_fs_cancel_status cflow_fs_try_cancel(
     if (service == NULL || service->impl == NULL || request_id == 0u)
         return CFLOW_FS_CANCEL_INVALID_ARGUMENT;
     impl = (cflow_fs_impl *)service->impl;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     for (index = 0u; index < impl->capacity; ++index) {
         cflow_fs_slot *slot = &impl->slots[index];
         const int phase = atomic_load(&slot->phase);
@@ -424,20 +424,20 @@ cflow_fs_cancel_status cflow_fs_try_cancel(
         if (phase == CFLOW_FS_SLOT_QUEUED) {
             atomic_store(&slot->cancel_requested, true);
             if (atomic_load(&slot->phase) != CFLOW_FS_SLOT_QUEUED) {
-                salts_mutex_unlock(&impl->gate);
+                cmeta_mutex_unlock(&impl->gate);
                 return CFLOW_FS_CANCEL_ALREADY_RUNNING;
             }
-            salts_mutex_unlock(&impl->gate);
+            cmeta_mutex_unlock(&impl->gate);
             return CFLOW_FS_CANCEL_REQUESTED;
         }
         if (phase == CFLOW_FS_SLOT_RUNNING) {
-            salts_mutex_unlock(&impl->gate);
+            cmeta_mutex_unlock(&impl->gate);
             return CFLOW_FS_CANCEL_ALREADY_RUNNING;
         }
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return CFLOW_FS_CANCEL_NOT_FOUND;
     }
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     return atomic_load(&impl->close_requested)
         ? CFLOW_FS_CANCEL_CLOSED : CFLOW_FS_CANCEL_NOT_FOUND;
 }
@@ -473,10 +473,10 @@ int cflow_fs_run_ready(cflow_fs_service *service, size_t max_completions,
             atomic_fetch_add(&impl->cancelled, 1u);
         else
             atomic_fetch_add(&impl->completed, 1u);
-        salts_mutex_lock(&impl->gate);
+        cmeta_mutex_lock(&impl->gate);
         fs_slot_reset(slot);
         atomic_fetch_sub(&impl->in_use, 1u);
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         ++delivered;
     }
     atomic_store(&impl->driver_active, false);
@@ -551,7 +551,7 @@ int cflow_fs_destroy(cflow_fs_service *service) {
     if (atomic_load(&impl->driver_active) || !cflow_fs_is_quiescent(service))
         return SALTS_EBUSY;
     cflow_executor_destroy(&impl->executor);
-    salts_mutex_destroy(&impl->gate);
+    cmeta_mutex_destroy(&impl->gate);
     free(impl->paths);
     free(impl->slots);
     free(impl);

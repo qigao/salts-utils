@@ -1,7 +1,7 @@
 #include "data_bind.h"
 #include "tinytest.h"
 #include <cmeta/data.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <string.h>
 
 /* Mutations caught: the legacy flag/string classifier masks canonical kind;
@@ -54,7 +54,7 @@ suite("databind_cmeta_reflection") {
             {"point", CMETA_DATA_STRUCT, "composite", NULL},
             {"state", CMETA_DATA_ENUM, "enum", NULL},
             {"permission", CMETA_DATA_ENUM, "enum", NULL},
-            {"identity", CMETA_DATA_CUSTOM, "custom", &salts_uuid_cmeta_data},
+            {"identity", CMETA_DATA_CUSTOM, "custom", &cmeta_uuid_cmeta_data},
             {"enabled", CMETA_DATA_BOOL, "scalar", &cmeta_data_bool},
             {"choice", CMETA_DATA_VARIANT, "union", NULL},
             {"timestamp", CMETA_DATA_CUSTOM, "custom", NULL},

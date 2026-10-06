@@ -14,7 +14,7 @@
 static const uint8_t salts_crypto_empty_message = 0U;
 
 static int salts_crypto_random(void *buffer, size_t size) {
-  return salts_platform_secure_random(buffer, size) == 0 ? SALTS_CRYPTO_OK : SALTS_CRYPTO_ERANDOM;
+  return cmeta_platform_secure_random(buffer, size) == 0 ? SALTS_CRYPTO_OK : SALTS_CRYPTO_ERANDOM;
 }
 
 /* libecc uses randomness to blind secret scalar multiplications. */

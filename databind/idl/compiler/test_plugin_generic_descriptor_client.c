@@ -281,7 +281,7 @@ static void check_managed_call(GenericProcessorPluginClient *client,
 
   check_equal(databind_13_GenericPlugin_14_GenericService_7_Inspect_plugin_client_call(
                   client, &request, &response, &native_status),
-              SALTS_PLUGIN_OK);
+              CMETA_PLUGIN_OK);
   check_equal(native_status, 0);
   check_equal(cmeta_data_map_borrow_begin(output_data, &response.values, &cursor), CMETA_OK);
   check_equal(cmeta_data_map_borrow_size(&cursor, &count), CMETA_OK);
@@ -303,10 +303,10 @@ static void check_managed_call(GenericProcessorPluginClient *client,
 
 spec("generated Plugin generic descriptor graph") {
   it("keeps provider generic metadata valid under the client lease") {
-    salts_plugin_registry registry = {0};
-    salts_plugin_registry_config config = {.capacity = 2u};
-    salts_plugin_ref ref = {0};
-    salts_plugin_lifecycle_info info = {0};
+    cmeta_plugin_registry registry = {0};
+    cmeta_plugin_registry_config config = {.capacity = 2u};
+    cmeta_plugin_ref ref = {0};
+    cmeta_plugin_lifecycle_info info = {0};
     GenericProcessorPluginClient client =
         GENERICPLUGIN_GENERICPROCESSOR_PLUGIN_CLIENT_INIT;
     const DataBindPluginOperationBinding *operation;
@@ -315,18 +315,18 @@ spec("generated Plugin generic descriptor graph") {
     GenericResponse_t response = {0};
     int native_status = 123;
 
-    check_equal(salts_plugin_registry_init(&registry, &config),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_load(
+    check_equal(cmeta_plugin_registry_init(&registry, &config),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_load(
                     &registry, GENERATED_GENERIC_PLUGIN_PATH, &ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_start(&registry, ref),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_start(&registry, ref),
+                CMETA_PLUGIN_OK);
 
     check_equal(
         databind_plugin_client_13_GenericPlugin_16_GenericProcessor_open(
             &registry, ref, &client),
-        SALTS_PLUGIN_OK);
+        CMETA_PLUGIN_OK);
     check_true(
         databind_plugin_client_13_GenericPlugin_16_GenericProcessor_valid(
             &client));
@@ -429,24 +429,24 @@ spec("generated Plugin generic descriptor graph") {
     }
 
     check_managed_call(&client, operation);
-    check_equal(salts_plugin_registry_get_lifecycle(
+    check_equal(cmeta_plugin_registry_get_lifecycle(
                     &registry, ref, &info),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_equal(info.active_leases, (size_t)1u);
 
-    check_equal(salts_plugin_registry_request_stop(&registry, ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_unload(&registry, ref),
-                SALTS_PLUGIN_BUSY);
-    check_equal(salts_plugin_registry_poll_quiescent(
+    check_equal(cmeta_plugin_registry_request_stop(&registry, ref),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_unload(&registry, ref),
+                CMETA_PLUGIN_BUSY);
+    check_equal(cmeta_plugin_registry_poll_quiescent(
                     &registry, ref, &quiescent),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_false(quiescent);
 
     check_equal(
         databind_plugin_client_13_GenericPlugin_16_GenericProcessor_close(
             &client),
-        SALTS_PLUGIN_OK);
+        CMETA_PLUGIN_OK);
     check_false(
         databind_plugin_client_13_GenericPlugin_16_GenericProcessor_valid(
             &client));
@@ -460,16 +460,16 @@ spec("generated Plugin generic descriptor graph") {
     check_equal(
         databind_13_GenericPlugin_14_GenericService_7_Inspect_plugin_client_call(
             &client, &request, &response, &native_status),
-        SALTS_PLUGIN_INVALID_STATE);
+        CMETA_PLUGIN_INVALID_STATE);
     check_equal(native_status, 123);
 
-    check_equal(salts_plugin_registry_poll_quiescent(
+    check_equal(cmeta_plugin_registry_poll_quiescent(
                     &registry, ref, &quiescent),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_true(quiescent);
-    check_equal(salts_plugin_registry_unload(&registry, ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_destroy(&registry),
-                SALTS_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_unload(&registry, ref),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_destroy(&registry),
+                CMETA_PLUGIN_OK);
   }
 }

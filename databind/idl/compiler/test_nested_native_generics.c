@@ -10,11 +10,11 @@ int nested_native_generics_cpp_generic_owners(void);
 int nested_native_generics_cpp_recursive_identity(void);
 
 /* C++ 只声明存储布局；跨 TU 用例借用 C facade 生成的静态操作元数据。 */
-const cmeta_receiver_method_set *nested_native_generics_c_generic_methods(size_t field) {
-  const cmeta_receiver_method_set *sets[] = {
-    Flat_values_vec_t_receiver_method_set(),
-    Flat_ids_set_t_receiver_method_set(),
-    Flat_counters_map_t_receiver_method_set()
+const cmeta_receiver_operation_set *nested_native_generics_c_generic_methods(size_t field) {
+  const cmeta_receiver_operation_set *sets[] = {
+    Flat_values_vec_t_receiver_operation_set(),
+    Flat_ids_set_t_receiver_operation_set(),
+    Flat_counters_map_t_receiver_operation_set()
   };
   return field < sizeof(sets) / sizeof(sets[0]) ? sets[field] : NULL;
 }
@@ -86,8 +86,8 @@ spec("generated nested native generic containers") {
     records = cmeta_data_collection_element_data(shape->fields[1].value);
     groups = cmeta_data_map_value_data(shape->fields[2].value);
     check_generic_provider(shape->fields[1].value, &stl_vec_generic_desc, records, NULL);
-    check_generic_provider(records, &stl_map_generic_desc, &salts_tstr_cmeta_data, user);
-    check_generic_provider(shape->fields[2].value, &stl_map_generic_desc, &salts_tstr_cmeta_data, groups);
+    check_generic_provider(records, &stl_map_generic_desc, &cmeta_tstr_cmeta_data, user);
+    check_generic_provider(shape->fields[2].value, &stl_map_generic_desc, &cmeta_tstr_cmeta_data, groups);
     check_generic_provider(groups, &stl_vec_generic_desc, user, NULL);
     for (field = 0u; field < shape->field_count; ++field)
       check_true(cmeta_declared_type_valid(shape->layout->fields[field].declared_type));

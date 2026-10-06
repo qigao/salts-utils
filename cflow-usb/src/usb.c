@@ -74,8 +74,8 @@ struct cflow_usb_impl {
     cflow_usb_transfer_id next_id;
     unsigned int event_poll_timeout_ms;
     cflow_usb_context_config config;
-    salts_mutex_t gate;
-    salts_thread_t event_thread;
+    cmeta_mutex_t gate;
+    cmeta_thread_t event_thread;
     libusb_hotplug_callback_handle hotplug_handle;
     atomic_bool stop_requested;
     atomic_bool driver_active;
@@ -153,11 +153,11 @@ static bool usb_device_identity(libusb_device *device,
 
 static void usb_publish_hotplug(cflow_usb_impl *impl,
                                 const cflow_usb_hotplug_event *event) {
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     if (atomic_load(&impl->stop_requested)) {
         impl->hotplug_suppressed =
             usb_saturating_add(impl->hotplug_suppressed, 1u);
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return;
     }
     if (event->kind == CFLOW_USB_HOTPLUG_RESCAN_REQUIRED) {
@@ -170,7 +170,7 @@ static void usb_publish_hotplug(cflow_usb_impl *impl,
             impl->hotplug_rescan_required =
                 usb_saturating_add(impl->hotplug_rescan_required, 1u);
         }
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return;
     }
     if (event->kind == CFLOW_USB_HOTPLUG_LEFT) {
@@ -200,13 +200,13 @@ static void usb_publish_hotplug(cflow_usb_impl *impl,
             impl->hotplug_rescan_required =
                 usb_saturating_add(impl->hotplug_rescan_required, 1u);
         }
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return;
     }
     impl->hotplug_events[impl->hotplug_tail] = *event;
     impl->hotplug_tail = (impl->hotplug_tail + 1u) % impl->hotplug_capacity;
     ++impl->hotplug_count;
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
 }
 
 static int LIBUSB_CALL usb_hotplug_callback(libusb_context *native,
@@ -244,13 +244,13 @@ static void LIBUSB_CALL usb_transfer_callback(struct libusb_transfer *native) {
         memcpy(slot->borrowed_buffer,
                libusb_control_transfer_get_data(native), actual);
     }
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     if (slot->state == CFLOW_USB_SLOT_SUBMITTED) {
         slot->terminal_status = usb_transfer_status(native->status);
         slot->bytes_transferred = actual;
         slot->state = CFLOW_USB_SLOT_TERMINAL;
     }
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
 }
 
 static void usb_event_thread(void *user) {
@@ -264,9 +264,9 @@ static void usb_event_thread(void *user) {
         status = libusb_handle_events_timeout_completed(impl->native,
                                                         &timeout, NULL);
         if (status != LIBUSB_SUCCESS && status != LIBUSB_ERROR_INTERRUPTED) {
-            salts_mutex_lock(&impl->gate);
+            cmeta_mutex_lock(&impl->gate);
             impl->event_thread_status = usb_error(status);
-            salts_mutex_unlock(&impl->gate);
+            cmeta_mutex_unlock(&impl->gate);
             break;
         }
     }
@@ -349,12 +349,12 @@ int cflow_usb_context_init(cflow_usb_context *context,
     impl->config = *config;
     impl->next_id = 1u;
     impl->event_thread_status = SALTS_OK;
-    salts_mutex_init(&impl->gate);
+    cmeta_mutex_init(&impl->gate);
     atomic_init(&impl->stop_requested, false);
     atomic_init(&impl->driver_active, false);
     if (config->hotplug != NULL) {
         if (!libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG)) {
-            salts_mutex_destroy(&impl->gate);
+            cmeta_mutex_destroy(&impl->gate);
             usb_free_context(impl, config->transfer_capacity);
             return SALTS_ENOTSUP;
         }
@@ -366,18 +366,18 @@ int cflow_usb_context_init(cflow_usb_context *context,
             LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY,
             usb_hotplug_callback, impl, &impl->hotplug_handle);
         if (status != LIBUSB_SUCCESS) {
-            salts_mutex_destroy(&impl->gate);
+            cmeta_mutex_destroy(&impl->gate);
             usb_free_context(impl, config->transfer_capacity);
             return usb_error(status);
         }
         impl->hotplug_registered = true;
     }
-    status = salts_thread_create(&impl->event_thread, usb_event_thread, impl);
+    status = cmeta_thread_create(&impl->event_thread, usb_event_thread, impl);
     if (status != SALTS_OK) {
         if (impl->hotplug_registered)
             libusb_hotplug_deregister_callback(impl->native,
                                                impl->hotplug_handle);
-        salts_mutex_destroy(&impl->gate);
+        cmeta_mutex_destroy(&impl->gate);
         usb_free_context(impl, config->transfer_capacity);
         return status;
     }
@@ -407,7 +407,7 @@ int cflow_usb_enumerate(cflow_usb_context *context,
     if (count < 0)
         return usb_error((int)count);
     required = (size_t)count;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     impl->enumerations = usb_saturating_add(impl->enumerations, 1u);
     impl->devices_observed =
         usb_saturating_add(impl->devices_observed, required);
@@ -416,7 +416,7 @@ int cflow_usb_enumerate(cflow_usb_context *context,
             usb_saturating_add(impl->enumeration_overflow, 1u);
         status = SALTS_ENOBUFS;
     }
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     *out_count = required;
     if (status != SALTS_OK) {
         libusb_free_device_list(devices, 1);
@@ -489,9 +489,9 @@ int cflow_usb_device_open(cflow_usb_context *context,
     opened->owner = impl;
     opened->native = native;
     opened->identity = *identity;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     if (impl->active_devices == impl->device_capacity) {
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         libusb_close(native);
         free(opened);
         return SALTS_ENOBUFS;
@@ -499,7 +499,7 @@ int cflow_usb_device_open(cflow_usb_context *context,
     opened->next = impl->devices;
     impl->devices = opened;
     ++impl->active_devices;
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     device->impl = opened;
     return SALTS_OK;
 }
@@ -511,14 +511,14 @@ int cflow_usb_device_set_configuration(cflow_usb_device *device,
     if (device == NULL || device->impl == NULL || configuration < 0)
         return SALTS_EINVAL;
     impl = (cflow_usb_device_impl *)device->impl;
-    salts_mutex_lock(&impl->owner->gate);
+    cmeta_mutex_lock(&impl->owner->gate);
     if (impl->lost || impl->claimed_count != 0u ||
         impl->active_transfers != 0u) {
         status = impl->lost ? SALTS_ENODEV : SALTS_EBUSY;
-        salts_mutex_unlock(&impl->owner->gate);
+        cmeta_mutex_unlock(&impl->owner->gate);
         return status;
     }
-    salts_mutex_unlock(&impl->owner->gate);
+    cmeta_mutex_unlock(&impl->owner->gate);
     return usb_error(libusb_set_configuration(impl->native, configuration));
 }
 
@@ -529,20 +529,20 @@ int cflow_usb_device_claim_interface(cflow_usb_device *device,
     if (device == NULL || device->impl == NULL)
         return SALTS_EINVAL;
     impl = (cflow_usb_device_impl *)device->impl;
-    salts_mutex_lock(&impl->owner->gate);
+    cmeta_mutex_lock(&impl->owner->gate);
     if (impl->lost || impl->claimed[interface_number]) {
         status = impl->lost ? SALTS_ENODEV : SALTS_EALREADY;
-        salts_mutex_unlock(&impl->owner->gate);
+        cmeta_mutex_unlock(&impl->owner->gate);
         return status;
     }
-    salts_mutex_unlock(&impl->owner->gate);
+    cmeta_mutex_unlock(&impl->owner->gate);
     status = libusb_claim_interface(impl->native, (int)interface_number);
     if (status != LIBUSB_SUCCESS)
         return usb_error(status);
-    salts_mutex_lock(&impl->owner->gate);
+    cmeta_mutex_lock(&impl->owner->gate);
     impl->claimed[interface_number] = true;
     ++impl->claimed_count;
-    salts_mutex_unlock(&impl->owner->gate);
+    cmeta_mutex_unlock(&impl->owner->gate);
     return SALTS_OK;
 }
 
@@ -553,23 +553,23 @@ int cflow_usb_device_release_interface(cflow_usb_device *device,
     if (device == NULL || device->impl == NULL)
         return SALTS_EINVAL;
     impl = (cflow_usb_device_impl *)device->impl;
-    salts_mutex_lock(&impl->owner->gate);
+    cmeta_mutex_lock(&impl->owner->gate);
     if (!impl->claimed[interface_number]) {
-        salts_mutex_unlock(&impl->owner->gate);
+        cmeta_mutex_unlock(&impl->owner->gate);
         return SALTS_ENOENT;
     }
     if (impl->active_transfers != 0u) {
-        salts_mutex_unlock(&impl->owner->gate);
+        cmeta_mutex_unlock(&impl->owner->gate);
         return SALTS_EBUSY;
     }
-    salts_mutex_unlock(&impl->owner->gate);
+    cmeta_mutex_unlock(&impl->owner->gate);
     status = libusb_release_interface(impl->native, (int)interface_number);
     if (status != LIBUSB_SUCCESS && status != LIBUSB_ERROR_NO_DEVICE)
         return usb_error(status);
-    salts_mutex_lock(&impl->owner->gate);
+    cmeta_mutex_lock(&impl->owner->gate);
     impl->claimed[interface_number] = false;
     --impl->claimed_count;
-    salts_mutex_unlock(&impl->owner->gate);
+    cmeta_mutex_unlock(&impl->owner->gate);
     return status == LIBUSB_ERROR_NO_DEVICE ? SALTS_ENODEV : SALTS_OK;
 }
 
@@ -579,21 +579,21 @@ int cflow_usb_device_close(cflow_usb_device *device) {
     if (device == NULL || device->impl == NULL)
         return SALTS_EINVAL;
     impl = (cflow_usb_device_impl *)device->impl;
-    salts_mutex_lock(&impl->owner->gate);
+    cmeta_mutex_lock(&impl->owner->gate);
     if (impl->active_transfers != 0u || impl->claimed_count != 0u) {
-        salts_mutex_unlock(&impl->owner->gate);
+        cmeta_mutex_unlock(&impl->owner->gate);
         return SALTS_EBUSY;
     }
     link = &impl->owner->devices;
     while (*link != NULL && *link != impl)
         link = &(*link)->next;
     if (*link == NULL) {
-        salts_mutex_unlock(&impl->owner->gate);
+        cmeta_mutex_unlock(&impl->owner->gate);
         return SALTS_EINVAL;
     }
     *link = impl->next;
     --impl->owner->active_devices;
-    salts_mutex_unlock(&impl->owner->gate);
+    cmeta_mutex_unlock(&impl->owner->gate);
     libusb_close(impl->native);
     free(impl);
     device->impl = NULL;
@@ -631,16 +631,16 @@ int cflow_usb_submit(cflow_usb_context *context,
     device_impl = (cflow_usb_device_impl *)device->impl;
     if (device_impl->owner != impl || !usb_request_valid(impl, request))
         return SALTS_EINVAL;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     if (atomic_load(&impl->stop_requested) ||
         impl->event_thread_status != SALTS_OK || device_impl->lost) {
         status = atomic_load(&impl->stop_requested) ? SALTS_ESHUTDOWN
             : (device_impl->lost ? SALTS_ENODEV : impl->event_thread_status);
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return status;
     }
     if (impl->next_id == CFLOW_USB_INVALID_TRANSFER_ID) {
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return SALTS_ERANGE;
     }
     for (index = 0u; index < impl->transfer_capacity; ++index) {
@@ -650,7 +650,7 @@ int cflow_usb_submit(cflow_usb_context *context,
         }
     }
     if (slot == NULL) {
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return SALTS_ENOBUFS;
     }
     slot->device = device_impl;
@@ -696,21 +696,21 @@ int cflow_usb_submit(cflow_usb_context *context,
                                        usb_transfer_callback, slot,
                                        request->timeout_ms);
     }
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     status = libusb_submit_transfer(slot->native);
     if (status != LIBUSB_SUCCESS) {
-        salts_mutex_lock(&impl->gate);
+        cmeta_mutex_lock(&impl->gate);
         slot->state = CFLOW_USB_SLOT_FREE;
         slot->accepted = false;
         --impl->active_transfers;
         --device_impl->active_transfers;
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return usb_error(status);
     }
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     slot->accepted = true;
     *out_id = slot->id;
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     return SALTS_OK;
 }
 
@@ -724,19 +724,19 @@ int cflow_usb_cancel(cflow_usb_context *context,
         id == CFLOW_USB_INVALID_TRANSFER_ID)
         return SALTS_EINVAL;
     impl = (cflow_usb_impl *)context->impl;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     for (index = 0u; index < impl->transfer_capacity; ++index) {
         if (impl->transfers[index].id == id &&
             impl->transfers[index].state != CFLOW_USB_SLOT_FREE) {
             if (impl->transfers[index].state == CFLOW_USB_SLOT_TERMINAL) {
-                salts_mutex_unlock(&impl->gate);
+                cmeta_mutex_unlock(&impl->gate);
                 return SALTS_EALREADY;
             }
             native = impl->transfers[index].native;
             break;
         }
     }
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     if (native == NULL)
         return SALTS_ENOENT;
     status = libusb_cancel_transfer(native);
@@ -798,7 +798,7 @@ int cflow_usb_run_ready(cflow_usb_context *context, size_t max_events,
         void *complete_user = NULL;
         cflow_usb_hotplug_event hotplug;
         bool have_hotplug = false;
-        salts_mutex_lock(&impl->gate);
+        cmeta_mutex_lock(&impl->gate);
         if (!usb_take_transfer(impl, &result, &complete, &complete_user)) {
             if (impl->hotplug_count != 0u) {
                 hotplug = impl->hotplug_events[impl->hotplug_head];
@@ -817,7 +817,7 @@ int cflow_usb_run_ready(cflow_usb_context *context, size_t max_events,
                 have_hotplug = true;
             }
         }
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         if (complete != NULL)
             complete(complete_user, &result);
         else if (have_hotplug && impl->config.hotplug != NULL)
@@ -828,9 +828,9 @@ int cflow_usb_run_ready(cflow_usb_context *context, size_t max_events,
     }
     atomic_store(&impl->driver_active, false);
     *delivered = count;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     runtime_status = impl->event_thread_status;
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     return count == 0u && runtime_status != SALTS_OK
         ? runtime_status : SALTS_OK;
 }
@@ -840,10 +840,10 @@ int cflow_usb_acknowledge_hotplug_rescan(cflow_usb_context *context) {
     if (context == NULL || context->impl == NULL)
         return SALTS_EINVAL;
     impl = (cflow_usb_impl *)context->impl;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     if (!impl->hotplug_awaiting_rescan ||
         !impl->hotplug_rescan_delivered) {
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return SALTS_EALREADY;
     }
     if (impl->hotplug_suppressed !=
@@ -856,7 +856,7 @@ int cflow_usb_acknowledge_hotplug_rescan(cflow_usb_context *context) {
         impl->hotplug_awaiting_rescan = false;
         impl->hotplug_rescan_delivered = false;
     }
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     return SALTS_OK;
 }
 
@@ -866,7 +866,7 @@ bool cflow_usb_get_stats(const cflow_usb_context *context,
     if (context == NULL || context->impl == NULL || out == NULL)
         return false;
     impl = (const cflow_usb_impl *)context->impl;
-    salts_mutex_lock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_lock((cmeta_mutex_t *)&impl->gate);
     *out = (cflow_usb_stats){
         .device_capacity = impl->device_capacity,
         .enumerations = impl->enumerations,
@@ -882,7 +882,7 @@ bool cflow_usb_get_stats(const cflow_usb_context *context,
         .hotplug_suppressed = impl->hotplug_suppressed,
         .hotplug_rescan_required = impl->hotplug_rescan_required,
     };
-    salts_mutex_unlock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_unlock((cmeta_mutex_t *)&impl->gate);
     return true;
 }
 
@@ -895,19 +895,19 @@ int cflow_usb_context_destroy(cflow_usb_context *context) {
     impl = (cflow_usb_impl *)context->impl;
     if (atomic_load(&impl->driver_active))
         return SALTS_EBUSY;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     if (impl->active_devices != 0u || impl->active_transfers != 0u ||
         impl->hotplug_count != 0u || impl->hotplug_rescan_pending) {
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return SALTS_EBUSY;
     }
     atomic_store(&impl->stop_requested, true);
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     libusb_interrupt_event_handler(impl->native);
     if (impl->event_thread_started) {
-        if (salts_thread_join(&impl->event_thread) != SALTS_OK)
+        if (cmeta_thread_join(&impl->event_thread) != SALTS_OK)
             return SALTS_EIO;
-        salts_thread_destroy(&impl->event_thread);
+        cmeta_thread_destroy(&impl->event_thread);
         impl->event_thread_started = false;
     }
     if (impl->hotplug_registered)
@@ -915,7 +915,7 @@ int cflow_usb_context_destroy(cflow_usb_context *context) {
                                            impl->hotplug_handle);
     for (index = 0u; index < impl->transfer_capacity; ++index)
         libusb_free_transfer(impl->transfers[index].native);
-    salts_mutex_destroy(&impl->gate);
+    cmeta_mutex_destroy(&impl->gate);
     free(impl->hotplug_events);
     free(impl->control_storage);
     free(impl->transfers);

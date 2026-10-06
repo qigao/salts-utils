@@ -5,9 +5,53 @@
     ],
     "configurePresets": [
         {
+            "name": "vcpkg-cache",
+            "hidden": true,
+            "toolchainFile": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/cmake/QigaoVcpkgToolchain.cmake",
+            "environment": {
+                "VCPKG_BINARY_SOURCES": "clear;default,readwrite;nugettimeout,1800;nugetconfig,${sourceDir}/cmake/vcpkg-cache.nuget.config,read",
+                "VCPKG_OVERLAY_PORTS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/ports"
+            }
+        },
+        {
+            "name": "vcpkg-cache-windows",
+            "hidden": true,
+            "inherits": "vcpkg-cache",
+            "cacheVariables": {
+                "VCPKG_HOST_TRIPLET": "x64-windows"
+            },
+            "environment": {
+                "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{LOCALAPPDATA}/qigao/vcpkg-cache"
+            }
+        },
+        {
+            "name": "vcpkg-cache-linux",
+            "hidden": true,
+            "inherits": "vcpkg-cache",
+            "cacheVariables": {
+                "VCPKG_HOST_TRIPLET": "x64-linux"
+            },
+            "environment": {
+                "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{HOME}/.cache/qigao/vcpkg-cache"
+            }
+        },
+        {
+            "name": "vcpkg-cache-ci",
+            "hidden": true,
+            "inherits": "vcpkg-cache",
+            "environment": {
+                "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{VCPKG_CACHE_REPOSITORY_ROOT}",
+                "VCPKG_BINARY_SOURCES": "$penv{VCPKG_BINARY_SOURCES}",
+                "VCPKG_OVERLAY_PORTS": "$penv{VCPKG_OVERLAY_PORTS}"
+            }
+        },
+        {
             "name": "ci-native-paths",
             "hidden": true,
-            "inherits": "pkg-vcpkg",
+            "inherits": [
+                "vcpkg-cache-ci",
+                "pkg-vcpkg"
+            ],
             "generator": "Ninja",
             "cacheVariables": {
                 "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
@@ -156,7 +200,10 @@
         {
             "name": "ci-linux-paths",
             "hidden": true,
-            "inherits": "pkg-vcpkg",
+            "inherits": [
+                "vcpkg-cache-ci",
+                "pkg-vcpkg"
+            ],
             "cacheVariables": {
                 "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
                 "VCPKG_TARGET_TRIPLET": "x64-linux",
@@ -207,22 +254,18 @@
             "name": "win-toolchain",
             "hidden": true,
             "environment": {
-                "PROJECT_ROOT": "C:/projects/cpp",
+                "PROJECT_ROOT": "$penv{PROJECT_ROOT}",
                 "PKG_ROOT": "$env{PROJECT_ROOT}/external/pkgs",
-                "VCPKG_ROOT": "C:/tools/vcpkg",
-                "RE2C_ROOT": "C:/tools/re2c-4.6",
-                "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed",
-                "USER_ROOT": "C:/Users/lockg",
-                "QIGAO_VCPKG_TOOLCHAIN_FILE": "$env{USER_ROOT}/AppData/Local/qigao/vcpkg-cache/cmake/QigaoVcpkgToolchain.cmake",
-                "PROGRAM_FILES_X86_ROOT": "C:/Program Files (x86)",
-                "WINDOWS_ROOT": "C:/Windows"
-            }
+                "VCPKG_ROOT": "$penv{VCPKG_ROOT}",
+                "RE2C_ROOT": "$penv{RE2C_ROOT}",
+                "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed"
+            },
+            "inherits": "vcpkg-cache-windows"
         },
         {
             "name": "win-paths",
             "hidden": true,
             "inherits": "win-toolchain",
-            "toolchainFile": "$env{QIGAO_VCPKG_TOOLCHAIN_FILE}",
             "cacheVariables": {
                 "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
                 "PKG_CONFIG_EXECUTABLE": "${sourceDir}/vcpkg_installed/x64-windows/tools/pkgconf/pkgconf.exe",
@@ -244,17 +287,19 @@
         {
             "name": "linux-paths",
             "hidden": true,
-            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
                 "VCPKG_TARGET_TRIPLET": "x64-linux",
                 "VCPKG_MANIFEST_MODE": "ON"
             },
             "environment": {
-                "PKG_ROOT": "/opt",
-                "VCPKG_ROOT": "/opt/vcpkg",
+                "PROJECT_ROOT": "$penv{PROJECT_ROOT}",
+                "PKG_ROOT": "$env{PROJECT_ROOT}/external/pkgs",
+                "VCPKG_ROOT": "$penv{VCPKG_ROOT}",
+                "RE2C_ROOT": "$penv{RE2C_ROOT}",
                 "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed"
-            }
+            },
+            "inherits": "vcpkg-cache-linux"
         },
         {
             "name": "android-win-environment",
@@ -264,7 +309,7 @@
                 "SALTS_UTILS_HOST_LEMON_EXECUTABLE": "${sourceDir}/build/Msvc-Release/bin/lemon.exe"
             },
             "environment": {
-                "ANDROID_SDK_ROOT": "$env{USER_ROOT}/AppData/Local/Android/Sdk",
+                "ANDROID_SDK_ROOT": "$penv{LOCALAPPDATA}/Android/Sdk",
                 "ANDROID_NDK_VERSION": "28.2.13676358",
                 "ANDROID_NDK_HOME": "$env{ANDROID_SDK_ROOT}/ndk/$env{ANDROID_NDK_VERSION}"
             }
@@ -278,7 +323,7 @@
                 "VCPKG_MANIFEST_FEATURES": "capture"
             },
             "environment": {
-                "SALTS_ROOT": "$env{PKG_ROOT}/salts-android/debug"
+                "SALTS_ROOT": "$penv{SALTS_ROOT}"
             }
         },
         {
@@ -290,7 +335,7 @@
                 "VCPKG_MANIFEST_FEATURES": "capture"
             },
             "environment": {
-                "SALTS_ROOT": "$env{PKG_ROOT}/salts-android/release"
+                "SALTS_ROOT": "$penv{SALTS_ROOT}"
             }
         },
         {
@@ -301,7 +346,7 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug"
             },
             "environment": {
-                "SALTS_ROOT": "$env{PKG_ROOT}/salts/debug",
+                "SALTS_ROOT": "$penv{SALTS_ROOT}",
                 "PATH": "${sourceDir}/build/Msvc/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
@@ -317,7 +362,7 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "$env{PKG_ROOT}/salts/release",
+                "SALTS_ROOT": "$penv{SALTS_ROOT}",
                 "PATH": "${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
@@ -349,7 +394,7 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug"
             },
             "environment": {
-                "SALTS_ROOT": "$env{PKG_ROOT}/salts/debug",
+                "SALTS_ROOT": "$penv{SALTS_ROOT}",
                 "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": [
@@ -376,7 +421,7 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "$env{PKG_ROOT}/salts/release",
+                "SALTS_ROOT": "$penv{SALTS_ROOT}",
                 "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": [
@@ -407,7 +452,7 @@
                 "BUILD_EXAMPLES": "OFF"
             },
             "environment": {
-                "SALTS_ROOT": "$env{PKG_ROOT}/salts/release"
+                "SALTS_ROOT": "$penv{SALTS_ROOT}"
             },
             "inherits": [
                 "release-linux-ninja",
@@ -494,7 +539,7 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug"
             },
             "environment": {
-                "SALTS_ROOT": "$env{PKG_ROOT}/salts/debug",
+                "SALTS_ROOT": "$penv{SALTS_ROOT}",
                 "PATH": "${sourceDir}/build/Clang/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
@@ -511,7 +556,7 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "$env{PKG_ROOT}/salts/release",
+                "SALTS_ROOT": "$penv{SALTS_ROOT}",
                 "PATH": "${sourceDir}/build/Clang-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [

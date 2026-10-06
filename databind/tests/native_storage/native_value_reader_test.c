@@ -6,7 +6,7 @@
 
 #include <cstl/byte_buffer.h>
 #include <cstl/typed.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tinytest.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -165,9 +165,9 @@ static DataBindStatus replace_list(const DataBindValue *root) {
 
 spec("DataBind borrowed canonical dynamic value reader") {
   before_all() {
-    layout_fields[1].type = salts_tstr_cmeta_data.storage_type;
+    layout_fields[1].type = cmeta_tstr_cmeta_data.storage_type;
     layout_fields[2].type = stl_byte_buffer_cmeta_data.storage_type;
-    value_fields[1].value = &salts_tstr_cmeta_data;
+    value_fields[1].value = &cmeta_tstr_cmeta_data;
     value_fields[2].value = &stl_byte_buffer_cmeta_data;
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     diagnostic = (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;

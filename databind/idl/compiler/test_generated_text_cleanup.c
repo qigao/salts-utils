@@ -5,7 +5,7 @@
 #include "data_bind_xml_writer.h"
 #include "data_bind_projection_plan.h"
 #include <cmeta/fixed_array.h>
-#include <salts_thread.h>
+#include <cmeta_thread.h>
 #include "tinytest.h"
 
 #include <stddef.h>

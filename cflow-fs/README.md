@@ -1,13 +1,13 @@
 # CFlowFS
 
 `Salts::FS` is the filesystem control-plane adapter between the
-synchronous `salts_fs` implementation and CFlow's bounded execution model. It
+synchronous `cmeta_fs` implementation and CFlow's bounded execution model. It
 is separate from `Salts::CFlow` so the portable kernel has no reverse
 dependency on filesystem policy or native watcher backends.
 
 The distinction is intentional:
 
-- `salts_fs_*` calls are synchronous and run on their caller;
+- `cmeta_fs_*` calls are synchronous and run on their caller;
 - `cflow_io_file` offset reads/writes use explicitly selected native IOCP or
   io_uring data-plane backends;
 - `cflow_fs_service` runs pathname operations on an explicitly bounded worker
@@ -28,7 +28,7 @@ static void completed(void *user, uint64_t id,
     *done = result == SALTS_OK ? 1 : -1;
 }
 
-int inspect_path(const char *path, salts_fs_stat_t *out) {
+int inspect_path(const char *path, cmeta_fs_stat_t *out) {
     cflow_fs_service service = {0};
     int done = 0;
     cflow_fs_config config = {1u, 8u, 1024u, completed, &done};
@@ -44,7 +44,7 @@ int inspect_path(const char *path, salts_fs_stat_t *out) {
         if (cflow_fs_run_ready(&service, 8u, &count) != SALTS_OK)
             return -1;
         if (count == 0u)
-            salts_sleep_ms(1u);
+            cmeta_sleep_ms(1u);
     }
     if (cflow_fs_close(&service) != SALTS_OK)
         return -1;

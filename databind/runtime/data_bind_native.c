@@ -1,7 +1,7 @@
 #include "data_bind_native.h"
 #include "data_bind_native_internal.h"
 
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 
 #include <float.h>
 #include <limits.h>
@@ -202,7 +202,7 @@ static int native_scalar_supported(const cmeta_data_desc *data) {
   switch (data->kind) {
     case CMETA_DATA_BOOL:
       return native_data_matches(data, &cmeta_data_bool) ||
-             native_data_matches(data, &salts_bool8_cmeta_data);
+             native_data_matches(data, &cmeta_bool8_cmeta_data);
     case CMETA_DATA_SINT:
       return native_data_matches(data, &cmeta_data_int) ||
              native_data_matches(data, &cmeta_data_long) ||
@@ -227,7 +227,7 @@ static int native_scalar_supported(const cmeta_data_desc *data) {
 static int native_scalar_zero(const cmeta_data_desc *data, void *storage) {
   if (native_data_matches(data, &cmeta_data_bool)) {
     *(bool *)storage = false;
-  } else if (native_data_matches(data, &salts_bool8_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_bool8_cmeta_data)) {
     *(uint8_t *)storage = 0u;
   } else if (native_data_matches(data, &cmeta_data_int)) {
     *(int *)storage = 0;
@@ -264,7 +264,7 @@ static int native_scalar_zero(const cmeta_data_desc *data, void *storage) {
 static int native_scalar_is_zero(const cmeta_data_desc *data, const void *storage) {
   if (native_data_matches(data, &cmeta_data_bool))
     return *(const bool *)storage == false;
-  if (native_data_matches(data, &salts_bool8_cmeta_data))
+  if (native_data_matches(data, &cmeta_bool8_cmeta_data))
     return *(const uint8_t *)storage == 0u;
   if (native_data_matches(data, &cmeta_data_int))
     return *(const int *)storage == 0;
@@ -332,7 +332,7 @@ static DataBindStatus native_assign_scalar(DataBindNativeDiagnostic *diagnostic,
     *(bool *)storage = token->value.boolean;
     return DATA_BIND_OK;
   }
-  if (native_data_matches(data, &salts_bool8_cmeta_data)) {
+  if (native_data_matches(data, &cmeta_bool8_cmeta_data)) {
     if (token->kind != CSERDE_BOOL)
       return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
                          "Expected Boolean token");
@@ -2553,7 +2553,7 @@ static int native_scalar_token(const cmeta_data_desc *data,
   if (native_data_matches(data, &cmeta_data_bool)) {
     token->kind = CSERDE_BOOL;
     token->value.boolean = *(const bool *)source;
-  } else if (native_data_matches(data, &salts_bool8_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_bool8_cmeta_data)) {
     token->kind = CSERDE_BOOL;
     token->value.boolean = *(const uint8_t *)source != 0u;
   } else if (native_data_matches(data, &cmeta_data_int)) {

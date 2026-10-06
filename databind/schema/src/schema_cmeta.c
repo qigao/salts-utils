@@ -1,6 +1,6 @@
 #include "schema_cmeta.h"
 
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <cmeta/data.h>
 
 #include <string.h>
@@ -52,7 +52,7 @@ static const schema_cmeta_builtin_entry_t *schema_cmeta_builtins(size_t *count) 
     builtins[27] = SCHEMA_CMETA_ENTRY("f32", cmeta_data_float);
     builtins[28] = SCHEMA_CMETA_ENTRY("double", cmeta_data_double);
     builtins[29] = SCHEMA_CMETA_ENTRY("f64", cmeta_data_double);
-    builtins[30] = SCHEMA_CMETA_ENTRY("uuid", salts_uuid_cmeta_data);
+    builtins[30] = SCHEMA_CMETA_ENTRY("uuid", cmeta_uuid_cmeta_data);
     initialized = 1;
   }
   *count = 31u;

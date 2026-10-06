@@ -2,7 +2,7 @@
 #define CFLOW_PROCESS_H
 
 #include <cflow/io_native.h>
-#include <salts_process.h>
+#include <cmeta_process.h>
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -65,7 +65,7 @@ typedef struct cflow_process_stats {
  * SALTS_EINVAL; an unavailable pipe backend returns SALTS_ENOTSUP. On success
  * process owns all runtime resources until quiescent destroy.
  */
-int cflow_process_start(cflow_process *process, const salts_process_options_t *options,
+int cflow_process_start(cflow_process *process, const cmeta_process_options_t *options,
                         const cflow_process_config *config);
 
 /**
@@ -99,7 +99,7 @@ cflow_io_cancel_status cflow_process_try_cancel(cflow_process *process,
  */
 int cflow_process_close_stdin(cflow_process *process);
 
-int cflow_process_poll(const cflow_process *process, salts_process_result_t *out_result);
+int cflow_process_poll(const cflow_process *process, cmeta_process_result_t *out_result);
 
 /** Requests termination through the Core process owner. */
 int cflow_process_terminate(cflow_process *process);

@@ -3,7 +3,7 @@
 
 #include <cmeta/function.h>
 #include <cstl/byte_buffer.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tstr.h>
 
 #include <stddef.h>
@@ -341,8 +341,8 @@ static void abort_output(void *context) {
 }
 
 static void init_owned_error_cmeta(void) {
-  TEXT_ERROR_LAYOUT_FIELDS[0].type = &salts_tstr_cmeta_type;
-  TEXT_ERROR_FIELDS[0].value = &salts_tstr_cmeta_data;
+  TEXT_ERROR_LAYOUT_FIELDS[0].type = &cmeta_tstr_cmeta_type;
+  TEXT_ERROR_FIELDS[0].value = &cmeta_tstr_cmeta_data;
   BYTES_ERROR_LAYOUT_FIELDS[0].type = &stl_byte_buffer_cmeta_type;
   BYTES_ERROR_FIELDS[0].value = &stl_byte_buffer_cmeta_data;
 }

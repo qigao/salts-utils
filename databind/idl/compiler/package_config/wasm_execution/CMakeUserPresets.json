@@ -8,7 +8,7 @@
       "name": "ci-native-release-user",
       "inherits": "consumer-release",
       "binaryDir": "${sourceDir}/build/native",
-      "toolchainFile": "$env{QIGAO_VCPKG_TOOLCHAIN_FILE}",
+      "toolchainFile": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/cmake/QigaoVcpkgToolchain.cmake",
       "cacheVariables": {
         "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
         "VCPKG_INSTALL_OPTIONS": "--only-binarycaching",
@@ -38,12 +38,16 @@
         "rhs": "Windows"
       },
       "environment": {
-        "USER_ROOT": "C:/Users/lockg",
-        "VCPKG_ROOT": "C:/tools/vcpkg",
-        "PKG_ROOT": "C:/projects/cpp/external/pkgs",
-        "SALTS_ROOT": "$env{PKG_ROOT}/salts/release",
+        "VCPKG_ROOT": "$penv{VCPKG_ROOT}",
+        "PKG_ROOT": "$penv{PROJECT_ROOT}/external/pkgs",
+        "SALTS_ROOT": "$penv{SALTS_ROOT}",
         "QIGAO_TARGET_TRIPLET": "x64-windows",
-        "QIGAO_VCPKG_TOOLCHAIN_FILE": "$env{USER_ROOT}/AppData/Local/qigao/vcpkg-cache/cmake/QigaoVcpkgToolchain.cmake"
+        "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{LOCALAPPDATA}/qigao/vcpkg-cache",
+        "VCPKG_OVERLAY_PORTS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/ports",
+        "VCPKG_BINARY_SOURCES": "clear;default,readwrite;nugettimeout,1800;nugetconfig,${sourceDir}/../../../../../cmake/vcpkg-cache.nuget.config,read"
+      },
+      "cacheVariables": {
+        "VCPKG_INSTALL_OPTIONS": ""
       }
     },
     {

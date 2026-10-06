@@ -1029,7 +1029,7 @@ static JSValue salts_quickjs_object_method_call(
   salts_quickjs_object_closure *closure =
       (salts_quickjs_object_closure *)opaque;
   salts_quickjs_object_holder *holder;
-  const cmeta_receiver_method *method;
+  const cmeta_receiver_operation *method;
   cmeta_invokable invokable = CMETA_INVOKABLE_INIT;
   JSValue result = JS_UNDEFINED;
   bool has_result = false;
@@ -1044,12 +1044,12 @@ static JSValue salts_quickjs_object_method_call(
     return JS_ThrowTypeError(context, "invalid CMeta object method closure");
   holder = closure->holder;
   if (!cmeta_object_ref_valid(&holder->object) ||
-      holder->object.methods == NULL ||
-      closure->index >= holder->object.methods->method_count)
+      holder->object.operations == NULL ||
+      closure->index >= holder->object.operations->operation_count)
     return JS_ThrowTypeError(context, "invalid CMeta object method proxy");
 
-  method = &holder->object.methods->methods[closure->index];
-  status = cmeta_object_method_invokable_bind(
+  method = &holder->object.operations->operations[closure->index];
+  status = cmeta_object_operation_invokable_bind(
       &holder->object, method, &invokable);
   if (status != CMETA_OK)
     return JS_ThrowTypeError(
@@ -1100,8 +1100,8 @@ static cmeta_status salts_quickjs_object_surface_validate(
 
   if (!cmeta_object_ref_valid(object))
     return CMETA_INVALID_ARGUMENT;
-  if (object->method_provider != NULL &&
-      !cmeta_object_method_provider_valid(object->method_provider))
+  if (object->operation_provider != NULL &&
+      !cmeta_object_operation_provider_valid(object->operation_provider))
     return CMETA_INVALID_ARGUMENT;
 
   if (object->data->kind == CMETA_DATA_STRUCT &&
@@ -1112,20 +1112,20 @@ static cmeta_status salts_quickjs_object_surface_validate(
       if (field->name != NULL &&
           strcmp(field->name, SALTS_QUICKJS_OBJECT_HOLDER_PROPERTY) == 0)
         return CMETA_TYPE_MISMATCH;
-      if (object->methods != NULL) {
-        for (j = 0u; j < object->methods->method_count; ++j)
+      if (object->operations != NULL) {
+        for (j = 0u; j < object->operations->operation_count; ++j)
           if (field->name != NULL &&
-              object->methods->methods[j].name != NULL &&
-              strcmp(field->name, object->methods->methods[j].name) == 0)
+              object->operations->operations[j].name != NULL &&
+              strcmp(field->name, object->operations->operations[j].name) == 0)
             return CMETA_TYPE_MISMATCH;
       }
     }
   }
 
-  if (object->methods != NULL) {
-    for (j = 0u; j < object->methods->method_count; ++j)
-      if (object->methods->methods[j].name != NULL &&
-          strcmp(object->methods->methods[j].name,
+  if (object->operations != NULL) {
+    for (j = 0u; j < object->operations->operation_count; ++j)
+      if (object->operations->operations[j].name != NULL &&
+          strcmp(object->operations->operations[j].name,
                  SALTS_QUICKJS_OBJECT_HOLDER_PROPERTY) == 0)
         return CMETA_TYPE_MISMATCH;
   }
@@ -1220,12 +1220,12 @@ cmeta_status salts_quickjs_push_object(
     }
   }
 
-  if (object->method_provider != NULL && object->methods != NULL) {
-    for (i = 0u; i < object->methods->method_count; ++i) {
-      const cmeta_receiver_method *method = &object->methods->methods[i];
-      int length = method->function != NULL &&
-                   method->function->param_count != 0u
-                       ? (int)(method->function->param_count - 1u)
+  if (object->operation_provider != NULL && object->operations != NULL) {
+    for (i = 0u; i < object->operations->operation_count; ++i) {
+      const cmeta_receiver_operation *method = &object->operations->operations[i];
+      int length = method->abi->function != NULL &&
+                   method->abi->function->param_count != 0u
+                       ? (int)(method->abi->function->param_count - 1u)
                        : 0;
       JSValue function = salts_quickjs_object_closure_new(
           context, holder, SALTS_QUICKJS_OBJECT_METHOD, i,

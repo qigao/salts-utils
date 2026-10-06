@@ -4,7 +4,7 @@
 
 using Client = databind_plugin_client_11_ErrorPlugin_11_StorePlugin;
 using Error = databind_11_ErrorPlugin_5_Store_4_Read__error;
-using Call = salts_plugin_status (*)(
+using Call = cmeta_plugin_status (*)(
     Client *,
     const Request_t *,
     Response_t *,

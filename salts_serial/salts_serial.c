@@ -20,9 +20,9 @@ typedef struct salts_serial_base {
 } salts_serial_base_t;
 
 typedef struct salts_serial_async {
-  salts_thread_t worker_thread;
-  salts_mutex_t worker_mutex;
-  salts_cond_t worker_cond;
+  cmeta_thread_t worker_thread;
+  cmeta_mutex_t worker_mutex;
+  cmeta_cond_t worker_cond;
   atomic_bool async_running;
   atomic_bool wake_requested;
 } salts_serial_async_t;
@@ -172,9 +172,9 @@ static void wake_worker(salts_serial_t *serial) {
   if (!serial) return;
 
   atomic_store(&serial->async.wake_requested, true);
-  salts_mutex_lock(&serial->async.worker_mutex);
-  salts_cond_signal(&serial->async.worker_cond);
-  salts_mutex_unlock(&serial->async.worker_mutex);
+  cmeta_mutex_lock(&serial->async.worker_mutex);
+  cmeta_cond_signal(&serial->async.worker_cond);
+  cmeta_mutex_unlock(&serial->async.worker_mutex);
 }
 
 static int pump_rx_once(salts_serial_t *serial) {
@@ -245,24 +245,24 @@ static void pump_worker_main(void *arg) {
     if (made_progress) {
       consecutive_progress++;
       if (consecutive_progress >= 64) {
-        salts_sleep_ms(1);
+        cmeta_sleep_ms(1);
         consecutive_progress = 0;
       } else {
-        salts_thread_yield();
+        cmeta_thread_yield();
       }
       continue;
     }
 
     consecutive_progress = 0;
 
-    salts_mutex_lock(&serial->async.worker_mutex);
+    cmeta_mutex_lock(&serial->async.worker_mutex);
     if (atomic_load(&serial->async.async_running) &&
         !atomic_exchange(&serial->async.wake_requested, false)) {
-      (void)salts_cond_timedwait(
+      (void)cmeta_cond_timedwait(
           &serial->async.worker_cond, &serial->async.worker_mutex,
           (uint64_t)serial->base.config.poll_interval_ms * 1000000ULL);
     }
-    salts_mutex_unlock(&serial->async.worker_mutex);
+    cmeta_mutex_unlock(&serial->async.worker_mutex);
   }
 }
 
@@ -429,8 +429,8 @@ salts_serial_result_t salts_serial_create(salts_serial_t **serial,
   if (!instance) return SALTS_SERIAL_NO_MEMORY;
 
   instance->ops = default_backend_ops();
-  salts_mutex_init(&instance->async.worker_mutex);
-  salts_cond_init(&instance->async.worker_cond);
+  cmeta_mutex_init(&instance->async.worker_mutex);
+  cmeta_cond_init(&instance->async.worker_cond);
   atomic_init(&instance->async.async_running, false);
   atomic_init(&instance->async.wake_requested, false);
   atomic_init(&instance->error.last_error, (int)SALTS_SERIAL_OK);
@@ -463,8 +463,8 @@ void salts_serial_destroy(salts_serial_t *serial) {
   if (!serial) return;
 
   (void)salts_serial_close(serial);
-  salts_cond_destroy(&serial->async.worker_cond);
-  salts_mutex_destroy(&serial->async.worker_mutex);
+  cmeta_cond_destroy(&serial->async.worker_cond);
+  cmeta_mutex_destroy(&serial->async.worker_mutex);
   free(serial->rx_storage);
   free(serial->tx_storage);
   free(serial);
@@ -532,7 +532,7 @@ salts_serial_result_t salts_serial_start_async(salts_serial_t *serial) {
   atomic_store(&serial->error.last_error, (int)SALTS_SERIAL_OK);
   atomic_store(&serial->async.wake_requested, true);
 
-  thread_result = salts_thread_create(&serial->async.worker_thread, pump_worker_main, serial);
+  thread_result = cmeta_thread_create(&serial->async.worker_thread, pump_worker_main, serial);
   if (thread_result != 0) {
     atomic_store(&serial->async.wake_requested, false);
     return SALTS_SERIAL_IO_FAILED;
@@ -551,7 +551,7 @@ salts_serial_result_t salts_serial_stop_async(salts_serial_t *serial) {
   atomic_store(&serial->async.async_running, false);
   wake_worker(serial);
   if (serial->async.worker_thread) {
-    (void)salts_thread_join(&serial->async.worker_thread);
+    (void)cmeta_thread_join(&serial->async.worker_thread);
     memset(&serial->async.worker_thread, 0, sizeof(serial->async.worker_thread));
   }
   return SALTS_SERIAL_OK;

@@ -3,8 +3,8 @@
 #include "native_test_alignment.h"
 #include "tinytest.h"
 
-#include <salts_cmeta_data.h>
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta_cmeta_data.h>
+#include <cmeta_cmeta_fixed_width.h>
 
 #include <math.h>
 #include <stdint.h>
@@ -30,7 +30,7 @@ typedef union ScalarStorage {
   float f32;
   double f64;
   bool boolean;
-  salts_uuid_t uuid;
+  cmeta_uuid_t uuid;
 } ScalarStorage;
 
 typedef union ScalarWorkspace {
@@ -181,8 +181,8 @@ spec("DataBind native scalar contracts") {
     static const cmeta_data_kind containers[] = {
         CMETA_DATA_SEQUENCE, CMETA_DATA_SET, CMETA_DATA_MAP};
     expect_scalar(&cmeta_data_bool);
-    expect_scalar(&salts_bool8_cmeta_data);
-    expect_scalar(&salts_uuid_cmeta_data);
+    expect_scalar(&cmeta_bool8_cmeta_data);
+    expect_scalar(&cmeta_uuid_cmeta_data);
     for (size_t i = 0; i < sizeof(containers) / sizeof(containers[0]); ++i) {
       cmeta_data_desc malformed = cmeta_data_int32;
       malformed.kind = containers[i];
@@ -207,7 +207,7 @@ spec("DataBind native scalar contracts") {
         {&cmeta_data_int64, "9223372036854775807"},
         {&cmeta_data_uint64, "18446744073709551615"},
         {&cmeta_data_float, "1.25"}, {&cmeta_data_double, "2.5"},
-        {&cmeta_data_bool, "true"}, {&salts_bool8_cmeta_data, "false"}};
+        {&cmeta_data_bool, "true"}, {&cmeta_bool8_cmeta_data, "false"}};
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
       ScalarStorage value;
       ScalarOutput output;
@@ -228,15 +228,15 @@ spec("DataBind native scalar contracts") {
         0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
         0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff};
     ScalarStorage value;
-    check_equal(cmeta_data_value_init_zero(&salts_uuid_cmeta_data, &value), CMETA_OK);
-    check_equal(replace_scalar(&salts_uuid_cmeta_data, json, &value), DATA_BIND_OK);
+    check_equal(cmeta_data_value_init_zero(&cmeta_uuid_cmeta_data, &value), CMETA_OK);
+    check_equal(replace_scalar(&cmeta_uuid_cmeta_data, json, &value), DATA_BIND_OK);
     check_equal(value.uuid.bytes, expected, sizeof(expected));
-    cmeta_data_value_destroy(&salts_uuid_cmeta_data, &value);
-    check_true(salts_uuid_cmeta_fixed_ops.is_zero(&value.uuid));
-    cmeta_data_value_destroy(&salts_uuid_cmeta_data, &value);
-    check_equal(replace_scalar(&salts_uuid_cmeta_data, json, &value), DATA_BIND_OK);
+    cmeta_data_value_destroy(&cmeta_uuid_cmeta_data, &value);
+    check_true(cmeta_uuid_cmeta_fixed_ops.is_zero(&value.uuid));
+    cmeta_data_value_destroy(&cmeta_uuid_cmeta_data, &value);
+    check_equal(replace_scalar(&cmeta_uuid_cmeta_data, json, &value), DATA_BIND_OK);
     check_equal(value.uuid.bytes, expected, sizeof(expected));
-    cmeta_data_value_destroy(&salts_uuid_cmeta_data, &value);
+    cmeta_data_value_destroy(&cmeta_uuid_cmeta_data, &value);
   }
 
   it("preserves a published float on positive and negative float32 overflow") {

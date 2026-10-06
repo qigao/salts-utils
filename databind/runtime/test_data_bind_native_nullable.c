@@ -3,7 +3,7 @@
 #include "data_bind_projection_plan.h"
 #include "tinytest.h"
 
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -196,8 +196,8 @@ static void check_json_shape(const char *json) {
 
 spec("native nullable text state") {
   before_each() {
-    NULLABLE_JSON_LAYOUT_FIELDS[NULLABLE_OWNED_INDEX].type = salts_tstr_cmeta_data.storage_type;
-    NULLABLE_JSON_DATA_FIELDS[NULLABLE_OWNED_INDEX].value = &salts_tstr_cmeta_data;
+    NULLABLE_JSON_LAYOUT_FIELDS[NULLABLE_OWNED_INDEX].type = cmeta_tstr_cmeta_data.storage_type;
+    NULLABLE_JSON_DATA_FIELDS[NULLABLE_OWNED_INDEX].value = &cmeta_tstr_cmeta_data;
     codec = nullable_json_codec();
     plan = NULL;
     error = (DataBindError)DATA_BIND_ERROR_INIT;

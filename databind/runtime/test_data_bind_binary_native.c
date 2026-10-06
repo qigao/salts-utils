@@ -5,7 +5,7 @@
 #include "tinytest.h"
 
 #include <cmeta/data.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tstr.h>
 
 #include <stddef.h>
@@ -280,8 +280,8 @@ static DataBindStatus replace_binary(const BinaryFixture *fixture, const void *w
 
 spec("DataBind canonical Binary native ownership and state") {
   before_all() {
-    nullable_layout_fields[NULLABLE_NOTE_INDEX].type = salts_tstr_cmeta_data.storage_type;
-    nullable_native_fields[NULLABLE_NOTE_INDEX].value = &salts_tstr_cmeta_data;
+    nullable_layout_fields[NULLABLE_NOTE_INDEX].type = cmeta_tstr_cmeta_data.storage_type;
+    nullable_native_fields[NULLABLE_NOTE_INDEX].value = &cmeta_tstr_cmeta_data;
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     message_diagnostic = (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
     fixture_init(&nullable_fixture, &NULLABLE_BINDING, NULLABLE_WIRE_FIELDS, NULLABLE_FIELD_COUNT, 8u);
@@ -331,9 +331,9 @@ spec("DataBind canonical Binary native ownership and state") {
     BinaryOutput output = {.capacity = BINARY_OUTPUT_BYTES};
     unsigned char before[sizeof(owned_destination)];
     tstr previous_owner;
-    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &owned_source.note,
+    check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &owned_source.note,
                 payload, sizeof(payload) - 1u, NULLABLE_MAX_OWNED_BYTES), CMETA_OK);
-    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &owned_destination.note,
+    check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &owned_destination.note,
                 previous, sizeof(previous) - 1u, NULLABLE_MAX_OWNED_BYTES), CMETA_OK);
     owned_source.required_value = 7u;
     owned_source.tri_value = 9u;
@@ -467,9 +467,9 @@ spec("DataBind canonical Binary native ownership and state") {
     static const unsigned char previous[] = "keep";
     BinaryOutput output = {.capacity = BINARY_OUTPUT_BYTES};
     unsigned char before[sizeof(owned_destination)];
-    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &owned_source.note,
+    check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &owned_source.note,
                 payload, sizeof(payload) - 1u, NULLABLE_MAX_OWNED_BYTES), CMETA_OK);
-    check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &owned_destination.note,
+    check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &owned_destination.note,
                 previous, sizeof(previous) - 1u, NULLABLE_MAX_OWNED_BYTES), CMETA_OK);
     owned_source.presence = 2u;
     check_equal(encode_native(&nullable_fixture, &owned_source, &output), DATA_BIND_OK);

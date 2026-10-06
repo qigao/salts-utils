@@ -52,10 +52,10 @@ constexpr const void *member_class_token_of() noexcept {
 
 using MemberBindFn = cmeta_status (*)(
     void *object, const cmeta_function_data_desc *data,
-    cmeta_object_method_binding *out);
+    cmeta_object_operation_binding *out);
 
 struct MemberMethodEntry {
-  const cmeta_receiver_method *method;
+  const cmeta_receiver_operation *method;
   const cmeta_function_data_desc *data;
   MemberBindFn bind;
   const void *class_token;
@@ -173,15 +173,15 @@ struct MemberThunkBase {
 
   static cmeta_status bind(
       void *object, const cmeta_function_data_desc *data,
-      cmeta_object_method_binding *out) noexcept {
+      cmeta_object_operation_binding *out) noexcept {
     cmeta_callable callable{};
 
     if (object == nullptr || out == nullptr ||
         !cmeta_function_data_desc_valid(data))
       return CMETA_INVALID_ARGUMENT;
 
-    *out = cmeta_object_method_binding{
-        sizeof(cmeta_object_method_binding), nullptr, {}};
+    *out = cmeta_object_operation_binding{
+        sizeof(cmeta_object_operation_binding), nullptr, {}};
 
     callable.meta.sig = signature;
     callable.meta.effects = data->function->effects;
@@ -200,7 +200,7 @@ struct MemberThunkBase {
   }
 
   static MemberMethodEntry entry(
-      const cmeta_receiver_method *method,
+      const cmeta_receiver_operation *method,
       const cmeta_function_data_desc *data) noexcept {
     return MemberMethodEntry{
         method, data, &bind, member_class_token_of<class_type>(),
@@ -236,10 +236,10 @@ inline bool member_entry_valid(
   return entry.method != nullptr && entry.bind != nullptr &&
          entry.class_token != nullptr &&
          entry.signature != CMETA_SIG_INVALID &&
-         cmeta_receiver_method_reflection_valid(entry.method) &&
+         cmeta_receiver_operation_reflection_valid(entry.method) &&
          cmeta_function_data_desc_valid(entry.data) &&
-         cmeta_receiver_method_projection_valid(
-             entry.method, entry.data->function) &&
+         cmeta_function_receiver_projection_valid(
+             entry.method->abi->function, entry.data->function) &&
          member_signature_matches(
              entry.signature, entry.data->function);
 }
@@ -248,7 +248,7 @@ inline bool member_entry_valid(
 
 template <auto Member>
 inline detail::MemberMethodEntry member_method(
-    const cmeta_receiver_method *method,
+    const cmeta_receiver_operation *method,
     const cmeta_function_data_desc *data) noexcept {
   return detail::MemberThunk<Member>::entry(method, data);
 }
@@ -263,13 +263,13 @@ class MemberMethodProvider {
       typename... Entry,
       std::enable_if_t<sizeof...(Entry) == Count, int> = 0>
   explicit MemberMethodProvider(
-      const cmeta_receiver_method_set *methods,
+      const cmeta_receiver_operation_set *methods,
       Entry &&...entry) noexcept
       : methods_(methods),
         entries_{
             {std::forward<Entry>(entry)...}},
         provider_{
-            sizeof(cmeta_object_method_provider),
+            sizeof(cmeta_object_operation_provider),
             methods,
             this,
             &bind} {}
@@ -280,8 +280,8 @@ class MemberMethodProvider {
   MemberMethodProvider &operator=(MemberMethodProvider &&) = delete;
 
   bool valid() const noexcept {
-    if (!cmeta_receiver_method_set_valid(methods_) ||
-        methods_->method_count != Count)
+    if (!cmeta_receiver_operation_set_valid(methods_) ||
+        methods_->operation_count != Count)
       return false;
 
     const void *class_token = entries_[0].class_token;
@@ -290,7 +290,7 @@ class MemberMethodProvider {
 
     for (std::size_t i = 0u; i < Count; ++i) {
       const detail::MemberMethodEntry &entry = entries_[i];
-      if (entry.method != &methods_->methods[i] ||
+      if (entry.method != &methods_->operations[i] ||
           entry.class_token != class_token ||
           !detail::member_entry_valid(entry))
         return false;
@@ -306,15 +306,15 @@ class MemberMethodProvider {
                detail::member_class_token_of<Class>();
   }
 
-  const cmeta_object_method_provider *c_provider() const noexcept {
+  const cmeta_object_operation_provider *c_provider() const noexcept {
     return valid() ? &provider_ : nullptr;
   }
 
  private:
   static cmeta_status bind(
       void *context, void *object,
-      const cmeta_receiver_method *method,
-      cmeta_object_method_binding *out) noexcept {
+      const cmeta_receiver_operation *method,
+      cmeta_object_operation_binding *out) noexcept {
     auto *self = static_cast<MemberMethodProvider *>(context);
 
     if (self == nullptr || object == nullptr ||
@@ -329,14 +329,14 @@ class MemberMethodProvider {
     return CMETA_INVALID_ARGUMENT;
   }
 
-  const cmeta_receiver_method_set *methods_;
+  const cmeta_receiver_operation_set *methods_;
   std::array<detail::MemberMethodEntry, Count> entries_;
-  cmeta_object_method_provider provider_;
+  cmeta_object_operation_provider provider_;
 };
 
 template <typename... Entry>
 MemberMethodProvider(
-    const cmeta_receiver_method_set *, Entry &&...)
+    const cmeta_receiver_operation_set *, Entry &&...)
     -> MemberMethodProvider<sizeof...(Entry)>;
 
 }  // namespace Salts

@@ -4,7 +4,7 @@
 #include "data_bind_native.h"
 #include "native_test_alignment.h"
 #include "reader_probe.h"
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tinytest.h>
 #include <stdio.h>
 #include <string.h>
@@ -424,7 +424,7 @@ spec("DataBind native workspace measurement before source dispatch") {
     out.tail = 91u;
     DataBindNativeRequirements before = out.base;
     options.max_owned_bytes = 0u;
-    check_equal(data_bind_native_measure(&options, &salts_tstr_cmeta_data,
+    check_equal(data_bind_native_measure(&options, &cmeta_tstr_cmeta_data,
                 &out.base, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
     check_equal(memcmp(&out.base, &before, sizeof(before)), 0);
     check_equal(out.base.size, sizeof(out));
@@ -432,7 +432,7 @@ spec("DataBind native workspace measurement before source dispatch") {
   }
   it("does not charge zero payload while measuring an exact current record") {
     options.max_owned_bytes = 0u;
-    check_equal(data_bind_native_measure(&options, &salts_tstr_cmeta_data,
+    check_equal(data_bind_native_measure(&options, &cmeta_tstr_cmeta_data,
                 &measured, &diagnostic), DATA_BIND_OK);
     check_equal(measured.staging_bytes, sizeof(tstr));
     check_equal(measured.descriptor_nodes, 1u);
@@ -630,13 +630,13 @@ static void require_buffer_bounds(const char *left, const char *right,
       .align = _Alignof(BufferPair), .kind = CMETA_T_OBJECT, .identity = &identity};
   const cmeta_field_desc fields[] = {
       {.name = "left", .type_name = "tstr", .offset = offsetof(BufferPair, left),
-       .size = sizeof(tstr), .align = _Alignof(tstr), .type = &salts_tstr_cmeta_type},
+       .size = sizeof(tstr), .align = _Alignof(tstr), .type = &cmeta_tstr_cmeta_type},
       {.name = "right", .type_name = "tstr", .offset = offsetof(BufferPair, right),
-       .size = sizeof(tstr), .align = _Alignof(tstr), .type = &salts_tstr_cmeta_type}};
+       .size = sizeof(tstr), .align = _Alignof(tstr), .type = &cmeta_tstr_cmeta_type}};
   const cmeta_struct_desc layout = {"BufferPair", sizeof(output), _Alignof(BufferPair), fields, 2u};
   const cmeta_data_field_desc values[] = {
-      {"pair.left", "left", offsetof(BufferPair, left), &salts_tstr_cmeta_data},
-      {"pair.right", "right", offsetof(BufferPair, right), &salts_tstr_cmeta_data}};
+      {"pair.left", "left", offsetof(BufferPair, left), &cmeta_tstr_cmeta_data},
+      {"pair.right", "right", offsetof(BufferPair, right), &cmeta_tstr_cmeta_data}};
   const cmeta_data_struct_shape record = {&layout, values, 2u};
   const cmeta_data_desc shape = {.struct_size = sizeof(cmeta_data_desc),
       .abi_version = CMETA_DATA_DESC_ABI_VERSION, .stable_id = "test.budget.pair",

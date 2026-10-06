@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <salts_buffer.h>
+#include <cmeta_buffer.h>
 #include <vstr.h>
 #include <cstl/hash_set.h>
 

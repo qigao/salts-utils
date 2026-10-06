@@ -2,7 +2,7 @@
 #include "native_test_alignment.h"
 #include "reader_probe.h"
 
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tinytest.h>
 
 #include <stddef.h>
@@ -54,16 +54,16 @@ static void bind_owner_graph(OwnerGraph *graph) {
   graph->layout_fields[0] = (cmeta_field_desc){
       .name = "a", .type_name = "tstr", .offset = offsetof(AdjacentOwners, a),
       .size = sizeof(tstr), .align = _Alignof(tstr),
-      .type = salts_tstr_cmeta_data.storage_type};
+      .type = cmeta_tstr_cmeta_data.storage_type};
   graph->layout_fields[1] = graph->layout_fields[0];
   graph->layout_fields[1].name = "b";
   graph->layout_fields[1].offset = offsetof(AdjacentOwners, b);
   graph->fields[0] = (cmeta_data_field_desc){
       "test.native-ownership.a", "a", offsetof(AdjacentOwners, a),
-      &salts_tstr_cmeta_data};
+      &cmeta_tstr_cmeta_data};
   graph->fields[1] = (cmeta_data_field_desc){
       "test.native-ownership.b", "b", offsetof(AdjacentOwners, b),
-      &salts_tstr_cmeta_data};
+      &cmeta_tstr_cmeta_data};
   graph->layout = (cmeta_struct_desc){
       "AdjacentOwners", sizeof(AdjacentOwners), _Alignof(AdjacentOwners),
       graph->layout_fields, OWNER_FIELD_COUNT};
@@ -137,9 +137,9 @@ static void expect_owner_rejection(const cmeta_data_desc *data) {
 static void assign_owners(AdjacentOwners *object) {
   static const unsigned char a[] = "first";
   static const unsigned char b[] = "second";
-  check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &object->a,
+  check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &object->a,
                                       a, sizeof(a) - 1u, OWNER_MAX_BYTES), CMETA_OK);
-  check_equal(cmeta_data_buffer_assign(&salts_tstr_cmeta_data, &object->b,
+  check_equal(cmeta_data_buffer_assign(&cmeta_tstr_cmeta_data, &object->b,
                                       b, sizeof(b) - 1u, OWNER_MAX_BYTES), CMETA_OK);
   object->presence = UINT8_MAX;
   object->nulls = UINT8_MAX;
@@ -159,7 +159,7 @@ spec("DataBind canonical ownership admission") {
   it("rejects overlapping owners before touching poisoned storage or IO") {
     OwnerGraph graph;
     bind_owner_graph(&graph);
-    set_field(&graph, 1u, offsetof(AdjacentOwners, a), &salts_tstr_cmeta_data);
+    set_field(&graph, 1u, offsetof(AdjacentOwners, a), &cmeta_tstr_cmeta_data);
     expect_owner_rejection(&graph.data);
   }
 
@@ -167,9 +167,9 @@ spec("DataBind canonical ownership admission") {
     OwnerGraph graph;
     bind_owner_graph(&graph);
     set_field(&graph, 0u, offsetof(AdjacentOwners, a), &cmeta_data_uint32);
-    set_field(&graph, 1u, offsetof(AdjacentOwners, a), &salts_tstr_cmeta_data);
+    set_field(&graph, 1u, offsetof(AdjacentOwners, a), &cmeta_tstr_cmeta_data);
     expect_owner_rejection(&graph.data);
-    set_field(&graph, 0u, offsetof(AdjacentOwners, a), &salts_tstr_cmeta_data);
+    set_field(&graph, 0u, offsetof(AdjacentOwners, a), &cmeta_tstr_cmeta_data);
     set_field(&graph, 1u, offsetof(AdjacentOwners, a), &cmeta_data_uint32);
     expect_owner_rejection(&graph.data);
   }
@@ -178,7 +178,7 @@ spec("DataBind canonical ownership admission") {
     OwnerGraph parent, child;
     bind_owner_graph(&parent);
     bind_owner_graph(&child);
-    set_field(&child, 1u, offsetof(AdjacentOwners, a), &salts_tstr_cmeta_data);
+    set_field(&child, 1u, offsetof(AdjacentOwners, a), &cmeta_tstr_cmeta_data);
     set_field(&parent, 0u, 0u, &child.data);
     parent.layout.field_count = parent.shape.field_count = 1u;
     expect_owner_rejection(&parent.data);
@@ -187,14 +187,14 @@ spec("DataBind canonical ownership admission") {
   it("rejects owner offset addition overflow before lifecycle or IO") {
     OwnerGraph graph;
     bind_owner_graph(&graph);
-    set_field(&graph, 1u, SIZE_MAX - 1u, &salts_tstr_cmeta_data);
+    set_field(&graph, 1u, SIZE_MAX - 1u, &cmeta_tstr_cmeta_data);
     expect_owner_rejection(&graph.data);
   }
 
   it("rejects owner storage extending past the complete host envelope") {
     OwnerGraph graph;
     bind_owner_graph(&graph);
-    set_field(&graph, 1u, sizeof(AdjacentOwners), &salts_tstr_cmeta_data);
+    set_field(&graph, 1u, sizeof(AdjacentOwners), &cmeta_tstr_cmeta_data);
     expect_owner_rejection(&graph.data);
   }
 
@@ -241,13 +241,13 @@ spec("DataBind canonical ownership admission") {
                                      &diagnostic), DATA_BIND_OK);
     assign_owners(&object);
     memcpy(before, &object, sizeof(object));
-    set_field(&graph, 1u, offsetof(AdjacentOwners, a), &salts_tstr_cmeta_data);
+    set_field(&graph, 1u, offsetof(AdjacentOwners, a), &cmeta_tstr_cmeta_data);
     check_equal(data_bind_native_clear(&options, &graph.data, &object, sizeof(object),
                                       &diagnostic), DATA_BIND_ERR_SCHEMA);
     check_equal(&object, before, sizeof(object));
     check_equal(object.a, "first");
     check_equal(object.b, "second");
-    set_field(&graph, 1u, offsetof(AdjacentOwners, b), &salts_tstr_cmeta_data);
+    set_field(&graph, 1u, offsetof(AdjacentOwners, b), &cmeta_tstr_cmeta_data);
     check_equal(data_bind_native_clear(&options, &graph.data, &object, sizeof(object),
                                       &diagnostic), DATA_BIND_OK);
   }

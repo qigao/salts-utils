@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static salts_once_t jinja_float_locale_once = SALTS_ONCE_INIT;
+static cmeta_once_t jinja_float_locale_once = SALTS_ONCE_INIT;
 #if defined(_WIN32)
 static _locale_t jinja_float_c_locale;
 #else
@@ -31,7 +31,7 @@ static void jinja_float_locale_init(void) {
 }
 
 static int jinja_float_locale_ready(void) {
-  salts_once(&jinja_float_locale_once, jinja_float_locale_init);
+  cmeta_once(&jinja_float_locale_once, jinja_float_locale_init);
   return jinja_float_c_locale != NULL;
 }
 

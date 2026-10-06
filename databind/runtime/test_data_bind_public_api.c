@@ -1701,7 +1701,7 @@ spec("data_bind public API") {
     DataBindTime time;
     DataBindDecimal decimal;
     DataBindMoney money;
-    salts_uuid_t uuid;
+    cmeta_uuid_t uuid;
     char text[64];
     const char *source_bigint;
 

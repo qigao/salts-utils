@@ -23,7 +23,7 @@ typedef struct cflow_fs_watch_linux {
     cflow_fs_watch_impl *owner;
     int inotify_fd;
     int stop_pipe[2];
-    salts_thread_t thread;
+    cmeta_thread_t thread;
     unsigned char *buffer;
     cflow_fs_watch_linux_entry *watches;
     char *watch_paths;
@@ -553,7 +553,7 @@ int cflow_fs_watch_backend_open(cflow_fs_watch_impl *impl,
         return status;
     }
     cflow_fs_watch_backend_set(impl, backend);
-    status = salts_thread_create(&backend->thread,
+    status = cmeta_thread_create(&backend->thread,
                                  watch_linux_thread, backend);
     if (status != SALTS_OK) {
         cflow_fs_watch_backend_set(impl, NULL);
@@ -577,9 +577,9 @@ int cflow_fs_watch_backend_destroy(cflow_fs_watch_impl *impl) {
     int status = SALTS_OK;
     if (backend == NULL)
         return SALTS_EINVAL;
-    if (salts_thread_join(&backend->thread) != SALTS_OK)
+    if (cmeta_thread_join(&backend->thread) != SALTS_OK)
         status = SALTS_EIO;
-    salts_thread_destroy(&backend->thread);
+    cmeta_thread_destroy(&backend->thread);
     cflow_fs_watch_backend_set(impl, NULL);
     watch_linux_release(backend);
     return status;

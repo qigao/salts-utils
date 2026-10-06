@@ -4,7 +4,7 @@
 CFlow Actor over the canonical NativeIO pipe adapter. It is a separate target because Core already uses
 CFlow internally; placing this adapter in CFlow would create a dependency cycle.
 
-The adapter owns one `salts_process_t`, three parent-side asynchronous pipe
+The adapter owns one `cmeta_process_t`, three parent-side asynchronous pipe
 endpoints, one fixed-capacity NativeIO adapter, one manual Executor, one IO Actor,
 and exactly `request_capacity` operation slots. It never exposes raw endpoints,
 captures output into an unbounded buffer, or creates a second process state
@@ -62,12 +62,12 @@ static void completed(void *user, cflow_io_request_id request_id,
 int main(void) {
     cflow_process process = {0};
     cflow_process_config config = {0};
-    salts_process_options_t options;
+    cmeta_process_options_t options;
     const uint64_t deadline_ns = UINT64_C(5000000000);
     uint64_t started;
     int status;
 
-    salts_process_options_init(&options);
+    cmeta_process_options_init(&options);
 #if defined(_WIN32)
     {
         static const char *args[] = {
@@ -104,13 +104,13 @@ int main(void) {
     status = cflow_process_close(&process);
     if (status != SALTS_OK) return 2;
 
-    started = salts_hrtime();
+    started = cmeta_hrtime();
     while (!cflow_process_is_quiescent(&process)) {
         size_t progressed = 0u;
         status = cflow_process_run_ready(&process, 32u, &progressed);
         if (status != SALTS_OK) return 3;
-        if (salts_hrtime() - started > deadline_ns) return 4;
-        if (progressed == 0u) salts_sleep_ms(1u);
+        if (cmeta_hrtime() - started > deadline_ns) return 4;
+        if (progressed == 0u) cmeta_sleep_ms(1u);
     }
     return cflow_process_destroy(&process) == SALTS_OK ? 0 : 5;
 }

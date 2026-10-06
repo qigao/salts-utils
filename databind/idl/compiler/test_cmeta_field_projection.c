@@ -37,7 +37,7 @@ static void annotate_language_types_from_tree(Node *root) {
 
 static const ExpectedRuntimeCapability EXPECTED[] = {
     { "bool", "uint8_t", EXPECT_EXPLICIT_ADAPTER },
-    { "uuid", "salts_uuid_t", EXPECT_EXPLICIT_ADAPTER },
+    { "uuid", "cmeta_uuid_t", EXPECT_EXPLICIT_ADAPTER },
     { "bytes[16]", "uint8_t[16]", EXPECT_BOUNDED_ADAPTER },
     { "string", "tstr", EXPECT_LIFECYCLE },
     { "bytes", "stl_byte_buffer", EXPECT_LIFECYCLE },
@@ -187,9 +187,9 @@ suite("compiler_cmeta_field_projection") {
         static const struct { const char *type; const char *flag; const char *cpp; const char *native; } cases[] = {
             {"int32", NULL, "std::int32_t", "cmeta_data_int32"},
             {"f32", "is_optional", "float", "cmeta_data_float"},
-            {"bool", NULL, "bool", "salts_bool8_cmeta_data"},
-            {"uuid", NULL, "salts_uuid_t", "salts_uuid_cmeta_data"},
-            {"string", NULL, "std::string", "salts_tstr_cmeta_data"},
+            {"bool", NULL, "bool", "cmeta_bool8_cmeta_data"},
+            {"uuid", NULL, "cmeta_uuid_t", "cmeta_uuid_cmeta_data"},
+            {"string", NULL, "std::string", "cmeta_tstr_cmeta_data"},
             {"bytes", NULL, "std::vector<std::uint8_t>", "stl_byte_buffer_cmeta_data"},
             {"list", "is_list", "std::vector<std::int32_t>", "Shape_value_vec_t_collection_data"},
             {"set", "is_set", "std::set<std::int32_t>", "Shape_value_set_t_collection_data"},
@@ -216,9 +216,9 @@ suite("compiler_cmeta_field_projection") {
             check_equal(field_projection_text(field, "type"), cases[i].type);
             if (strcmp(cases[i].type, "string") == 0) {
                 check_equal(field_projection_text(field, "native_data_symbol"),
-                            "salts_tstr_cmeta_data");
+                            "cmeta_tstr_cmeta_data");
                 check_equal(field_projection_text(field, "native_type_symbol"),
-                            "salts_tstr_cmeta_type");
+                            "cmeta_tstr_cmeta_type");
                 check_equal(field_projection_text(field, "native_c_type"), "tstr");
                 check_not_null(field_projection_child(field, "native_external"));
             } else if (strcmp(cases[i].type, "bytes") == 0 &&
@@ -494,9 +494,9 @@ suite("compiler_cmeta_field_projection") {
                                                        "cmeta_graph_supported"));
                 if (strcmp(EXPECTED[i].schema, "string") == 0) {
                     check_equal(field_projection_text(field, "native_data_symbol"),
-                                "salts_tstr_cmeta_data");
+                                "cmeta_tstr_cmeta_data");
                     check_equal(field_projection_text(field, "native_type_symbol"),
-                                "salts_tstr_cmeta_type");
+                                "cmeta_tstr_cmeta_type");
                     check_equal(field_projection_text(field, "native_c_type"), "tstr");
                 } else {
                     check_equal(field_projection_text(field, "native_data_symbol"),
@@ -552,7 +552,7 @@ suite("compiler_cmeta_field_projection") {
         check_equal(field_projection_text(field, "cmeta_native_requirement"),
                     "overlay_presence");
         check_equal(field_projection_text(field, "native_data_symbol"),
-                    "salts_tstr_cmeta_data");
+                    "cmeta_tstr_cmeta_data");
         check_not_null(field_projection_child(record, "cmeta_graph_supported"));
         check_not_null(field_projection_child(record,
                                               "cmeta_local_overlay_lifecycle"));

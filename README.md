@@ -78,7 +78,7 @@ execution.
 
 ## CMake
 
-Build SaltsUtils against a matching installed Salts 1.8.25 or newer profile through `SALTS_ROOT`. Generated fixed arrays use its canonical CMeta array provider and element lifecycle traits. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
+Build SaltsUtils against a matching installed Salts 2.0.0 or newer profile through `SALTS_ROOT`. Generated fixed arrays use its canonical CMeta array provider and element lifecycle traits. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED
@@ -99,6 +99,39 @@ target_link_libraries(app PRIVATE
 ```
 
 The package is fail-fast by design. It does not silently search unrelated prefixes, source trees, compatibility shims, or fallback implementations when the required installed Salts profile is missing.
+
+### Restore the published SDK and shared dependency cache
+
+Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain as Salts. Keep its checkout at `%LOCALAPPDATA%/qigao/vcpkg-cache` on Windows or `$HOME/.cache/qigao/vcpkg-cache` on Linux. The shared GitHub Packages binary cache is read-only; the default local vcpkg cache remains writable. Overlay ports come from that checkout. CI inherits the cache action's environment and uses the same pinned action revision as Salts.
+
+Before configuring, provide `PROJECT_ROOT`, `VCPKG_ROOT`, and a `GITHUB_TOKEN` with `read:packages` in the parent environment. `PROJECT_ROOT/external/pkgs` is the SaltsUtils install location; dependency SDKs are restored separately. The tracked NuGet configuration references the token through the environment and does not contain credentials.
+
+The restore commands require .NET SDK 8. Windows also requires PowerShell 7 and the Visual Studio developer environment:
+
+```powershell
+./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64 -Local
+cmake --preset win-release-user
+cmake --build --preset win-release-user
+ctest --preset win-release-user --output-on-failure
+```
+
+On Linux, install Python 3 and Mono for package/cache tooling, then run:
+
+```bash
+bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64 0 local
+source build/native-sdk/env.sh
+cmake --preset linux-release-user
+cmake --build --preset linux-release-user
+ctest --preset linux-release-user --output-on-failure
+```
+
+Both restore paths request **Salts.Native 2.0.0** from GitHub Packages and the latest published re2c tools. `-WithTurboWasm` (PowerShell) or the third argument `1` (Bash) also restores TurboWasm. The default local package directory is `stage/nuget`; `QIGAO_NUGET_PACKAGES` selects another cache. Package paths come from NuGet's resolved assets, so older cached versions do not affect selection. User presets consume the exported `SALTS_ROOT` and `RE2C_ROOT` instead of a machine-specific Salts installation. The published Salts SDK contains Release libraries; use Release presets with it. Debug profiles require a matching Debug SDK. For Android, restore `android-arm64-v8a` as the target RID and the native host RID as the re2c RID before using the Android preset.
+
+### Migrating from Salts 1.x
+
+Rebuild SaltsUtils and its consumers against the same Salts 2.x SDK, and regenerate IDL artifacts with the updated `salts-idlc`. Salts Core and Plugin symbols now use `cmeta_*` / `CMETA_PLUGIN_*`; coroutine symbols use `coro_*`. SaltsUtils-owned `salts_*` names and Lua/QuickJS method calls retain their names.
+
+Native receiver metadata uses `cmeta_receiver_operation` and references the canonical `cmeta_function_abi_desc`; the function descriptor is obtained through `operation->abi->function`. Object providers use `cmeta_object_operation_provider`. Update consumer-authored metadata to this layout instead of retaining a separate function descriptor in each receiver entry. This migration changes the native API/ABI and requires recompilation; it does not change DataBind wire formats.
 
 ### DataBind consumption
 
@@ -184,7 +217,7 @@ FlowMQ projections. The Binary consumer checks literal wire bytes, bounded
 output and decoded byte-buffer ownership after input reuse and codec destruction.
 The Producer, Plugin and public CMeta consumer projects also expose these presets.
 CI uses `ci-native-release-user` with explicit `SALTS_ROOT`, `SALTS_UTILS_ROOT`,
-`QIGAO_TARGET_TRIPLET` and `QIGAO_VCPKG_TOOLCHAIN_FILE` inputs. Each consumer selects
+`QIGAO_TARGET_TRIPLET` and `VCPKG_CACHE_REPOSITORY_ROOT` inputs. Each consumer selects
 that exact SDK; a cached package directory cannot select another installation.
 
 ### Cross-compilation host tools

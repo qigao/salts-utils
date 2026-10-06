@@ -4,7 +4,7 @@
 #include "native_test_alignment.h"
 
 #include <cstl/typed.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tinytest.h>
 
 #include <stddef.h>
@@ -174,8 +174,8 @@ static DataBindStatus encode_keys_json(ListOutput *out) {
 
 spec("DataBind native builtin lists and owning JSON keys") {
   before_all() {
-    list_layout_fields[LIST_NOTE_INDEX].type = salts_tstr_cmeta_data.storage_type;
-    list_fields[LIST_NOTE_INDEX].value = &salts_tstr_cmeta_data;
+    list_layout_fields[LIST_NOTE_INDEX].type = cmeta_tstr_cmeta_data.storage_type;
+    list_fields[LIST_NOTE_INDEX].value = &cmeta_tstr_cmeta_data;
     check_true(cmeta_data_desc_valid(&LIST_DATA));
     check_true(cmeta_data_value_move_supported(&LIST_DATA));
     list_error = (DataBindError)DATA_BIND_ERROR_INIT;
@@ -208,7 +208,7 @@ spec("DataBind native builtin lists and owning JSON keys") {
     check_equal(cmeta_data_value_restore_zero(&LIST_DATA, &list_published), CMETA_OK);
     list_published.presence = 0u;
     check_equal(NativeListValues_size(&list_published.values), 0u);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&list_published.note));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&list_published.note));
   }
   after_all() {
     data_bind_format_plan_free(list_format);
@@ -233,7 +233,7 @@ spec("DataBind native builtin lists and owning JSON keys") {
     ListOutput out = {.capacity = LIST_OUTPUT_BYTES - 1u};
     check_equal(replace_list_json(empty, sizeof(empty) - 1u), DATA_BIND_OK);
     check_equal(NativeListValues_size(&list_published.values), 0u);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&list_published.note));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&list_published.note));
     check_equal(list_published.presence, 0u);
     check_equal(encode_list_json(&out), DATA_BIND_OK);
     check_equal(out.bytes, "{\"orderId\":3,\"values\":[]}");
@@ -270,7 +270,7 @@ spec("DataBind native builtin lists and owning JSON keys") {
     check_equal(cmeta_data_value_restore_zero(&LIST_DATA, &list_published), CMETA_OK);
     list_published.presence = 0u;
     check_equal(NativeListValues_size(&list_published.values), 0u);
-    check_true(salts_tstr_cmeta_buffer_ops.is_zero(&list_published.note));
+    check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&list_published.note));
     check_equal(replace_list_json(LIST_INPUT, sizeof(LIST_INPUT) - 1u), DATA_BIND_OK);
     check_equal(NativeListValues_size(&list_published.values), 2u);
     check_equal(list_published.note, "macro");

@@ -551,7 +551,7 @@ int salts_playback_drain(salts_playback_t *playback, uint32_t timeout_ms) {
     if (salts_playback_get_buffered(playback) == 0u) {
       return SALTS_PLAYBACK_OK;
     }
-    salts_sleep_ms(1u);
+    cmeta_sleep_ms(1u);
   }
   return salts_playback_get_buffered(playback) == 0u ? SALTS_PLAYBACK_OK
                                                      : SALTS_PLAYBACK_ERR_TIMEOUT;

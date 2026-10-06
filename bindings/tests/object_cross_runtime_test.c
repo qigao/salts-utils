@@ -124,19 +124,18 @@ static const cmeta_function_abi_desc cross_runtime_add_abi = {
     .param_count = 2u
 };
 
-static const cmeta_receiver_method cross_runtime_methods[] = {
+static const cmeta_receiver_operation cross_runtime_methods[] = {
     {
         .name = "add",
-        .function = &cross_runtime_add_function,
         .abi = &cross_runtime_add_abi
     }
 };
 
-static const cmeta_receiver_method_set cross_runtime_method_set = {
-    .size = sizeof(cmeta_receiver_method_set),
+static const cmeta_receiver_operation_set cross_runtime_method_set = {
+    .size = sizeof(cmeta_receiver_operation_set),
     .receiver_type = &cross_runtime_box_type,
-    .methods = cross_runtime_methods,
-    .method_count = 1u,
+    .operations = cross_runtime_methods,
+    .operation_count = 1u,
     .owner = NULL
 };
 
@@ -199,8 +198,8 @@ static bool cross_runtime_bound_add_invoke(
 }
 
 static cmeta_status cross_runtime_method_bind(
-    void *context, void *object, const cmeta_receiver_method *method,
-    cmeta_object_method_binding *out) {
+    void *context, void *object, const cmeta_receiver_operation *method,
+    cmeta_object_operation_binding *out) {
   cross_runtime_box *receiver = (cross_runtime_box *)object;
   cmeta_callable callable = cross_runtime_callable_shape;
 
@@ -208,7 +207,7 @@ static cmeta_status cross_runtime_method_bind(
   if (receiver == NULL || method != &cross_runtime_methods[0] || out == NULL)
     return CMETA_INVALID_ARGUMENT;
 
-  *out = (cmeta_object_method_binding)CMETA_OBJECT_METHOD_BINDING_INIT;
+  *out = (cmeta_object_operation_binding)CMETA_OBJECT_OPERATION_BINDING_INIT;
   callable.invoke = cross_runtime_bound_add_invoke;
   callable.dispatch = CMETA_CALLABLE_DISPATCH_ADAPTER;
   callable.capture_size = sizeof(receiver);
@@ -221,9 +220,9 @@ static cmeta_status cross_runtime_method_bind(
   return CMETA_OK;
 }
 
-static const cmeta_object_method_provider cross_runtime_method_provider = {
-    .size = sizeof(cmeta_object_method_provider),
-    .methods = &cross_runtime_method_set,
+static const cmeta_object_operation_provider cross_runtime_method_provider = {
+    .size = sizeof(cmeta_object_operation_provider),
+    .operations = &cross_runtime_method_set,
     .context = NULL,
     .bind = cross_runtime_method_bind
 };

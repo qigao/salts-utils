@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 #include <stdio.h>
-#include <salts_thread.h>
+#include <cmeta_thread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <cmeta/fixed_array.h>
@@ -86,8 +86,8 @@ const DataBindMessageNativeArtifact *{{name}}_native_artifact(void) {
 
 /* Native graph metadata is immutable and borrowed. Schema semantics and
  * wire layout remain separate from native structure and ownership. */
-#include <salts_cmeta_fixed_width.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_fixed_width.h>
+#include <cmeta_cmeta_data.h>
 #define TBE_GENERATED_CMETA_GRAPH 1
 
 static DataBindStatus {{schema.schema_name}}_schema_codec_error(
@@ -505,8 +505,8 @@ static void {{schema.schema_name}}_CMETA_INIT_FIELDS_ALL(void) {
 {{/messages}}}
 
 static void {{schema.schema_name}}_CMETA_INIT_ALL(void) {
-    static salts_once_t initialized = SALTS_ONCE_INIT;
-    salts_once(&initialized, {{schema.schema_name}}_CMETA_INIT_FIELDS_ALL);
+    static cmeta_once_t initialized = SALTS_ONCE_INIT;
+    cmeta_once(&initialized, {{schema.schema_name}}_CMETA_INIT_FIELDS_ALL);
 }
 
 

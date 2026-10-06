@@ -22,26 +22,26 @@
 typedef databind_plugin_client_5_Image_14_ImageProcessor
     ImageProcessorPluginClient;
 
-static salts_plugin_registry make_registry(void) {
-  salts_plugin_registry registry = {0};
-  salts_plugin_registry_config config = {.capacity = 2u};
-  check_equal(salts_plugin_registry_init(&registry, &config),
-              SALTS_PLUGIN_OK);
+static cmeta_plugin_registry make_registry(void) {
+  cmeta_plugin_registry registry = {0};
+  cmeta_plugin_registry_config config = {.capacity = 2u};
+  check_equal(cmeta_plugin_registry_init(&registry, &config),
+              CMETA_PLUGIN_OK);
   return registry;
 }
 
 static void expect_client_open_rejected(
-    const char *path, salts_plugin_status expected) {
-  salts_plugin_registry registry = make_registry();
-  salts_plugin_ref ref = {0};
+    const char *path, cmeta_plugin_status expected) {
+  cmeta_plugin_registry registry = make_registry();
+  cmeta_plugin_ref ref = {0};
   ImageProcessorPluginClient client = IMAGE_IMAGEPROCESSOR_PLUGIN_CLIENT_INIT;
-  salts_plugin_lifecycle_info info = {0};
+  cmeta_plugin_lifecycle_info info = {0};
   bool quiescent = false;
 
-  check_equal(salts_plugin_registry_load(&registry, path, &ref),
-              SALTS_PLUGIN_OK);
-  check_equal(salts_plugin_registry_start(&registry, ref),
-              SALTS_PLUGIN_OK);
+  check_equal(cmeta_plugin_registry_load(&registry, path, &ref),
+              CMETA_PLUGIN_OK);
+  check_equal(cmeta_plugin_registry_start(&registry, ref),
+              CMETA_PLUGIN_OK);
 
   check_equal(
       databind_plugin_client_5_Image_14_ImageProcessor_open(
@@ -50,29 +50,29 @@ static void expect_client_open_rejected(
   check_false(
       databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
 
-  check_equal(salts_plugin_registry_get_lifecycle(
+  check_equal(cmeta_plugin_registry_get_lifecycle(
                   &registry, ref, &info),
-              SALTS_PLUGIN_OK);
+              CMETA_PLUGIN_OK);
   check_equal(info.active_leases, (size_t)0u);
 
-  check_equal(salts_plugin_registry_request_stop(&registry, ref),
-              SALTS_PLUGIN_OK);
-  check_equal(salts_plugin_registry_poll_quiescent(
+  check_equal(cmeta_plugin_registry_request_stop(&registry, ref),
+              CMETA_PLUGIN_OK);
+  check_equal(cmeta_plugin_registry_poll_quiescent(
                   &registry, ref, &quiescent),
-              SALTS_PLUGIN_OK);
+              CMETA_PLUGIN_OK);
   check_true(quiescent);
-  check_equal(salts_plugin_registry_unload(&registry, ref),
-              SALTS_PLUGIN_OK);
-  check_equal(salts_plugin_registry_destroy(&registry),
-              SALTS_PLUGIN_OK);
+  check_equal(cmeta_plugin_registry_unload(&registry, ref),
+              CMETA_PLUGIN_OK);
+  check_equal(cmeta_plugin_registry_destroy(&registry),
+              CMETA_PLUGIN_OK);
 }
 
 spec("generated DataBind Plugin client") {
   it("holds one lease across repeated typed calls") {
-    salts_plugin_registry registry = make_registry();
-    salts_plugin_ref ref = {0};
+    cmeta_plugin_registry registry = make_registry();
+    cmeta_plugin_ref ref = {0};
     ImageProcessorPluginClient client = IMAGE_IMAGEPROCESSOR_PLUGIN_CLIENT_INIT;
-    salts_plugin_lifecycle_info info = {0};
+    cmeta_plugin_lifecycle_info info = {0};
     DecodeRequest_t decode_request = {.width = 12u};
     DecodeResponse_t decode_response = {0};
     EncodeRequest_t encode_request = {.pixels = 80u};
@@ -80,39 +80,39 @@ spec("generated DataBind Plugin client") {
     int native_status = -1;
     bool quiescent = true;
 
-    check_equal(salts_plugin_registry_load(
+    check_equal(cmeta_plugin_registry_load(
                     &registry, GENERATED_DATABIND_PLUGIN_PATH, &ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_start(&registry, ref),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_start(&registry, ref),
+                CMETA_PLUGIN_OK);
 
     check_equal(
         databind_plugin_client_5_Image_14_ImageProcessor_open(
             &registry, ref, &client),
-        SALTS_PLUGIN_OK);
+        CMETA_PLUGIN_OK);
     check_true(
         databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
 
-    check_equal(salts_plugin_registry_get_lifecycle(
+    check_equal(cmeta_plugin_registry_get_lifecycle(
                     &registry, ref, &info),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_equal(info.active_leases, (size_t)1u);
 
     check_equal(
         databind_plugin_client_5_Image_14_ImageProcessor_open(
             &registry, ref, &client),
-        SALTS_PLUGIN_ALREADY);
+        CMETA_PLUGIN_ALREADY);
     check_true(
         databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
-    check_equal(salts_plugin_registry_get_lifecycle(
+    check_equal(cmeta_plugin_registry_get_lifecycle(
                     &registry, ref, &info),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_equal(info.active_leases, (size_t)1u);
 
     check_equal(
         databind_5_Image_5_Codec_6_Decode_plugin_client_call(
             &client, &decode_request, &decode_response, &native_status),
-        SALTS_PLUGIN_OK);
+        CMETA_PLUGIN_OK);
     check_equal(native_status, 0);
     check_equal(decode_response.pixels, 48u);
 
@@ -122,136 +122,136 @@ spec("generated DataBind Plugin client") {
     check_equal(
         databind_5_Image_5_Codec_6_Decode_plugin_client_call(
             &client, &decode_request, &decode_response, &native_status),
-        SALTS_PLUGIN_OK);
+        CMETA_PLUGIN_OK);
     check_equal(native_status, 0);
     check_equal(decode_response.pixels, 28u);
 
     check_equal(
         databind_5_Image_5_Codec_6_Encode_plugin_client_call(
             &client, &encode_request, &encode_response, &native_status),
-        SALTS_PLUGIN_OK);
+        CMETA_PLUGIN_OK);
     check_equal(native_status, 0);
     check_equal(encode_response.bytes, 20u);
 
-    check_equal(salts_plugin_registry_get_lifecycle(
+    check_equal(cmeta_plugin_registry_get_lifecycle(
                     &registry, ref, &info),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_equal(info.active_leases, (size_t)1u);
 
-    check_equal(salts_plugin_registry_request_stop(&registry, ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_unload(&registry, ref),
-                SALTS_PLUGIN_BUSY);
-    check_equal(salts_plugin_registry_poll_quiescent(
+    check_equal(cmeta_plugin_registry_request_stop(&registry, ref),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_unload(&registry, ref),
+                CMETA_PLUGIN_BUSY);
+    check_equal(cmeta_plugin_registry_poll_quiescent(
                     &registry, ref, &quiescent),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_false(quiescent);
 
     check_equal(
         databind_plugin_client_5_Image_14_ImageProcessor_close(&client),
-        SALTS_PLUGIN_OK);
+        CMETA_PLUGIN_OK);
     check_false(
         databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
 
-    check_equal(salts_plugin_registry_get_lifecycle(
+    check_equal(cmeta_plugin_registry_get_lifecycle(
                     &registry, ref, &info),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_equal(info.active_leases, (size_t)0u);
 
     native_status = 123;
     check_equal(
         databind_5_Image_5_Codec_6_Decode_plugin_client_call(
             &client, &decode_request, &decode_response, &native_status),
-        SALTS_PLUGIN_INVALID_STATE);
+        CMETA_PLUGIN_INVALID_STATE);
     check_equal(native_status, 123);
 
-    check_equal(salts_plugin_registry_poll_quiescent(
+    check_equal(cmeta_plugin_registry_poll_quiescent(
                     &registry, ref, &quiescent),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_true(quiescent);
-    check_equal(salts_plugin_registry_unload(&registry, ref),
-                SALTS_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_unload(&registry, ref),
+                CMETA_PLUGIN_OK);
 
     check_equal(
         databind_plugin_client_5_Image_14_ImageProcessor_open(
             &registry, ref, &client),
-        SALTS_PLUGIN_STALE);
+        CMETA_PLUGIN_STALE);
     check_false(
         databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
 
-    check_equal(salts_plugin_registry_destroy(&registry),
-                SALTS_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_destroy(&registry),
+                CMETA_PLUGIN_OK);
   }
 
   it("retains a live lease when close fails and completes on retry") {
-    salts_plugin_registry registry = make_registry();
-    salts_plugin_registry wrong_registry = make_registry();
-    salts_plugin_ref ref = {0};
+    cmeta_plugin_registry registry = make_registry();
+    cmeta_plugin_registry wrong_registry = make_registry();
+    cmeta_plugin_ref ref = {0};
     ImageProcessorPluginClient client = IMAGE_IMAGEPROCESSOR_PLUGIN_CLIENT_INIT;
-    salts_plugin_registry *correct_registry;
-    salts_plugin_lifecycle_info info = {0};
+    cmeta_plugin_registry *correct_registry;
+    cmeta_plugin_lifecycle_info info = {0};
     bool quiescent = false;
 
-    check_equal(salts_plugin_registry_load(
+    check_equal(cmeta_plugin_registry_load(
                     &registry, GENERATED_DATABIND_PLUGIN_PATH, &ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_start(&registry, ref),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_start(&registry, ref),
+                CMETA_PLUGIN_OK);
     check_equal(
         databind_plugin_client_5_Image_14_ImageProcessor_open(
             &registry, ref, &client),
-        SALTS_PLUGIN_OK);
+        CMETA_PLUGIN_OK);
     correct_registry = client.registry;
-    check_true(salts_plugin_lease_valid(client.lease));
+    check_true(cmeta_plugin_lease_valid(client.lease));
 
     client.registry = &wrong_registry;
     check_equal(
         databind_plugin_client_5_Image_14_ImageProcessor_close(&client),
-        SALTS_PLUGIN_STALE);
-    check_true(salts_plugin_lease_valid(client.lease));
-    check_equal(salts_plugin_registry_get_lifecycle(
+        CMETA_PLUGIN_STALE);
+    check_true(cmeta_plugin_lease_valid(client.lease));
+    check_equal(cmeta_plugin_registry_get_lifecycle(
                     &registry, ref, &info),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_equal(info.active_leases, (size_t)1u);
 
     client.registry = correct_registry;
     check_equal(
         databind_plugin_client_5_Image_14_ImageProcessor_close(&client),
-        SALTS_PLUGIN_OK);
+        CMETA_PLUGIN_OK);
     check_false(
         databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
-    check_equal(salts_plugin_registry_get_lifecycle(
+    check_equal(cmeta_plugin_registry_get_lifecycle(
                     &registry, ref, &info),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_equal(info.active_leases, (size_t)0u);
 
-    check_equal(salts_plugin_registry_request_stop(&registry, ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_poll_quiescent(
+    check_equal(cmeta_plugin_registry_request_stop(&registry, ref),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_poll_quiescent(
                     &registry, ref, &quiescent),
-                SALTS_PLUGIN_OK);
+                CMETA_PLUGIN_OK);
     check_true(quiescent);
-    check_equal(salts_plugin_registry_unload(&registry, ref),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_destroy(&registry),
-                SALTS_PLUGIN_OK);
-    check_equal(salts_plugin_registry_destroy(&wrong_registry),
-                SALTS_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_unload(&registry, ref),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_destroy(&registry),
+                CMETA_PLUGIN_OK);
+    check_equal(cmeta_plugin_registry_destroy(&wrong_registry),
+                CMETA_PLUGIN_OK);
   }
 
   it("rejects plugin, contract and Function ABI mismatches without leaking leases") {
     expect_client_open_rejected(
         GENERATED_DATABIND_CLIENT_BAD_PLUGIN_ID_PATH,
-        SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+        CMETA_PLUGIN_INCOMPATIBLE_CONTRACT);
     expect_client_open_rejected(
         GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH,
-        SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+        CMETA_PLUGIN_INCOMPATIBLE_CONTRACT);
     expect_client_open_rejected(
         GENERATED_DATABIND_CLIENT_BAD_EXPORT_PATH,
-        SALTS_PLUGIN_UNKNOWN_EXPORT);
+        CMETA_PLUGIN_UNKNOWN_EXPORT);
     expect_client_open_rejected(
         GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH,
-        SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+        CMETA_PLUGIN_INCOMPATIBLE_CONTRACT);
   }
 
   it("rejects invalid direct-call arguments without touching business status") {
@@ -263,17 +263,17 @@ spec("generated DataBind Plugin client") {
     check_equal(
         databind_5_Image_5_Codec_6_Decode_plugin_client_call(
             NULL, &request, &response, &native_status),
-        SALTS_PLUGIN_INVALID_ARGUMENT);
+        CMETA_PLUGIN_INVALID_ARGUMENT);
     check_equal(native_status, 77);
 
     check_equal(
         databind_5_Image_5_Codec_6_Decode_plugin_client_call(
             &client, &request, &response, &native_status),
-        SALTS_PLUGIN_INVALID_STATE);
+        CMETA_PLUGIN_INVALID_STATE);
     check_equal(native_status, 77);
 
     check_equal(
         databind_plugin_client_5_Image_14_ImageProcessor_close(&client),
-        SALTS_PLUGIN_INVALID_ARGUMENT);
+        CMETA_PLUGIN_INVALID_ARGUMENT);
   }
 }

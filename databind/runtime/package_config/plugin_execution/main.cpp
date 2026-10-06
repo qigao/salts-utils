@@ -4,7 +4,7 @@
 
 static_assert(std::is_standard_layout_v<DataBindPluginOperationBinding>);
 static_assert(std::is_standard_layout_v<DataBindNativeExecution>);
-static_assert(std::is_standard_layout_v<salts_plugin_export>);
+static_assert(std::is_standard_layout_v<cmeta_plugin_export>);
 
 int main() {
   DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT;

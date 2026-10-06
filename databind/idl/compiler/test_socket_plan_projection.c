@@ -2,7 +2,7 @@
 #include "socket_plan_projection.h"
 #include "binary_contract_overlay.h"
 
-#include "salts_fs.h"
+#include "cmeta_fs.h"
 #include "tinytest.h"
 
 #include <stdlib.h>
@@ -13,11 +13,11 @@
 #endif
 
 static int file_contains(const char *path, const char *needle) {
-  salts_fs_buf_t buffer = {0};
+  cmeta_fs_buf_t buffer = {0};
   int found = 0;
-  if (salts_fs_read_file(path, &buffer) == 0 && buffer.base != NULL)
+  if (cmeta_fs_read_file(path, &buffer) == 0 && buffer.base != NULL)
     found = strstr(buffer.base, needle) != NULL;
-  salts_fs_buf_free(&buffer);
+  cmeta_fs_buf_free(&buffer);
   return found;
 }
 
@@ -46,7 +46,7 @@ spec("DataBind generated SocketPlan") {
     databind_compiler_projection_backend backend =
         databind_compiler_socket_plan_backend();
 
-    (void)salts_fs_unlink(output);
+    (void)cmeta_fs_unlink(output);
     check_equal(
         databind_compiler_parse_contract_file(
             SOCKET_PLAN_SCHEMA, &root, &contract, &schema_data),
@@ -91,7 +91,7 @@ spec("DataBind generated SocketPlan") {
     check_false(file_contains(output, "endpoint"));
     check_false(file_contains(output, "tls"));
     check_false(file_contains(output, "reconnect"));
-    (void)salts_fs_unlink(output);
+    (void)cmeta_fs_unlink(output);
 
     config.format = DATA_BIND_FORMAT_JSON;
     config.mode = DATA_BIND_SOCKET_MODE_DATAGRAM;
@@ -103,14 +103,14 @@ spec("DataBind generated SocketPlan") {
     check(file_contains(output, "DATA_BIND_FORMAT_JSON"));
     check(file_contains(output, "DATA_BIND_SOCKET_MODE_DATAGRAM"));
     check(file_contains(output, "DATA_BIND_SOCKET_FRAMING_NONE"));
-    (void)salts_fs_unlink(output);
+    (void)cmeta_fs_unlink(output);
 
     config.format = DATA_BIND_FORMAT_XML;
     check_equal(
         databind_compiler_projection_run(
             &input, &request, 1u, &backend, 1u),
         -1);
-    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
     config.format = DATA_BIND_FORMAT_BINARY;
     config.mode = DATA_BIND_SOCKET_MODE_STREAM;
@@ -119,7 +119,7 @@ spec("DataBind generated SocketPlan") {
         databind_compiler_projection_run(
             &input, &request, 1u, &backend, 1u),
         -1);
-    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
     config.framing = DATA_BIND_SOCKET_FRAMING_LENGTH32_BE;
     config.channel_name = "Device.ChoiceEvents";
@@ -127,7 +127,7 @@ spec("DataBind generated SocketPlan") {
         databind_compiler_projection_run(
             &input, &request, 1u, &backend, 1u),
         -1);
-    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
     config.channel_name = "Device.Telemetry";
     config.native_header_include = "../device.h";
@@ -135,7 +135,7 @@ spec("DataBind generated SocketPlan") {
         databind_compiler_projection_run(
             &input, &request, 1u, &backend, 1u),
         -1);
-    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
     config.native_header_include = NULL;
     config.channel_name = "Device.Raw";
@@ -157,14 +157,14 @@ spec("DataBind generated SocketPlan") {
     check(file_contains(output, "&databind_device_opaque_plan"));
     check_false(file_contains(output, "__databind_message_native_binding"));
     check_false(file_contains(output, "#include \"device.h\""));
-    (void)salts_fs_unlink(output);
+    (void)cmeta_fs_unlink(output);
 
     config.channel_name = "Device.Telemetry";
     check_equal(
         databind_compiler_projection_run(
             &input, &request, 1u, &backend, 1u),
         -1);
-    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
     databind_binary_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);

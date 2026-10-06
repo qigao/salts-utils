@@ -56,7 +56,7 @@ static void drive_until(cflow_usb_context *context, size_t expected,
                     SALTS_OK);
         *total += delivered;
         if (*total < expected)
-            salts_sleep_ms(1u);
+            cmeta_sleep_ms(1u);
     }
 }
 

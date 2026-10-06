@@ -2,7 +2,7 @@
 #include <tinytest.h>
 #include <salts/error_codes.h>
 #include <salts/thread.h>
-#include <salts_fs.h>
+#include <cmeta_fs.h>
 
 #include <stdatomic.h>
 #include <stdlib.h>
@@ -63,8 +63,8 @@ typedef struct wake_probe {
 } wake_probe;
 
 typedef struct blocking_wake_probe {
-  salts_mutex_t lock;
-  salts_cond_t changed;
+  cmeta_mutex_t lock;
+  cmeta_cond_t changed;
   bool entered;
   bool released;
   bool cancel_started;
@@ -91,25 +91,25 @@ static void count_wake(void *user) {
 static void blocking_wake(void *user) {
   blocking_wake_probe *probe = (blocking_wake_probe *)user;
   if (probe == NULL) return;
-  salts_mutex_lock(&probe->lock);
+  cmeta_mutex_lock(&probe->lock);
   probe->entered = true;
-  salts_cond_broadcast(&probe->changed);
+  cmeta_cond_broadcast(&probe->changed);
   while (!probe->released)
-    salts_cond_wait(&probe->changed, &probe->lock);
-  salts_mutex_unlock(&probe->lock);
+    cmeta_cond_wait(&probe->changed, &probe->lock);
+  cmeta_mutex_unlock(&probe->lock);
 }
 
 static void cancel_source(void *user) {
   cancel_context *context = (cancel_context *)user;
-  salts_mutex_lock(&context->probe->lock);
+  cmeta_mutex_lock(&context->probe->lock);
   context->probe->cancel_started = true;
-  salts_cond_broadcast(&context->probe->changed);
-  salts_mutex_unlock(&context->probe->lock);
+  cmeta_cond_broadcast(&context->probe->changed);
+  cmeta_mutex_unlock(&context->probe->lock);
   cflow_publisher_cancel(context->source);
-  salts_mutex_lock(&context->probe->lock);
+  cmeta_mutex_lock(&context->probe->lock);
   context->probe->cancel_returned = true;
-  salts_cond_broadcast(&context->probe->changed);
-  salts_mutex_unlock(&context->probe->lock);
+  cmeta_cond_broadcast(&context->probe->changed);
+  cmeta_mutex_unlock(&context->probe->lock);
 }
 
 static void destroy_source_and_close_owner(void *user) {
@@ -125,7 +125,7 @@ static int close_owner(cflow_fs_watch_publisher_owner *owner) {
   int status;
   do {
     status = cflow_fs_watch_publisher_owner_close(owner);
-    if (status == SALTS_EBUSY) salts_sleep_ms(1u);
+    if (status == SALTS_EBUSY) cmeta_sleep_ms(1u);
   } while (status == SALTS_EBUSY && ++attempts < 5000u);
   return status;
 }
@@ -213,7 +213,7 @@ spec("CFlow filesystem watch Publisher") {
 
     atomic_init(&wake.count, 0u);
     check_not_null(root);
-    check_equal(salts_fs_path_join(path, sizeof(path), root, "one.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "one.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
 
     step = cflow_publisher_resume(&source, &resume, &value);
@@ -221,7 +221,7 @@ spec("CFlow filesystem watch Publisher") {
     check_true(cflow_waitable_arm(&step.waitable, (cflow_waker){count_wake, &wake}));
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
     while (atomic_load(&wake.count) == 0u && attempts++ < 5000u)
-      salts_sleep_ms(1u);
+      cmeta_sleep_ms(1u);
     check_equal(atomic_load(&wake.count), (size_t)1u);
 
     attempts = 0u;
@@ -240,7 +240,7 @@ spec("CFlow filesystem watch Publisher") {
       atomic_store(&wake.count, 0u);
       check_true(cflow_waitable_arm(&step.waitable, (cflow_waker){count_wake, &wake}));
       while (atomic_load(&wake.count) == 0u && attempts++ < 5000u)
-        salts_sleep_ms(1u);
+        cmeta_sleep_ms(1u);
     }
     check_true(saw_file);
 
@@ -266,7 +266,7 @@ spec("CFlow filesystem watch Publisher") {
 
     atomic_init(&wake.count, 0u);
     check_not_null(root);
-    check_equal(salts_fs_path_join(path, sizeof(path), root, "early.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "early.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     step = cflow_publisher_resume(&source, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
@@ -274,7 +274,7 @@ spec("CFlow filesystem watch Publisher") {
     while (attempts++ < 5000u) {
       check_true(cflow_fs_watch_publisher_owner_get_stats(&owner, &stats));
       if (stats.queued != 0u) break;
-      salts_sleep_ms(1u);
+      cmeta_sleep_ms(1u);
     }
     check_greater(stats.queued, (size_t)0u);
 
@@ -353,50 +353,50 @@ spec("CFlow filesystem watch Publisher") {
     watch_value value = {0};
     blocking_wake_probe wake = {0};
     cancel_context context = {&source, &wake};
-    salts_thread_t canceller = {0};
+    cmeta_thread_t canceller = {0};
     size_t waits = 0u;
 
-    salts_mutex_init(&wake.lock);
-    salts_cond_init(&wake.changed);
+    cmeta_mutex_init(&wake.lock);
+    cmeta_cond_init(&wake.changed);
     check_not_null(wake.lock);
     check_not_null(wake.changed);
     check_not_null(root);
-    check_equal(salts_fs_path_join(path, sizeof(path), root, "blocked.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "blocked.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     step = cflow_publisher_resume(&source, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
     check_true(cflow_waitable_arm(&step.waitable, (cflow_waker){blocking_wake, &wake}));
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
 
-    salts_mutex_lock(&wake.lock);
+    cmeta_mutex_lock(&wake.lock);
     while (!wake.entered && waits++ < WAIT_LIMIT)
-      (void)salts_cond_timedwait(&wake.changed, &wake.lock, WAIT_SLICE_NS);
+      (void)cmeta_cond_timedwait(&wake.changed, &wake.lock, WAIT_SLICE_NS);
     if (!wake.entered) {
       wake.released = true;
-      salts_cond_broadcast(&wake.changed);
+      cmeta_cond_broadcast(&wake.changed);
     }
     check_true(wake.entered);
-    salts_mutex_unlock(&wake.lock);
-    check_equal(salts_thread_create(&canceller, cancel_source, &context), SALTS_OK);
-    salts_mutex_lock(&wake.lock);
+    cmeta_mutex_unlock(&wake.lock);
+    check_equal(cmeta_thread_create(&canceller, cancel_source, &context), SALTS_OK);
+    cmeta_mutex_lock(&wake.lock);
     waits = 0u;
     while (!wake.cancel_started && waits++ < WAIT_LIMIT)
-      (void)salts_cond_timedwait(&wake.changed, &wake.lock, WAIT_SLICE_NS);
+      (void)cmeta_cond_timedwait(&wake.changed, &wake.lock, WAIT_SLICE_NS);
     check_true(wake.cancel_started);
     if (!wake.cancel_returned)
-      (void)salts_cond_timedwait(&wake.changed, &wake.lock, CANCEL_OBSERVATION_NS);
+      (void)cmeta_cond_timedwait(&wake.changed, &wake.lock, CANCEL_OBSERVATION_NS);
     check_false(wake.cancel_returned);
     wake.released = true;
-    salts_cond_broadcast(&wake.changed);
-    salts_mutex_unlock(&wake.lock);
+    cmeta_cond_broadcast(&wake.changed);
+    cmeta_mutex_unlock(&wake.lock);
 
-    check_equal(salts_thread_join(&canceller), SALTS_OK);
-    salts_thread_destroy(&canceller);
+    check_equal(cmeta_thread_join(&canceller), SALTS_OK);
+    cmeta_thread_destroy(&canceller);
     check_true(wake.cancel_returned);
     cflow_publisher_destroy(&source);
     check_equal(close_owner(&owner), SALTS_OK);
-    salts_cond_destroy(&wake.changed);
-    salts_mutex_destroy(&wake.lock);
+    cmeta_cond_destroy(&wake.changed);
+    cmeta_mutex_destroy(&wake.lock);
     check_equal(tt_remove_tree(root), SALTS_OK);
     free(root);
   }
@@ -417,7 +417,7 @@ spec("CFlow filesystem watch Publisher") {
     probe.owner = &owner;
     atomic_init(&probe.completed, false);
     check_not_null(root);
-    check_equal(salts_fs_path_join(path, sizeof(path), root, "reentrant.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "reentrant.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     step = cflow_publisher_resume(&source, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
@@ -425,7 +425,7 @@ spec("CFlow filesystem watch Publisher") {
         cflow_waitable_arm(&step.waitable, (cflow_waker){destroy_source_and_close_owner, &probe}));
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
     while (!atomic_load(&probe.completed) && attempts++ < 5000u)
-      salts_sleep_ms(1u);
+      cmeta_sleep_ms(1u);
 
     check_true(atomic_load(&probe.completed));
     check_equal(probe.close_status, SALTS_EBUSY);
@@ -448,12 +448,12 @@ spec("CFlow filesystem watch Publisher") {
 
     config.encode = reject_watch_value;
     check_not_null(root);
-    check_equal(salts_fs_path_join(path, sizeof(path), root, "bad.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "bad.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
     do {
       step = cflow_publisher_resume(&source, &resume, &value);
-      if (step.kind == CFLOW_STEP_WAIT) salts_sleep_ms(1u);
+      if (step.kind == CFLOW_STEP_WAIT) cmeta_sleep_ms(1u);
     } while (step.kind == CFLOW_STEP_WAIT && attempts++ < 5000u);
     check_equal(step.kind, CFLOW_STEP_ERROR);
     check_equal(step.error, "filesystem watch encoder failed");
@@ -484,7 +484,7 @@ spec("CFlow filesystem watch Publisher") {
     size_t attempts = 0u;
 
     check_not_null(root);
-    check_equal(salts_fs_path_join(path, sizeof(path), root, "run.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "run.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     cflow_graph_init(&graph, &watch_value_type);
     check_true(cflow_scheduler_test_init(&scheduler));
@@ -495,7 +495,7 @@ spec("CFlow filesystem watch Publisher") {
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
     while (!probe.saw_expected_path && probe.error == NULL && attempts++ < 5000u) {
       (void)cflow_scheduler_run_until_idle(&scheduler, 0u);
-      if (!probe.saw_expected_path) salts_sleep_ms(1u);
+      if (!probe.saw_expected_path) cmeta_sleep_ms(1u);
     }
 
     check_null(probe.error);
@@ -530,7 +530,7 @@ spec("CFlow filesystem watch Publisher") {
 
     config.encode = reject_watch_value;
     check_not_null(root);
-    check_equal(salts_fs_path_join(path, sizeof(path), root, "run-error.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "run-error.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     cflow_graph_init(&graph, &watch_value_type);
     check_true(cflow_scheduler_test_init(&scheduler));
@@ -540,7 +540,7 @@ spec("CFlow filesystem watch Publisher") {
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
     while (probe.error == NULL && attempts++ < 5000u) {
       (void)cflow_scheduler_run_until_idle(&scheduler, 0u);
-      if (probe.error == NULL) salts_sleep_ms(1u);
+      if (probe.error == NULL) cmeta_sleep_ms(1u);
     }
 
     check_equal(probe.error, "filesystem watch encoder failed");
@@ -569,15 +569,15 @@ spec("CFlow filesystem watch Publisher") {
 
     config.event_capacity = 1u;
     check_not_null(root);
-    check_equal(salts_fs_path_join(first, sizeof(first), root, "one.txt"), SALTS_OK);
-    check_equal(salts_fs_path_join(second, sizeof(second), root, "two.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(first, sizeof(first), root, "one.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(second, sizeof(second), root, "two.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     check_equal(tt_write_file(first, "1", 1u), SALTS_OK);
     check_equal(tt_write_file(second, "2", 1u), SALTS_OK);
     while (attempts++ < 5000u) {
       check_true(cflow_fs_watch_publisher_owner_get_stats(&owner, &stats));
       if (stats.awaiting_rescan) break;
-      salts_sleep_ms(1u);
+      cmeta_sleep_ms(1u);
     }
     check_true(stats.awaiting_rescan);
     for (attempts = 0u; attempts < 4u && !saw_rescan; ++attempts) {
@@ -614,16 +614,16 @@ spec("CFlow filesystem watch Publisher") {
     atomic_init(&wake.count, 0u);
     config.event_capacity = 1u;
     check_not_null(root);
-    check_equal(salts_fs_path_join(first, sizeof(first), root, "one.txt"), SALTS_OK);
-    check_equal(salts_fs_path_join(second, sizeof(second), root, "two.txt"), SALTS_OK);
-    check_equal(salts_fs_path_join(third, sizeof(third), root, "three.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(first, sizeof(first), root, "one.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(second, sizeof(second), root, "two.txt"), SALTS_OK);
+    check_equal(cmeta_fs_path_join(third, sizeof(third), root, "three.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     check_equal(tt_write_file(first, "1", 1u), SALTS_OK);
     check_equal(tt_write_file(second, "2", 1u), SALTS_OK);
     while (attempts++ < 5000u) {
       check_true(cflow_fs_watch_publisher_owner_get_stats(&owner, &stats));
       if (stats.awaiting_rescan) break;
-      salts_sleep_ms(1u);
+      cmeta_sleep_ms(1u);
     }
     check_true(stats.awaiting_rescan);
     for (attempts = 0u; attempts < 4u && !saw_rescan; ++attempts) {
@@ -642,7 +642,7 @@ spec("CFlow filesystem watch Publisher") {
     while (attempts++ < 5000u) {
       check_true(cflow_fs_watch_publisher_owner_get_stats(&owner, &stats));
       if (stats.suppressed > delivered_stats.suppressed) break;
-      salts_sleep_ms(1u);
+      cmeta_sleep_ms(1u);
     }
     check_greater(stats.suppressed, delivered_stats.suppressed);
     check_equal(atomic_load(&wake.count), (size_t)0u);
@@ -696,7 +696,7 @@ spec("CFlow filesystem watch Publisher") {
       atomic_store(&wake.count, 0u);
       check_true(cflow_waitable_arm(&step.waitable, (cflow_waker){count_wake, &wake}));
       while (atomic_load(&wake.count) == 0u && attempts++ < 5000u)
-        salts_sleep_ms(1u);
+        cmeta_sleep_ms(1u);
     }
 
     check_true(saw_root_changed);

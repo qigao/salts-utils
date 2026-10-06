@@ -57,7 +57,7 @@ static int fs_wait(cflow_fs_service *service, fs_completion_probe *probe,
         if (status != SALTS_OK)
             return status;
         if (completed == 0u)
-            salts_sleep_ms(1u);
+            cmeta_sleep_ms(1u);
     }
     return probe->count >= expected ? SALTS_OK : SALTS_ETIMEDOUT;
 }
@@ -71,7 +71,7 @@ static void fs_close_destroy(cflow_fs_service *service,
         size_t completed = 0u;
         check_equal(cflow_fs_run_ready(service, 8u, &completed), SALTS_OK);
         if (completed == 0u)
-            salts_sleep_ms(1u);
+            cmeta_sleep_ms(1u);
     }
     check_true(cflow_fs_is_quiescent(service));
     check_equal(cflow_fs_destroy(service), SALTS_OK);
@@ -110,11 +110,11 @@ describe("public contract") {
             default: 0));
         check_true(_Generic(&cflow_fs_try_stat,
             cflow_fs_submit_result (*)(cflow_fs_service *, const char *,
-                                       salts_fs_stat_t *): 1,
+                                       cmeta_fs_stat_t *): 1,
             default: 0));
         check_true(_Generic(&cflow_fs_try_lstat,
             cflow_fs_submit_result (*)(cflow_fs_service *, const char *,
-                                       salts_fs_stat_t *): 1,
+                                       cmeta_fs_stat_t *): 1,
             default: 0));
         check_true(_Generic(&cflow_fs_try_read_directory,
             cflow_fs_submit_result (*)(cflow_fs_service *, const char *,
@@ -160,7 +160,7 @@ describe("lifecycle and metadata") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 2u);
-        salts_fs_stat_t stat_result = {0};
+        cmeta_fs_stat_t stat_result = {0};
         cflow_fs_submit_result submitted;
         char original_path[1024];
 
@@ -194,7 +194,7 @@ describe("lifecycle and metadata") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 1u);
-        salts_fs_stat_t stat_result = {0};
+        cmeta_fs_stat_t stat_result = {0};
         char path[4] = {'a', 'b', 'c', '\0'};
 
         config.path_capacity = sizeof(path);
@@ -213,7 +213,7 @@ describe("lifecycle and metadata") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 1u);
-        salts_fs_stat_t stat_result = {0};
+        cmeta_fs_stat_t stat_result = {0};
         cflow_fs_submit_result submitted;
         size_t attempts = 0u;
 
@@ -226,7 +226,7 @@ describe("lifecycle and metadata") {
             size_t completed = 0u;
             check_equal(cflow_fs_run_ready(&service, 1u, &completed), SALTS_OK);
             if (completed == 0u)
-                salts_sleep_ms(1u);
+                cmeta_sleep_ms(1u);
         }
         check_equal(probe.count, (size_t)1u);
         check_equal(probe.request_ids[0], submitted.request_id);
@@ -243,8 +243,8 @@ describe("lifecycle and metadata") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 1u);
-        salts_fs_stat_t first = {0};
-        salts_fs_stat_t second = {0};
+        cmeta_fs_stat_t first = {0};
+        cmeta_fs_stat_t second = {0};
         cflow_fs_submit_result submitted;
         cflow_fs_stats stats = {0};
 
@@ -285,7 +285,7 @@ describe("directory and path mutations") {
         char *root = tt_make_temp_dir("cflow-fs-dir-");
         char child[1024];
         char nested[1024];
-        salts_fs_dirent_t entries[4] = {0};
+        cmeta_fs_dirent_t entries[4] = {0};
         char names[128] = {0};
         cflow_fs_dir_buffer directory = {
             .entries = entries,
@@ -301,9 +301,9 @@ describe("directory and path mutations") {
         size_t index;
 
         check_not_null(root);
-        check_equal(salts_fs_path_join(child, sizeof(child), root,
+        check_equal(cmeta_fs_path_join(child, sizeof(child), root,
                                        "child.txt"), 0);
-        check_equal(salts_fs_path_join(nested, sizeof(nested), root,
+        check_equal(cmeta_fs_path_join(nested, sizeof(nested), root,
                                        "nested"), 0);
         check_equal(tt_write_file(child, "x", 1u), 0);
         check_equal(tt_make_dir(nested), 0);
@@ -345,14 +345,14 @@ describe("directory and path mutations") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 2u);
-        salts_fs_stat_t stat_result = {0};
+        cmeta_fs_stat_t stat_result = {0};
 
         check_not_null(root);
-        check_equal(salts_fs_path_join(directory, sizeof(directory), root,
+        check_equal(cmeta_fs_path_join(directory, sizeof(directory), root,
                                        "created"), 0);
-        check_equal(salts_fs_path_join(source, sizeof(source), root,
+        check_equal(cmeta_fs_path_join(source, sizeof(source), root,
                                        "source.txt"), 0);
-        check_equal(salts_fs_path_join(destination, sizeof(destination), root,
+        check_equal(cmeta_fs_path_join(destination, sizeof(destination), root,
                                        "destination.txt"), 0);
         check_equal(cflow_fs_service_init(&service, &config), SALTS_OK);
 
@@ -360,7 +360,7 @@ describe("directory and path mutations") {
                     CFLOW_FS_SUBMIT_ACCEPTED);
         check_equal(fs_wait(&service, &probe, 1u), SALTS_OK);
         check_equal(probe.results[0], SALTS_OK);
-        check_equal(salts_fs_stat(directory, &stat_result), SALTS_OK);
+        check_equal(cmeta_fs_stat(directory, &stat_result), SALTS_OK);
         check_true(stat_result.is_directory);
 
         check_equal(tt_write_file(source, "move", 4u), 0);
@@ -368,8 +368,8 @@ describe("directory and path mutations") {
                     CFLOW_FS_SUBMIT_ACCEPTED);
         check_equal(fs_wait(&service, &probe, 2u), SALTS_OK);
         check_equal(probe.results[1], SALTS_OK);
-        check_less(salts_fs_stat(source, &stat_result), 0);
-        check_equal(salts_fs_stat(destination, &stat_result), SALTS_OK);
+        check_less(cmeta_fs_stat(source, &stat_result), 0);
+        check_equal(cmeta_fs_stat(destination, &stat_result), SALTS_OK);
 
         check_equal(cflow_fs_try_unlink(&service, destination).status,
                     CFLOW_FS_SUBMIT_ACCEPTED);

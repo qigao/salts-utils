@@ -55,7 +55,7 @@ int main(void) {
   }
 
   printf("running cron '%s' for about 5 minutes\n", expr);
-  salts_sleep_ms(5 * 60 * 1000);
+  cmeta_sleep_ms(5 * 60 * 1000);
 
   salts_cron_runner_stop(runner);
   salts_cron_runner_destroy(runner);

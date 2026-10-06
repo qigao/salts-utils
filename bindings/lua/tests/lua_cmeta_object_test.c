@@ -122,19 +122,18 @@ static const cmeta_function_abi_desc lua_object_add_abi = {
     .param_count = 2u
 };
 
-static const cmeta_receiver_method lua_object_methods[] = {
+static const cmeta_receiver_operation lua_object_methods[] = {
     {
         .name = "add",
-        .function = &lua_object_add_function,
         .abi = &lua_object_add_abi
     }
 };
 
-static const cmeta_receiver_method_set lua_object_method_set = {
-    .size = sizeof(cmeta_receiver_method_set),
+static const cmeta_receiver_operation_set lua_object_method_set = {
+    .size = sizeof(cmeta_receiver_operation_set),
     .receiver_type = &lua_object_box_type,
-    .methods = lua_object_methods,
-    .method_count = 1u,
+    .operations = lua_object_methods,
+    .operation_count = 1u,
     .owner = NULL
 };
 
@@ -197,8 +196,8 @@ static bool lua_object_bound_add_invoke(
 }
 
 static cmeta_status lua_object_method_bind(
-    void *context, void *object, const cmeta_receiver_method *method,
-    cmeta_object_method_binding *out) {
+    void *context, void *object, const cmeta_receiver_operation *method,
+    cmeta_object_operation_binding *out) {
   lua_object_box *receiver = (lua_object_box *)object;
   cmeta_callable callable = lua_object_add_callable_shape;
 
@@ -206,7 +205,7 @@ static cmeta_status lua_object_method_bind(
   if (receiver == NULL || method != &lua_object_methods[0] || out == NULL)
     return CMETA_INVALID_ARGUMENT;
 
-  *out = (cmeta_object_method_binding)CMETA_OBJECT_METHOD_BINDING_INIT;
+  *out = (cmeta_object_operation_binding)CMETA_OBJECT_OPERATION_BINDING_INIT;
   callable.invoke = lua_object_bound_add_invoke;
   callable.dispatch = CMETA_CALLABLE_DISPATCH_ADAPTER;
   callable.capture_size = sizeof(receiver);
@@ -219,9 +218,9 @@ static cmeta_status lua_object_method_bind(
   return CMETA_OK;
 }
 
-static const cmeta_object_method_provider lua_object_method_provider = {
-    .size = sizeof(cmeta_object_method_provider),
-    .methods = &lua_object_method_set,
+static const cmeta_object_operation_provider lua_object_method_provider = {
+    .size = sizeof(cmeta_object_operation_provider),
+    .operations = &lua_object_method_set,
     .context = NULL,
     .bind = lua_object_method_bind
 };

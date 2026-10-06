@@ -73,7 +73,7 @@ class Context {
       const char *name, Salts::Borrowed<T> borrowed,
       const cmeta_data_desc *data,
       const cmeta_object_field_provider *field_provider = nullptr,
-      const cmeta_object_method_provider *method_provider = nullptr) const noexcept {
+      const cmeta_object_operation_provider *method_provider = nullptr) const noexcept {
     cmeta_object_ref object = CMETA_OBJECT_REF_INIT;
     JSValue raw_value = JS_UNDEFINED;
     cmeta_status status;

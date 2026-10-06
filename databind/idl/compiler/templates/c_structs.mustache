@@ -47,15 +47,15 @@ static inline size_t tbe_generated_strlen(const char *text) {
 #ifndef SALTS_UUID_H
 #define SALTS_UUID_H
 #define SALTS_UUID_SIZE 16U
-typedef struct salts_uuid_s {
+typedef struct cmeta_uuid_s {
     uint8_t bytes[SALTS_UUID_SIZE];
-} salts_uuid_t;
+} cmeta_uuid_t;
 #endif
 #else
 #include <string.h>
 #include <tstr.h>
 #include <cstl/byte_buffer.h>
-#include "salts_uuid.h"
+#include "cmeta_uuid.h"
 #define TBE_GENERATED_MEMCPY memcpy
 #define TBE_GENERATED_STRCMP strcmp
 #define TBE_GENERATED_STRLEN strlen
@@ -64,7 +64,7 @@ typedef struct salts_uuid_s {
 {{#typed_source_enabled}}
 #include "data_bind_native_binding.h"
 #include <cstl/typed.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 
 #ifndef TBE_SCHEMA_CODEC_V1_DEFINED
 #define TBE_SCHEMA_CODEC_V1_DEFINED
@@ -595,7 +595,7 @@ static inline {{enum_c_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_v
 {{/is_enum_ref}}
 {{#is_uuid}}
 static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
-                                                const salts_uuid_t *value) {
+                                                const cmeta_uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
@@ -606,7 +606,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
 }
 
 static inline bool {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view,
-                                                salts_uuid_t *value) {
+                                                cmeta_uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
@@ -1227,7 +1227,7 @@ static inline {{enum_c_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_v
 {{/is_enum_ref}}
 {{#is_uuid}}
 static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
-                                                const salts_uuid_t *value) {
+                                                const cmeta_uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
@@ -1238,7 +1238,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
 }
 
 static inline bool {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view,
-                                                salts_uuid_t *value) {
+                                                cmeta_uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
@@ -1932,7 +1932,7 @@ static inline {{enum_c_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_v
 {{/is_enum_ref}}
 {{#is_uuid}}
 static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
-                                                const salts_uuid_t *value) {
+                                                const cmeta_uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
@@ -1943,7 +1943,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
 }
 
 static inline bool {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view,
-                                                salts_uuid_t *value) {
+                                                cmeta_uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;

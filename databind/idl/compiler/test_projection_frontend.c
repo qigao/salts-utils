@@ -1,12 +1,12 @@
 #include "projection_frontend.h"
 
-#include "salts_fs.h"
+#include "cmeta_fs.h"
 #include "tinytest.h"
 
 #include <string.h>
 
 static const char *path_base(const char *path, char out[SALTS_FS_MAX_PATH]) {
-  if (salts_fs_path_basename(path, out, SALTS_FS_MAX_PATH) != 0)
+  if (cmeta_fs_path_basename(path, out, SALTS_FS_MAX_PATH) != 0)
     return NULL;
   return out;
 }
@@ -495,7 +495,7 @@ spec("DataBind public typed generation frontend") {
     databind_compiler_projection_frontend_plan plan;
     char error[256];
 
-    check_equal(salts_fs_path_join(
+    check_equal(cmeta_fs_path_join(
                     collision, sizeof(collision),
                     "generated", "image.plugin.c"),
                 0);

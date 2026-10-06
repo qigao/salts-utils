@@ -1,7 +1,7 @@
 #include "binary_layout_ir.h"
 #include "schema_cmeta.h"
 #include "schema_size.h"
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 
 #include <limits.h>
 #include <stdint.h>
@@ -85,7 +85,7 @@ static databind_binary_layout_status binary_field_scalar_representation(
     field->scalar_kind = DATABIND_BINARY_SCALAR_BYTES;
     break;
   case CMETA_DATA_CUSTOM:
-    if (!salts_uuid_cmeta_data_valid(semantic.data))
+    if (!cmeta_uuid_cmeta_data_valid(semantic.data))
       return DATABIND_BINARY_LAYOUT_OK;
     field->scalar_kind = DATABIND_BINARY_SCALAR_BYTES;
     break;

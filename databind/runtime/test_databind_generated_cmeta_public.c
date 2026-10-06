@@ -1,6 +1,6 @@
 #include <schema_cmeta.h>
 #include "cmeta_graph_generated.h"
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -136,8 +136,8 @@ static int verify_public_cmeta(void) {
         0, 0, 0u, NULL, 0u, NULL};
     schema_cmeta_field_type semantic;
     int valid = schema_cmeta_field_resolve(&contract, &field, &semantic) &&
-        semantic.kind == CMETA_DATA_CUSTOM && salts_uuid_cmeta_data_valid(semantic.data) &&
-        salts_uuid_cmeta_data_valid(shape->fields[0].value) &&
+        semantic.kind == CMETA_DATA_CUSTOM && cmeta_uuid_cmeta_data_valid(semantic.data) &&
+        cmeta_uuid_cmeta_data_valid(shape->fields[0].value) &&
         cmeta_type_equal(semantic.data->storage_type, shape->fields[0].value->storage_type);
     if (!valid) return 7;
   }
@@ -233,7 +233,7 @@ static int verify_public_cmeta(void) {
     if (shape->fields[0].value->kind != CMETA_DATA_BOOL ||
         shape->fields[0].value->storage_type->size !=
             sizeof(((FixedValues_t *)0)->enabled) ||
-        !salts_uuid_cmeta_data_valid(shape->fields[1].value) ||
+        !cmeta_uuid_cmeta_data_valid(shape->fields[1].value) ||
         shape->fields[2].value->kind != CMETA_DATA_BYTES ||
         shape->fields[2].value->storage_type->size !=
             sizeof(((FixedValues_t *)0)->digest) ||

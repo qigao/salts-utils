@@ -56,7 +56,7 @@ cmeta_status salts_lua_call_invokable(
  * canonical semantic temporaries and route only through
  * cmeta_object_field_assign(). Reflection alone never grants writability.
  * Executable receiver methods are exposed only through
- * cmeta_object_method_provider and cmeta_object_method_invokable_bind().
+ * cmeta_object_operation_provider and cmeta_object_operation_invokable_bind().
  */
 cmeta_status salts_lua_push_object(
     lua_State *state, cmeta_object_ref *object, salts_lua_limits limits);

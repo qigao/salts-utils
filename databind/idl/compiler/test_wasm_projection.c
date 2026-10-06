@@ -2,7 +2,7 @@
 #include "projection.h"
 #include "wasm_projection.h"
 
-#include "salts_fs.h"
+#include "cmeta_fs.h"
 #include "tinytest.h"
 
 #include <stdint.h>
@@ -267,11 +267,11 @@ static void cleanup_outputs(
     const char *host_source,
     const char *guest_header,
     const char *core) {
-  (void)salts_fs_unlink(component);
-  (void)salts_fs_unlink(host_header);
-  (void)salts_fs_unlink(host_source);
-  (void)salts_fs_unlink(guest_header);
-  if (core != NULL) (void)salts_fs_unlink(core);
+  (void)cmeta_fs_unlink(component);
+  (void)cmeta_fs_unlink(host_header);
+  (void)cmeta_fs_unlink(host_source);
+  (void)cmeta_fs_unlink(guest_header);
+  if (core != NULL) (void)cmeta_fs_unlink(core);
 }
 
 static int run_projection(
@@ -324,7 +324,7 @@ spec("DataBind WASM projection backend") {
     static const char guest_h[] = "databind_wasm_projection.wasm_guest.h";
     static const char export_symbol[] =
         "databind_14_WasmProjection_4_Calc_3_Add";
-    salts_fs_buf_t generated = {0};
+    cmeta_fs_buf_t generated = {0};
 
     cleanup_outputs(component, host_h, host_c, guest_h, core);
     check_true(write_core_add_module(core, export_symbol));
@@ -335,7 +335,7 @@ spec("DataBind WASM projection backend") {
                     core, component, host_h, host_c, guest_h),
                 0);
 
-    check_equal(salts_fs_read_file(component, &generated), 0);
+    check_equal(cmeta_fs_read_file(component, &generated), 0);
     check(generated.len >= 8u);
     check_equal((unsigned char)generated.base[0], 0x00u);
     check_equal((unsigned char)generated.base[1], 0x61u);
@@ -348,9 +348,9 @@ spec("DataBind WASM projection backend") {
     check_true(bytes_contains(
         (const unsigned char *)generated.base, generated.len,
         export_symbol));
-    salts_fs_buf_free(&generated);
+    cmeta_fs_buf_free(&generated);
 
-    check_equal(salts_fs_read_file(host_c, &generated), 0);
+    check_equal(cmeta_fs_read_file(host_c, &generated), 0);
     check_not_null(strstr(
         generated.base, "turbowasm_component_instance_invoke"));
     check_not_null(strstr(
@@ -363,16 +363,16 @@ spec("DataBind WASM projection backend") {
         generated.base, "DataBindNativeExecution"));
     check_not_null(strstr(
         generated.base, "WasmProjection.Calc.Add"));
-    salts_fs_buf_free(&generated);
+    cmeta_fs_buf_free(&generated);
 
-    check_equal(salts_fs_read_file(host_h, &generated), 0);
+    check_equal(cmeta_fs_read_file(host_h, &generated), 0);
     check_not_null(strstr(
         generated.base, "#include <data_bind_binding_plan.h>"));
     check_not_null(strstr(
         generated.base, "DataBindServiceNativeBinding"));
-    salts_fs_buf_free(&generated);
+    cmeta_fs_buf_free(&generated);
 
-    check_equal(salts_fs_read_file(guest_h, &generated), 0);
+    check_equal(cmeta_fs_read_file(guest_h, &generated), 0);
     check_not_null(strstr(generated.base, export_symbol));
     check_not_null(strstr(generated.base, "cabi_realloc"));
     check_not_null(strstr(generated.base, "request_offset"));
@@ -380,7 +380,7 @@ spec("DataBind WASM projection backend") {
     check_null(strstr(generated.base, "result_pair_offset"));
     check_null(strstr(
         generated.base, "uint32_t left, uint32_t right"));
-    salts_fs_buf_free(&generated);
+    cmeta_fs_buf_free(&generated);
 
     cleanup_outputs(component, host_h, host_c, guest_h, core);
   }
@@ -393,7 +393,7 @@ spec("DataBind WASM projection backend") {
     static const char guest_h[] = "databind_wasm_multi.wasm_guest.h";
     static const char export_symbol[] =
         "databind_9_WasmMulti_4_Calc_3_Add";
-    salts_fs_buf_t generated = {0};
+    cmeta_fs_buf_t generated = {0};
 
     cleanup_outputs(component, host_h, host_c, guest_h, core);
     check_true(write_core_add_module(core, export_symbol));
@@ -403,12 +403,12 @@ spec("DataBind WASM projection backend") {
                     core, component, host_h, host_c, guest_h),
                 0);
 
-    check_equal(salts_fs_read_file(host_c, &generated), 0);
+    check_equal(cmeta_fs_read_file(host_c, &generated), 0);
     check_not_null(strstr(generated.base, "AddResponse_view_bind"));
     check_not_null(strstr(generated.base, "response->value"));
     check_not_null(strstr(generated.base, "response->other"));
     check_null(strstr(generated.base, "TURBOWASM_COMPONENT_HOST_U32"));
-    salts_fs_buf_free(&generated);
+    cmeta_fs_buf_free(&generated);
 
     cleanup_outputs(component, host_h, host_c, guest_h, core);
   }
@@ -429,17 +429,17 @@ spec("DataBind WASM projection backend") {
                     "WasmOptional.Calculator",
                     core, component, host_h, host_c, guest_h),
                 -1);
-    check(salts_fs_access(component, SALTS_FS_ACCESS_EXISTS) != 0);
-    check(salts_fs_access(host_h, SALTS_FS_ACCESS_EXISTS) != 0);
-    check(salts_fs_access(host_c, SALTS_FS_ACCESS_EXISTS) != 0);
-    check(salts_fs_access(guest_h, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(component, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(host_h, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(host_c, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(guest_h, SALTS_FS_ACCESS_EXISTS) != 0);
 
     check_equal(run_projection(
                     WASM_ERROR_SCHEMA,
                     "WasmError.Calculator",
                     core, component, host_h, host_c, guest_h),
                 -1);
-    check(salts_fs_access(component, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(cmeta_fs_access(component, SALTS_FS_ACCESS_EXISTS) != 0);
 
     cleanup_outputs(component, host_h, host_c, guest_h, core);
   }

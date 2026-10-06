@@ -2131,16 +2131,16 @@ spec("json_parser") {
 
     it("keeps parser diagnostics local to the calling thread") {
       json_error_thread_probe probe = {0};
-      salts_thread_t thread = NULL;
+      cmeta_thread_t thread = NULL;
       json_value_t *value = json_parse("invalid", 7u);
 
       check_null(value);
       check_not_null(json_get_error());
-      check_equal(salts_thread_create(&thread, json_parse_success_on_thread,
+      check_equal(cmeta_thread_create(&thread, json_parse_success_on_thread,
                                       &probe),
                   0);
-      check_equal(salts_thread_join(&thread), 0);
-      salts_thread_destroy(&thread);
+      check_equal(cmeta_thread_join(&thread), 0);
+      cmeta_thread_destroy(&thread);
       check_equal(probe.status, 0);
       check_not_null(json_get_error());
     }

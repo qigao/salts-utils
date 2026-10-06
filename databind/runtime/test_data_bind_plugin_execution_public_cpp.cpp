@@ -9,12 +9,12 @@ static_assert(
     std::is_standard_layout_v<DataBindNativeExecution>,
     "Plugin execution bridge must remain C-compatible");
 static_assert(
-    std::is_standard_layout_v<salts_plugin_export>,
+    std::is_standard_layout_v<cmeta_plugin_export>,
     "Salts Plugin export must remain C-compatible");
 
 using Admit = int (*)(
     const DataBindPluginOperationBinding *,
-    const salts_plugin_export *,
+    const cmeta_plugin_export *,
     DataBindNativeExecution *);
 
 static_assert(

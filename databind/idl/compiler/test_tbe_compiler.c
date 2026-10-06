@@ -3102,8 +3102,8 @@ spec("tbe_compiler") {
       check_contains(cpp_output, "std::vector<Level> bids;");
       check_contains(cpp_output, "std::string symbol;");
       check_contains(cpp_output, "std::vector<std::uint8_t> digest;");
-      check_contains(cpp_output, "salts_uuid_t request_id;");
-      check_contains(cpp_output, "#include \"salts_uuid.h\"");
+      check_contains(cpp_output, "cmeta_uuid_t request_id;");
+      check_contains(cpp_output, "#include \"cmeta_uuid.h\"");
 
       check_contains(go_output, "package market");
       check_contains(go_output, "Bids []Level");
@@ -3164,13 +3164,13 @@ spec("tbe_compiler") {
       char *output = render_c_template(schema);
 
       check_not_null(output);
-      check_contains(output, "#include \"salts_uuid.h\"");
-      check_contains(output, "salts_uuid_t request_id;");
+      check_contains(output, "#include \"cmeta_uuid.h\"");
+      check_contains(output, "cmeta_uuid_t request_id;");
       check_contains(output, "enum { Event_BLOCK_LENGTH = 16 };");
       check_contains(output, "static inline bool Event_request_id_set(");
-      check_contains(output, "const salts_uuid_t *value");
+      check_contains(output, "const cmeta_uuid_t *value");
       check_contains(output, "static inline bool Event_request_id_get(");
-      check_contains(output, "salts_uuid_t *value");
+      check_contains(output, "cmeta_uuid_t *value");
 
       free(output);
     }

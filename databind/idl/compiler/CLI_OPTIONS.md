@@ -314,7 +314,7 @@ Its `text_to_binary_into` operation binds JSON/YAML/CSV/XML directly into caller
 capacity-bounded wire storage, so a runtime can enforce its output quota before conversion.
 The reverse `binary_to_text` operation returns an allocated host buffer and is intended for
 trusted host code unless the runtime also enforces the serializer's temporary-allocation budget.
-Schema `uuid` fields are generated as `salts_uuid_t`; text formats use canonical UUID strings
+Schema `uuid` fields are generated as `cmeta_uuid_t`; text formats use canonical UUID strings
 and binary serialization preserves the fixed 16-byte wire value.
 Generated C uses DataBind for native conversion, transactional rollback, and format
 orchestration over its canonical CMeta graph and schema overlay:
@@ -382,7 +382,7 @@ trusted host codec.
 
 For a freestanding wasm32 build, define `DATA_BIND_BINARY_WASM_GUEST=1`. This removes the generated
 wire header's dependency on host libc and the Salts UUID runtime while preserving
-the same fixed 16-byte `salts_uuid_t` value layout:
+the same fixed 16-byte `cmeta_uuid_t` value layout:
 
 ```bash
 clang --target=wasm32-unknown-unknown -DDATA_BIND_BINARY_WASM_GUEST=1 -O2 -nostdlib \

@@ -26,7 +26,7 @@
 #include "cmd_arger.h"
 #include "compiler_core.h"
 #include "projection_frontend.h"
-#include "salts_fs.h"
+#include "cmeta_fs.h"
 
 static const char *TBE_COMPILER_LANG_OPTION_LIST =
     "c, cpp, cxx, go, rust, python, py, ts, typescript, sqlite, postgresql, postgres";
@@ -42,7 +42,7 @@ static int resolve_resource_dir(const char *argv0, char *out, size_t out_size) {
 
     if (argv0 == NULL || out == NULL || out_size == 0) return 0;
     if (strchr(argv0, '/') != NULL || strchr(argv0, '\\') != NULL) {
-        return salts_fs_path_dirname(argv0, out, out_size) == 0;
+        return cmeta_fs_path_dirname(argv0, out, out_size) == 0;
     }
     path_env = getenv("PATH");
     if (path_env == NULL) return 0;
@@ -59,13 +59,13 @@ static int resolve_resource_dir(const char *argv0, char *out, size_t out_size) {
         if (len > 0 && len < sizeof(directory)) {
             memcpy(directory, cursor, len);
             directory[len] = '\0';
-            if (salts_fs_path_join(candidate, sizeof(candidate), directory, argv0) == 0 &&
-                salts_fs_access(candidate, SALTS_FS_ACCESS_EXISTS) == 0)
-                return salts_fs_path_dirname(candidate, out, out_size) == 0;
+            if (cmeta_fs_path_join(candidate, sizeof(candidate), directory, argv0) == 0 &&
+                cmeta_fs_access(candidate, SALTS_FS_ACCESS_EXISTS) == 0)
+                return cmeta_fs_path_dirname(candidate, out, out_size) == 0;
 #ifdef _WIN32
             if (snprintf(candidate, sizeof(candidate), "%s\\%s.exe", directory, argv0) > 0 &&
-                salts_fs_access(candidate, SALTS_FS_ACCESS_EXISTS) == 0)
-                return salts_fs_path_dirname(candidate, out, out_size) == 0;
+                cmeta_fs_access(candidate, SALTS_FS_ACCESS_EXISTS) == 0)
+                return cmeta_fs_path_dirname(candidate, out, out_size) == 0;
 #endif
         }
         if (end == NULL) break;

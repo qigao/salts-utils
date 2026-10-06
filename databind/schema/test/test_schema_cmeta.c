@@ -2,7 +2,7 @@
 #include "schema_cmeta.h"
 
 #include <cmeta/data.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <cmeta/data.h>
 
 #include <stddef.h>
@@ -105,8 +105,8 @@ suite("schema_cmeta") {
     }
 
     it("maps uuid to the process-wide canonical Core descriptor") {
-      check_true(schema_cmeta_builtin_data("uuid") == &salts_uuid_cmeta_data);
-      check_true(salts_uuid_cmeta_data_valid(schema_cmeta_builtin_data("uuid")));
+      check_true(schema_cmeta_builtin_data("uuid") == &cmeta_uuid_cmeta_data);
+      check_true(cmeta_uuid_cmeta_data_valid(schema_cmeta_builtin_data("uuid")));
     }
 
     it("rejects unsupported or invalid scalar names explicitly") {

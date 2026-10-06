@@ -7,7 +7,7 @@
 
 #include <cmeta/data.h>
 #include <cstl/byte_buffer.h>
-#include <salts_cmeta_data.h>
+#include <cmeta_cmeta_data.h>
 #include <tstr.h>
 
 #include <stdio.h>
@@ -39,7 +39,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     if (shape != NULL) {
       check_equal(shape->field_count, (size_t)3u);
       check_true(cmeta_data_desc_equal(shape->fields[1].value,
-                                       &salts_tstr_cmeta_data));
+                                       &cmeta_tstr_cmeta_data));
       check_true(cmeta_data_desc_equal(shape->fields[2].value,
                                        &stl_byte_buffer_cmeta_data));
     }

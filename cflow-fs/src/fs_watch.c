@@ -26,7 +26,7 @@ struct cflow_fs_watch_impl {
     size_t head;
     size_t tail;
     size_t count;
-    salts_mutex_t gate;
+    cmeta_mutex_t gate;
     cflow_fs_watch_event_fn event;
     void *event_user;
     cflow_fs_watch_ready_fn ready;
@@ -57,9 +57,9 @@ static void cflow_fs_watch_notify_prepared(cflow_fs_watch_impl *impl,
     if (!prepared)
         return;
     impl->ready(impl->ready_user);
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     --impl->notifications_inflight;
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
 }
 
 static bool watch_multiply(size_t left, size_t right, size_t *out) {
@@ -100,10 +100,10 @@ bool cflow_fs_watch_close_requested(const cflow_fs_watch_impl *impl) {
 void cflow_fs_watch_backend_mark_done(cflow_fs_watch_impl *impl) {
     bool notify;
     if (impl != NULL) {
-        salts_mutex_lock(&impl->gate);
+        cmeta_mutex_lock(&impl->gate);
         atomic_store(&impl->backend_done, true);
         notify = cflow_fs_watch_prepare_notify_locked(impl);
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         cflow_fs_watch_notify_prepared(impl, notify);
     }
 }
@@ -112,7 +112,7 @@ void cflow_fs_watch_publish_loss(cflow_fs_watch_impl *impl) {
     bool notify = false;
     if (impl == NULL)
         return;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     ++impl->suppressed;
     if (!impl->awaiting_rescan) {
         impl->awaiting_rescan = true;
@@ -121,7 +121,7 @@ void cflow_fs_watch_publish_loss(cflow_fs_watch_impl *impl) {
         ++impl->rescan_required;
         notify = cflow_fs_watch_prepare_notify_locked(impl);
     }
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     cflow_fs_watch_notify_prepared(impl, notify);
 }
 
@@ -140,10 +140,10 @@ int cflow_fs_watch_publish(cflow_fs_watch_impl *impl,
         cflow_fs_watch_publish_loss(impl);
         return SALTS_ENOBUFS;
     }
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     if (atomic_load(&impl->close_requested)) {
         ++impl->suppressed;
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return SALTS_ESHUTDOWN;
     }
     if (impl->awaiting_rescan || impl->count == impl->capacity) {
@@ -154,7 +154,7 @@ int cflow_fs_watch_publish(cflow_fs_watch_impl *impl,
             impl->rescan_delivered = false;
             ++impl->rescan_required;
         }
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return SALTS_ENOBUFS;
     }
     slot = &impl->slots[impl->tail];
@@ -171,7 +171,7 @@ int cflow_fs_watch_publish(cflow_fs_watch_impl *impl,
     impl->tail = (impl->tail + 1u) % impl->capacity;
     ++impl->count;
     notify = cflow_fs_watch_prepare_notify_locked(impl);
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     cflow_fs_watch_notify_prepared(impl, notify);
     return SALTS_OK;
 }
@@ -218,7 +218,7 @@ int cflow_fs_watch_open_notified(cflow_fs_watch *watch, const char *path,
     impl->event_user = config->event_user;
     impl->ready = ready;
     impl->ready_user = ready_user;
-    salts_mutex_init(&impl->gate);
+    cmeta_mutex_init(&impl->gate);
     atomic_init(&impl->close_requested, false);
     atomic_init(&impl->backend_done, false);
     atomic_init(&impl->driver_active, false);
@@ -229,7 +229,7 @@ int cflow_fs_watch_open_notified(cflow_fs_watch *watch, const char *path,
     }
     status = cflow_fs_watch_backend_open(impl, path, config);
     if (status != SALTS_OK) {
-        salts_mutex_destroy(&impl->gate);
+        cmeta_mutex_destroy(&impl->gate);
         free(impl->delivery_path);
         free(impl->paths);
         free(impl->slots);
@@ -251,10 +251,10 @@ bool cflow_fs_watch_has_ready_or_done(const cflow_fs_watch *watch) {
     if (watch == NULL || watch->impl == NULL)
         return true;
     impl = (const cflow_fs_watch_impl *)watch->impl;
-    salts_mutex_lock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_lock((cmeta_mutex_t *)&impl->gate);
     ready = impl->count != 0u || impl->rescan_pending ||
             atomic_load(&impl->backend_done);
-    salts_mutex_unlock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_unlock((cmeta_mutex_t *)&impl->gate);
     return ready;
 }
 
@@ -264,10 +264,10 @@ bool cflow_fs_watch_backend_done_and_empty(const cflow_fs_watch *watch) {
     if (watch == NULL || watch->impl == NULL)
         return true;
     impl = (const cflow_fs_watch_impl *)watch->impl;
-    salts_mutex_lock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_lock((cmeta_mutex_t *)&impl->gate);
     done = impl->count == 0u && !impl->rescan_pending &&
            atomic_load(&impl->backend_done);
-    salts_mutex_unlock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_unlock((cmeta_mutex_t *)&impl->gate);
     return done;
 }
 
@@ -286,7 +286,7 @@ int cflow_fs_watch_run_ready(cflow_fs_watch *watch, size_t max_events,
     while (count < max_events) {
         cflow_fs_watch_event event;
         bool have_event = false;
-        salts_mutex_lock(&impl->gate);
+        cmeta_mutex_lock(&impl->gate);
         if (impl->count != 0u) {
             cflow_fs_watch_slot *slot = &impl->slots[impl->head];
             memcpy(impl->delivery_path, slot->path,
@@ -316,13 +316,13 @@ int cflow_fs_watch_run_ready(cflow_fs_watch *watch, size_t max_events,
             };
             have_event = true;
         }
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         if (!have_event)
             break;
         impl->event(impl->event_user, &event);
-        salts_mutex_lock(&impl->gate);
+        cmeta_mutex_lock(&impl->gate);
         ++impl->delivered;
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         ++count;
     }
     atomic_store(&impl->driver_active, false);
@@ -336,9 +336,9 @@ int cflow_fs_watch_acknowledge_rescan(cflow_fs_watch *watch) {
     if (watch == NULL || watch->impl == NULL)
         return SALTS_EINVAL;
     impl = (cflow_fs_watch_impl *)watch->impl;
-    salts_mutex_lock(&impl->gate);
+    cmeta_mutex_lock(&impl->gate);
     if (!impl->awaiting_rescan || !impl->rescan_delivered) {
-        salts_mutex_unlock(&impl->gate);
+        cmeta_mutex_unlock(&impl->gate);
         return SALTS_EALREADY;
     }
     if (impl->suppressed != impl->rescan_delivery_suppressed) {
@@ -350,7 +350,7 @@ int cflow_fs_watch_acknowledge_rescan(cflow_fs_watch *watch) {
         impl->awaiting_rescan = false;
         impl->rescan_delivered = false;
     }
-    salts_mutex_unlock(&impl->gate);
+    cmeta_mutex_unlock(&impl->gate);
     cflow_fs_watch_notify_prepared(impl, notify);
     return SALTS_OK;
 }
@@ -374,10 +374,10 @@ bool cflow_fs_watch_is_quiescent(const cflow_fs_watch *watch) {
     if (watch == NULL || watch->impl == NULL)
         return false;
     impl = (const cflow_fs_watch_impl *)watch->impl;
-    salts_mutex_lock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_lock((cmeta_mutex_t *)&impl->gate);
     empty = impl->count == 0u && !impl->rescan_pending &&
             impl->notifications_inflight == 0u;
-    salts_mutex_unlock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_unlock((cmeta_mutex_t *)&impl->gate);
     return atomic_load(&impl->close_requested) &&
            atomic_load(&impl->backend_done) && empty;
 }
@@ -388,7 +388,7 @@ bool cflow_fs_watch_get_stats(const cflow_fs_watch *watch,
     if (watch == NULL || watch->impl == NULL || out == NULL)
         return false;
     impl = (const cflow_fs_watch_impl *)watch->impl;
-    salts_mutex_lock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_lock((cmeta_mutex_t *)&impl->gate);
     *out = (cflow_fs_watch_stats){
         .capacity = impl->capacity,
         .queued = impl->count + (impl->rescan_pending ? 1u : 0u),
@@ -401,7 +401,7 @@ bool cflow_fs_watch_get_stats(const cflow_fs_watch *watch,
             : (atomic_load(&impl->backend_done)
                    ? CFLOW_FS_WATCH_CLOSED : CFLOW_FS_WATCH_CLOSING),
     };
-    salts_mutex_unlock((salts_mutex_t *)&impl->gate);
+    cmeta_mutex_unlock((cmeta_mutex_t *)&impl->gate);
     return true;
 }
 
@@ -415,7 +415,7 @@ int cflow_fs_watch_destroy(cflow_fs_watch *watch) {
         !cflow_fs_watch_is_quiescent(watch))
         return SALTS_EBUSY;
     status = cflow_fs_watch_backend_destroy(impl);
-    salts_mutex_destroy(&impl->gate);
+    cmeta_mutex_destroy(&impl->gate);
     free(impl->delivery_path);
     free(impl->paths);
     free(impl->slots);
