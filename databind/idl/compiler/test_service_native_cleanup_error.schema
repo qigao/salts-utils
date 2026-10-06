@@ -1,0 +1,18 @@
+schema CleanupError [version(1)];
+
+message Request {
+    uint32 id;
+}
+
+message Response {
+    uint32 value;
+}
+
+message MultiError {
+    string detail;
+    bytes payload;
+}
+
+service Store {
+    Read: Request -> Response throws MultiError;
+}
