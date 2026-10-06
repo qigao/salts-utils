@@ -183,6 +183,62 @@ spec("generated DataBind Plugin client") {
                 SALTS_PLUGIN_OK);
   }
 
+  it("retains a live lease when close fails and completes on retry") {
+    salts_plugin_registry registry = make_registry();
+    salts_plugin_registry wrong_registry = make_registry();
+    salts_plugin_ref ref = {0};
+    ImageProcessorPluginClient client = IMAGE_IMAGEPROCESSOR_PLUGIN_CLIENT_INIT;
+    salts_plugin_registry *correct_registry;
+    salts_plugin_lifecycle_info info = {0};
+    bool quiescent = false;
+
+    check_equal(salts_plugin_registry_load(
+                    &registry, GENERATED_DATABIND_PLUGIN_PATH, &ref),
+                SALTS_PLUGIN_OK);
+    check_equal(salts_plugin_registry_start(&registry, ref),
+                SALTS_PLUGIN_OK);
+    check_equal(
+        databind_plugin_client_5_Image_14_ImageProcessor_open(
+            &registry, ref, &client),
+        SALTS_PLUGIN_OK);
+    correct_registry = client.registry;
+    check_true(salts_plugin_lease_valid(client.lease));
+
+    client.registry = &wrong_registry;
+    check_equal(
+        databind_plugin_client_5_Image_14_ImageProcessor_close(&client),
+        SALTS_PLUGIN_STALE);
+    check_true(salts_plugin_lease_valid(client.lease));
+    check_equal(salts_plugin_registry_get_lifecycle(
+                    &registry, ref, &info),
+                SALTS_PLUGIN_OK);
+    check_equal(info.active_leases, (size_t)1u);
+
+    client.registry = correct_registry;
+    check_equal(
+        databind_plugin_client_5_Image_14_ImageProcessor_close(&client),
+        SALTS_PLUGIN_OK);
+    check_false(
+        databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
+    check_equal(salts_plugin_registry_get_lifecycle(
+                    &registry, ref, &info),
+                SALTS_PLUGIN_OK);
+    check_equal(info.active_leases, (size_t)0u);
+
+    check_equal(salts_plugin_registry_request_stop(&registry, ref),
+                SALTS_PLUGIN_OK);
+    check_equal(salts_plugin_registry_poll_quiescent(
+                    &registry, ref, &quiescent),
+                SALTS_PLUGIN_OK);
+    check_true(quiescent);
+    check_equal(salts_plugin_registry_unload(&registry, ref),
+                SALTS_PLUGIN_OK);
+    check_equal(salts_plugin_registry_destroy(&registry),
+                SALTS_PLUGIN_OK);
+    check_equal(salts_plugin_registry_destroy(&wrong_registry),
+                SALTS_PLUGIN_OK);
+  }
+
   it("rejects plugin, contract and Function ABI mismatches without leaking leases") {
     expect_client_open_rejected(
         GENERATED_DATABIND_CLIENT_BAD_PLUGIN_ID_PATH,
