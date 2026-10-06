@@ -717,7 +717,8 @@ static int native_emit_error_variant_helpers(
     if (fprintf(
             file,
             "  if (cmeta_data_value_move(&%s, &destination->%s, "
-            "&source->%s) != CMETA_OK) {\n",
+            "&source->%s) != CMETA_OK) {\n"
+            "    DataBindStatus rollback_status = DATA_BIND_OK;\n",
             field->native_data_symbol, field->member_name,
             field->member_name) < 0)
       return -1;
@@ -727,15 +728,19 @@ static int native_emit_error_variant_helpers(
       if (prior->native_data_symbol != NULL &&
           fprintf(
               file,
-              "    (void)cmeta_data_value_move(&%s, &source->%s, "
-              "&destination->%s);\n",
+              "    if (cmeta_data_value_move(&%s, &source->%s, "
+              "&destination->%s) != CMETA_OK)\n"
+              "      rollback_status = DATA_BIND_ERR_RUNTIME;\n",
               prior->native_data_symbol, prior->member_name,
               prior->member_name) < 0)
         return -1;
     }
     if (fprintf(
             file,
-            "    (void)%s__error_%zu_clear(destination);\n"
+            "    if (%s__error_%zu_clear(destination) != DATA_BIND_OK)\n"
+            "      rollback_status = DATA_BIND_ERR_RUNTIME;\n"
+            "    if (rollback_status != DATA_BIND_OK)\n"
+            "      return rollback_status;\n"
             "    return DATA_BIND_ERR_RUNTIME;\n"
             "  }\n",
             operation->symbol, ordinal) < 0)
@@ -870,6 +875,7 @@ int databind_compiler_service_native_emit_prototype(
     if (fprintf(
             file,
             "  case %s__ERROR_%zu:\n"
+            "    error->kind = kind;\n"
             "    status = %s__error_%zu_init(&error->payload.error_%zu);\n"
             "    break;\n",
             operation->symbol, i + 1u,
@@ -881,12 +887,7 @@ int databind_compiler_service_native_emit_prototype(
           "  default:\n"
           "    return DATA_BIND_ERR_INVALID_ARG;\n"
           "  }\n"
-          "  if (status != DATA_BIND_OK) {\n"
-          "    %s__error_init(error);\n"
-          "    return status;\n"
-          "  }\n"
-          "  error->kind = kind;\n"
-          "  return DATA_BIND_OK;\n"
+          "  return status;\n"
           "}\n"
           "static inline DataBindStatus %s__error_move(\n"
           "    %s__error *destination, %s__error *source) {\n"
@@ -911,6 +912,7 @@ int databind_compiler_service_native_emit_prototype(
     if (fprintf(
             file,
             "  case %s__ERROR_%zu:\n"
+            "    destination->kind = kind;\n"
             "    status = %s__error_%zu_move(\n"
             "        &destination->payload.error_%zu, &source->payload.error_%zu);\n"
             "    break;\n",
@@ -923,11 +925,7 @@ int databind_compiler_service_native_emit_prototype(
           "  default:\n"
           "    return DATA_BIND_ERR_INVALID_ARG;\n"
           "  }\n"
-          "  if (status != DATA_BIND_OK) {\n"
-          "    %s__error_init(destination);\n"
-          "    return status;\n"
-          "  }\n"
-          "  destination->kind = kind;\n"
+          "  if (status != DATA_BIND_OK) return status;\n"
           "  source->kind = %s__ERROR_NONE;\n"
           "  return DATA_BIND_OK;\n"
           "}\n"
