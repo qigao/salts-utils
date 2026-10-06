@@ -2291,6 +2291,14 @@ DataBindStatus data_bind_native_init(
   return DATA_BIND_OK;
 }
 
+DataBindStatus data_bind_native_restore_zero_admitted(
+    const cmeta_data_desc *data, void *storage) {
+  DataBindStatus status = native_restore_value(data, storage);
+  if (status != DATA_BIND_OK || !native_value_is_zero(data, storage))
+    return DATA_BIND_ERR_RUNTIME;
+  return DATA_BIND_OK;
+}
+
 DataBindStatus data_bind_native_clear(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     void *destination, size_t destination_bytes,

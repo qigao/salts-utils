@@ -16,6 +16,14 @@ extern "C" {
 DataBindStatus data_bind_native_leaf_token(
     const cmeta_data_desc *data, const void *source, cserde_token *out);
 
+/*
+ * Restore storage admitted by an immutable binding/message plan. CMeta owns
+ * reflected lifecycle; DataBind also zeros unreflected struct overlay bytes.
+ * No descriptor admission, workspace, allocation or resolver lookup occurs.
+ */
+DataBindStatus data_bind_native_restore_zero_admitted(
+    const cmeta_data_desc *data, void *storage);
+
 
 /* Runtime usage reported by one successful native decode. */
 typedef struct DataBindNativeDecodeUsage {

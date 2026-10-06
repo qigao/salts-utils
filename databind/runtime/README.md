@@ -78,6 +78,31 @@ DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema�
 
 ## 设计边界
 
+成功准入的 Service 调用使用 `data_bind_binding_plan_bind_call` 与
+`DataBindBindingCallLifetime` 建立一项整帧释放义务。入口先验证帧边界，初始化
+request、IN/OUT staging、按值返回的 response 与 NONE error envelope，再绑定输入；
+失败由 producer 回滚已初始化值，不发布 live 句柄。已发布的句柄不可复制、重置
+或并发使用；它借用不可变 BindingPlan、descriptor domain、frame metadata 与 storage
+到唯一终止点。不同 staging 必须互不重叠，request 在 ABI 参数表中的对应别名除外。
+
+执行、egress、取消或延迟 finalize 后调用 `data_bind_binding_call_restore_zero`。
+它使用 plan 缓存的 active-error DataDesc，按逆序恢复参数、request 与返回值，并清理
+DataBind presence/null overlay；清理不需要 workspace、分配或 resolver 查询。终止前
+验证帧与 discriminator，非法状态保留全部值与 live 义务；实际清理开始前消费句柄，
+重复终止返回 `INVALID_ARG`，不以幂等析构掩盖重复调用。canonical 生命周期违反契约
+时报告错误并继续恢复剩余 owner，已消费的句柄不能重试。
+
+调用方只查询 producer 的 `data_bind_binding_call_is_live`，不另存 `frame_live` 或
+逐字段释放位图。HTTP buffer、deferred response、executor task 与插件 domain lease
+仍由各自 owner 终止，descriptor domain 必须最后释放。延迟任务通过既有同步交接
+独占访问帧，不在执行期间修改 frame metadata。已有 `bind_inputs` 的失败回滚契约
+保持不变，但不建立整帧句柄；迁移消费者须链接含新导出入口的 SDK 并重新编译。
+验证范围包括失败 init、partial ingress、成功/typed-error、egress 失败、按值返回、
+重复终止、无 workspace 的 warm 清理与安装后的 C/C++ 真实调用。
+完整可编译调用见安装测试的
+[Service call fixture](../idl/compiler/package_config/databind_target/service_call_fixture.h)，
+同一实现由公开 SDK 下的 C 与 C++ 消费者编译执行。
+
 生成的 text decode helper 在渲染前建立编译器私有 cleanup-action stack，
 取得顺序为暂存 allocation、workspace、FormatPlan、format reader、native 临时值。
 每个义务有显式 live 状态，退出代码从同一列表逆序生成；heap、workspace、format

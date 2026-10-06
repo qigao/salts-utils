@@ -499,7 +499,7 @@ set_tests_properties(test_data_bind_plugin_execution_public_cpp PROPERTIES
 
 cmake_add_test(test_data_bind_binding_plan
   SOURCES test_data_bind_binding_plan.c
-  LIBS ${DATA_BIND_TEST_LIBS}
+  LIBS ${DATA_BIND_TEST_LIBS} Salts::CFlow
   FOLDER "databind/runtime/tests")
 set_tests_properties(test_data_bind_binding_plan PROPERTIES
   LABELS "databind;cmeta;service-contract;binding-plan")

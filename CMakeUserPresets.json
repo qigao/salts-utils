@@ -526,6 +526,13 @@
             "configurePreset": "ci-win-dev-user"
         },
         {
+            "name": "install-ci-win-dev-user",
+            "configurePreset": "ci-win-dev-user",
+            "targets": [
+                "install"
+            ]
+        },
+        {
             "name": "ci-sdk-release-user",
             "configurePreset": "ci-sdk-release-user"
         },

@@ -160,10 +160,13 @@ FunctionDeclAs(
     (OwnedErrorEnvelope *, error,
      CMETA_PARAM_OUT | CMETA_PARAM_BORROWED, &ERROR_ENVELOPE_PTR_TYPE));
 
+static size_t resolver_calls;
+
 static DataBindStatus resolve_text(
     const cmeta_data_desc **out, DataBindError *error) {
   (void)error;
   if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  ++resolver_calls;
   *out = &TEXT_ERROR_DATA;
   return DATA_BIND_OK;
 }
@@ -172,6 +175,7 @@ static DataBindStatus resolve_bytes(
     const cmeta_data_desc **out, DataBindError *error) {
   (void)error;
   if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  ++resolver_calls;
   *out = &BYTES_ERROR_DATA;
   return DATA_BIND_OK;
 }
@@ -228,6 +232,21 @@ static cserde_status error_token_next(void *opaque, cserde_token *out) {
 static const cserde_reader_ops ERROR_TOKEN_READER_OPS = {
     sizeof(cserde_reader_ops), CSERDE_READER_OPS_ABI_VERSION,
     error_token_next};
+
+static DataBindStatus call_input_open(
+    void *opaque, const DataBindBindingPlanEntry *entry,
+    cserde_reader *reader, DataBindBindingValueState *state,
+    DataBindError *error) {
+  static const cserde_token id = {.kind = CSERDE_UINT, .value.uint = 1u};
+  ErrorTokenSource *source = (ErrorTokenSource *)opaque;
+  (void)error;
+  if (entry == NULL || strcmp(entry->schema_field, "id") != 0)
+    return DATA_BIND_ERR_TYPE_NOT_FOUND;
+  *source = (ErrorTokenSource){&id, 1u, 0u};
+  *state = DATA_BIND_VALUE_STATE_VALUE;
+  return cserde_reader_init(reader, &ERROR_TOKEN_READER_OPS, source) == CSERDE_OK
+             ? DATA_BIND_OK : DATA_BIND_ERR_RUNTIME;
+}
 
 static DataBindStatus error_input_open(
     void *opaque, const DataBindBindingPlanEntry *entry,
@@ -343,24 +362,26 @@ static DataBind *create_codec(void) {
              : NULL;
 }
 
-static DataBindBindingPlan *compile_plan(DataBind *codec) {
+static DataBindServiceNativeBinding owned_native_binding(void) {
   DataBindServiceNativeBinding native =
       DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
           FunctionMeta(owned_call), &REQUEST_NATIVE, &RESPONSE_NATIVE);
-  DataBindBindingProjection projection =
-      DATA_BIND_BINDING_PROJECTION_INIT;
-  projection.id = "test-owned";
-  projection.project_field = project_field;
-  DataBindBindingPlanDiagnostic diagnostic =
-      DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
-  DataBindBindingPlan *plan = NULL;
-
   native.errors = ERROR_BINDINGS;
   native.error_count = 2u;
   native.error_param_index = 2u;
   native.error_envelope_bytes = sizeof(OwnedErrorEnvelope);
   native.error_kind_offset = offsetof(OwnedErrorEnvelope, kind);
   native.error_kind_bytes = sizeof(uint32_t);
+  return native;
+}
+
+static DataBindBindingPlan *compile_plan(DataBind *codec) {
+  DataBindServiceNativeBinding native = owned_native_binding();
+  DataBindBindingProjection projection = DATA_BIND_BINDING_PROJECTION_INIT;
+  DataBindBindingPlanDiagnostic diagnostic = DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+  DataBindBindingPlan *plan = NULL;
+  projection.id = "test-owned";
+  projection.project_field = project_field;
 
   check_equal(data_bind_binding_plan_compile_service(
                   codec, "Store", "Read", &projection, &native,
@@ -408,6 +429,105 @@ static void expect_pretransaction_validation(
 }
 
 spec("BindingPlan validates owned typed errors before publication") {
+  it("rejects error payload alignment and discriminator overlap at compilation") {
+    DataBind *codec = create_codec();
+    DataBindServiceNativeBinding native = owned_native_binding();
+    DataBindNativeErrorBinding errors[] = {ERROR_BINDINGS[0], ERROR_BINDINGS[1]};
+    DataBindBindingProjection projection = DATA_BIND_BINDING_PROJECTION_INIT;
+    DataBindBindingPlanDiagnostic diagnostic = DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    init_owned_error_cmeta();
+    projection.id = "invalid-error-layout";
+    projection.project_field = project_field;
+    native.errors = errors;
+    errors[0].payload_offset += 1u;
+    check_equal(data_bind_binding_plan_compile_service(
+        codec, "Store", "Read", &projection, &native, &plan, &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_true(plan == NULL);
+    errors[0].payload_offset = 0u;
+    check_equal(data_bind_binding_plan_compile_service(
+        codec, "Store", "Read", &projection, &native, &plan, &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_true(plan == NULL);
+    data_bind_free(codec);
+  }
+
+  it("finishes owned typed errors from cached plans without resolver lookup") {
+    DataBind *codec = create_codec();
+    DataBindBindingPlan *plan;
+    DataBindBindingPlanDiagnostic diagnostic = DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingProvider provider = DATA_BIND_BINDING_PROVIDER_INIT;
+    ErrorTokenSource source = {0};
+    unsigned char workspace[4096] = {0};
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    OwnedRequest request = {0};
+    OwnedResponse response = {0};
+    OwnedErrorEnvelope envelope = {0};
+    void *params[] = {&request, &response, &envelope};
+    const size_t param_bytes[] = {sizeof(request), sizeof(response), sizeof(envelope)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+    DataBindBindingCallLifetime lifetime = DATA_BIND_BINDING_CALL_LIFETIME_INIT;
+    size_t cold_resolver_calls;
+    uint32_t kind;
+
+    init_owned_error_cmeta();
+    plan = compile_plan(codec);
+    check_not_null(plan);
+    data_bind_free(codec);
+    cold_resolver_calls = resolver_calls;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+    options.max_depth = 16u;
+    options.max_items = 64u;
+    options.max_owned_bytes = 1024u;
+    provider.context = &source;
+    provider.open_input = call_input_open;
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 3u;
+    params[2] = (unsigned char *)&envelope + 1u;
+    check_equal(data_bind_binding_plan_bind_call(
+        plan, &provider, &options, &frame, &lifetime, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    check_false(data_bind_binding_call_is_live(&lifetime));
+    params[2] = &envelope;
+    for (kind = 0u; kind <= 2u; ++kind) {
+      check_equal(data_bind_binding_plan_bind_call(
+          plan, &provider, &options, &frame, &lifetime, &diagnostic), DATA_BIND_OK);
+      check_true(data_bind_binding_call_is_live(&lifetime));
+      check_equal(envelope.kind, 0u);
+      response.value = 7u;
+      if (kind == 1u) {
+        check_equal(cmeta_data_value_init_zero(
+            &TEXT_ERROR_DATA, &envelope.payload.text), CMETA_OK);
+        envelope.payload.text.detail = tstr_dup("oops");
+        check_not_null(envelope.payload.text.detail);
+      } else if (kind == 2u) {
+        check_equal(cmeta_data_value_init_zero(
+            &BYTES_ERROR_DATA, &envelope.payload.bytes), CMETA_OK);
+        check_equal(stl_byte_buffer_resize(&envelope.payload.bytes.payload, 3u), STL_OK);
+      }
+      envelope.kind = 99u;
+      check_equal(data_bind_binding_call_restore_zero(
+          &lifetime, &diagnostic), DATA_BIND_ERR_SCHEMA);
+      check_true(data_bind_binding_call_is_live(&lifetime));
+      check_equal(request.id, 1u);
+      check_equal(response.value, 7u);
+      envelope.kind = kind;
+      check_equal(data_bind_binding_call_restore_zero(&lifetime, &diagnostic), DATA_BIND_OK);
+      check_false(data_bind_binding_call_is_live(&lifetime));
+      check_equal(request.id, 0u);
+      check_equal(response.value, 0u);
+      check_equal(envelope.kind, 0u);
+      if (kind == 1u) check_true(envelope.payload.text.detail == NULL);
+      if (kind == 2u) check_equal(stl_byte_buffer_size(&envelope.payload.bytes.payload), (size_t)0u);
+      check_equal(data_bind_binding_call_restore_zero(
+          &lifetime, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+      check_equal(resolver_calls, cold_resolver_calls);
+    }
+    data_bind_binding_plan_free(plan);
+  }
+
   it("binds owned typed Service errors for generated clients and rolls invalid payloads back") {
     static const unsigned char expected_bytes[] = {1u, 2u, 3u};
     DataBind *codec = create_codec();

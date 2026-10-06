@@ -1056,6 +1056,21 @@ static DataBindStatus plan_compile_errors(
           diagnostic, DATA_BIND_ERR_SCHEMA, name, param->name,
           "Typed-error payload lies outside the generated error envelope");
 
+    if (data->storage_type->align == 0u ||
+        param->type->pointee->align == 0u ||
+        param->type->pointee->align % data->storage_type->align != 0u ||
+        binding->payload_offset % data->storage_type->align != 0u)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, name, param->name,
+          "Typed-error payload is not aligned within the envelope");
+    if (binding->payload_offset <
+            native->error_kind_offset + native->error_kind_bytes &&
+        native->error_kind_offset <
+            binding->payload_offset + data->storage_type->size)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, name, param->name,
+          "Typed-error payload overlaps the envelope discriminator");
+
     *entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
     entry->direction = DATA_BIND_BINDING_EGRESS;
     entry->address.binding_class = DATA_BIND_BINDING_ERROR;
@@ -1446,6 +1461,14 @@ static DataBindStatus plan_frame_preflight(
         plan->function->params[plan->error_param_index].name,
         "Typed-error envelope staging storage is missing or too small");
 
+  if (plan->has_error_param &&
+      (uintptr_t)frame->params[plan->error_param_index] %
+          plan->function->params[plan->error_param_index].type->pointee->align != 0u)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        plan->function->params[plan->error_param_index].name,
+        "Typed-error envelope staging storage is misaligned");
+
   return DATA_BIND_OK;
 }
 
@@ -1682,6 +1705,12 @@ static void plan_cleanup_inputs(
   }
 }
 
+int data_bind_binding_call_is_live(
+    const DataBindBindingCallLifetime *lifetime) {
+  return lifetime != NULL && lifetime->size >= sizeof(*lifetime) &&
+         lifetime->plan != NULL && lifetime->frame != NULL;
+}
+
 DataBindStatus data_bind_binding_plan_bind_inputs(
     const DataBindBindingPlan *plan,
     const DataBindBindingProvider *provider,
@@ -1855,6 +1884,51 @@ fail:
   plan_cleanup_inputs(
       plan, native_options, frame, initialized_params, request_initialized);
   return status;
+}
+
+DataBindStatus data_bind_binding_plan_bind_call(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    DataBindBindingCallLifetime *lifetime,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  DataBindStatus status;
+
+  if (!plan_diag_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+  if (lifetime == NULL || lifetime->size < sizeof(*lifetime) ||
+      lifetime->plan != NULL || lifetime->frame != NULL || native_options == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Binding requires an empty initialized call lifetime");
+  status = plan_frame_preflight(plan, frame, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+  if (plan->ingress_count != 0u && !plan_provider_valid_for_input(provider))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid BindingPlan input provider");
+
+  if (plan->has_error_param)
+    memset(frame->params[plan->error_param_index], 0,
+           plan->error_envelope_bytes);
+  if (plan->response_uses_return) {
+    status = plan_native_init(
+        native_options, plan->response->data, frame->return_value,
+        frame->return_bytes, diagnostic, NULL, NULL);
+    if (status != DATA_BIND_OK) return status;
+  }
+  status = data_bind_binding_plan_bind_inputs(
+      plan, provider, native_options, frame, diagnostic);
+  if (status != DATA_BIND_OK) {
+    if (plan->response_uses_return)
+      plan_native_clear_noexcept(native_options, plan->response->data,
+                                 frame->return_value, frame->return_bytes);
+    plan_reset_response_state(plan, frame);
+    return status;
+  }
+  plan_reset_response_state(plan, frame);
+  lifetime->plan = plan;
+  lifetime->frame = frame;
+  return DATA_BIND_OK;
 }
 
 static DataBindStatus plan_request_frame_preflight(
@@ -2665,6 +2739,75 @@ static DataBindStatus plan_read_typed_error_kind(
 
   *out_kind = kind;
   return DATA_BIND_OK;
+}
+
+static void plan_call_restore_value(
+    const cmeta_data_desc *data, void *storage, const char *param,
+    DataBindStatus *result, DataBindBindingPlanDiagnostic *diagnostic) {
+  DataBindStatus status = data_bind_native_restore_zero_admitted(data, storage);
+  if (status != DATA_BIND_OK && *result == DATA_BIND_OK)
+    *result = plan_diag_fail(diagnostic, status, NULL, param,
+                            "Native call teardown did not restore semantic zero");
+}
+
+DataBindStatus data_bind_binding_call_restore_zero(
+    DataBindBindingCallLifetime *lifetime,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  const DataBindBindingPlan *plan;
+  DataBindBindingCallFrame *frame;
+  DataBindStatus status;
+  uint32_t kind;
+  size_t i;
+
+  if (!plan_diag_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+  if (!data_bind_binding_call_is_live(lifetime))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Call teardown requires one live binding lifetime");
+  plan = lifetime->plan;
+  frame = lifetime->frame;
+  status = plan_frame_preflight(plan, frame, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+  status = plan_read_typed_error_kind(plan, frame, &kind, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  /* Consume before provider callbacks: teardown must never become reentrant. */
+  lifetime->plan = NULL;
+  lifetime->frame = NULL;
+  if (plan->has_error_param) {
+    unsigned char *envelope =
+        (unsigned char *)frame->params[plan->error_param_index];
+    if (kind != 0u) {
+      const DataBindBindingPlanEntry *entry = &plan->errors[kind - 1u].view;
+      plan_call_restore_value(
+          entry->data, envelope + entry->native_offset,
+          plan->function->params[plan->error_param_index].name,
+          &status, diagnostic);
+    }
+    if (status == DATA_BIND_OK)
+      memset(envelope, 0, plan->error_envelope_bytes);
+  }
+  /* O(parameter count + native graph size), no per-field ownership bitmap. */
+  i = plan->param_count;
+  while (i != 0u) {
+    --i;
+    if (plan->param_data[i] != NULL)
+      plan_call_restore_value(
+          plan->param_data[i], frame->params[i],
+          plan->function->params[i].name, &status, diagnostic);
+  }
+  if (plan->has_request_root_param)
+    plan_call_restore_value(
+        plan->request->data, frame->request,
+        plan->function->params[plan->request_root_param].name,
+        &status, diagnostic);
+  if (plan->response_uses_return)
+    plan_call_restore_value(
+        plan->response->data, frame->return_value,
+        NULL, &status, diagnostic);
+  plan_reset_request_state(plan, frame);
+  plan_reset_response_state(plan, frame);
+  return status;
 }
 
 DataBindStatus data_bind_binding_plan_write_outcome(

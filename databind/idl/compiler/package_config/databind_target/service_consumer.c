@@ -7,6 +7,7 @@
 #include "installed_service_native.h"
 
 #include <string.h>
+#include "service_call_fixture.h"
 
 int main(void) {
   DataBindNativeTypeBinding request = {0};
@@ -43,6 +44,8 @@ int main(void) {
       void *, size_t, DataBindError *) =
       data_bind_service_native_error_restore_zero;
   int failed = 0;
+
+  if (installed_service_call() != 0) return 14;
 
   if (write_inputs_fn == NULL || bind_outcome_fn == NULL ||
       restore_error_fn == NULL)
