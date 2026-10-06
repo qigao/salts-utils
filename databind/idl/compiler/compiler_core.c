@@ -212,6 +212,136 @@ static int tbe_compiler_set_string(Node *map, const char *name, const char *valu
   return 0;
 }
 
+typedef enum native_decode_cleanup_kind {
+  NATIVE_DECODE_HEAP_FREE,
+  NATIVE_DECODE_WORKSPACE_CLOSE,
+  NATIVE_DECODE_FORMAT_PLAN_FREE,
+  NATIVE_DECODE_READER_CLOSE,
+  NATIVE_DECODE_VALUE_RESTORE
+} native_decode_cleanup_kind;
+
+typedef struct native_decode_cleanup_action {
+  native_decode_cleanup_kind kind;
+  const char *key;
+  const char *live;
+  const char *acquire_condition;
+} native_decode_cleanup_action;
+
+static tstr native_decode_cleanup_operation(
+    native_decode_cleanup_kind kind, const char *schema_name) {
+  tstr code = tstr_dup("");
+  tstr appended;
+  if (code == NULL) return NULL;
+  switch (kind) {
+  case NATIVE_DECODE_HEAP_FREE:
+    appended = tstr_cat_fmt(code, "free(temporary_allocation);");
+    break;
+  case NATIVE_DECODE_WORKSPACE_CLOSE:
+    appended = tstr_cat_fmt(code, "%s_message_workspace_close(&workspace);",
+                            schema_name);
+    break;
+  case NATIVE_DECODE_FORMAT_PLAN_FREE:
+    appended = tstr_cat_fmt(code, "data_bind_format_plan_free(format_plan);");
+    break;
+  case NATIVE_DECODE_READER_CLOSE:
+    appended = tstr_cat_fmt(code, "(void)data_bind_format_reader_close(&reader);");
+    break;
+  case NATIVE_DECODE_VALUE_RESTORE:
+    appended = tstr_cat_fmt(code,
+        "(void)cmeta_data_value_restore_zero(binding.data, temporary);\n"
+        "        memset(temporary, 0, object_size);");
+    break;
+  default:
+    tstr_free(code);
+    return NULL;
+  }
+  if (appended == NULL) tstr_free(code);
+  return appended;
+}
+
+/*
+ * Generation-only lexical ownership, ordered by acquisition. MessagePlan and
+ * the canonical reader view are borrowed. A failed decode is rolled back by
+ * MessagePlan; only its successful result transfers a live value here.
+ */
+static int tbe_compiler_prepare_native_text_cleanup(Node *root) {
+  static const native_decode_cleanup_action actions[] = {
+      {NATIVE_DECODE_HEAP_FREE, "heap", "temporary_allocation_live", NULL},
+      {NATIVE_DECODE_WORKSPACE_CLOSE, "workspace", "workspace_live", NULL},
+      {NATIVE_DECODE_FORMAT_PLAN_FREE, "format_plan", "format_plan_live", NULL},
+      {NATIVE_DECODE_READER_CLOSE, "reader", "reader_live", NULL},
+      {NATIVE_DECODE_VALUE_RESTORE, "value", "temporary_live",
+       "status == DATA_BIND_OK"}};
+  const size_t action_count = sizeof(actions) / sizeof(actions[0]);
+  const char *schema_name = tbe_compiler_string_value(
+      tbe_compiler_find_child(root, "schema"), "schema_name");
+  Node *plan = NULL;
+  Node *action_node = NULL;
+  tstr declarations = NULL;
+  tstr teardown = NULL;
+  tstr operation = NULL;
+  int result = -1;
+  size_t index;
+  enum { TRANSITION_CODE_BYTES = 128 };
+  char transition[TRANSITION_CODE_BYTES];
+  int written;
+
+  if (schema_name == NULL || schema_name[0] == '\0') return -1;
+  plan = create_node_map("native_text_cleanup");
+  declarations = tstr_dup("");
+  teardown = tstr_dup("");
+  if (plan == NULL || declarations == NULL || teardown == NULL) goto cleanup;
+  for (index = 0u; index < action_count; ++index) {
+    const native_decode_cleanup_action *action = &actions[index];
+    tstr appended = tstr_cat_fmt(declarations, "    int %s = 0;\n", action->live);
+    if (appended == NULL) goto cleanup;
+    declarations = appended;
+    action_node = create_node_map(action->key);
+    if (action_node == NULL) goto cleanup;
+    written = action->acquire_condition != NULL
+        ? snprintf(transition, sizeof(transition), "if (%s) %s = 1;",
+                   action->acquire_condition, action->live)
+        : snprintf(transition, sizeof(transition), "%s = 1;", action->live);
+    if (written < 0 || (size_t)written >= sizeof(transition) ||
+        tbe_compiler_set_string(action_node, "acquire", transition) != 0)
+      goto cleanup;
+    written = snprintf(transition, sizeof(transition), "%s = 0;", action->live);
+    if (written < 0 || (size_t)written >= sizeof(transition) ||
+        tbe_compiler_set_string(action_node, "release", transition) != 0 ||
+        map_add(plan, action_node) != 0)
+      goto cleanup;
+    action_node = NULL;
+  }
+  for (index = action_count; index != 0u; --index) {
+    const native_decode_cleanup_action *action = &actions[index - 1u];
+    tstr appended;
+    operation = native_decode_cleanup_operation(action->kind, schema_name);
+    if (operation == NULL) goto cleanup;
+    appended = tstr_cat_fmt(teardown,
+        "    if (%s) {\n        %s = 0;\n        %s\n    }\n",
+        action->live, action->live, operation);
+    if (appended == NULL) goto cleanup;
+    teardown = appended;
+    tstr_free(operation);
+    operation = NULL;
+  }
+  if (tbe_compiler_set_string(plan, "declarations", declarations) != 0 ||
+      tbe_compiler_set_string(plan, "teardown", teardown) != 0)
+    goto cleanup;
+  tbe_compiler_remove_children(root, "native_text_cleanup");
+  if (map_add(root, plan) != 0) goto cleanup;
+  plan = NULL;
+  result = 0;
+
+cleanup:
+  node_free(action_node);
+  node_free(plan);
+  tstr_free(operation);
+  tstr_free(teardown);
+  tstr_free(declarations);
+  return result;
+}
+
 static void tbe_compiler_pascal_identifier(const char *input, char *out, size_t out_size) {
   int capitalize = 1;
   size_t pos = 0;
@@ -3748,6 +3878,11 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     }
     if (tbe_compiler_annotate_binary_reader_messages(root, contract, projection_root) != 0) {
       fprintf(stderr, "Failed to evaluate generated Binary message admission\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (tbe_compiler_prepare_native_text_cleanup(root) != 0) {
+      fprintf(stderr, "Failed to prepare generated native text cleanup plan\n");
       status = 1;
       goto cleanup;
     }

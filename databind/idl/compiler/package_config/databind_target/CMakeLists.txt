@@ -178,6 +178,17 @@ add_test(NAME installed_nested_generics_consumer COMMAND installed_nested_generi
 set_tests_properties(installed_nested_generics_consumer PROPERTIES
   LABELS "databind;generic;installed;ownership;cpp")
 
+add_executable(installed_text_cleanup_consumer ../../test_generated_text_cleanup.c)
+target_compile_features(installed_text_cleanup_consumer PRIVATE c_std_11)
+target_link_libraries(installed_text_cleanup_consumer PRIVATE Salts::TinyTest Salts::DataBind)
+target_include_directories(installed_text_cleanup_consumer PRIVATE
+  "${installed_nested_generics_GENERATED_DIR}")
+add_dependencies(installed_text_cleanup_consumer installed_nested_generics_idl_codegen)
+add_dependencies(installed_nested_generics installed_text_cleanup_consumer)
+add_test(NAME installed_text_cleanup_consumer COMMAND installed_text_cleanup_consumer)
+set_tests_properties(installed_text_cleanup_consumer PROPERTIES
+  LABELS "databind;installed;ownership;cleanup")
+
 salts_idl_target(
   TARGET installed_service
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/service.schema"
