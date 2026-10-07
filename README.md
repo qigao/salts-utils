@@ -102,6 +102,12 @@ target_link_libraries(app PRIVATE
 
 The package is fail-fast by design. It does not silently search unrelated prefixes, source trees, compatibility shims, or fallback implementations when the required installed Salts profile is missing.
 
+SaltsUtils does not discover Lua or QuickJS for consumers of unrelated modules.
+Applications linking `Salts::Lua` must explicitly call
+`find_package(unofficial-lua CONFIG REQUIRED)`; applications linking
+`Salts::QuickJS` must call `find_package(qjs CONFIG REQUIRED)`.
+The binding targets and their runtime link dependencies remain available.
+
 ### Restore the published SDK and shared dependency cache
 
 Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain as Salts. Keep its checkout at `%LOCALAPPDATA%/qigao/vcpkg-cache` on Windows or `$HOME/.cache/qigao/vcpkg-cache` on Linux. The shared GitHub Packages binary cache is read-only; the default local vcpkg cache remains writable. Overlay ports come from that checkout. CI inherits the cache action's environment and uses the same pinned action revision as Salts.
