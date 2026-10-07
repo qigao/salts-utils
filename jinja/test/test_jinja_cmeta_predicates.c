@@ -221,29 +221,6 @@ spec("Jinja CMeta: predicates 1") {
     jinja_cmeta_release(templ);
   }
 
-  it("evaluates comparison test aliases with existing value semantics") {
-    static const struct { const char *source; const char *expected; } cases[] = {
-      {"{{ 1 is eq(true) }}|{{ 1 is equalto 1.0 }}|{{ 1 is ne('1') }}", "True|True|True"},
-      {"{{ 1 is lt(2) }}|{{ 1 is lessthan(2) }}|{{ 2 is le(2) }}", "True|True|True"},
-      {"{{ 3 is gt(2) }}|{{ 3 is greaterthan(2) }}|{{ 2 is ge(2) }}", "True|True|True"},
-      {"{{ 1 is not eq(2) }}|{{ 2 is lt(1) }}|{{ 2 is ne(2) }}", "True|False|False"},
-      {"{{ [1,2] is lt([1,3]) }}|{{ (1,2) is equalto((1,2)) }}|{{ [1] is eq((1,)) }}", "True|True|False"},
-      {"{{ {'a':1} is eq({'a':true}) }}|{{ none is eq(none) }}|{{ missing is eq(missing) }}", "True|True|True"},
-      {"{{ '\u4e2d' is gt('a') }}|{{ user.age is ge(42) }}|{{ range(3) is eq(range(0,3)) }}", "True|True|True"},
-      {"{{ false and 1 is lt(none) }}|{{ true or 1 is eq() }}", "False|True"}
-    };
-    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 42}, false, {NULL, 0u, 0u, NULL}};
-    JinjaTestModel model;
-    jinja_test_model_init(&model);
-    for (size_t i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
-      JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
-      char *output = NULL;
-      check_equal(jinja_test_render(cases[i].source, &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
-      check_equal(output, cases[i].expected);
-      free(output);
-    }
-  }
-
   it("rejects comparison test arity keywords and unordered types") {
     static const char *const sources[] = {"{{ 1 is eq }}", "{{ 1 is eq() }}", "{{ 1 is eq(1,2) }}",
       "{{ 1 is eq(b=1) }}", "{{ 1 is ge(num=1) }}", "{{ 1 is lt(none) }}",

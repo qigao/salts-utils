@@ -21,6 +21,9 @@
 #include "data_bind_binary_writer.h"
 #include "data_bind_binary_reader.h"
 #include "data_bind_value_reader_internal.h"
+#include "data_bind_cmeta.h"
+#include <cmeta/data_reflect.h>
+#include <cmeta_cmeta_data.h>
 #include "data_bind_message_plan.h"
 #include <json_parser.h>
 #include <csv_parser.h>
@@ -10176,10 +10179,52 @@ static DataBindStatus create_mapped_object(DataBind *codec, const DataBindObject
   return status;
 }
 
+typedef struct db_text_children {
+  cmeta_range range;
+  cmeta_range_cursor cursor;
+  DataBindCMetaRangeKind kind;
+} db_text_children;
+
+/* Stack-only borrowed traversal, in encounter order. Source stays immutable
+ * through recursive serialization; existing depth limits bound stack usage. */
+static DataBindStatus db_text_children_init(
+    const DataBindValue *value, db_text_children *children) {
+  *children = (db_text_children){0};
+  switch (data_bind_value_kind(value)) {
+  case DATA_BIND_VALUE_OBJECT: children->kind = DATA_BIND_CMETA_RANGE_FIELDS; break;
+  case DATA_BIND_VALUE_MAP: children->kind = DATA_BIND_CMETA_RANGE_MAP_ENTRIES; break;
+  case DATA_BIND_VALUE_LIST:
+  case DATA_BIND_VALUE_SET: children->kind = DATA_BIND_CMETA_RANGE_VALUES; break;
+  default: return DATA_BIND_ERR_TYPE_MISMATCH;
+  }
+  return data_bind_cmeta_range_init(value, children->kind, &children->range);
+}
+
+/* 1: borrowed child, 0: end, -1: invalidated or malformed source. */
+static int db_text_children_next(db_text_children *children, DataBindFieldRef *out) {
+  cmeta_gen_status status;
+  DataBindFieldRef field = {0};
+  if (children->kind == DATA_BIND_CMETA_RANGE_FIELDS) {
+    status = cmeta_range_next(&children->range, &children->cursor, &field);
+  } else if (children->kind == DATA_BIND_CMETA_RANGE_MAP_ENTRIES) {
+    DataBindMapEntryRef entry = {0};
+    status = cmeta_range_next(&children->range, &children->cursor, &entry);
+    field.name = entry.key;
+    field.value = entry.value;
+  } else {
+    DataBindValueRef value = {0};
+    status = cmeta_range_next(&children->range, &children->cursor, &value);
+    field.value = value.value;
+  }
+  if (status == CMETA_GEN_DONE) return 0;
+  if (status != CMETA_GEN_VALUE && status != CMETA_GEN_VALUE_AND_DONE) return -1;
+  *out = field;
+  return 1;
+}
+
 static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigned depth,
                                               DataBindStatus *status) {
   json_value_t *json = NULL;
-  size_t i;
   char text[128];
 
   if (value == NULL || depth > DATA_BIND_JSON_MAX_DEPTH) {
@@ -10308,63 +10353,40 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
     break;
   }
   case DATA_BIND_VALUE_OBJECT:
-    json = json_create_object();
-    for (i = 0; json != NULL && i < vec_size(&value->data.object.fields); ++i) {
-      const db_field_slot_t *field =
-          (const db_field_slot_t *)vec_at_const(&value->data.object.fields, i);
-      json_value_t *child = field != NULL
-                                ? data_bind_value_to_json(field->value, depth + 1, status)
-                                : NULL;
-      if (field == NULL || field->name == NULL || child == NULL ||
-          !json_object_add_checked(json, field->name, child)) {
-        (json_free(child), child = NULL);
-        (json_free(json), json = NULL);
+  case DATA_BIND_VALUE_LIST:
+  case DATA_BIND_VALUE_SET:
+  case DATA_BIND_VALUE_MAP: {
+    const int sequence = value->kind == DATA_BIND_VALUE_LIST || value->kind == DATA_BIND_VALUE_SET;
+    db_text_children children;
+    DataBindFieldRef field;
+    int next = 0;
+    *status = db_text_children_init(value, &children);
+    if (*status != DATA_BIND_OK) return NULL;
+    json = sequence ? json_create_array() : json_create_object();
+    while (json != NULL && (next = db_text_children_next(&children, &field)) > 0) {
+      json_value_t *child = data_bind_value_to_json(field.value, depth + 1, status);
+      if (value->kind == DATA_BIND_VALUE_MAP &&
+          !vstr_utf8_valid(vstr_from_cstr(field.name))) {
+        json_free(child);
+        json_free(json);
+        json = NULL;
+        *status = DATA_BIND_ERR_TYPE_MISMATCH;
+      } else if (child == NULL ||
+                 !(sequence ? json_array_add_checked(json, child)
+                            : json_object_add_checked(json, field.name, child))) {
+        json_free(child);
+        json_free(json);
+        json = NULL;
         if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
       }
     }
-    break;
-  case DATA_BIND_VALUE_LIST:
-  case DATA_BIND_VALUE_SET: {
-    const vec_t *values = dbv_ordered_values_const(value);
-    json = json_create_array();
-    for (i = 0; json != NULL && i < vec_size(values); ++i) {
-      const db_owned_value_slot_t *slot =
-          (const db_owned_value_slot_t *)vec_at_const(values, i);
-      json_value_t *child = slot != NULL
-                                ? data_bind_value_to_json(slot->value, depth + 1, status)
-                                : NULL;
-      if (child == NULL || !json_array_add_checked(json, child)) {
-        (json_free(child), child = NULL);
-        (json_free(json), json = NULL);
-        if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
-      }
+    if (next < 0) {
+      json_free(json);
+      json = NULL;
+      *status = DATA_BIND_ERR_RUNTIME;
     }
     break;
   }
-  case DATA_BIND_VALUE_MAP:
-    json = json_create_object();
-    for (i = 0; json != NULL &&
-                i < vec_size(&value->data.map.ordered_entries);
-         ++i) {
-      const db_map_entry_slot_t *entry =
-          (const db_map_entry_slot_t *)vec_at_const(
-              &value->data.map.ordered_entries, i);
-      const char *key = entry != NULL ? entry->public_key_text : NULL;
-      json_value_t *child = entry != NULL
-                                ? data_bind_value_to_json(entry->value, depth + 1,
-                                                          status)
-                                : NULL;
-      if (key == NULL || !vstr_utf8_valid(vstr_from_cstr(key))) {
-        (json_free(child), child = NULL);
-        (json_free(json), json = NULL);
-        *status = DATA_BIND_ERR_TYPE_MISMATCH;
-      } else if (child == NULL || !json_object_add_checked(json, key, child)) {
-        (json_free(child), child = NULL);
-        (json_free(json), json = NULL);
-        if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
-      }
-    }
-    break;
   default:
     *status = DATA_BIND_ERR_TYPE_MISMATCH;
     return NULL;
@@ -10474,7 +10496,6 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
 static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node node,
                                   unsigned depth) {
   char text[128];
-  size_t i;
   if (!value || !node.impl || depth > DATA_BIND_JSON_MAX_DEPTH) return 0;
   switch (value->kind) {
   case DATA_BIND_VALUE_STRING:
@@ -10493,59 +10514,39 @@ static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node nod
   case DATA_BIND_VALUE_BIGINT:
     return value->data.bigint_val.ptr && salts_xml_node_set_text(node, value->data.bigint_val.ptr) == 0;
   case DATA_BIND_VALUE_OBJECT:
-    for (i = 0; i < vec_size(&value->data.object.fields); ++i) {
-      const db_field_slot_t *field =
-          (const db_field_slot_t *)vec_at_const(&value->data.object.fields, i);
-      const char *name = field != NULL ? field->name : NULL;
-      const DataBindValue *child_value = field != NULL ? field->value : NULL;
-      if (name == NULL || child_value == NULL) return 0;
-      if (child_value->kind == DATA_BIND_VALUE_LIST || child_value->kind == DATA_BIND_VALUE_SET) {
-        const vec_t *child_values = dbv_ordered_values_const(child_value);
-        for (size_t j = 0; j < vec_size(child_values); ++j) {
-          const db_owned_value_slot_t *slot = (const db_owned_value_slot_t *)vec_at_const(
-              child_values, j);
+  case DATA_BIND_VALUE_LIST:
+  case DATA_BIND_VALUE_SET:
+  case DATA_BIND_VALUE_MAP: {
+    db_text_children children;
+    DataBindFieldRef field;
+    int next;
+    if (db_text_children_init(value, &children) != DATA_BIND_OK) return 0;
+    while ((next = db_text_children_next(&children, &field)) > 0) {
+      const char *name = field.name != NULL ? field.name : "item";
+      if (value->kind == DATA_BIND_VALUE_MAP && !data_bind_xml_name_valid(name)) return 0;
+      if (value->kind == DATA_BIND_VALUE_OBJECT &&
+          (field.value->kind == DATA_BIND_VALUE_LIST || field.value->kind == DATA_BIND_VALUE_SET)) {
+        db_text_children elements;
+        DataBindFieldRef element;
+        int element_next;
+        if (db_text_children_init(field.value, &elements) != DATA_BIND_OK) return 0;
+        /* Record sequence fields repeat their field name; standalone sequences use item. */
+        while ((element_next = db_text_children_next(&elements, &element)) > 0) {
           salts_xml_node child = {0};
-          if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
-          if (!child.impl ||
-              slot == NULL || slot->value == NULL ||
-              !data_bind_value_to_xml(slot->value, child, depth + 1))
+          if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK ||
+              !child.impl || !data_bind_value_to_xml(element.value, child, depth + 1))
             return 0;
         }
+        if (element_next < 0) return 0;
       } else {
         salts_xml_node child = {0};
-        if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
-        if (!child.impl || !data_bind_value_to_xml(child_value, child, depth + 1)) return 0;
+        if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK ||
+            !child.impl || !data_bind_value_to_xml(field.value, child, depth + 1))
+          return 0;
       }
     }
-    return 1;
-  case DATA_BIND_VALUE_LIST:
-  case DATA_BIND_VALUE_SET: {
-    const vec_t *values = dbv_ordered_values_const(value);
-    for (i = 0; i < vec_size(values); ++i) {
-      const db_owned_value_slot_t *slot =
-          (const db_owned_value_slot_t *)vec_at_const(values, i);
-      salts_xml_node child = {0};
-      if (salts_xml_node_add_element(node, "item", &child) != SALTS_XML_OK) return 0;
-      if (!child.impl || slot == NULL || slot->value == NULL ||
-          !data_bind_value_to_xml(slot->value, child, depth + 1))
-        return 0;
-    }
-    return 1;
+    return next == 0;
   }
-  case DATA_BIND_VALUE_MAP:
-    for (i = 0; i < vec_size(&value->data.map.ordered_entries); ++i) {
-      const db_map_entry_slot_t *entry =
-          (const db_map_entry_slot_t *)vec_at_const(
-              &value->data.map.ordered_entries, i);
-      const char *key = entry != NULL ? entry->public_key_text : NULL;
-      salts_xml_node child = {0};
-      if (!data_bind_xml_name_valid(key)) return 0;
-      if (salts_xml_node_add_element(node, key, &child) != SALTS_XML_OK) return 0;
-      if (!child.impl || entry->value == NULL ||
-          !data_bind_value_to_xml(entry->value, child, depth + 1))
-        return 0;
-    }
-    return 1;
   case DATA_BIND_VALUE_NULL:
     return 0;
   default:
@@ -10590,44 +10591,23 @@ typedef struct data_bind_csv_cell {
   tstr text;
 } data_bind_csv_cell_t;
 
-/* The vector copies string references; this serializer releases them once. */
-static bool data_bind_csv_cell_copy(void *destination, const void *source) {
-  if (destination == NULL || source == NULL) return false;
-  *(data_bind_csv_cell_t *)destination = *(const data_bind_csv_cell_t *)source;
-  return true;
-}
-
-static void data_bind_csv_cell_move(void *destination, void *source) {
-  if (destination == NULL || source == NULL) return;
-  *(data_bind_csv_cell_t *)destination = *(data_bind_csv_cell_t *)source;
-  *(data_bind_csv_cell_t *)source = (data_bind_csv_cell_t){0};
-}
-
-static void data_bind_csv_cell_release_borrow(void *cell) { (void)cell; }
-
-static const cmeta_type_traits DATA_BIND_CSV_CELL_TRAITS = {
-    CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY,
-    NULL, NULL, NULL, data_bind_csv_cell_copy, data_bind_csv_cell_move,
-    data_bind_csv_cell_release_borrow};
+/* Each cell owns both strings, including partially filled cells on failure. */
+#define DATA_BIND_CSV_CELL_ID "salts-utils.databind.csv-cell"
+cmeta_reflect_value(data_bind_csv_cell_t, DATA_BIND_CSV_CELL_ID,
+    cmeta_data_field(tstr, path, SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+    cmeta_data_field(tstr, text, SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+);
+CMETA_DEFINE_DATA_TRAITS(data_bind_csv_cell_t, cmeta_reflected_data(data_bind_csv_cell_t));
+static const cmeta_type_identity DATA_BIND_CSV_CELL_IDENTITY =
+    CMETA_TYPE_ID_ATOM_INIT(DATA_BIND_CSV_CELL_ID);
+/* CSTL storage traits delegate to the same reflected owner identity. */
 static const cmeta_type_desc DATA_BIND_CSV_CELL_TYPE = {
-    "salts-utils.databind.csv-cell", sizeof(data_bind_csv_cell_t),
+    "data_bind_csv_cell_t", sizeof(data_bind_csv_cell_t),
     _Alignof(data_bind_csv_cell_t), CMETA_T_OBJECT, NULL,
-    &DATA_BIND_CSV_CELL_TRAITS, NULL};
+    &cmeta_traits_data_bind_csv_cell_t, &DATA_BIND_CSV_CELL_IDENTITY};
 cmeta_type(Vec, data_bind_csv_cell_vec_t, data_bind_csv_cell_t,
-      &DATA_BIND_CSV_CELL_TYPE, NULL);
-
-static void data_bind_csv_cells_destroy(data_bind_csv_cell_vec_t *cells) {
-  size_t i;
-  if (cells == NULL) return;
-  for (i = 0; i < data_bind_csv_cell_vec_t_size(cells); ++i) {
-    data_bind_csv_cell_t *cell = data_bind_csv_cell_vec_t_at(cells, i);
-    if (cell != NULL) {
-      tstr_free(cell->path);
-      tstr_free(cell->text);
-    }
-  }
-  data_bind_csv_cell_vec_t_destroy(cells);
-}
+    &DATA_BIND_CSV_CELL_TYPE, cmeta_reflected_data(data_bind_csv_cell_t));
+#undef DATA_BIND_CSV_CELL_ID
 
 static int data_bind_csv_tstr_append(tstr *out, const char *data, size_t len) {
   tstr next;
@@ -10741,21 +10721,15 @@ static tstr data_bind_csv_scalar_text(const DataBindValue *value, DataBindStatus
 static DataBindStatus data_bind_csv_add_scalar(data_bind_csv_cell_vec_t *cells,
                                                const tstr path,
                                                const DataBindValue *value) {
-  data_bind_csv_cell_t cell = {0};
+  data_bind_csv_cell_t *cell;
   DataBindStatus status;
-  cell.path = path != NULL && !tstr_empty(path) ? tstr_clone(path) : tstr_dup("value");
-  if (cell.path == NULL) return DATA_BIND_ERR_OOM;
-  cell.text = data_bind_csv_scalar_text(value, &status);
-  if (cell.text == NULL) {
-    tstr_free(cell.path);
-    return status;
-  }
-  if (data_bind_csv_cell_vec_t_push(cells, cell) != STL_OK) {
-    tstr_free(cell.path);
-    tstr_free(cell.text);
+  if (data_bind_csv_cell_vec_t_push(cells, (data_bind_csv_cell_t){0}) != STL_OK)
     return DATA_BIND_ERR_OOM;
-  }
-  return DATA_BIND_OK;
+  cell = data_bind_csv_cell_vec_t_at(cells, data_bind_csv_cell_vec_t_size(cells) - 1u);
+  cell->path = path != NULL && !tstr_empty(path) ? tstr_clone(path) : tstr_dup("value");
+  if (cell->path == NULL) return DATA_BIND_ERR_OOM;
+  cell->text = data_bind_csv_scalar_text(value, &status);
+  return status;
 }
 
 static DataBindStatus data_bind_csv_flatten_value(data_bind_csv_cell_vec_t *cells,
@@ -10766,60 +10740,30 @@ static DataBindStatus data_bind_csv_flatten_value(data_bind_csv_cell_vec_t *cell
   if (depth > DATA_BIND_JSON_MAX_DEPTH) return DATA_BIND_ERR_RUNTIME;
   switch (value->kind) {
   case DATA_BIND_VALUE_OBJECT:
-    if (vec_size(&value->data.object.fields) == 0u) return DATA_BIND_ERR_TYPE_MISMATCH;
-    for (i = 0; i < vec_size(&value->data.object.fields); ++i) {
-      const db_field_slot_t *field =
-          (const db_field_slot_t *)vec_at_const(&value->data.object.fields, i);
-      DataBindStatus status;
-      tstr child_path;
-      if (field == NULL || field->name == NULL || field->value == NULL)
-        return DATA_BIND_ERR_RUNTIME;
-      child_path = data_bind_csv_child_path(path, field->name, &status);
-      if (child_path == NULL) return status;
-      status = data_bind_csv_flatten_value(cells, field->value, child_path, depth + 1);
-      tstr_free(child_path);
-      if (status != DATA_BIND_OK) return status;
-    }
-    return DATA_BIND_OK;
   case DATA_BIND_VALUE_LIST:
-  case DATA_BIND_VALUE_SET: {
-    const vec_t *values = dbv_ordered_values_const(value);
-    if (path == NULL || tstr_empty(path) || vec_size(values) == 0u)
+  case DATA_BIND_VALUE_SET:
+  case DATA_BIND_VALUE_MAP: {
+    db_text_children children;
+    DataBindFieldRef field;
+    DataBindStatus status = db_text_children_init(value, &children);
+    int next;
+    if (status != DATA_BIND_OK) return status;
+    if (cmeta_range_size(&children.range) == 0u ||
+        (value->kind != DATA_BIND_VALUE_OBJECT && (path == NULL || tstr_empty(path))))
       return DATA_BIND_ERR_TYPE_MISMATCH;
-    for (i = 0; i < vec_size(values); ++i) {
-      const db_owned_value_slot_t *slot =
-          (const db_owned_value_slot_t *)vec_at_const(values, i);
-      DataBindStatus status;
-      tstr child_path = data_bind_csv_index_path(path, i, &status);
+    i = 0u;
+    while ((next = db_text_children_next(&children, &field)) > 0) {
+      tstr child_path = field.name != NULL
+          ? data_bind_csv_child_path(path, field.name, &status)
+          : data_bind_csv_index_path(path, i, &status);
       if (child_path == NULL) return status;
-      status = slot != NULL && slot->value != NULL
-                   ? data_bind_csv_flatten_value(cells, slot->value, child_path, depth + 1)
-                   : DATA_BIND_ERR_RUNTIME;
+      status = data_bind_csv_flatten_value(cells, field.value, child_path, depth + 1);
       tstr_free(child_path);
       if (status != DATA_BIND_OK) return status;
+      ++i;
     }
-    return DATA_BIND_OK;
+    return next == 0 ? DATA_BIND_OK : DATA_BIND_ERR_RUNTIME;
   }
-  case DATA_BIND_VALUE_MAP:
-    if (path == NULL || tstr_empty(path) ||
-        vec_size(&value->data.map.ordered_entries) == 0u)
-      return DATA_BIND_ERR_TYPE_MISMATCH;
-    for (i = 0; i < vec_size(&value->data.map.ordered_entries); ++i) {
-      const db_map_entry_slot_t *entry =
-          (const db_map_entry_slot_t *)vec_at_const(
-              &value->data.map.ordered_entries, i);
-      DataBindStatus status;
-      if (entry == NULL || entry->public_key_text == NULL || entry->value == NULL)
-        return DATA_BIND_ERR_RUNTIME;
-      tstr child_path =
-          data_bind_csv_child_path(path, entry->public_key_text, &status);
-      if (child_path == NULL) return status;
-      status = data_bind_csv_flatten_value(cells, entry->value, child_path,
-                                           depth + 1);
-      tstr_free(child_path);
-      if (status != DATA_BIND_OK) return status;
-    }
-    return DATA_BIND_OK;
   case DATA_BIND_VALUE_NULL:
     return DATA_BIND_ERR_TYPE_MISMATCH;
   default:
@@ -10872,7 +10816,7 @@ static DataBindStatus data_bind_object_serialize_csv_canonical(
                         "Out of memory creating CSV columns");
   status = data_bind_csv_flatten_value(&cells, object->value, NULL, 0);
   if (status != DATA_BIND_OK || data_bind_csv_cell_vec_t_empty(&cells)) {
-    data_bind_csv_cells_destroy(&cells);
+    data_bind_csv_cell_vec_t_destroy(&cells);
     return db_error_set(error, status != DATA_BIND_OK ? status : DATA_BIND_ERR_TYPE_MISMATCH,
                         "csv", -1, -1,
                         status == DATA_BIND_ERR_OOM
@@ -10903,7 +10847,7 @@ static DataBindStatus data_bind_object_serialize_csv_canonical(
     else if (out_len != NULL) *out_len = tstr_len(csv);
   }
   tstr_free(csv);
-  data_bind_csv_cells_destroy(&cells);
+  data_bind_csv_cell_vec_t_destroy(&cells);
   if (status != DATA_BIND_OK)
     return db_error_set(error, status, "csv", -1, -1, "Out of memory serializing CSV");
   db_error_clear(error);

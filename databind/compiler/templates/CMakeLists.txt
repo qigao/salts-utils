@@ -1,0 +1,8 @@
+add_subdirectory(c)
+add_subdirectory(cpp)
+add_subdirectory(go)
+add_subdirectory(python)
+add_subdirectory(rust)
+add_subdirectory(typescript)
+add_subdirectory(reflection)
+add_subdirectory(sql)

@@ -52,9 +52,11 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 | Media/helpers | Playback, Capture, Serial, Cron, and related utilities |
 | IDL / Schema | `Salts::IDL`, `Salts::Schema`, `salts-idlc` |
 | DataBind | `Salts::DataBind`; native/dynamic binding, immutable plans, rollback |
-| Language bindings | `Salts::BindingsCpp`; optional `Salts::Lua`, `Salts::QuickJS` |
+| Language bindings | `Salts::BindingsCpp`, `Salts::Lua`, `Salts::QuickJS` (QuickJS-NG) |
 
 Parser capabilities remain independent component targets rather than a single aggregate parser facade.
+
+Capture and Playback are enabled together by `SALTS_UTILS_ENABLE_CAPTURE`. When disabled, neither component's libraries, headers, or tests are added to the build/install graph. The `salts-idlc` compiler is always built and installed with DataBind.
 
 ## Ownership boundaries
 
@@ -78,7 +80,7 @@ execution.
 
 ## CMake
 
-Build SaltsUtils against a matching installed Salts 2.0.0 or newer profile through `SALTS_ROOT`. Generated fixed arrays use its canonical CMeta array provider and element lifecycle traits. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
+Build SaltsUtils against the latest published Salts SDK with a matching build profile through `SALTS_ROOT`. Generated fixed arrays use its canonical CMeta array provider and element lifecycle traits. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED
@@ -125,7 +127,7 @@ cmake --build --preset linux-release-user
 ctest --preset linux-release-user --output-on-failure
 ```
 
-Both restore paths request **Salts.Native 2.0.0** from GitHub Packages and the latest published re2c tools. `-WithTurboWasm` (PowerShell) or the third argument `1` (Bash) also restores TurboWasm. The default local package directory is `stage/nuget`; `QIGAO_NUGET_PACKAGES` selects another cache. Package paths come from NuGet's resolved assets, so older cached versions do not affect selection. User presets consume the exported `SALTS_ROOT` and `RE2C_ROOT` instead of a machine-specific Salts installation. The published Salts SDK contains Release libraries; use Release presets with it. Debug profiles require a matching Debug SDK. For Android, restore `android-arm64-v8a` as the target RID and the native host RID as the re2c RID before using the Android preset.
+Both restore paths request the **latest stable Salts.Native** from GitHub Packages and the latest published re2c tools. Salts is not version-pinned: each restore uses `Version="*"` with `--no-cache --force-evaluate` to resolve the current release. Run restore before configure when updating dependencies; configure consumes the resolved SDK and does not download packages. An incompatible release must fail rather than select an older SDK. `-WithTurboWasm` (PowerShell) or the third argument `1` (Bash) also restores TurboWasm. The default local package directory is `stage/nuget`; `QIGAO_NUGET_PACKAGES` selects another cache. Package paths come from NuGet's resolved assets, so older cached versions do not affect selection. Local Windows/Linux Release presets use version-independent links at `stage/dependencies/salts/<RID>` and `stage/dependencies/re2c/<host-RID>`. Restore updates these links from NuGet's resolved assets (Windows junctions, Unix symbolic links), so an already running IDE can configure without inheriting new SDK environment variables. Existing non-link directories at these paths are rejected instead of overwritten. CI, Debug, and cross-compilation presets retain their explicit environment-root contract. The published Salts SDK contains Release libraries; use Release presets with it. Debug profiles require a matching Debug SDK. For Android, restore `android-arm64-v8a` as the target RID and the native host RID as the re2c RID before using the Android preset.
 
 ### Migrating from Salts 1.x
 
@@ -178,7 +180,7 @@ The Unicode component uses generated data with a fixed Unicode version and expos
 Detailed documentation:
 
 - [IDL architecture](docs/IDL.md)
-- [IDL compiler CLI options](databind/idl/compiler/CLI_OPTIONS.md)
+- [IDL compiler CLI options](databind/compiler/CLI_OPTIONS.md)
 - [Database DDL generation design](docs/architecture/databind-database-ddl-generation.md)
 - [DataBind ownership and adapter design](databind/runtime/README.md)
 
@@ -205,7 +207,7 @@ PowerShell at the repository root:
 cmake --preset win-sdk-package-user
 cmake --build --preset install-win-sdk-package-user
 $env:SALTS_UTILS_ROOT = "$PWD/stage/sdk/windows-x64"
-Push-Location databind/idl/compiler/package_config/databind_target
+Push-Location databind/compiler/package_config/databind_target
 cmake --preset win-release-user
 cmake --build --preset win-release-user
 ctest --preset win-release-user
@@ -216,7 +218,7 @@ The eight CTest entries exercise installed generated messages, services and
 FlowMQ projections. The Binary consumer checks literal wire bytes, bounded
 output and decoded byte-buffer ownership after input reuse and codec destruction.
 The Producer, Plugin and public CMeta consumer projects also expose these presets.
-CI uses `ci-native-release-user` with explicit `SALTS_ROOT`, `SALTS_UTILS_ROOT`,
+These consumer projects use `ci-native-release-user` with explicit `SALTS_ROOT`, `SALTS_UTILS_ROOT`,
 `QIGAO_TARGET_TRIPLET` and `VCPKG_CACHE_REPOSITORY_ROOT` inputs. Each consumer selects
 that exact SDK; a cached package directory cannot select another installation.
 
@@ -235,10 +237,18 @@ cmake --build --preset android-arm64-v8a-release-win
 ```
 
 The Android Windows presets reference `build/Msvc-Release/bin/lemon.exe` explicitly.
-Android/iOS CI builds `lemon` and `salts_idlc` with `ci-host-release-user` before
-configuring the target SDK and passes the completed host compiler to installed
-consumer generation. This removes the former implicit host-build path; callers
+Android/iOS CI builds the host graph with `ci-host-release-user` before
+configuring the target SDK, which uses the completed host `lemon` executable.
+This removes the former implicit host-build path; callers
 of other cross-compilation profiles must supply the completed host executable.
+
+### CI and releases
+
+CI follows the Salts workflow layout: select affected work, compile each profile once,
+restore its immutable build for CTest, and package only during manual release preparation.
+Publication accepts the exact successful preparation run, commit SHA and existing version tag;
+it neither rebuilds nor repacks. See [CI and release workflow](docs/CI.md) for profiles,
+artifact ownership, validation boundaries and release commands.
 
 ## Design rules
 

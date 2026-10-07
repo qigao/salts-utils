@@ -2,6 +2,7 @@
 
 #include <cmeta_cmeta_data.h>
 #include <cmeta/data.h>
+#include <cmeta/pp.h>
 
 #include <string.h>
 
@@ -15,51 +16,74 @@ typedef struct schema_cmeta_kind_entry {
   cmeta_data_kind kind;
 } schema_cmeta_kind_entry_t;
 
-#define SCHEMA_CMETA_ENTRY(name_, data_) ((schema_cmeta_builtin_entry_t){name_, &(data_)})
+#define SCHEMA_CMETA_SIGNED_ALIASES(M) \
+  Schema(M, \
+    ("int8_t", cmeta_data_int8), \
+    ("int8", cmeta_data_int8), \
+    ("i8", cmeta_data_int8), \
+    ("int16_t", cmeta_data_int16), \
+    ("int16", cmeta_data_int16), \
+    ("i16", cmeta_data_int16), \
+    ("int32_t", cmeta_data_int32), \
+    ("int32", cmeta_data_int32), \
+    ("i32", cmeta_data_int32), \
+    ("int64_t", cmeta_data_int64), \
+    ("int64", cmeta_data_int64), \
+    ("i64", cmeta_data_int64))
+
+#define SCHEMA_CMETA_UNSIGNED_ALIASES(M) \
+  Schema(M, \
+    ("uint8_t", cmeta_data_uint8), \
+    ("uint8", cmeta_data_uint8), \
+    ("u8", cmeta_data_uint8), \
+    ("byte", cmeta_data_uint8), \
+    ("uint16_t", cmeta_data_uint16), \
+    ("uint16", cmeta_data_uint16), \
+    ("u16", cmeta_data_uint16), \
+    ("uint32_t", cmeta_data_uint32), \
+    ("uint32", cmeta_data_uint32), \
+    ("u32", cmeta_data_uint32), \
+    ("uint64_t", cmeta_data_uint64), \
+    ("uint64", cmeta_data_uint64), \
+    ("u64", cmeta_data_uint64))
+
+#define SCHEMA_CMETA_SCALAR_ALIASES(M) \
+  Schema(M, \
+    ("bool", cmeta_data_bool), \
+    ("float", cmeta_data_float), \
+    ("f32", cmeta_data_float), \
+    ("double", cmeta_data_double), \
+    ("f64", cmeta_data_double), \
+    ("uuid", cmeta_uuid_cmeta_data))
+
+#define SCHEMA_CMETA_BUILTINS(M) \
+  Replay(SCHEMA_CMETA_SIGNED_ALIASES, M) \
+  Replay(SCHEMA_CMETA_UNSIGNED_ALIASES, M) \
+  Replay(SCHEMA_CMETA_SCALAR_ALIASES, M)
+#define SCHEMA_CMETA_COUNT(name_, data_) + 1u
+enum { SCHEMA_CMETA_BUILTIN_COUNT = 0u SCHEMA_CMETA_BUILTINS(SCHEMA_CMETA_COUNT) };
+#undef SCHEMA_CMETA_COUNT
 
 /* MSVC C cannot use DLL-imported object addresses in file-scope initializers. */
 static const schema_cmeta_builtin_entry_t *schema_cmeta_builtins(size_t *count) {
-  static _Thread_local schema_cmeta_builtin_entry_t builtins[32];
+  static _Thread_local schema_cmeta_builtin_entry_t builtins[SCHEMA_CMETA_BUILTIN_COUNT];
   static _Thread_local int initialized;
   if (!initialized) {
-    builtins[0] = SCHEMA_CMETA_ENTRY("bool", cmeta_data_bool);
-    builtins[1] = SCHEMA_CMETA_ENTRY("int8_t", cmeta_data_int8);
-    builtins[2] = SCHEMA_CMETA_ENTRY("int8", cmeta_data_int8);
-    builtins[3] = SCHEMA_CMETA_ENTRY("i8", cmeta_data_int8);
-    builtins[4] = SCHEMA_CMETA_ENTRY("int16_t", cmeta_data_int16);
-    builtins[5] = SCHEMA_CMETA_ENTRY("int16", cmeta_data_int16);
-    builtins[6] = SCHEMA_CMETA_ENTRY("i16", cmeta_data_int16);
-    builtins[7] = SCHEMA_CMETA_ENTRY("int32_t", cmeta_data_int32);
-    builtins[8] = SCHEMA_CMETA_ENTRY("int32", cmeta_data_int32);
-    builtins[9] = SCHEMA_CMETA_ENTRY("i32", cmeta_data_int32);
-    builtins[10] = SCHEMA_CMETA_ENTRY("int64_t", cmeta_data_int64);
-    builtins[11] = SCHEMA_CMETA_ENTRY("int64", cmeta_data_int64);
-    builtins[12] = SCHEMA_CMETA_ENTRY("i64", cmeta_data_int64);
-    builtins[13] = SCHEMA_CMETA_ENTRY("uint8_t", cmeta_data_uint8);
-    builtins[14] = SCHEMA_CMETA_ENTRY("uint8", cmeta_data_uint8);
-    builtins[15] = SCHEMA_CMETA_ENTRY("u8", cmeta_data_uint8);
-    builtins[16] = SCHEMA_CMETA_ENTRY("byte", cmeta_data_uint8);
-    builtins[17] = SCHEMA_CMETA_ENTRY("uint16_t", cmeta_data_uint16);
-    builtins[18] = SCHEMA_CMETA_ENTRY("uint16", cmeta_data_uint16);
-    builtins[19] = SCHEMA_CMETA_ENTRY("u16", cmeta_data_uint16);
-    builtins[20] = SCHEMA_CMETA_ENTRY("uint32_t", cmeta_data_uint32);
-    builtins[21] = SCHEMA_CMETA_ENTRY("uint32", cmeta_data_uint32);
-    builtins[22] = SCHEMA_CMETA_ENTRY("u32", cmeta_data_uint32);
-    builtins[23] = SCHEMA_CMETA_ENTRY("uint64_t", cmeta_data_uint64);
-    builtins[24] = SCHEMA_CMETA_ENTRY("uint64", cmeta_data_uint64);
-    builtins[25] = SCHEMA_CMETA_ENTRY("u64", cmeta_data_uint64);
-    builtins[26] = SCHEMA_CMETA_ENTRY("float", cmeta_data_float);
-    builtins[27] = SCHEMA_CMETA_ENTRY("f32", cmeta_data_float);
-    builtins[28] = SCHEMA_CMETA_ENTRY("double", cmeta_data_double);
-    builtins[29] = SCHEMA_CMETA_ENTRY("f64", cmeta_data_double);
-    builtins[30] = SCHEMA_CMETA_ENTRY("uuid", cmeta_uuid_cmeta_data);
+    size_t index = 0u;
+#define SCHEMA_CMETA_ENTRY(name_, data_) \
+    builtins[index++] = (schema_cmeta_builtin_entry_t){name_, &(data_)};
+    SCHEMA_CMETA_BUILTINS(SCHEMA_CMETA_ENTRY)
+#undef SCHEMA_CMETA_ENTRY
     initialized = 1;
   }
-  *count = 31u;
+  *count = SCHEMA_CMETA_BUILTIN_COUNT;
   return builtins;
 }
 
-#undef SCHEMA_CMETA_ENTRY
+#undef SCHEMA_CMETA_BUILTINS
+#undef SCHEMA_CMETA_SIGNED_ALIASES
+#undef SCHEMA_CMETA_UNSIGNED_ALIASES
+#undef SCHEMA_CMETA_SCALAR_ALIASES
 
 static const schema_cmeta_kind_entry_t SCHEMA_CMETA_KINDS[] = {
     {"string", CMETA_DATA_STRING},   {"bytes", CMETA_DATA_BYTES},

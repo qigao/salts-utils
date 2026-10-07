@@ -1,18 +1,10 @@
-# Runtime language bindings consume canonical CMeta contracts only.
-# Individual runtimes remain optional SaltsUtils dependencies.
-option(SALTS_UTILS_BINDINGS_LUA "Build the Lua CMeta runtime binding" OFF)
-option(SALTS_UTILS_BINDINGS_QUICKJS "Build the QuickJS CMeta runtime binding" OFF)
-
+add_subdirectory(common)
 add_subdirectory(cpp)
 
-if(SALTS_UTILS_BINDINGS_LUA)
-  add_subdirectory(lua)
-endif()
+add_subdirectory(lua)
 
-if(SALTS_UTILS_BINDINGS_QUICKJS)
-  add_subdirectory(quickjs)
-endif()
+add_subdirectory(quickjs)
 
-if(BUILD_TESTS AND SALTS_UTILS_BINDINGS_LUA AND SALTS_UTILS_BINDINGS_QUICKJS)
+if(BUILD_TESTS)
   add_subdirectory(tests)
 endif()

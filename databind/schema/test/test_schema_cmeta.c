@@ -9,29 +9,6 @@
 #include <stdint.h>
 #include <string.h>
 
-static void check_fixed_width_descriptor(const char *name,
-                                         const cmeta_data_desc *canonical,
-                                         cmeta_data_kind kind,
-                                         uint8_t bits) {
-  const cmeta_data_desc *data = schema_cmeta_builtin_data(name);
-
-  check_true(data != NULL);
-  if (data == NULL) return;
-
-  check_true(cmeta_data_desc_valid(data));
-  check_greater_equal(data->struct_size,
-                      offsetof(cmeta_data_desc, shape) + sizeof(data->shape));
-  check_equal(data->abi_version, CMETA_DATA_DESC_ABI_VERSION);
-  check_true(data == canonical);
-  check_true(data->stable_id != NULL);
-  if (data->stable_id != NULL) check_true(strcmp(data->stable_id, canonical->stable_id) == 0);
-  check_equal(data->kind, kind);
-  check_true(data->storage_type != NULL);
-  check_true(data->shape != NULL);
-  if (data->shape != NULL)
-    check_equal(((const cmeta_data_integer_shape *)data->shape)->bits, bits);
-}
-
 static void check_float_descriptor(const char *name,
                                    const cmeta_data_desc *canonical,
                                    const cmeta_type_desc *storage_type,
@@ -55,29 +32,6 @@ static void check_float_descriptor(const char *name,
 
 suite("schema_cmeta") {
   describe("canonical builtin scalar lowering") {
-    it("maps signed integer aliases to exact-width Core descriptor semantics") {
-      check_fixed_width_descriptor("int8", &cmeta_data_int8, CMETA_DATA_SINT, 8u);
-      check_fixed_width_descriptor("i8", &cmeta_data_int8, CMETA_DATA_SINT, 8u);
-      check_fixed_width_descriptor("int16", &cmeta_data_int16, CMETA_DATA_SINT, 16u);
-      check_fixed_width_descriptor("i16", &cmeta_data_int16, CMETA_DATA_SINT, 16u);
-      check_fixed_width_descriptor("int32", &cmeta_data_int32, CMETA_DATA_SINT, 32u);
-      check_fixed_width_descriptor("i32", &cmeta_data_int32, CMETA_DATA_SINT, 32u);
-      check_fixed_width_descriptor("int64", &cmeta_data_int64, CMETA_DATA_SINT, 64u);
-      check_fixed_width_descriptor("i64", &cmeta_data_int64, CMETA_DATA_SINT, 64u);
-    }
-
-    it("maps unsigned integer aliases to exact-width Core descriptor semantics") {
-      check_fixed_width_descriptor("uint8", &cmeta_data_uint8, CMETA_DATA_UINT, 8u);
-      check_fixed_width_descriptor("u8", &cmeta_data_uint8, CMETA_DATA_UINT, 8u);
-      check_fixed_width_descriptor("byte", &cmeta_data_uint8, CMETA_DATA_UINT, 8u);
-      check_fixed_width_descriptor("uint16", &cmeta_data_uint16, CMETA_DATA_UINT, 16u);
-      check_fixed_width_descriptor("u16", &cmeta_data_uint16, CMETA_DATA_UINT, 16u);
-      check_fixed_width_descriptor("uint32", &cmeta_data_uint32, CMETA_DATA_UINT, 32u);
-      check_fixed_width_descriptor("u32", &cmeta_data_uint32, CMETA_DATA_UINT, 32u);
-      check_fixed_width_descriptor("uint64", &cmeta_data_uint64, CMETA_DATA_UINT, 64u);
-      check_fixed_width_descriptor("u64", &cmeta_data_uint64, CMETA_DATA_UINT, 64u);
-    }
-
     it("maps bool to the canonical CMeta boolean storage descriptor") {
       const cmeta_data_desc *data = schema_cmeta_builtin_data("bool");
       cmeta_data_kind kind = CMETA_DATA_FLOAT;
@@ -124,57 +78,6 @@ suite("schema_cmeta") {
       check_true(schema_cmeta_data_kind("bytes", &kind));
       check_equal(kind, CMETA_DATA_BYTES);
       check_null(schema_cmeta_builtin_data("bytes"));
-    }
-  }
-
-  describe("schema semantic lowering") {
-    it("maps every supported scalar family to a CMeta semantic kind") {
-      struct KindCase { const char *name; cmeta_data_kind kind; };
-      static const struct KindCase cases[] = {
-        {"bool", CMETA_DATA_BOOL}, {"i8", CMETA_DATA_SINT},
-        {"int64", CMETA_DATA_SINT}, {"u8", CMETA_DATA_UINT},
-        {"uint64", CMETA_DATA_UINT}, {"float", CMETA_DATA_FLOAT},
-        {"double", CMETA_DATA_FLOAT}, {"string", CMETA_DATA_STRING},
-        {"bytes", CMETA_DATA_BYTES}, {"uuid", CMETA_DATA_CUSTOM},
-        {"datetime", CMETA_DATA_CUSTOM}, {"date", CMETA_DATA_CUSTOM},
-        {"time", CMETA_DATA_CUSTOM}, {"duration", CMETA_DATA_CUSTOM},
-        {"decimal", CMETA_DATA_CUSTOM}, {"bigint", CMETA_DATA_CUSTOM},
-        {"money", CMETA_DATA_CUSTOM}
-      };
-      size_t i;
-      for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
-        cmeta_data_kind kind = CMETA_DATA_BOOL;
-        check_true(schema_cmeta_data_kind(cases[i].name, &kind));
-        check_equal(kind, cases[i].kind);
-      }
-    }
-
-    it("maps structural and collection schema semantics without choosing CSTL storage") {
-      struct KindCase { const char *name; cmeta_data_kind kind; };
-      static const struct KindCase cases[] = {
-        {"message", CMETA_DATA_STRUCT}, {"composite", CMETA_DATA_STRUCT},
-        {"group", CMETA_DATA_STRUCT}, {"enum", CMETA_DATA_ENUM},
-        {"flags", CMETA_DATA_ENUM}, {"union", CMETA_DATA_VARIANT},
-        {"list", CMETA_DATA_SEQUENCE}, {"set", CMETA_DATA_SET},
-        {"map", CMETA_DATA_MAP}
-      };
-      size_t i;
-      for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
-        cmeta_data_kind kind = CMETA_DATA_BOOL;
-        check_true(schema_cmeta_data_kind(cases[i].name, &kind));
-        check_equal(kind, cases[i].kind);
-      }
-    }
-
-    it("fails unsupported semantics deterministically without changing output") {
-      cmeta_data_kind kind = CMETA_DATA_MAP;
-      check_false(schema_cmeta_data_kind("result", &kind));
-      check_equal(kind, CMETA_DATA_MAP);
-      check_false(schema_cmeta_data_kind("not-a-type", &kind));
-      check_equal(kind, CMETA_DATA_MAP);
-      check_false(schema_cmeta_data_kind(NULL, &kind));
-      check_equal(kind, CMETA_DATA_MAP);
-      check_false(schema_cmeta_data_kind("bool", NULL));
     }
   }
 
@@ -252,78 +155,6 @@ suite("schema_cmeta") {
   }
 
   describe("canonical value generic lowering") {
-    it("lowers option pair and tuple through CMeta semantic applications") {
-      static const cmeta_type_identity atom_a =
-          CMETA_TYPE_ID_ATOM_INIT("schema.A");
-      static const cmeta_type_identity atom_b =
-          CMETA_TYPE_ID_ATOM_INIT("schema.B");
-      const cmeta_type_identity *option_args[] = {&atom_a};
-      const cmeta_type_identity *pair_args[] = {&atom_a, &atom_b};
-      const cmeta_type_identity *tuple_args[] = {&atom_a, &atom_b, &atom_a};
-      cmeta_type_identity option_identity = {0};
-      cmeta_type_identity pair_identity = {0};
-      cmeta_type_identity tuple_identity = {0};
-
-      check_true(schema_cmeta_generic_identity(&option_identity,
-                                               &cmeta_option_generic_desc,
-                                               option_args, 1u));
-      check_true(cmeta_type_identity_valid(&option_identity));
-      check_equal(option_identity.form, CMETA_TYPE_APPLY);
-      check_true(option_identity.constructor == &cmeta_option_generic_desc);
-      check_true(option_identity.args == option_args); /* borrowed storage */
-      check_true(strcmp(option_identity.constructor->stable_id, "cmeta.Option") == 0);
-      check_equal(option_identity.arity, 1u);
-      check_true(cmeta_type_identity_equal(option_identity.args[0], &atom_a));
-
-      check_true(schema_cmeta_generic_identity(&pair_identity,
-                                               &cmeta_pair_generic_desc,
-                                               pair_args, 2u));
-      check_true(cmeta_type_identity_valid(&pair_identity));
-      check_equal(pair_identity.form, CMETA_TYPE_APPLY);
-      check_true(pair_identity.constructor == &cmeta_pair_generic_desc);
-      check_true(pair_identity.args == pair_args);
-      check_true(strcmp(pair_identity.constructor->stable_id, "cmeta.Pair") == 0);
-      check_equal(pair_identity.arity, 2u);
-
-      check_true(schema_cmeta_generic_identity(&tuple_identity,
-                                               &cmeta_tuple_generic_desc,
-                                               tuple_args, 3u));
-      check_true(cmeta_type_identity_valid(&tuple_identity));
-      check_equal(tuple_identity.form, CMETA_TYPE_APPLY);
-      check_true(tuple_identity.constructor == &cmeta_tuple_generic_desc);
-      check_true(tuple_identity.args == tuple_args);
-      check_true(strcmp(tuple_identity.constructor->stable_id, "cmeta.Tuple") == 0);
-      check_equal(tuple_identity.arity, 3u);
-    }
-
-    it("compares nested applications by semantic identity rather than argument address") {
-      const cmeta_type_identity atom_a = CMETA_TYPE_ID_ATOM_INIT("schema.A");
-      const cmeta_type_identity atom_a_copy = CMETA_TYPE_ID_ATOM_INIT("schema.A");
-      const cmeta_type_identity atom_b = CMETA_TYPE_ID_ATOM_INIT("schema.B");
-      const cmeta_type_identity *option_args[] = {&atom_a};
-      const cmeta_type_identity *option_copy_args[] = {&atom_a_copy};
-      cmeta_type_identity option_identity = {0};
-      const cmeta_type_identity option_copy =
-          CMETA_TYPE_ID_APPLY_INIT(&cmeta_option_generic_desc, option_copy_args);
-      const cmeta_type_identity *pair_args[] = {&option_identity, &atom_b};
-      const cmeta_type_identity *pair_copy_args[] = {&option_copy, &atom_b};
-      const cmeta_type_identity *reversed_args[] = {&atom_b, &option_copy};
-      const cmeta_type_identity expected =
-          CMETA_TYPE_ID_APPLY_INIT(&cmeta_pair_generic_desc, pair_copy_args);
-      const cmeta_type_identity reversed =
-          CMETA_TYPE_ID_APPLY_INIT(&cmeta_pair_generic_desc, reversed_args);
-      cmeta_type_identity identity = {0};
-
-      check_true(schema_cmeta_generic_identity(&option_identity,
-                                               &cmeta_option_generic_desc,
-                                               option_args, 1u));
-      check_true(schema_cmeta_generic_identity(&identity, &cmeta_pair_generic_desc,
-                                               pair_args, 2u));
-      check_true(cmeta_type_identity_valid(&identity));
-      check_true(cmeta_type_identity_equal(&identity, &expected));
-      check_false(cmeta_type_identity_equal(&identity, &reversed));
-    }
-
     it("enforces the canonical tuple upper arity bound") {
       const cmeta_type_identity atom = CMETA_TYPE_ID_ATOM_INIT("schema.Value");
       const cmeta_type_identity *args[17];

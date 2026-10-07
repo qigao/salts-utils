@@ -17,6 +17,7 @@ foreach ($name in $requiredEnvironment) {
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../.."))
 $restoreRoot = if ($Local) { Join-Path $repositoryRoot "build/native-sdk" } else { $env:RUNNER_TEMP }
 $packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } elseif ($Local) { Join-Path $repositoryRoot "stage/nuget" } else { Join-Path $restoreRoot "qigao-nuget" }
+$packages = [IO.Path]::GetFullPath($packages)
 $config = Join-Path $repositoryRoot "cmake/vcpkg-cache.nuget.config"
 $project = Join-Path $restoreRoot "qigao-native-sdk-restore.csproj"
 New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
@@ -28,7 +29,7 @@ New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="[2.0.0]" />
+    <PackageReference Include="Salts.Native" Version="*" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -38,7 +39,7 @@ New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
 $restoreArgs = @($project, "--packages", $packages, "--configfile", $config, "--no-cache", "--force-evaluate")
 if ($WithTurboWasm) { $restoreArgs += "-p:WithTurboWasm=true" }
 dotnet restore @restoreArgs
-if ($LASTEXITCODE -ne 0) { throw "failed to restore Salts 2.0.0 and native tools" }
+if ($LASTEXITCODE -ne 0) { throw "failed to restore the latest Salts and native tools" }
 
 $assets = Get-Content -LiteralPath (Join-Path $restoreRoot "obj/project.assets.json") -Raw | ConvertFrom-Json -AsHashtable
 function Get-RestoredPackage([string]$name) {
@@ -86,6 +87,26 @@ if ($WithTurboWasm) {
     "TURBOWASM_VERSION=$turbowasmVersion" >> $env:GITHUB_ENV
   }
   Write-Host "restored TurboWasm.Native $turbowasmVersion for $SaltsRid"
+}
+
+if ($Local) {
+  # Stable entry paths let an already running IDE consume the resolved package.
+  # Only replace junctions owned by this restore step, never SDK directories.
+  function Set-LocalPackageLink([string]$relativePath, [string]$target) {
+    $link = Join-Path $repositoryRoot "stage/dependencies/$relativePath"
+    New-Item -ItemType Directory -Path (Split-Path $link -Parent) -Force | Out-Null
+    $existing = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
+    if ($existing) {
+      if ($existing.LinkType -ne 'Junction') { throw "refusing to replace non-junction SDK path: $link" }
+      if ($existing.Target -eq $target) { return $link }
+      Remove-Item -LiteralPath $link -Force
+    }
+    New-Item -ItemType Junction -Path $link -Target $target | Out-Null
+    return $link
+  }
+  $saltsRoot = Set-LocalPackageLink "salts/$SaltsRid" $saltsRoot
+  $saltsHostRoot = Set-LocalPackageLink "salts/$Re2cRid" $saltsHostRoot
+  $re2cRoot = Set-LocalPackageLink "re2c/$Re2cRid" $re2cRoot
 }
 
 $env:SALTS_ROOT = $saltsRoot

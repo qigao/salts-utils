@@ -42,7 +42,7 @@ package 消费它。
 - `Salts::Mustache`
 - `Salts::IDL`（contract frontend）
 - `Salts::Schema`（Data-only shape/CMeta projection）
-- `Salts::DataBind`、`Salts::DataBindCMeta`、`Salts::DataBindCFlow`
+- `Salts::DataBind`（包含格式 providers、CMeta 与 CFlow 适配）
 - `Salts::BindingsCpp`、可选 `Salts::Lua` / `Salts::QuickJS`
 - `Salts::Serial`
 - `Salts::Playback`
@@ -112,6 +112,24 @@ Salts::DataBind
 TBE 是 format/backend，不是 IDL 本体。TBE field-order、wire-size、cursor 等
 representation policy 必须逐步从 frontend parser 下沉到 format compiler，不能成为
 IDL semantic truth。
+
+DataBind 编译工具的源码统一归入 `databind/compiler/`：根目录拥有 CLI、projection、
+模板与生成测试，`cmeta/` 接收外部反射输入，`binding/` 负责 native binding lowering，
+`binary/` 负责 wire lowering。IDL 前端留在 `databind/idl/`，Binary wire 公共头留在
+`databind/formats/binary/`。这些能力保留独立 target；IDE 中统一显示于
+`databind/compiler/{target}`。相比分散目录，工具源码有统一入口；相比分合并为一个库，
+独立 CMeta producer 不增加 IDL 依赖，运行时的既有链接边界也不改变。
+
+编译任务与模板渲染的内存由各自的 CMeta lifecycle/scope 独占，body 的提前返回统一
+触发恢复到零状态。Contract 是语义事实源，render tree 与 Binary plan 为派生数据，
+只在当前同步、单线程调用内使用；scope 不引入额外堆分配、缓存或容量增长。
+文件流与临时文件的关闭、删除、rename 属于可失败操作，必须显式检查后再离开 scope；
+无失败析构只释放内存。单个输出仍在完整写入并关闭临时文件后发布，失败保留旧输出。
+多输出编译沿用逐文件发布契约，不增加跨文件事务保证。
+
+迁移只更新源码引用、文档链接与正式测试路径；target、安装头、CLI 参数和生成格式
+保持兼容。回滚时可按原职责迁回目录并恢复 CMake 路径，无需迁移用户数据。
+验证范围包括编译失败后重试、输出替换失败、生成代码生命周期以及 CMeta producer。
 
 ## 所有权与行为
 

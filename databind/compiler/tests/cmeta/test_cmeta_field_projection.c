@@ -1,0 +1,1133 @@
+#include "tinytest.h"
+#include "compiler_core.h"
+#include "idl_contract_internal.h"
+#include <cmeta/data.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef enum ExpectedRuntimeRequirement {
+    EXPECT_EXPLICIT_ADAPTER,
+    EXPECT_BOUNDED_ADAPTER,
+    EXPECT_LIFECYCLE,
+    EXPECT_OVERLAY_PRESENCE,
+    EXPECT_OVERLAY_NULL,
+    EXPECT_OVERLAY_PRESENCE_NULL,
+    EXPECT_MAP_PROVIDER,
+    EXPECT_SEQUENCE_PROVIDER,
+    EXPECT_SET_PROVIDER,
+    EXPECT_DEFERRED_CONTAINER
+} ExpectedRuntimeRequirement;
+
+typedef struct ExpectedRuntimeCapability {
+    const char *schema;
+    const char *generated_storage;
+    ExpectedRuntimeRequirement requirement;
+} ExpectedRuntimeCapability;
+
+static void annotate_language_types_from_tree(Node *root) {
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    if (root != NULL &&
+        idl_contract_build_from_tree(root, &contract, &diagnostic)) {
+        tbe_compiler_annotate_language_types(contract, root);
+    }
+    idl_contract_destroy(contract);
+}
+
+static const ExpectedRuntimeCapability EXPECTED[] = {
+    { "bool", "uint8_t", EXPECT_EXPLICIT_ADAPTER },
+    { "uuid", "cmeta_uuid_t", EXPECT_EXPLICIT_ADAPTER },
+    { "bytes[16]", "uint8_t[16]", EXPECT_BOUNDED_ADAPTER },
+    { "string", "tstr", EXPECT_LIFECYCLE },
+    { "bytes", "stl_byte_buffer", EXPECT_LIFECYCLE },
+    { "optional int32", "presence + int32_t", EXPECT_OVERLAY_PRESENCE },
+    { "nullable int32", "null + int32_t", EXPECT_OVERLAY_NULL },
+    { "optional nullable int32", "presence + null + int32_t",
+      EXPECT_OVERLAY_PRESENCE_NULL },
+    { "map<string,int32>", "typed CSTL Map",
+      EXPECT_MAP_PROVIDER },
+    { "list<int32>", "typed CSTL Vec", EXPECT_SEQUENCE_PROVIDER },
+    { "set<int32>", "typed CSTL Set", EXPECT_SET_PROVIDER },
+};
+
+static const char *expected_native_requirement(ExpectedRuntimeRequirement requirement) {
+    switch (requirement) {
+        case EXPECT_EXPLICIT_ADAPTER:
+        case EXPECT_BOUNDED_ADAPTER:
+            return "fixed_value";
+        case EXPECT_LIFECYCLE:
+            return "owned_lifecycle";
+        case EXPECT_OVERLAY_PRESENCE:
+            return "overlay_presence";
+        case EXPECT_OVERLAY_NULL:
+            return "overlay_null";
+        case EXPECT_OVERLAY_PRESENCE_NULL:
+            return "overlay_presence_null";
+        case EXPECT_MAP_PROVIDER:
+            return "map_provider";
+        case EXPECT_SEQUENCE_PROVIDER:
+            return "sequence_provider";
+        case EXPECT_SET_PROVIDER:
+            return "set_provider";
+        case EXPECT_DEFERRED_CONTAINER:
+            return "deferred_container";
+    }
+    return NULL;
+}
+
+static Node *field_projection_child(Node *node, const char *name) {
+    size_t i;
+    for (i = 0; node && i < node->data.map.count; ++i)
+        if (node->data.map.items[i]->name && strcmp(node->data.map.items[i]->name, name) == 0)
+            return node->data.map.items[i];
+    return NULL;
+}
+
+static const char *field_projection_text(Node *node, const char *name) {
+    Node *child = field_projection_child(node, name);
+    return child && child->type == NODE_STRING ? child->data.string_val : NULL;
+}
+
+static Node *field_projection_record(Node *root, const char *list_name,
+                                     const char *name) {
+    Node *list = field_projection_child(root, list_name);
+    size_t i;
+    if (!list || list->type != NODE_LIST) return NULL;
+    for (i = 0; i < list->data.list.count; ++i) {
+        Node *record = list->data.list.items[i];
+        const char *record_name = field_projection_text(record, "name");
+        if (record_name && strcmp(record_name, name) == 0) return record;
+    }
+    return NULL;
+}
+
+static Node *field_projection_add_record(Node *root, const char *list_name,
+                                         const char *name) {
+    Node *list = field_projection_child(root, list_name);
+    Node *record;
+    Node *fields;
+    if (!list) {
+        list = create_node_list(list_name);
+        if (!list || map_add(root, list) != 0) return NULL;
+    }
+    record = create_node_map(NULL);
+    fields = create_node_list("fields");
+    if (!record || !fields ||
+        map_add(record, create_node_string("name", name)) != 0 ||
+        map_add(record, fields) != 0 || list_add(list, record) != 0) {
+        node_free(record);
+        return NULL;
+    }
+    return record;
+}
+
+static Node *field_projection_add_field(Node *record, const char *owner,
+                                        const char *name, const char *type) {
+    Node *fields = field_projection_child(record, "fields");
+    Node *field = create_node_map(NULL);
+    if (!fields || !field ||
+        map_add(field, create_node_string("name", name)) != 0 ||
+        map_add(field, create_node_string("owner_name", owner)) != 0 ||
+        map_add(field, create_node_string("type", type)) != 0 ||
+        list_add(fields, field) != 0) {
+        node_free(field);
+        return NULL;
+    }
+    return field;
+}
+
+static Node *field_projection_add_enum(Node *root, const char *name,
+                                       const char *underlying, int is_flags) {
+    Node *list = field_projection_child(root, "enums");
+    Node *value;
+    if (!list) {
+        list = create_node_list("enums");
+        if (!list || map_add(root, list) != 0) return NULL;
+    }
+    value = create_node_map(NULL);
+    if (!value || map_add(value, create_node_string("name", name)) != 0 ||
+        map_add(value, create_node_string("enum_name", name)) != 0 ||
+        map_add(value, create_node_string("underlying_type", underlying)) != 0 ||
+        (is_flags && map_add(value, create_node_string("is_flags", "1")) != 0) ||
+        list_add(list, value) != 0) {
+        node_free(value);
+        return NULL;
+    }
+    return value;
+}
+
+static int field_projection_has_legacy_metadata(const Node *node) {
+    static const char *const retired[] = {
+        "typed_kind", "typed_wire_kind", "typed_element_kind",
+        "typed_element_wire_kind", "typed_map_value_kind",
+        "typed_map_value_wire_kind", "typed_object_descriptor",
+        "typed_map_value_descriptor", "typed_nested_overlay",
+        "typed_cmeta_runtime_supported",
+        "cmeta_kind", "cmeta_schema_kind", "cmeta_data_id"
+    };
+    size_t i;
+    if (node == NULL) return 0;
+    for (i = 0; i < sizeof(retired) / sizeof(retired[0]); ++i)
+        if (node->name && strcmp(node->name, retired[i]) == 0) return 1;
+    if (node->type == NODE_MAP) {
+        for (i = 0; i < node->data.map.count; ++i)
+            if (field_projection_has_legacy_metadata(node->data.map.items[i])) return 1;
+    } else if (node->type == NODE_LIST) {
+        for (i = 0; i < node->data.list.count; ++i)
+            if (field_projection_has_legacy_metadata(node->data.list.items[i])) return 1;
+    }
+    return 0;
+}
+
+/* Mutation: retain a compiler-only flag tree or classify a collection by its
+ * element, causing the C/other-language projection to disagree with CMeta. */
+suite("compiler_cmeta_field_projection") {
+    it("projects canonical symbols for custom container members") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+        Node *item;
+        Node *state;
+
+        check_not_null(root);
+        if (!root) return;
+
+        state = field_projection_add_enum(root, "State", "uint16", 0);
+        check_not_null(state);
+        item = field_projection_add_record(root, "composites", "Item");
+        check_not_null(item);
+        if (item) {
+            Node *item_field = field_projection_add_field(item, "Item", "value", "int32");
+            check_not_null(item_field);
+            if (item_field)
+                check_equal(map_add(item_field, create_node_string("is_fixed_size", "1")), 0);
+        }
+
+        record = field_projection_add_record(root, "messages", "Containers");
+        field = field_projection_add_field(record, "Containers", "items", "list");
+        check_not_null(field);
+        if (field) {
+            check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+            check_equal(map_add(field, create_node_string("inner_type", "Item")), 0);
+        }
+        field = field_projection_add_field(record, "Containers", "states", "set");
+        check_not_null(field);
+        if (field) {
+            check_equal(map_add(field, create_node_string("is_set", "1")), 0);
+            check_equal(map_add(field, create_node_string("inner_type", "State")), 0);
+        }
+        field = field_projection_add_field(record, "Containers", "by_name", "map");
+        check_not_null(field);
+        if (field) {
+            check_equal(map_add(field, create_node_string("is_map", "1")), 0);
+            check_equal(map_add(field, create_node_string("key_type", "string")), 0);
+            check_equal(map_add(field, create_node_string("value_type", "Item")), 0);
+        }
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        {
+            Node *fields = field_projection_child(record, "fields");
+            Node *items = fields->data.list.items[0];
+            Node *states = fields->data.list.items[1];
+            Node *map = fields->data.list.items[2];
+
+            check_equal(field_projection_text(items, "native_element_type_symbol"),
+                        "Item_CMETA_TYPE");
+            check_equal(field_projection_text(items, "native_element_data_symbol"),
+                        "Item_CMETA_DATA");
+            check_equal(field_projection_text(items, "native_element_type_ref"),
+                        "&Item_CMETA_TYPE");
+            check_equal(field_projection_text(items, "native_element_data_ref"),
+                        "&Item_CMETA_DATA");
+            check_not_null(field_projection_text(states, "native_element_type_symbol"));
+            check_not_null(field_projection_text(states, "native_element_data_symbol"));
+            check_not_null(field_projection_text(states, "native_element_type_ref"));
+            check_not_null(field_projection_text(states, "native_element_data_ref"));
+            check_equal(field_projection_text(states, "cmeta_native_requirement"),
+                        "deferred_container");
+            check_null(field_projection_text(states, "native_cstl_set"));
+            check_equal(field_projection_text(map, "native_map_key_type_ref"),
+                        "SALTS_TSTR_CMETA_TYPE_REF");
+            check_equal(field_projection_text(map, "native_map_key_data_ref"),
+                        "SALTS_TSTR_CMETA_DATA_REF");
+            check_equal(field_projection_text(map, "native_map_value_type_symbol"),
+                        "Item_CMETA_TYPE");
+            check_equal(field_projection_text(map, "native_map_value_data_symbol"),
+                        "Item_CMETA_DATA");
+            check_equal(field_projection_text(map, "native_map_value_type_ref"),
+                        "&Item_CMETA_TYPE");
+            check_equal(field_projection_text(map, "native_map_value_data_ref"),
+                        "&Item_CMETA_DATA");
+            check_not_null(field_projection_child(map, "native_cstl_map"));
+            check_null(field_projection_text(map, "native_map_name"));
+            check_equal(field_projection_text(map, "typed_vector_type"),
+                        "Containers_by_name_map_t");
+            check_equal(field_projection_text(map, "native_data_symbol"),
+                        "Containers_by_name_map_t_map_data");
+            check_equal(field_projection_text(map, "native_type_symbol"),
+                        "Containers_by_name_map_t_cmeta_type");
+            check_equal(field_projection_text(map, "native_c_type"),
+                        "Containers_by_name_map_t");
+            /* This owner still contains set<State>, which remains outside the
+             * first canonical Set slice. Map promotion must not make an
+             * otherwise incomplete owner graph appear complete. */
+            check_null(field_projection_child(record, "cmeta_graph_supported"));
+            check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        }
+
+        node_free(root);
+    }
+
+    it("publishes installed fixed providers and keeps remaining capabilities deferred") {
+        static const char *const names[] = {
+            "BoolStorage", "UuidStorage", "FixedBytesStorage", "TextStorage",
+            "BytesStorage", "OptionalStorage", "NullableStorage",
+            "TriStateStorage", "MapStorage", "ListStorage", "SetStorage"};
+        static const char *const types[] = {
+            "bool", "uuid", "bytes", "string", "bytes", "int32", "int32",
+            "int32", "map", "list", "set"};
+        Node *root = create_node_map("root");
+        size_t i;
+
+        check_not_null(root);
+        if (!root) return;
+        for (i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); ++i) {
+            Node *record = field_projection_add_record(root, "messages", names[i]);
+            Node *field = field_projection_add_field(record, names[i], "value", types[i]);
+            check_not_null(field);
+            if (!field) continue;
+            if (EXPECTED[i].requirement == EXPECT_BOUNDED_ADAPTER) {
+                check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
+                check_equal(map_add(field, create_node_string("size_bytes", "16")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE) {
+                check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_OVERLAY_NULL) {
+                check_equal(map_add(field, create_node_string("is_nullable", "1")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE_NULL) {
+                check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+                check_equal(map_add(field, create_node_string("is_nullable", "1")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER) {
+                check_equal(map_add(field, create_node_string("is_map", "1")), 0);
+                check_equal(map_add(field, create_node_string("key_type", "string")), 0);
+                check_equal(map_add(field, create_node_string("value_type", "int32")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
+                       EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
+                check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+                check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_SET_PROVIDER) {
+                check_equal(map_add(field, create_node_string("is_set", "1")), 0);
+                check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+            }
+        }
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        for (i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); ++i) {
+            Node *record = field_projection_record(root, "messages", names[i]);
+            Node *fields = field_projection_child(record, "fields");
+            Node *field = fields && fields->type == NODE_LIST && fields->data.list.count == 1u
+                              ? fields->data.list.items[0]
+                              : NULL;
+            info("schema=%s storage=%s", EXPECTED[i].schema,
+                 EXPECTED[i].generated_storage);
+            check_not_null(field);
+            check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                        expected_native_requirement(EXPECTED[i].requirement));
+            if (i < 3u)
+                check_not_null(field_projection_child(
+                    record, "cmeta_lifecycle_supported"));
+            if (EXPECTED[i].requirement == EXPECT_LIFECYCLE) {
+                check_not_null(field_projection_child(record,
+                                                       "cmeta_graph_supported"));
+                if (strcmp(EXPECTED[i].schema, "string") == 0) {
+                    check_equal(field_projection_text(field, "native_data_symbol"),
+                                "cmeta_tstr_cmeta_data");
+                    check_equal(field_projection_text(field, "native_type_symbol"),
+                                "cmeta_tstr_cmeta_type");
+                    check_equal(field_projection_text(field, "native_c_type"), "tstr");
+                } else {
+                    check_equal(field_projection_text(field, "native_data_symbol"),
+                                "stl_byte_buffer_cmeta_data");
+                    check_equal(field_projection_text(field, "native_type_symbol"),
+                                "stl_byte_buffer_cmeta_type");
+                    check_equal(field_projection_text(field, "native_c_type"),
+                                "stl_byte_buffer");
+                }
+            }
+            if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER ||
+                EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
+                EXPECTED[i].requirement == EXPECT_SET_PROVIDER)
+                check_not_null(field_projection_child(record,
+                                                       "cmeta_graph_supported"));
+            if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER ||
+                EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
+                EXPECTED[i].requirement == EXPECT_SET_PROVIDER)
+                check_not_null(field_projection_child(record,
+                                                       "cmeta_lifecycle_supported"));
+            if (EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE ||
+                EXPECTED[i].requirement == EXPECT_OVERLAY_NULL ||
+                EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE_NULL) {
+                check_not_null(field_projection_child(
+                    record, "cmeta_local_overlay_lifecycle"));
+                check_null(field_projection_child(record,
+                                                  "cmeta_lifecycle_supported"));
+            }
+        }
+
+        node_free(root);
+    }
+
+    it("uses CMeta for local optional string lifecycle without container admission") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "OptionalText");
+        field = field_projection_add_field(record, "OptionalText", "value", "string");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "overlay_presence");
+        check_equal(field_projection_text(field, "native_data_symbol"),
+                    "cmeta_tstr_cmeta_data");
+        check_not_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(record,
+                                              "cmeta_local_overlay_lifecycle"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        node_free(root);
+    }
+
+    it("propagates local owned overlay lifecycle through reverse-ordered records") {
+        Node *root = create_node_map("root");
+        Node *outer;
+        Node *middle;
+        Node *leaf;
+        Node *field;
+        size_t pass;
+
+        check_not_null(root);
+        if (!root) return;
+        outer = field_projection_add_record(root, "messages", "Envelope");
+        middle = field_projection_add_record(root, "messages", "Holder");
+        leaf = field_projection_add_record(root, "messages", "OwnedOverlay");
+        field = field_projection_add_field(outer, "Envelope", "child", "Holder");
+        check_not_null(field);
+        if (!field) { node_free(root); return; }
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        check_not_null(field_projection_add_field(middle, "Holder", "child", "OwnedOverlay"));
+        field = field_projection_add_field(leaf, "OwnedOverlay", "payload", "bytes");
+        check_not_null(field);
+        if (!field) { node_free(root); return; }
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        field = field_projection_add_field(leaf, "OwnedOverlay", "label", "string");
+        check_not_null(field);
+        if (!field) { node_free(root); return; }
+        check_equal(map_add(field, create_node_string("is_nullable", "1")), 0);
+
+        for (pass = 0u; pass < 2u; ++pass) {
+            Node *records[] = {outer, middle, leaf};
+            size_t i;
+            annotate_language_types_from_tree(root);
+            check_false(field_projection_has_legacy_metadata(root));
+            for (i = 0u; i < sizeof(records) / sizeof(records[0]); ++i) {
+                check_not_null(field_projection_child(records[i], "cmeta_graph_supported"));
+                check_not_null(field_projection_child(records[i], "cmeta_local_overlay_lifecycle"));
+                check_null(field_projection_child(records[i], "cmeta_lifecycle_supported"));
+            }
+        }
+        node_free(root);
+    }
+
+    it("uses CSTL Vec storage while optional list admission stays deferred") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "OptionalListStorage");
+        field = field_projection_add_field(record, "OptionalListStorage", "value", "list");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_not_null(field_projection_child(field, "native_cstl_sequence"));
+        check_null(field_projection_text(field, "native_sequence_name"));
+        check_equal(field_projection_text(field, "native_data_symbol"),
+                    "OptionalListStorage_value_vec_t_collection_data");
+        check_equal(field_projection_text(field, "native_type_symbol"),
+                    "OptionalListStorage_value_vec_t_cmeta_type");
+        check_not_null(field_projection_child(record, "native_cstl_storage"));
+        check_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        node_free(root);
+    }
+
+    it("uses CSTL Map storage while optional map lifecycle stays deferred") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "OptionalMapStorage");
+        field = field_projection_add_field(record, "OptionalMapStorage", "value", "map");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_map", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_collection", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        check_equal(map_add(field, create_node_string("key_type", "string")), 0);
+        check_equal(map_add(field, create_node_string("value_type", "int32")), 0);
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "map_provider");
+        check_not_null(field_projection_child(field, "native_cstl_map"));
+        check_null(field_projection_text(field, "native_map_name"));
+        check_equal(field_projection_text(field, "native_data_symbol"),
+                    "OptionalMapStorage_value_map_t_map_data");
+        check_equal(field_projection_text(field, "native_type_symbol"),
+                    "OptionalMapStorage_value_map_t_cmeta_type");
+        check_not_null(field_projection_child(record, "native_cstl_storage"));
+        check_not_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        node_free(root);
+    }
+
+    it("uses CSTL Set storage while optional set admission stays deferred") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "OptionalSetStorage");
+        field = field_projection_add_field(record, "OptionalSetStorage", "value", "set");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_set", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_not_null(field_projection_child(field, "native_cstl_set"));
+        check_equal(field_projection_text(field, "native_data_symbol"),
+                    "OptionalSetStorage_value_set_t_collection_data");
+        check_equal(field_projection_text(field, "native_type_symbol"),
+                    "OptionalSetStorage_value_set_t_cmeta_type");
+        check_not_null(field_projection_child(record, "native_cstl_storage"));
+        check_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(record, "cmeta_member_lifecycle"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        node_free(root);
+    }
+
+    it("uses CSTL storage for nullable containers without admitting overlay lifecycle") {
+        Node *root = create_node_map("root");
+        Node *record = field_projection_add_record(
+            root, "messages", "NullableContainers");
+        Node *list = field_projection_add_field(
+            record, "NullableContainers", "values", "list");
+        Node *set = field_projection_add_field(
+            record, "NullableContainers", "ids", "set");
+        Node *map = field_projection_add_field(
+            record, "NullableContainers", "attrs", "map");
+
+        check_not_null(list);
+        check_not_null(set);
+        check_not_null(map);
+        if (!list || !set || !map) {
+            node_free(root);
+            return;
+        }
+
+        check_equal(map_add(list, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(list, create_node_string("is_nullable", "1")), 0);
+        check_equal(map_add(list, create_node_string("inner_type", "int32")), 0);
+        check_equal(map_add(set, create_node_string("is_set", "1")), 0);
+        check_equal(map_add(set, create_node_string("is_nullable", "1")), 0);
+        check_equal(map_add(set, create_node_string("inner_type", "int32")), 0);
+        check_equal(map_add(map, create_node_string("is_map", "1")), 0);
+        check_equal(map_add(map, create_node_string("is_nullable", "1")), 0);
+        check_equal(map_add(map, create_node_string("key_type", "string")), 0);
+        check_equal(map_add(map, create_node_string("value_type", "int32")), 0);
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        check_not_null(field_projection_child(list, "native_cstl_sequence"));
+        check_not_null(field_projection_child(set, "native_cstl_set"));
+        check_not_null(field_projection_child(map, "native_cstl_map"));
+        check_null(field_projection_text(list, "native_sequence_name"));
+        check_null(field_projection_text(map, "native_map_name"));
+        check_not_null(field_projection_child(record, "native_cstl_storage"));
+        check_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(record, "cmeta_member_lifecycle"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+
+        node_free(root);
+    }
+
+    it("admits generated sequence lifecycle through canonical record providers") {
+        Node *root = create_node_map("root");
+        Node *header = field_projection_add_record(root, "messages", "NativeHeader");
+        Node *policy = field_projection_add_record(root, "messages", "NativeHeaderPolicy");
+        Node *name = field_projection_add_field(header, "NativeHeader", "name", "string");
+        Node *value = field_projection_add_field(header, "NativeHeader", "value", "string");
+        Node *headers = field_projection_add_field(policy, "NativeHeaderPolicy", "headers", "list");
+
+        check_not_null(name);
+        check_not_null(value);
+        check_not_null(headers);
+        if (!name || !value || !headers) {
+            node_free(root);
+            return;
+        }
+
+        check_equal(map_add(headers, create_node_string("is_collection", "1")), 0);
+        check_equal(map_add(headers, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(headers, create_node_string("collection_kind", "list")), 0);
+        check_equal(map_add(headers, create_node_string("inner_type", "NativeHeader")), 0);
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        check_equal(field_projection_text(headers, "cmeta_native_requirement"),
+                    "sequence_provider");
+        check_null(field_projection_text(headers, "native_sequence_name"));
+        check_not_null(field_projection_child(headers, "native_cstl_sequence"));
+        check_equal(field_projection_text(headers, "native_data_symbol"),
+                    "NativeHeaderPolicy_headers_vec_t_collection_data");
+        check_equal(field_projection_text(headers, "native_type_symbol"),
+                    "NativeHeaderPolicy_headers_vec_t_cmeta_type");
+        check_equal(field_projection_text(headers, "native_c_type"),
+                    "NativeHeaderPolicy_headers_vec_t");
+        check_equal(field_projection_text(headers, "native_element_type_ref"),
+                    "&NativeHeader_CMETA_TYPE");
+        check_equal(field_projection_text(headers, "native_element_data_ref"),
+                    "&NativeHeader_CMETA_DATA");
+        check_equal(field_projection_text(
+                        headers, "native_declared_type_symbol"),
+                    "NativeHeaderPolicy_headers_CMETA_DECLARED_TYPE");
+        check_equal(field_projection_text(
+                        headers, "native_generic_constructor_ref"),
+                    "&stl_vec_generic_desc");
+        check_equal(field_projection_text(headers, "native_generic_arity"),
+                    "1");
+        check_equal(field_projection_text(
+                        headers, "native_generic_arg0_type_ref"),
+                    "&NativeHeader_CMETA_TYPE");
+
+        check_not_null(field_projection_child(header, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(policy, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(header, "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(policy, "cmeta_lifecycle_supported"));
+
+        node_free(root);
+    }
+
+    it("keeps lifecycle-incomplete record lists off typed CSTL promotion") {
+        Node *root = create_node_map("root");
+        Node *item = field_projection_add_record(root, "messages", "DeferredItem");
+        Node *owner = field_projection_add_record(root, "messages", "DeferredOwner");
+        Node *item_value =
+            field_projection_add_field(item, "DeferredItem", "value", "int32");
+        Node *items =
+            field_projection_add_field(owner, "DeferredOwner", "items", "list");
+
+        check_not_null(item_value);
+        check_not_null(items);
+        if (!item_value || !items) {
+            node_free(root);
+            return;
+        }
+
+        check_equal(
+            map_add(item_value, create_node_string("is_optional", "1")), 0);
+        check_equal(map_add(items, create_node_string("is_collection", "1")), 0);
+        check_equal(map_add(items, create_node_string("is_list", "1")), 0);
+        check_equal(
+            map_add(items, create_node_string("collection_kind", "list")), 0);
+        check_equal(
+            map_add(items, create_node_string("inner_type", "DeferredItem")), 0);
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        check_null(field_projection_child(item, "cmeta_lifecycle_supported"));
+        check_null(field_projection_child(owner, "cmeta_lifecycle_supported"));
+        check_null(field_projection_text(items, "native_cstl_sequence"));
+        check_null(field_projection_text(items, "native_sequence_name"));
+        check_equal(field_projection_text(items, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_equal(field_projection_text(items, "native_element_type_ref"),
+                    "&DeferredItem_CMETA_TYPE");
+        check_equal(field_projection_text(items, "native_element_data_ref"),
+                    "&DeferredItem_CMETA_DATA");
+        node_free(root);
+    }
+
+    it("length-encodes fixed-byte provider identifiers without owner-field collisions") {
+        /* A real generated TU cannot isolate this namespace: the older public
+         * wire API already maps both A_B.C and A.B_C to A_B_C_* before the
+         * provider source is compiled. Keep this compiler-metadata regression
+         * scoped to the new private provider namespace; public API mangling is
+         * a separate generator ABI decision. */
+        Node *root = create_node_map("root");
+        Node *left = field_projection_add_record(root, "messages", "A_B");
+        Node *right = field_projection_add_record(root, "messages", "A");
+        Node *left_field = field_projection_add_field(left, "A_B", "C", "bytes");
+        Node *right_field = field_projection_add_field(right, "A", "B_C", "bytes");
+        const char *left_symbol;
+        const char *right_symbol;
+        check_not_null(left_field);
+        check_not_null(right_field);
+        if (!left_field || !right_field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(left_field, create_node_string("is_fixed_size", "1")), 0);
+        check_equal(map_add(left_field, create_node_string("size_bytes", "4")), 0);
+        check_equal(map_add(right_field, create_node_string("is_fixed_size", "1")), 0);
+        check_equal(map_add(right_field, create_node_string("size_bytes", "4")), 0);
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+        left_symbol = field_projection_text(left_field, "native_fixed_bytes_name");
+        right_symbol = field_projection_text(right_field, "native_fixed_bytes_name");
+        check_equal(left_symbol, "tbe_fixed_bytes_3_A_B_1_C");
+        check_equal(right_symbol, "tbe_fixed_bytes_1_A_3_B_C");
+        check(strcmp(left_symbol, right_symbol) != 0);
+        check_not_null(field_projection_child(left, "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(right, "cmeta_lifecycle_supported"));
+        node_free(root);
+    }
+
+    it("injects enum symbols without sharing the public item macro namespace") {
+        Node *root = create_node_map("root");
+        Node *left = field_projection_add_enum(root, "A_B", "uint16", 0);
+        Node *right = field_projection_add_enum(root, "AB", "uint16", 0);
+        Node *record = field_projection_add_record(root, "messages", "Symbols");
+        Node *field = field_projection_add_field(record, "Symbols", "value", "A_B");
+        Node *long_enum;
+        Node *long_field;
+        char long_name[241];
+        const char *left_symbol;
+        const char *right_symbol;
+        const char *long_symbol;
+        const char *long_data;
+        memset(long_name, 'A', sizeof(long_name) - 1u);
+        long_name[sizeof(long_name) - 1u] = '\0';
+        long_enum = field_projection_add_enum(root, long_name, "uint16", 0);
+        long_field = field_projection_add_field(record, "Symbols", "long_value", long_name);
+        check_not_null(left);
+        check_not_null(right);
+        check_not_null(field);
+        check_not_null(long_enum);
+        check_not_null(long_field);
+        if (!left || !right || !field || !long_enum || !long_field) {
+            node_free(root);
+            return;
+        }
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+        left_symbol = field_projection_text(left, "native_enum_symbol");
+        right_symbol = field_projection_text(right, "native_enum_symbol");
+        long_symbol = field_projection_text(long_enum, "native_enum_symbol");
+        long_data = field_projection_text(long_field, "native_data_symbol");
+        check_not_null(left_symbol);
+        check_not_null(right_symbol);
+        check_not_null(long_symbol);
+        check_not_null(long_data);
+        if (left_symbol && right_symbol && long_symbol && long_data) {
+            check_equal(left_symbol, "tbeCmetaEnum3x415f42");
+            check_equal(right_symbol, "tbeCmetaEnum2x4142");
+            check(strcmp(left_symbol, right_symbol) != 0);
+            check_null(strchr(left_symbol, '_'));
+            check_null(strchr(right_symbol, '_'));
+            check_equal(field_projection_text(field, "native_data_symbol"),
+                        "tbeCmetaEnum3x415f42Data");
+            check_equal(field_projection_text(field, "native_type_symbol"),
+                        "tbeCmetaEnum3x415f42Type");
+            check_equal(strlen(long_symbol), strlen("tbeCmetaEnum240x") + 480u);
+            check_equal(strlen(long_data), strlen(long_symbol) + 4u);
+            check_equal(strncmp(long_data, long_symbol, strlen(long_symbol)), 0);
+            check_equal(long_data + strlen(long_symbol), "Data");
+            check_null(strchr(long_data, '_'));
+            check_not_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        }
+        node_free(root);
+    }
+
+    it("keeps lifecycle-incomplete record maps off typed CSTL promotion") {
+        Node *root = create_node_map("root");
+        Node *item = field_projection_add_record(root, "composites", "PrivateItem");
+        Node *item_field =
+            field_projection_add_field(item, "PrivateItem", "value", "int32");
+        Node *left = field_projection_add_record(root, "messages", "A_B");
+        Node *right = field_projection_add_record(root, "messages", "A");
+        Node *left_field = field_projection_add_field(left, "A_B", "C", "map");
+        Node *right_field = field_projection_add_field(right, "A", "B_C", "map");
+        const char *left_symbol;
+        const char *right_symbol;
+
+        check_not_null(item);
+        check_not_null(item_field);
+        check_not_null(left_field);
+        check_not_null(right_field);
+        if (!item || !item_field || !left_field || !right_field) {
+            node_free(root);
+            return;
+        }
+        check_equal(
+            map_add(item_field, create_node_string("is_optional", "1")), 0);
+#define COMPLETE_MAP(FIELD) do {                                                    \
+            check_equal(map_add((FIELD), create_node_string("is_map", "1")), 0);   \
+            check_equal(map_add((FIELD), create_node_string("key_type",            \
+                                                              "string")), 0);      \
+            check_equal(map_add((FIELD), create_node_string("value_type",          \
+                                                              "PrivateItem")), 0); \
+        } while (0)
+        COMPLETE_MAP(left_field);
+        COMPLETE_MAP(right_field);
+#undef COMPLETE_MAP
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+        check_null(field_projection_text(left_field, "native_map_name"));
+        check_null(field_projection_text(right_field, "native_map_name"));
+        check_null(field_projection_text(left_field, "native_data_symbol"));
+        check_null(field_projection_text(right_field, "native_type_symbol"));
+        check_null(field_projection_text(left_field, "native_cstl_map"));
+        check_null(field_projection_text(right_field, "native_cstl_map"));
+        check_equal(field_projection_text(left_field, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_equal(field_projection_text(right_field, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_equal(field_projection_text(left_field, "native_map_value_data_ref"),
+                    "&PrivateItem_CMETA_DATA");
+        check_equal(field_projection_text(right_field, "native_map_value_type_ref"),
+                    "&PrivateItem_CMETA_TYPE");
+        check_null(field_projection_child(item, "cmeta_lifecycle_supported"));
+        check_null(field_projection_child(left, "cmeta_graph_supported"));
+        check_null(field_projection_child(right, "cmeta_graph_supported"));
+        node_free(root);
+    }
+
+    it("classifies only complete native CMeta graphs for descriptor routing") {
+        static const struct { const char *name; int lifecycle; } records[] = {
+            {"TextStorage", 1}, {"BytesStorage", 1}, {"FixedArrayStorage", 0},
+            {"ListStorage", 1}, {"SetStorage", 1}, {"OptionalStorage", 0},
+            {"UnsupportedNested", 1}, {"Cycle", 0}, {"Depth33", 0}
+        };
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+        Node *sample;
+        Node *fields;
+        Node *state;
+        Node *perms;
+        Node *wide;
+        size_t i;
+
+        check_not_null(root);
+        if (!root) return;
+        check_not_null(field_projection_add_enum(root, "State", "uint8", 0));
+        check_not_null(field_projection_add_enum(root, "Perms", "uint16", 1));
+        check_not_null(field_projection_add_enum(root, "Wide", "uint64", 0));
+
+        record = field_projection_add_record(root, "composites", "Point");
+        field = field_projection_add_field(record, "Point", "x", "int32");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
+        field = field_projection_add_field(record, "Point", "y", "double");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
+        record = field_projection_add_record(root, "composites", "Header");
+        check_not_null(field_projection_add_field(record, "Header", "state", "State"));
+        check_not_null(field_projection_add_field(record, "Header", "point", "Point"));
+        record = field_projection_add_record(root, "messages", "Sample");
+        field = field_projection_add_field(record, "Sample", "count", "uint32");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
+        check_not_null(field_projection_add_field(record, "Sample", "header", "Header"));
+
+#define ADD_UNSUPPORTED_RECORD(NAME, TYPE) \
+        record = field_projection_add_record(root, "messages", NAME); \
+        check_not_null(field_projection_add_field(record, NAME, "value", TYPE))
+        ADD_UNSUPPORTED_RECORD("BoolStorage", "bool");
+        ADD_UNSUPPORTED_RECORD("TextStorage", "string");
+        ADD_UNSUPPORTED_RECORD("BytesStorage", "bytes");
+        ADD_UNSUPPORTED_RECORD("UuidStorage", "uuid");
+        ADD_UNSUPPORTED_RECORD("FlagStorage", "Perms");
+        ADD_UNSUPPORTED_RECORD("WideStorage", "Wide");
+        ADD_UNSUPPORTED_RECORD("UnsupportedNested", "TextStorage");
+        ADD_UNSUPPORTED_RECORD("Cycle", "Cycle");
+#undef ADD_UNSUPPORTED_RECORD
+
+        record = field_projection_add_record(root, "messages", "FixedBytesStorage");
+        field = field_projection_add_field(record, "FixedBytesStorage", "value", "bytes");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
+        record = field_projection_add_record(root, "messages", "FixedArrayStorage");
+        field = field_projection_add_field(record, "FixedArrayStorage", "value", "list");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "uint32")), 0);
+        record = field_projection_add_record(root, "messages", "ListStorage");
+        field = field_projection_add_field(record, "ListStorage", "value", "list");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+        record = field_projection_add_record(root, "messages", "SetStorage");
+        field = field_projection_add_field(record, "SetStorage", "value", "set");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_set", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+        record = field_projection_add_record(root, "messages", "MapStorage");
+        field = field_projection_add_field(record, "MapStorage", "value", "map");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_map", "1")), 0);
+        check_equal(map_add(field, create_node_string("key_type", "string")), 0);
+        check_equal(map_add(field, create_node_string("value_type", "int32")), 0);
+        record = field_projection_add_record(root, "messages", "OptionalStorage");
+        field = field_projection_add_field(record, "OptionalStorage", "value", "uint32");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        record = field_projection_add_record(root, "messages", "OptionalNested");
+        check_not_null(field_projection_add_field(record, "OptionalNested", "child", "Sample"));
+        field = field_projection_add_field(record, "OptionalNested", "value", "uint32");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+
+        for (i = 0; i <= 33u; ++i) {
+            char name[32];
+            char child[32];
+            snprintf(name, sizeof(name), "Depth%u", (unsigned)i);
+            record = field_projection_add_record(root, "messages", name);
+            if (i == 0u) {
+                field = field_projection_add_field(record, name, "value", "int32");
+                check_not_null(field);
+                check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
+            } else {
+                snprintf(child, sizeof(child), "Depth%u", (unsigned)(i - 1u));
+                check_not_null(field_projection_add_field(record, name, "value", child));
+            }
+        }
+
+        annotate_language_types_from_tree(root);
+        check_false(field_projection_has_legacy_metadata(root));
+
+        check_not_null(field_projection_child(
+            field_projection_record(root, "composites", "Point"),
+            "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "composites", "Header"),
+            "cmeta_lifecycle_supported"));
+        sample = field_projection_record(root, "messages", "Sample");
+        check_not_null(field_projection_child(sample, "cmeta_lifecycle_supported"));
+        fields = field_projection_child(sample, "fields");
+        check_not_null(fields);
+        if (fields && fields->type == NODE_LIST && fields->data.list.count == 2u) {
+            check_not_null(field_projection_child(fields->data.list.items[0],
+                                                  "native_data_symbol"));
+            check_not_null(field_projection_child(fields->data.list.items[1],
+                                                  "native_data_symbol"));
+            check_equal(field_projection_text(fields->data.list.items[1],
+                                              "native_data_symbol"),
+                        "Header_CMETA_DATA");
+        }
+
+        state = field_projection_record(root, "enums", "State");
+        perms = field_projection_record(root, "enums", "Perms");
+        wide = field_projection_record(root, "enums", "Wide");
+        check_not_null(field_projection_child(state, "native_enum_supported"));
+        check_not_null(field_projection_child(perms, "native_enum_supported"));
+        check_not_null(field_projection_child(wide, "native_enum_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "FlagStorage"),
+            "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "WideStorage"),
+            "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "Depth32"),
+            "cmeta_lifecycle_supported"));
+
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "Sample"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "OptionalStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "OptionalNested"),
+            "cmeta_local_overlay_lifecycle"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "FlagStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "UuidStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "BoolStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "Depth32"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "BoolStorage"),
+            "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "FixedBytesStorage"),
+            "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "UuidStorage"),
+            "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "WideStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "MapStorage"),
+            "cmeta_graph_supported"));
+        check_null(field_projection_child(
+            field_projection_record(root, "messages", "Depth33"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "Depth33"),
+            "cmeta_member_lifecycle"));
+        check_null(field_projection_child(
+            field_projection_record(root, "messages", "Cycle"),
+            "cmeta_member_lifecycle"));
+        check_null(field_projection_child(
+            field_projection_record(root, "messages", "FixedArrayStorage"),
+            "cmeta_member_lifecycle"));
+
+        /* Native reader budgets count every descriptor node, not only nested
+         * records. These values mirror data_bind_native.c preflight exactly:
+         * Struct -> field descriptor, Vec/Set -> element, Map -> key+value. */
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "composites", "Point"),
+                "cmeta_native_descriptor_depth"),
+            "2");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "composites", "Point"),
+                "cmeta_native_descriptor_nodes"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "composites", "Header"),
+                "cmeta_native_descriptor_depth"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "composites", "Header"),
+                "cmeta_native_descriptor_nodes"),
+            "5");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "Sample"),
+                "cmeta_native_descriptor_depth"),
+            "4");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "Sample"),
+                "cmeta_native_descriptor_nodes"),
+            "7");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "ListStorage"),
+                "cmeta_native_descriptor_depth"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "ListStorage"),
+                "cmeta_native_descriptor_nodes"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "SetStorage"),
+                "cmeta_native_descriptor_depth"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "SetStorage"),
+                "cmeta_native_descriptor_nodes"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "MapStorage"),
+                "cmeta_native_descriptor_depth"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "MapStorage"),
+                "cmeta_native_descriptor_nodes"),
+            "4");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "Depth32"),
+                "cmeta_native_descriptor_depth"),
+            "34");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "Depth32"),
+                "cmeta_native_descriptor_nodes"),
+            "34");
+        check_null(field_projection_text(
+            field_projection_record(root, "messages", "Depth33"),
+            "cmeta_native_descriptor_depth"));
+        check_null(field_projection_text(
+            field_projection_record(root, "messages", "Depth33"),
+            "cmeta_native_descriptor_nodes"));
+
+        for (i = 0; i < sizeof(records) / sizeof(records[0]); ++i) {
+            Node *candidate = field_projection_record(root, "messages", records[i].name);
+            info("record=%s", records[i].name);
+            check_not_null(candidate);
+            check_equal(field_projection_child(candidate, "cmeta_lifecycle_supported") != NULL,
+                        records[i].lifecycle);
+        }
+        node_free(root);
+    }
+}

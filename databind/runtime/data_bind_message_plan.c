@@ -145,15 +145,7 @@ static int message_object_state_provider_valid(
 static const cmeta_data_field_desc *message_native_field(
     const DataBindNativeTypeBinding *binding,
     const char *name) {
-  const cmeta_data_struct_shape *shape = message_struct_shape(binding);
-  size_t i;
-  if (shape == NULL || name == NULL) return NULL;
-  for (i = 0u; i < shape->field_count; ++i) {
-    const cmeta_data_field_desc *field = &shape->fields[i];
-    if (field->name != NULL && strcmp(field->name, name) == 0)
-      return field;
-  }
-  return NULL;
+  return cmeta_data_struct_find_field(message_struct_shape(binding), name);
 }
 
 static const DataBindNativeStateBinding *message_state_binding(

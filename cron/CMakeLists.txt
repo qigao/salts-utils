@@ -13,7 +13,7 @@ add_custom_command(
 set(CRON_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/salts_cron.c ${CRON_LEXER_GEN})
 set(CRON_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include/salts_cron.h)
 
-add_library(${TARGET_NAME} SHARED ${CRON_SOURCES} ${CRON_HEADERS})
+add_library(${TARGET_NAME} STATIC  ${CRON_SOURCES} ${CRON_HEADERS})
 
 cmake_config_target(
   ${TARGET_NAME}

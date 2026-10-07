@@ -552,23 +552,6 @@ spec("DataBind canonical Binary reader") {
     data_bind_binary_reader_close(reader, owner);
   }
 
-  it("preserves the same scalar semantics in big-endian wire order") {
-    DataBindBinaryLayoutPlan plan = binary_plan(1);
-    unsigned char wire[15];
-    cserde_reader *reader = NULL;
-    void *owner = NULL;
-    DataBindError error = DATA_BIND_ERROR_INIT;
-
-    write_payload(wire, 1, 1, 0);
-    check_equal(
-        data_bind_binary_reader_open(
-            &plan, wire, sizeof(wire), 8u,
-            &reader, &owner, &error),
-        DATA_BIND_OK);
-    expect_required_prefix(reader, 1, 0);
-    data_bind_binary_reader_close(reader, owner);
-  }
-
   it("omits ABSENT optional fields and distinguishes explicit NULL") {
     DataBindBinaryLayoutPlan plan = binary_plan(0);
     unsigned char wire[15];

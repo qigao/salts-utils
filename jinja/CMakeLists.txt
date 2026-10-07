@@ -1,10 +1,14 @@
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG")
 
 cmake_add_grammar(JINJA_TEMPLATE
+  RE2C_EXECUTABLE "${RE2C_EXECUTABLE}"
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_template_lexer.re
   LEXER_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_template_lexer.h
   FOLDER "jinja/grammar")
 cmake_add_grammar(JINJA_EXPRESSION
+  RE2C_EXECUTABLE "${RE2C_EXECUTABLE}"
+  LEMON_TARGET lemon
+  LEMON_TEMPLATE "${LEMPAR}"
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_expression_lexer.re
   GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_expression_grammar.y
   LEXER_DEPENDS_ON_GRAMMAR
@@ -27,6 +31,8 @@ add_library(
   jinja_cmeta SHARED
   include/jinja_cmeta.h
   include/jinja_cmeta_runtime.h
+  include/jinja_cmeta_reflection.h
+  src/jinja_cmeta_reflection.c
   src/jinja_cmeta_runtime.c
   src/jinja_cmeta_runtime_internal.h
   src/jinja_cmeta.c
@@ -91,7 +97,8 @@ install(
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/jinja_cmeta.h include/jinja_cmeta_runtime.h DESTINATION include/jinja)
+install(FILES include/jinja_cmeta.h include/jinja_cmeta_runtime.h
+              include/jinja_cmeta_reflection.h DESTINATION include/jinja)
 
 if(BUILD_TESTS)
   add_subdirectory(test)

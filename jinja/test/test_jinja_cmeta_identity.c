@@ -656,3 +656,35 @@ spec("Jinja CMeta sameas") {
     free(output);
   }
 }
+
+spec("Jinja reflected borrowed aliases") {
+  static char *output;
+  static JINJA_CMETA_TEMPLATE *templ;
+  static JINJA_CMETA_ERROR error;
+  before_each() {
+    output = NULL;
+    templ = NULL;
+    error = (JINJA_CMETA_ERROR)JINJA_CMETA_ERROR_INIT;
+  }
+  after_each() { free(output); jinja_cmeta_release(templ); }
+  it("recognizes borrowed aliases through equivalent descriptor copies") {
+    JinjaTestMembershipModel aliases;
+    jinja_test_membership_model_init(&aliases);
+    cmeta_data_desc first = cmeta_data_double, second = cmeta_data_double;
+    double number = NAN, different = NAN;
+    JinjaTestMembershipRoot values = {
+      {&number, 1u, sizeof(number), &first},
+      {&number, 1u, sizeof(number), &second},
+      {&different, 1u, sizeof(different), &second}
+    };
+    templ = jinja_cmeta_compile(vstr_from_cstr(
+        "{{ages[0] is sameas(names[0])}}|{{ages[0] is sameas(empty[0])}}|"
+        "{{[ages[0]]==[names[0]]}}|{{ages[0] in names}}"), NULL, &error);
+    check_not_null(templ);
+    JINJA_CMETA_STATUS status = jinja_cmeta_render_string(templ, &aliases.desc,
+        &values, NULL, &output, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    check_equal(output, "True|False|True|True");
+  }
+
+}

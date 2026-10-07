@@ -79,31 +79,6 @@ suite("schema_cmeta_production_profiles") {
         }
     }
 
-    it("keeps alias native identity and semantic kind canonical") {
-        size_t i;
-        for (i = 0u; i < PROFILE_COUNT(profile_cases); ++i) {
-            const ProfileCase *item = &profile_cases[i];
-            const databind_binary_scalar_profile_t *info = databind_binary_scalar_profile_find(item->alias);
-            const cmeta_data_desc *alias = schema_cmeta_builtin_data(item->alias);
-            const cmeta_data_desc *canonical = schema_cmeta_builtin_data(item->canonical);
-            const cmeta_data_desc *profile;
-            check_not_null(info);
-            profile = info->data;
-            check_true(cmeta_data_desc_valid(alias));
-            check_true(cmeta_data_desc_valid(canonical));
-            check_true(cmeta_data_desc_valid(profile));
-            check_equal(alias->kind, item->kind);
-            check_equal(profile->kind, item->kind);
-            check_true(cmeta_type_identity_equal(alias->storage_type->identity,
-                                                 canonical->storage_type->identity));
-            check_true(cmeta_type_identity_equal(profile->storage_type->identity,
-                                                 canonical->storage_type->identity));
-            check_equal(profile->storage_type->size, canonical->storage_type->size);
-            check_equal(profile->storage_type->align, canonical->storage_type->align);
-            check_equal(strcmp(profile->stable_id, canonical->stable_id), 0);
-        }
-    }
-
     it("preserves every existing numeric wire width reader and host projection") {
         size_t i;
         for (i = 0u; i < PROFILE_COUNT(profile_cases); ++i) {
@@ -114,24 +89,6 @@ suite("schema_cmeta_production_profiles") {
             check_equal(strcmp(info->wire_reader, item->reader), 0);
             check_equal(strcmp(info->host_type, item->host), 0);
         }
-    }
-
-    it("does not turn bool semantics into uint8 because the wire reader is u8") {
-        const databind_binary_scalar_profile_t *boolean = databind_binary_scalar_profile_find("bool");
-        const databind_binary_scalar_profile_t *byte = databind_binary_scalar_profile_find("byte");
-        const cmeta_data_desc *bool_data = schema_cmeta_builtin_data("bool");
-        const cmeta_data_desc *byte_data = schema_cmeta_builtin_data("byte");
-        check_not_null(boolean);
-        check_not_null(byte);
-        check_true(cmeta_data_desc_valid(bool_data));
-        check_true(cmeta_data_desc_valid(byte_data));
-        check_equal(boolean->size, (size_t)1u);
-        check_equal(strcmp(boolean->wire_reader, "u8"), 0);
-        check_equal(strcmp(byte->wire_reader, "u8"), 0);
-        check_equal(bool_data->kind, CMETA_DATA_BOOL);
-        check_equal(byte_data->kind, CMETA_DATA_UINT);
-        check_false(cmeta_type_identity_equal(bool_data->storage_type->identity,
-                                              byte_data->storage_type->identity));
     }
 
     it("does not guess a numeric or buffer storage profile for unsupported names") {

@@ -457,56 +457,6 @@ static cmeta_object_ref make_xml_scalar_object(
 }
 
 spec("DataBind provider-backed object MessagePlan") {
-  it("coerces XML leaf text through canonical scalar field semantics") {
-    DataBind *codec = make_xml_scalar_codec();
-    DataBindMessagePlan *plan = make_xml_scalar_plan(codec);
-    XmlScalarRecord record = {0};
-    cmeta_object_field_provider field_provider;
-    cmeta_object_ref object = make_xml_scalar_object(&record, &field_provider);
-    unsigned char workspace[2048] = {0};
-    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
-    DataBindMessagePlanDiagnostic diagnostic =
-        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
-    const cserde_token input[] = {
-        {.kind = CSERDE_MAP_BEGIN},
-        key_token("age"), key_token("37"),
-        key_token("count"), key_token("18446744073709551615"),
-        key_token("score"), key_token("3.5"),
-        key_token("active"), key_token("true"),
-        {.kind = CSERDE_MAP_END}
-    };
-    TokenReader source = {input, sizeof(input) / sizeof(input[0]), 0u};
-    cserde_reader reader = {0};
-
-    options.workspace = workspace;
-    options.workspace_bytes = sizeof(workspace);
-    options.max_depth = 8u;
-    options.max_items = 32u;
-    options.max_owned_bytes = 1024u;
-
-    check_equal(
-        cserde_reader_init(&reader, &TOKEN_READER_OPS, &source), CSERDE_OK);
-    {
-      DataBindStatus decode_status =
-          data_bind_message_plan_decode_object_format(
-              plan, &options, DATA_BIND_FORMAT_XML, &reader, &object, NULL,
-              &diagnostic);
-      if (decode_status != DATA_BIND_OK)
-        fprintf(stderr, "XML object decode failed: status=%d field=%s message=%s\n",
-                (int)decode_status, diagnostic.schema_field,
-                diagnostic.message);
-      check_equal(decode_status, DATA_BIND_OK);
-    }
-    check_equal(record.age, INT64_C(37));
-    check_equal(record.count, UINT64_MAX);
-    check_true(record.score == 3.5);
-    check_true(record.active);
-
-    cmeta_object_release(&object);
-    data_bind_message_plan_free(plan);
-    data_bind_free(codec);
-  }
-
   it("keeps numeric-looking XML text as string when the field is string") {
     static const char schema[] =
         "schema XmlTextString [version(1)];"

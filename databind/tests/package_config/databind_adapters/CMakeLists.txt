@@ -11,18 +11,9 @@ find_package(SaltsUtils CONFIG REQUIRED
   PATHS "${SALTS_UTILS_PACKAGE_DIR}" NO_DEFAULT_PATH)
 find_package(SaltsUtils CONFIG REQUIRED)
 
-foreach(required_target IN ITEMS
-    Salts::DataBindCore
-    Salts::DataBindJsonAdapter
-    Salts::DataBindYamlAdapter
-    Salts::DataBindCsvAdapter
-    Salts::DataBindXmlAdapter
-    Salts::DataBindTemporalAdapter)
-  if(NOT TARGET ${required_target})
-    message(FATAL_ERROR
-      "SaltsUtils DataBind component is missing target ${required_target}")
-  endif()
-endforeach()
+if(NOT TARGET Salts::DataBind)
+  message(FATAL_ERROR "SaltsUtils is missing the DataBind runtime target")
+endif()
 
 if(NOT TARGET Salts::JsonParser OR
    NOT TARGET Salts::XmlParser OR
@@ -34,10 +25,9 @@ endif()
 
 
 include(CheckCSourceCompiles)
-set(CMAKE_REQUIRED_LIBRARIES Salts::DataBindJsonAdapter)
+set(CMAKE_REQUIRED_LIBRARIES Salts::DataBind)
 check_c_source_compiles([=[
 #include <data_bind_json_provider.h>
-#include <json_cserde_writer.h>
 
 static int sink_write(const void *data, size_t len, void *user) {
   (void)data;
@@ -60,5 +50,5 @@ int main(void) {
 unset(CMAKE_REQUIRED_LIBRARIES)
 if(NOT DATABIND_JSON_WRITER_CONSUMER_COMPILES)
   message(FATAL_ERROR
-    "Installed Salts::DataBindJsonAdapter writer consumer failed to compile/link")
+    "Installed Salts::DataBind writer consumer failed to compile/link")
 endif()

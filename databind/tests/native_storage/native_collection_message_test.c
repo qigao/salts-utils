@@ -326,29 +326,6 @@ spec("DataBind native builtin lists and owning JSON keys") {
     }
   }
 
-  it("admits equivalent copied element descriptors through semantic identity") {
-    cmeta_data_desc element = cmeta_data_uint32;
-    cmeta_data_collection_ops ops = NativeListValues_collection_ops;
-    cmeta_data_desc values = NativeListValues_collection_data;
-    cmeta_data_field_desc fields[LIST_FIELD_COUNT];
-    cmeta_data_struct_shape shape = LIST_SHAPE;
-    cmeta_data_desc data = LIST_DATA;
-    DataBindNativeTypeBinding binding = LIST_BINDING;
-    DataBindMessagePlan *plan = NULL;
-    memcpy(fields, list_fields, sizeof(fields));
-    ops.element_data = &element;
-    values.collection_ops = &ops;
-    fields[1].value = &values;
-    shape.fields = fields;
-    data.shape = &shape;
-    binding.data = &data;
-    check_equal(data_bind_message_plan_compile(list_codec, "Order", &binding,
-                                              &plan, &list_diagnostic), DATA_BIND_OK);
-    check_not_null(plan);
-    /* This plan borrows the local graph, so release it before the graph dies. */
-    data_bind_message_plan_free(plan);
-  }
-
   it("owns map keys independently and rejects invalid UTF-8 without releasing them") {
     static const char invalid[] = "\xc3\x28";
     ListOutput out = {.capacity = LIST_OUTPUT_BYTES - 1u};

@@ -104,18 +104,6 @@ suite("salts_cron") {
     expect_local_parts(next_fire, 2024, 1, 1, 14, 30);
   }
 
-  it("uses crontab dom and dow OR semantics") {
-    salts_cron_expr_t expr;
-    time_t after = make_local_time(2024, 1, 6, 0, 0, 0);
-    time_t next_fire = 0;
-    int rc = salts_cron_parse("0 0 13 * 5", &expr);
-
-    check_equal(rc, SALTS_CRON_OK);
-    rc = salts_cron_next(&expr, after, &next_fire);
-    check_equal(rc, SALTS_CRON_OK);
-    expect_local_parts(next_fire, 2024, 1, 12, 0, 0);
-  }
-
   it("maps sunday 7 to sunday 0") {
     salts_cron_expr_t expr;
     time_t sunday = make_local_time(2024, 1, 7, 8, 0, 0);

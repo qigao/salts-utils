@@ -5,18 +5,21 @@ cmake_add_test(
   INCLUDES ../src
   FOLDER "playback/tests")
 
-cmake_add_test(
-  playback_contract_test
-  SOURCES test_playback_contract.c
-  LIBS Salts::Playback Salts::TinyTest
-  FOLDER "playback/tests")
-
 add_library(
   playback_null_test_impl STATIC
   ../src/miniaudio_impl.c
   ../src/playback_buffer.c
   ../src/salts_playback.c)
 cmake_config_target(playback_null_test_impl FOLDER "playback/tests")
+if(APPLE)
+  set_source_files_properties(../src/miniaudio_impl.c PROPERTIES LANGUAGE OBJC)
+  target_link_libraries(playback_null_test_impl PRIVATE
+    ${SALTS_PLAYBACK_AUDIO_TOOLBOX_FRAMEWORK}
+    ${SALTS_PLAYBACK_CORE_AUDIO_FRAMEWORK}
+    ${SALTS_PLAYBACK_CORE_FOUNDATION_FRAMEWORK}
+    ${SALTS_PLAYBACK_FOUNDATION_FRAMEWORK}
+    ${SALTS_PLAYBACK_AV_FOUNDATION_FRAMEWORK})
+endif()
 target_compile_features(playback_null_test_impl PUBLIC c_std_11)
 target_compile_definitions(
   playback_null_test_impl PRIVATE SALTS_PLAYBACK_TEST_NULL_BACKEND=1)

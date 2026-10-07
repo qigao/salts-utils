@@ -11,6 +11,7 @@
 #include "parser/jinja_text_lexer.h"
 
 #include <cmeta_cmeta_data.h>
+#include <cmeta/scope.h>
 #include <salts_unicode.h>
 #include <tstr.h>
 
@@ -105,6 +106,14 @@ typedef struct JINJA_CMETA_REPR_FRAME {
   const JINJA_CMETA_VALUE *value;
 } JINJA_CMETA_REPR_FRAME;
 
+/* One cursor per loop; source storage and metadata are borrowed for the render.
+ * Retaining the cursor preserves CSTL generation checks and linear traversal. */
+typedef struct JINJA_CMETA_COLLECTION_CURSOR {
+  cmeta_data_collection_borrow_cursor borrow;
+  size_t count;
+  size_t index;
+} JINJA_CMETA_COLLECTION_CURSOR;
+
 /* One single-threaded owner for the complete render, including every include.
  * Fixed-address payloads and cumulative budgets survive instance switches. */
 typedef struct JINJA_CMETA_RENDER_STATE {
@@ -118,6 +127,7 @@ typedef struct JINJA_CMETA_RENDER_STATE {
   size_t range_identity;
   size_t value_identity;
   JINJA_CMETA_LOOP_STATE *loop_states;
+  vec_alloc_t *collection_cursors;
   unsigned max_render_depth;
   size_t max_value_visits;
   size_t value_visits;
@@ -4423,6 +4433,15 @@ static JINJA_CMETA_STATUS jinja_iterator_next_impl(JINJA_CMETA_PROVIDER *provide
   return JINJA_CMETA_OK;
 }
 
+static int jinja_identity_equal(const JINJA_CMETA_IDENTITY *left,
+    const JINJA_CMETA_IDENTITY *right) {
+  if (left->serial != 0u) return left->serial == right->serial;
+  return left->source != NULL && left->source == right->source &&
+      (left->type == right->type ||
+       (left->type != NULL && right->type != NULL &&
+        cmeta_data_desc_equal(left->type, right->type)));
+}
+
 static JINJA_CMETA_STATUS jinja_value_identify(JINJA_CMETA_PROVIDER *provider, JINJA_CMETA_VALUE *value) {
   if (value->kind == JINJA_CMETA_VALUE_NODE) value->identity = value->node.value_identity;
   if (value->identity.serial != 0u || value->identity.source != NULL) return JINJA_CMETA_OK;
@@ -4995,8 +5014,10 @@ static JINJA_CMETA_STATUS jinja_slice_value(JINJA_CMETA_PROVIDER *provider,
   if (base->kind == JINJA_CMETA_VALUE_RANGE) length = base->range.count;
   else if (jinja_value_is_collection(base->kind)) length = base->collection_item_count;
   else if (base->kind == JINJA_CMETA_VALUE_NODE && jinja_is_sequence_desc(base->node.desc)) {
-    status = jinja_collection_length(&base->node, &length);
+    size_t borrowed_count = 0u;
+    status = jinja_collection_length(&base->node, &borrowed_count);
     if (status != JINJA_CMETA_OK) return status;
+    length = borrowed_count;
   } else return JINJA_CMETA_ERR_RENDER;
   status = jinja_slice_normalize(provider, bounds, length, &slice);
   if (status != JINJA_CMETA_OK) return status;
@@ -7381,9 +7402,7 @@ static int jinja_replace_same_string(const JINJA_CMETA_PROVIDER *provider,
   if (left->string.len == 0u) return 1;
   /* Converting Markup arguments to plain str creates independent objects. */
   if (left->string_safe || right->string_safe) return 0;
-  if ((left->identity.serial != 0u && left->identity.serial == right->identity.serial) ||
-      (left->identity.source != NULL && left->identity.source == right->identity.source &&
-       left->identity.type == right->identity.type)) return 1;
+  if (jinja_identity_equal(&left->identity, &right->identity)) return 1;
   if (left->identity.source == NULL || right->identity.source == NULL ||
       left->identity.type != NULL || right->identity.type != NULL) return 0;
   int left_constant = 0, right_constant = 0;
@@ -8071,9 +8090,7 @@ static JINJA_CMETA_STATUS jinja_same_value(JINJA_CMETA_PROVIDER *provider,
   const int right_bool = right->kind == JINJA_CMETA_VALUE_BOOL ||
       (right->kind == JINJA_CMETA_VALUE_NODE && right->node.desc != NULL && right->node.desc->kind == CMETA_DATA_BOOL);
   *result = 0;
-  if ((left->identity.serial != 0u && left->identity.serial == right->identity.serial) ||
-      (left->identity.source != NULL && left->identity.source == right->identity.source &&
-       left->identity.type == right->identity.type)) {
+  if (jinja_identity_equal(&left->identity, &right->identity)) {
     *result = 1;
     return JINJA_CMETA_OK;
   }
@@ -8106,7 +8123,8 @@ static JINJA_CMETA_STATUS jinja_same_value(JINJA_CMETA_PROVIDER *provider,
     *result = 1;
     break;
   case JINJA_CMETA_VALUE_NODE:
-    *result = left->node.object == right->node.object && left->node.desc == right->node.desc;
+    *result = left->node.object == right->node.object &&
+        cmeta_data_desc_equal(left->node.desc, right->node.desc);
     break;
   case JINJA_CMETA_VALUE_RANGE:
     *result = left->range.identity == right->range.identity;
@@ -8471,6 +8489,7 @@ static JINJA_CMETA_STATUS jinja_expression_value(JINJA_CMETA_PROVIDER *provider,
   case JINJA_CMETA_EXPRESSION_FIRST:
   case JINJA_CMETA_EXPRESSION_LAST:
   case JINJA_CMETA_EXPRESSION_LENGTH:
+  case JINJA_CMETA_EXPRESSION_HOST_FILTER:
     status = jinja_evaluate_buffered_call(provider, context, expression, index, depth, value, 1);
     break;
   default:
@@ -10388,23 +10407,57 @@ static JINJA_CMETA_NODE *jinja_iteration_child_at(JINJA_CMETA_NODE *node, unsign
                                           (size_t)index, node->collection_item_count, node);
   }
   if (jinja_is_collection_desc(node->desc)) {
+    JINJA_CMETA_COLLECTION_CURSOR *cursor = node->collection_cursor;
     const void *element = NULL;
-    const cmeta_data_desc *element_data = NULL;
-    size_t count = 0u;
-    JINJA_CMETA_STATUS status = jinja_collection_element_at(
-        node, (size_t)index, &element, &element_data, &count);
-    if (status != JINJA_CMETA_OK) {
-      jinja_provider_fail(provider, status);
+    if (cursor == NULL) {
+      cursor = (JINJA_CMETA_COLLECTION_CURSOR *)jinja_provider_zero(provider, 1u, sizeof(*cursor));
+      if (cursor == NULL) return NULL;
+      stl_status stored = STL_OK;
+      if (provider->shared.collection_cursors == NULL) {
+        const stl_allocator allocator = jinja_cmeta_memory_allocator(provider->shared.memory);
+        stored = vec_alloc_new_bytes(sizeof(cursor), _Alignof(JINJA_CMETA_COLLECTION_CURSOR *),
+            provider->shared.node_capacity, &allocator, &provider->shared.collection_cursors);
+      }
+      if (stored == STL_OK) stored = vec_alloc_push(provider->shared.collection_cursors, &cursor);
+      if (stored != STL_OK) {
+        jinja_cmeta_memory_drop(cursor);
+        jinja_provider_fail(provider, jinja_cmeta_values_status(stored));
+        return NULL;
+      }
+      node->collection_cursor = cursor;
+      JINJA_CMETA_STATUS status = jinja_collection_borrow_begin(node, &cursor->borrow);
+      if (status == JINJA_CMETA_OK)
+        status = jinja_borrow_status(cmeta_data_collection_borrow_size(&cursor->borrow, &cursor->count));
+      if (status != JINJA_CMETA_OK) {
+        jinja_provider_fail(provider, status);
+        return NULL;
+      }
+      if (cursor->count > (size_t)UINT_MAX || cursor->count > provider->shared.node_capacity) {
+        jinja_provider_fail(provider, JINJA_CMETA_ERR_CAPACITY);
+        return NULL;
+      }
+    }
+    if ((size_t)index != cursor->index) {
+      jinja_provider_fail(provider, JINJA_CMETA_ERR_METADATA);
       return NULL;
     }
-    if (count > (size_t)UINT_MAX || count > provider->shared.node_capacity) {
-      jinja_provider_fail(provider, JINJA_CMETA_ERR_CAPACITY);
+    if (cursor->index == cursor->count) {
+      size_t count;
+      JINJA_CMETA_STATUS status = jinja_borrow_status(
+          cmeta_data_collection_borrow_size(&cursor->borrow, &count));
+      if (status != JINJA_CMETA_OK) jinja_provider_fail(provider, status);
       return NULL;
     }
-    if (element == NULL) return NULL;
+    cmeta_gen_status generated = cmeta_data_collection_borrow_next(&cursor->borrow, &element);
+    if ((generated != CMETA_GEN_VALUE && generated != CMETA_GEN_VALUE_AND_DONE) ||
+        element == NULL || cursor->index >= cursor->count) {
+      jinja_provider_fail(provider, JINJA_CMETA_ERR_METADATA);
+      return NULL;
+    }
+    ++cursor->index;
     return jinja_provider_iteration_child(
-        jinja_provider_node(provider, element, element_data, node),
-        (size_t)index, count, node);
+        jinja_provider_node(provider, element, cursor->borrow.element, node),
+        (size_t)index, cursor->count, node);
   }
   if (jinja_is_map_desc(node->desc)) {
     JINJA_CMETA_VALUE key;
@@ -11678,6 +11731,7 @@ static JINJA_CMETA_STATUS jinja_execute_range_impl(JINJA_CMETA_PROVIDER *provide
         return JINJA_CMETA_ERR_RENDER;
       node = jinja_provider_value_node(provider, &value, context);
       if (node == NULL) return provider->shared.status;
+      node->collection_cursor = NULL;
       node->loop_alias = templ->expressions[instruction->expression].loop_alias;
       if (instruction->flag || instruction->recursive) {
         JINJA_CMETA_NODE *filtered = instruction->flag ? jinja_provider_reserve(provider) : node;
@@ -12026,7 +12080,92 @@ static JINJA_CMETA_RENDER_OPTIONS jinja_render_options(const JINJA_CMETA_RENDER_
   return result;
 }
 
-static JINJA_CMETA_STATUS jinja_render(const JINJA_CMETA_TEMPLATE *templ,
+/* The scope owns every render allocation; all borrowed values die before the
+ * retained templates. This also covers workspace allocation failures. */
+static cmeta_status jinja_provider_init(void *storage) {
+  memset(storage, 0, sizeof(JINJA_CMETA_PROVIDER));
+  return CMETA_OK;
+}
+
+static void jinja_provider_destroy(void *storage) {
+  JINJA_CMETA_PROVIDER *provider = (JINJA_CMETA_PROVIDER *)storage;
+  for (size_t i = 0u; i < provider->shared.capture_count; ++i) jinja_cmeta_text_destroy(&provider->shared.capture_buffers[i]);
+  while (provider->shared.closures != NULL) {
+    JINJA_CMETA_CLOSURE *closure = provider->shared.closures;
+    provider->shared.closures = closure->next;
+    jinja_cmeta_memory_drop(closure);
+  }
+  jinja_cmeta_cells_destroy(&provider->shared.cells);
+  while (provider->shared.helpers != NULL) {
+    JINJA_CMETA_HELPER *helper = provider->shared.helpers;
+    provider->shared.helpers = helper->next;
+    jinja_cmeta_memory_drop(helper);
+  }
+  while (provider->shared.contexts != NULL) {
+    JINJA_CMETA_CONTEXT *context = provider->shared.contexts;
+    provider->shared.contexts = context->next;
+    jinja_cmeta_memory_drop(context);
+  }
+  while (provider->shared.batches != NULL) {
+    JINJA_CMETA_BATCH *batch = provider->shared.batches;
+    provider->shared.batches = batch->next;
+    jinja_cmeta_memory_drop(batch);
+  }
+  while (provider->shared.transforms != NULL) {
+    JINJA_CMETA_TRANSFORM *transform = provider->shared.transforms;
+    provider->shared.transforms = transform->next;
+    jinja_cmeta_memory_drop(transform->unique_seen);
+    jinja_cmeta_memory_drop(transform);
+  }
+  while (provider->shared.slicers != NULL) {
+    JINJA_CMETA_SLICER *slicer = provider->shared.slicers;
+    provider->shared.slicers = slicer->next;
+    jinja_cmeta_memory_drop(slicer);
+  }
+  jinja_cmeta_memory_drop(provider->shared.capture_buffers);
+  jinja_cmeta_memory_drop(provider->shared.slice_bytes);
+  while (provider->shared.loop_states != NULL) {
+    JINJA_CMETA_LOOP_STATE *filter = provider->shared.loop_states;
+    provider->shared.loop_states = filter->next;
+    jinja_cmeta_memory_drop(filter);
+  }
+  for (size_t i = 0u; i < vec_size(vec_alloc_view(provider->shared.collection_cursors)); ++i) {
+    JINJA_CMETA_COLLECTION_CURSOR *cursor = *(JINJA_CMETA_COLLECTION_CURSOR **)
+        vec_alloc_at(provider->shared.collection_cursors, i);
+    jinja_cmeta_memory_drop(cursor);
+  }
+  vec_alloc_destroy(provider->shared.collection_cursors);
+  jinja_cmeta_memory_drop(provider->shared.bindings);
+  jinja_cmeta_values_destroy(&provider->shared.values);
+  jinja_cmeta_memory_drop(provider->shared.changed_values);
+  jinja_cmeta_memory_drop(provider->shared.call_arguments);
+  jinja_cmeta_memory_drop(provider->shared.nodes);
+  while (provider->shared.instances != NULL) {
+    JINJA_CMETA_TEMPLATE_INSTANCE *instance = provider->shared.instances;
+    provider->shared.instances = instance->next;
+    jinja_cmeta_release((JINJA_CMETA_TEMPLATE *)instance->templ);
+    jinja_cmeta_memory_drop(instance);
+  }
+  memset(provider, 0, sizeof(*provider));
+}
+
+static const cmeta_type_identity jinja_provider_identity =
+    CMETA_TYPE_ID_ATOM_INIT("jinja.render.provider");
+static const cmeta_type_desc jinja_provider_type = {
+    .name = "JINJA_CMETA_PROVIDER", .size = sizeof(JINJA_CMETA_PROVIDER),
+    .align = _Alignof(JINJA_CMETA_PROVIDER), .kind = CMETA_T_OBJECT,
+    .identity = &jinja_provider_identity};
+static const cmeta_data_construct_ops jinja_provider_lifecycle = {
+    .struct_size = sizeof(cmeta_data_construct_ops),
+    .abi_version = CMETA_DATA_CONSTRUCT_OPS_ABI_VERSION,
+    .storage_type = &jinja_provider_type,
+    .init_zero = jinja_provider_init, .restore_zero = jinja_provider_destroy,
+    .flags = CMETA_LIFECYCLE_INIT_NOFAIL | CMETA_LIFECYCLE_TRIVIAL_ZERO};
+CMETA_DEFINE_STATIC_LIFECYCLE(JINJA_CMETA_PROVIDER, jinja_provider_lifecycle,
+    CMETA_LIFECYCLE_INIT_NOFAIL | CMETA_LIFECYCLE_TRIVIAL_ZERO);
+
+static JINJA_CMETA_STATUS jinja_render_owned(JINJA_CMETA_PROVIDER *provider,
+                                      const JINJA_CMETA_TEMPLATE *templ,
                                       const cmeta_data_desc *root_desc, const void *root,
                                       const JINJA_CMETA_RENDER_OPTIONS *options,
                                       const JINJA_CMETA_RENDERER *renderer, void *renderer_data,
@@ -12037,13 +12176,12 @@ static JINJA_CMETA_STATUS jinja_render(const JINJA_CMETA_TEMPLATE *templ,
   JINJA_CMETA_TEMPLATE_INSTANCE root_instance = {.templ = templ, .root_visible = 1};
   root_instance.chain_root = &root_instance;
   root_instance.root_context.owner = &root_instance;
-  JINJA_CMETA_PROVIDER provider = {.instance = &root_instance};
-  JINJA_CMETA_MEMORY local_memory = {.limit = SIZE_MAX};
-  provider.shared.memory = memory != NULL ? memory : &local_memory;
-  provider.shared.values.memory = provider.shared.memory;
+  provider->instance = &root_instance;
+  provider->shared.memory = memory;
+  provider->shared.values.memory = provider->shared.memory;
   JINJA_CMETA_ERROR detail = JINJA_CMETA_ERROR_INIT;
   if (error == NULL) error = &detail;
-  provider.shared.error = error;
+  provider->shared.error = error;
   size_t error_offset = 0u;
   const size_t max_values = config != NULL ? config->max_values : JINJA_CMETA_DEFAULT_MAX_VALUES;
   const size_t max_cells = config != NULL ? config->max_cells : JINJA_CMETA_DEFAULT_MAX_CELLS;
@@ -12063,120 +12201,82 @@ static JINJA_CMETA_STATUS jinja_render(const JINJA_CMETA_TEMPLATE *templ,
                           "render requires a template, renderer, and valid root metadata");
     return JINJA_CMETA_ERR_INVALID_ARGUMENT;
   }
-  if (resolved.max_nodes > SIZE_MAX / sizeof(*provider.shared.nodes) ||
-      resolved.max_nodes > SIZE_MAX / sizeof(*provider.shared.bindings) ||
-      resolved.max_nodes > SIZE_MAX / sizeof(*provider.shared.capture_buffers) ||
-      resolved.max_nodes > SIZE_MAX / sizeof(*provider.shared.changed_values) ||
+  if (resolved.max_nodes > SIZE_MAX / sizeof(*provider->shared.nodes) ||
+      resolved.max_nodes > SIZE_MAX / sizeof(*provider->shared.bindings) ||
+      resolved.max_nodes > SIZE_MAX / sizeof(*provider->shared.capture_buffers) ||
+      resolved.max_nodes > SIZE_MAX / sizeof(*provider->shared.changed_values) ||
 
       max_values > SIZE_MAX / sizeof(JINJA_CMETA_VALUE)) {
     jinja_cmeta_error_set(error, JINJA_CMETA_ERR_CAPACITY, 0u,
                           "render workspace capacity overflows addressable memory");
     return JINJA_CMETA_ERR_CAPACITY;
   }
-  provider.shared.nodes = (JINJA_CMETA_NODE *)jinja_provider_zero(&provider, resolved.max_nodes, sizeof(*provider.shared.nodes));
-  if (provider.shared.nodes == NULL) {
-    jinja_cmeta_error_set(error, provider.shared.status, 0u,
+  provider->shared.nodes = (JINJA_CMETA_NODE *)jinja_provider_zero(provider, resolved.max_nodes, sizeof(*provider->shared.nodes));
+  if (provider->shared.nodes == NULL) {
+    jinja_cmeta_error_set(error, provider->shared.status, 0u,
                           "unable to allocate the render node workspace");
-    return provider.shared.status;
+    return provider->shared.status;
   }
-  provider.shared.changed_values =
-      (JINJA_CMETA_VALUE *)jinja_provider_zero(&provider, resolved.max_nodes, sizeof(*provider.shared.changed_values));
-  if (provider.shared.changed_values == NULL) {
-    jinja_cmeta_memory_drop(provider.shared.nodes);
-    jinja_cmeta_error_set(error, provider.shared.status, 0u,
+  provider->shared.changed_values =
+      (JINJA_CMETA_VALUE *)jinja_provider_zero(provider, resolved.max_nodes, sizeof(*provider->shared.changed_values));
+  if (provider->shared.changed_values == NULL) {
+    jinja_cmeta_error_set(error, provider->shared.status, 0u,
                           "unable to allocate the loop call workspace");
-    return provider.shared.status;
+    return provider->shared.status;
   }
-  provider.shared.node_capacity = resolved.max_nodes;
-  provider.shared.changed_value_capacity = resolved.max_nodes;
-  provider.shared.values.limit = max_values;
-  provider.instance = &root_instance;
-  provider.context = &provider.instance->root_context;
-  provider.autoescape = templ->autoescape;
-  provider.strict_undefined =
+  provider->shared.node_capacity = resolved.max_nodes;
+  provider->shared.changed_value_capacity = resolved.max_nodes;
+  provider->shared.values.limit = max_values;
+  provider->instance = &root_instance;
+  provider->context = &provider->instance->root_context;
+  provider->autoescape = templ->autoescape;
+  provider->strict_undefined =
       templ->undefined_policy == JINJA_CMETA_UNDEFINED_STRICT;
-  provider.shared.max_string_bytes = resolved.max_string_bytes;
-  provider.shared.max_render_depth = resolved.max_render_depth;
-  provider.shared.max_value_visits = resolved.max_value_visits;
-  provider.shared.max_value_depth = resolved.max_value_depth;
-  provider.shared.error_offset = &error_offset;
-  provider.shared.status = JINJA_CMETA_OK;
-  provider.shared.renderer = renderer;
-  provider.shared.renderer_data = renderer_data;
-  (void)jinja_provider_node(&provider, root, root_desc, NULL);
+  provider->shared.max_string_bytes = resolved.max_string_bytes;
+  provider->shared.max_render_depth = resolved.max_render_depth;
+  provider->shared.max_value_visits = resolved.max_value_visits;
+  provider->shared.max_value_depth = resolved.max_value_depth;
+  provider->shared.error_offset = &error_offset;
+  provider->shared.status = JINJA_CMETA_OK;
+  provider->shared.renderer = renderer;
+  provider->shared.renderer_data = renderer_data;
+  (void)jinja_provider_node(provider, root, root_desc, NULL);
 
-  if (provider.shared.status == JINJA_CMETA_OK) {
-    provider.shared.status = jinja_cmeta_cells_init(&provider.shared.cells, templ, max_activations,
+  if (provider->shared.status == JINJA_CMETA_OK) {
+    provider->shared.status = jinja_cmeta_cells_init(&provider->shared.cells, templ, max_activations,
         max_cells);
-    if (provider.shared.status == JINJA_CMETA_OK) {
-      provider.shared.cells.memory = provider.shared.memory;
-      provider.shared.status = jinja_scope_initialize(&provider, 0u, NULL);
+    if (provider->shared.status == JINJA_CMETA_OK) {
+      provider->shared.cells.memory = provider->shared.memory;
+      provider->shared.status = jinja_scope_initialize(provider, 0u, NULL);
     }
-    provider.instance->root_activation = provider.activation;
+    provider->instance->root_activation = provider->activation;
   }
-  if (provider.shared.status == JINJA_CMETA_OK)
-    provider.shared.status = jinja_execute_template(&provider);
-  if (provider.shared.status != JINJA_CMETA_OK && error->status == JINJA_CMETA_OK)
-    jinja_cmeta_error_set(error, provider.shared.status, error_offset,
-                          provider.shared.status == JINJA_CMETA_ERR_CAPACITY && provider.shared.value_limit_error != NULL
-                              ? provider.shared.value_limit_error
-                          : provider.shared.status == JINJA_CMETA_ERR_CAPACITY
+  if (provider->shared.status == JINJA_CMETA_OK)
+    provider->shared.status = jinja_execute_template(provider);
+  if (provider->shared.status != JINJA_CMETA_OK && error->status == JINJA_CMETA_OK)
+    jinja_cmeta_error_set(error, provider->shared.status, error_offset,
+                          provider->shared.status == JINJA_CMETA_ERR_CAPACITY && provider->shared.value_limit_error != NULL
+                              ? provider->shared.value_limit_error
+                          : provider->shared.status == JINJA_CMETA_ERR_CAPACITY
                               ? "render workspace or value limit exceeded"
-                          : provider.shared.status == JINJA_CMETA_ERR_METADATA
+                          : provider->shared.status == JINJA_CMETA_ERR_METADATA
                               ? "CMeta descriptor or borrowed view is invalid"
                               : "template rendering failed");
-  for (size_t i = 0u; i < provider.shared.capture_count; ++i) jinja_cmeta_text_destroy(&provider.shared.capture_buffers[i]);
-  while (provider.shared.closures != NULL) {
-    JINJA_CMETA_CLOSURE *closure = provider.shared.closures;
-    provider.shared.closures = closure->next;
-    jinja_cmeta_memory_drop(closure);
-  }
-  jinja_cmeta_cells_destroy(&provider.shared.cells);
-  while (provider.shared.helpers != NULL) {
-    JINJA_CMETA_HELPER *helper = provider.shared.helpers;
-    provider.shared.helpers = helper->next;
-    jinja_cmeta_memory_drop(helper);
-  }
-  while (provider.shared.contexts != NULL) {
-    JINJA_CMETA_CONTEXT *context = provider.shared.contexts;
-    provider.shared.contexts = context->next;
-    jinja_cmeta_memory_drop(context);
-  }
-  while (provider.shared.batches != NULL) {
-    JINJA_CMETA_BATCH *batch = provider.shared.batches;
-    provider.shared.batches = batch->next;
-    jinja_cmeta_memory_drop(batch);
-  }
-  while (provider.shared.transforms != NULL) {
-    JINJA_CMETA_TRANSFORM *transform = provider.shared.transforms;
-    provider.shared.transforms = transform->next;
-    jinja_cmeta_memory_drop(transform->unique_seen);
-    jinja_cmeta_memory_drop(transform);
-  }
-  while (provider.shared.slicers != NULL) {
-    JINJA_CMETA_SLICER *slicer = provider.shared.slicers;
-    provider.shared.slicers = slicer->next;
-    jinja_cmeta_memory_drop(slicer);
-  }
-  jinja_cmeta_memory_drop(provider.shared.capture_buffers);
-  jinja_cmeta_memory_drop(provider.shared.slice_bytes);
-  while (provider.shared.loop_states != NULL) {
-    JINJA_CMETA_LOOP_STATE *filter = provider.shared.loop_states;
-    provider.shared.loop_states = filter->next;
-    jinja_cmeta_memory_drop(filter);
-  }
-  jinja_cmeta_memory_drop(provider.shared.bindings);
-  jinja_cmeta_values_destroy(&provider.shared.values);
-  jinja_cmeta_memory_drop(provider.shared.changed_values);
-  jinja_cmeta_memory_drop(provider.shared.call_arguments);
-  jinja_cmeta_memory_drop(provider.shared.nodes);
-  while (provider.shared.instances != NULL) {
-    JINJA_CMETA_TEMPLATE_INSTANCE *instance = provider.shared.instances;
-    provider.shared.instances = instance->next;
-    jinja_cmeta_release((JINJA_CMETA_TEMPLATE *)instance->templ);
-    jinja_cmeta_memory_drop(instance);
-  }
-  return provider.shared.status;
+  return provider->shared.status;
+}
+
+static JINJA_CMETA_STATUS jinja_render(const JINJA_CMETA_TEMPLATE *templ,
+    const cmeta_data_desc *root_desc, const void *root,
+    const JINJA_CMETA_RENDER_OPTIONS *options,
+    const JINJA_CMETA_RENDERER *renderer, void *renderer_data,
+    const JINJA_CMETA_RUNTIME_CONFIG *config, JINJA_CMETA_MEMORY *memory,
+    JINJA_CMETA_ERROR *error) {
+  JINJA_CMETA_MEMORY local_memory = {.limit = SIZE_MAX};
+  int status;
+  cmeta_scope(status, cmeta_autos((JINJA_CMETA_PROVIDER, provider)),
+      cmeta_body(jinja_render_owned(&provider, templ, root_desc, root, options,
+          renderer, renderer_data, config, memory != NULL ? memory : &local_memory, error)));
+  return (JINJA_CMETA_STATUS)status;
 }
 
 JINJA_CMETA_STATUS jinja_cmeta_render(const JINJA_CMETA_TEMPLATE *templ,

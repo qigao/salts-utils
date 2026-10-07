@@ -1,0 +1,172 @@
+name: Compile SaltsUtils native builds
+on:
+  workflow_call:
+    inputs:
+      builds:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+permissions:
+  contents: read
+  packages: read
+jobs:
+  build:
+    name: ${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.builds) }}
+    env:
+      QIGAO_SDK_RID: ${{ matrix.rid }}
+      QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
+      QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
+      QIGAO_IOS_SYSROOT: ${{ matrix.sysroot }}
+      QIGAO_NUGET_PACKAGES: ${{ github.workspace }}/stage/nuget
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Select iOS cache namespace
+        if: matrix.family == 'ios'
+        shell: bash
+        run: echo 'X_VCPKG_NUGET_ID_PREFIX=vcpkg-cache' >> "$GITHUB_ENV"
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Select Windows dependency triplet
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:VCPKG_ROOT -or -not $env:QIGAO_VCPKG_WINDOWS_TRIPLET) { throw 'Shared vcpkg environment is missing' }
+          "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+      - name: Restore latest published native SDKs on Unix
+        if: matrix.family != 'windows'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash cmake/ci/restore-native-sdk.sh '${{ matrix.rid }}' '${{ matrix.host }}'
+      - name: Restore latest published native SDKs on Windows
+        if: matrix.family == 'windows'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
+      - name: Build host tools for cross compilation
+        if: matrix.cross
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset ci-host-release-user
+          cmake --build --preset ci-host-release-user --parallel 2
+      - name: Configure and build complete Unix graph
+        if: matrix.family != 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset '${{ matrix.preset }}'
+          cmake --build --preset '${{ matrix.preset }}' --parallel 2
+      - name: Configure and build complete Windows graph
+        if: matrix.family == 'windows'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          cmake --preset "${{ matrix.preset }}"
+          if errorlevel 1 exit /b 1
+          cmake --build --preset "${{ matrix.preset }}" --parallel 2
+          if errorlevel 1 exit /b 1
+      - name: Install Unix release SDK
+        if: matrix.package && matrix.family != 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build --preset 'install-${{ matrix.preset }}' --parallel 2
+      - name: Install Windows release SDK
+        if: matrix.package && matrix.family == 'windows'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          cmake --build --preset "install-${{ matrix.preset }}" --parallel 2
+          if errorlevel 1 exit /b 1
+      - name: Record release SDK provenance
+        if: matrix.package
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:GITHUB_WORKSPACE "stage/sdk/$env:QIGAO_SDK_RID"
+          if (-not (Test-Path "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake")) { throw 'SDK installation is missing' }
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read source commit' }
+          @("version=$env:PACKAGE_VERSION", "commit=$commit", "rid=$env:QIGAO_SDK_RID",
+            "triplet=$env:QIGAO_TARGET_TRIPLET", 'profile=release', "salts_version=$env:SALTS_VERSION") |
+            Set-Content "$prefix/salts-utils-sdk-manifest.txt"
+      - uses: actions/upload-artifact@v4
+        if: matrix.package
+        with:
+          name: salts-utils-sdk-${{ matrix.rid }}
+          path: stage/sdk
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 9
+      - name: Record SDK paths for test consumers
+        if: '!matrix.cross'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paths = [ordered]@{}
+          foreach ($name in @('SALTS_ROOT', 'SALTS_HOST_ROOT', 'RE2C_ROOT')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if (-not $value -or -not (Test-Path -LiteralPath $value -PathType Container)) { throw "Missing $name" }
+            $paths[$name] = $value
+          }
+          $paths | ConvertTo-Json | Set-Content native-build-env.json
+      - name: Archive compiled graph and exact dependencies
+        if: '!matrix.cross'
+        shell: bash
+        env:
+          BUILD_ARTIFACT: native-${{ matrix.id }}
+          BUILD_DIRECTORY: ${{ matrix.build_dir }}
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > native-build-commit.txt
+          pwd -P > native-build-workspace.txt
+          printf '%s/%s\n' "$ImageOS" "$ImageVersion" > native-build-image.txt
+          printf '%s/%s/%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$ImageOS" > native-build-platform.txt
+          printf '%s\n%s\n' "$BUILD_ARTIFACT" "$BUILD_DIRECTORY" > native-build-profile.txt
+          git ls-files -z > native-build-sources.txt
+          tar --format=pax -cf native-build.tar --null -T native-build-sources.txt \
+            native-build-commit.txt native-build-workspace.txt native-build-image.txt \
+            native-build-platform.txt native-build-profile.txt native-build-env.json \
+            "$BUILD_DIRECTORY" vcpkg_installed stage
+      - uses: actions/upload-artifact@v4
+        if: '!matrix.cross'
+        with:
+          name: native-${{ matrix.id }}
+          path: native-build.tar
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: native-diagnostics-${{ matrix.id }}
+          path: |
+            ${{ matrix.build_dir }}/CMakeFiles/CMakeConfigureLog.yaml
+            ${{ matrix.build_dir }}/vcpkg-manifest-install.log
+          if-no-files-found: warn

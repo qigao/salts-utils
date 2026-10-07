@@ -25,6 +25,11 @@ typedef struct AdjacentOwners {
   uint8_t nulls;
 } AdjacentOwners;
 
+typedef struct NestedOwners {
+  AdjacentOwners child;
+  uint8_t presence;
+} NestedOwners;
+
 typedef union OwnerWorkspace {
   DataBindNativeTestAlignment alignment;
   unsigned char bytes[OWNER_WORKSPACE_BYTES];
@@ -36,6 +41,13 @@ static const cmeta_type_desc OWNER_TYPE = {
     .name = "AdjacentOwners", .size = sizeof(AdjacentOwners),
     .align = _Alignof(AdjacentOwners), .kind = CMETA_T_OBJECT,
     .identity = &OWNER_ID};
+
+static const cmeta_type_identity NESTED_OWNER_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.native-ownership.NestedOwners");
+static const cmeta_type_desc NESTED_OWNER_TYPE = {
+    .name = "NestedOwners", .size = sizeof(NestedOwners),
+    .align = _Alignof(NestedOwners), .kind = CMETA_T_OBJECT,
+    .identity = &NESTED_OWNER_ID};
 
 typedef struct OwnerGraph {
   cmeta_field_desc layout_fields[OWNER_FIELD_COUNT];
@@ -85,6 +97,20 @@ static void set_field(OwnerGraph *graph, size_t index, size_t offset,
   graph->layout_fields[index].type_name = value->storage_type->name;
   graph->fields[index].offset = offset;
   graph->fields[index].value = value;
+}
+
+static void bind_nested_owner_graph(OwnerGraph *parent, OwnerGraph *child) {
+  bind_owner_graph(child);
+  bind_owner_graph(parent);
+  set_field(parent, 0u, offsetof(NestedOwners, child), &child->data);
+  parent->layout_fields[0].name = parent->fields[0].name = "child";
+  parent->layout.name = NESTED_OWNER_TYPE.name;
+  parent->layout.size = NESTED_OWNER_TYPE.size;
+  parent->layout.align = NESTED_OWNER_TYPE.align;
+  parent->layout.field_count = parent->shape.field_count = 1u;
+  parent->data.storage_type = &NESTED_OWNER_TYPE;
+  parent->data.stable_id = NESTED_OWNER_ID.stable_atom_id;
+  parent->data.display_name = NESTED_OWNER_TYPE.name;
 }
 
 static cserde_status count_write(void *context, const cserde_token *token) {
@@ -250,6 +276,59 @@ spec("DataBind canonical ownership admission") {
     set_field(&graph, 1u, offsetof(AdjacentOwners, b), &cmeta_tstr_cmeta_data);
     check_equal(data_bind_native_clear(&options, &graph.data, &object, sizeof(object),
                                       &diagnostic), DATA_BIND_OK);
+  }
+
+  it("restores nested overlays through raw and admitted lifecycles") {
+    OwnerGraph parent, child;
+    NestedOwners object;
+    DataBindNativePlan *plan = NULL;
+    DataBindStatus status;
+    bind_nested_owner_graph(&parent, &child);
+    check_equal(data_bind_native_init(&options, &parent.data, &object,
+                                     sizeof(object), &diagnostic), DATA_BIND_OK);
+    assign_owners(&object.child);
+    object.presence = UINT8_MAX;
+    check_equal(data_bind_native_clear(&options, &parent.data, &object,
+                                      sizeof(object), &diagnostic), DATA_BIND_OK);
+    check_null(object.child.a);
+    check_null(object.child.b);
+    check_equal(object.child.presence, 0u);
+    check_equal(object.child.nulls, 0u);
+    check_equal(object.presence, 0u);
+    check_equal(data_bind_native_clear(&options, &parent.data, &object,
+                                      sizeof(object), &diagnostic), DATA_BIND_OK);
+
+    check_equal(data_bind_native_plan_compile(&options, &parent.data, &plan,
+                                              &diagnostic), DATA_BIND_OK);
+    assign_owners(&object.child);
+    object.presence = UINT8_MAX;
+    status = data_bind_native_plan_clear(plan, &options, &object,
+                                         sizeof(object), &diagnostic);
+    data_bind_native_plan_free(plan);
+    check_equal(status, DATA_BIND_OK);
+    check_null(object.child.a);
+    check_null(object.child.b);
+    check_equal(object.child.presence, 0u);
+    check_equal(object.child.nulls, 0u);
+    check_equal(object.presence, 0u);
+  }
+
+  it("accepts canonical negative floating zero before native publication") {
+    double value = -0.0;
+    bool zero = false;
+    NativeReaderProbe probe;
+    NativeReaderProbeStep step = native_reader_probe_token(CSERDE_FLOAT);
+    cserde_reader reader = {0};
+    step.token.value.floating = 1.0;
+    check_equal(cmeta_data_value_is_zero(&cmeta_data_double, &value, &zero), CMETA_OK);
+    check_true(zero);
+    check_equal(native_reader_probe_open(&probe, &step, 1u, &reader), CSERDE_OK);
+    check_equal(data_bind_native_decode(&options, &cmeta_data_double, &reader,
+                                        &value, sizeof(value), &diagnostic), DATA_BIND_OK);
+    check_true(value == step.token.value.floating);
+    check_equal(data_bind_native_clear(&options, &cmeta_data_double, &value,
+                                      sizeof(value), &diagnostic), DATA_BIND_OK);
+    check_true(value == 0.0);
   }
 
   it("retains both live owners on a lifecycle budget failure and permits retry") {

@@ -1046,7 +1046,7 @@ bool cyaml_str_to_i64(const char* s, const char** end, int64_t* out)
     if (neg) {
         if (uval > (uint64_t)INT64_MAX + 1)
             return false;
-        *out = -(int64_t)uval;
+        *out = uval == (uint64_t)INT64_MAX + 1 ? INT64_MIN : -(int64_t)uval;
     } else {
         if (uval > (uint64_t)INT64_MAX)
             return false;

@@ -8,14 +8,14 @@ extern "C" {
 #endif
 
 /**
- * Return the statically linked CSV provider.
+ * Return the built-in CSV provider.
  *
  * The canonical token shape is an array of row maps. The first logical record
  * is the header and supplies each map key; every cell value is emitted as a
  * byte-counted CSerde string so schema-owned conversion remains above the CSV
  * syntax layer. Header and cell views borrow the provider-owned CSV document.
  */
-const DataBindFormatProvider *data_bind_csv_format_provider(void);
+DATA_BIND_API const DataBindFormatProvider *data_bind_csv_format_provider(void);
 
 /**
  * Open exactly one zero-based CSV data row as a canonical row MAP reader.
@@ -31,7 +31,7 @@ const DataBindFormatProvider *data_bind_csv_format_provider(void);
  * that need schema aliases should wrap the reader with a compiled FormatPlan
  * canonical reader.
  */
-DataBindStatus data_bind_csv_format_reader_open_row(
+DATA_BIND_API DataBindStatus data_bind_csv_format_reader_open_row(
     const char *data,
     size_t len,
     size_t row,

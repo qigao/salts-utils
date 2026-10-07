@@ -43,7 +43,7 @@ entry，仅在 ARRAY_END 提交 count，在整条消息完成后发布一次。G
 覆盖嵌套 owner 的独立复制、释放、重复 clear、状态位复位和解码中途超限后的清理。
 native storage 测试也直接使用 canonical native API，验证平台原生标量身份、
 受管 string/bytes，以及 provider 定义的非全零 semantic zero 和恰好一次释放。
-当前最低 Salts 版本为 v1.8.28。容器声明与生成代码直接使用 `cmeta_type(...)`；旧 `typed(...)` 入口不再受支持。固定字节使用完整 CMeta exact fixed/buffer-v2 provider，精确长度赋值、借用读取、
+当前内部反射实现使用 Salts v2.1.0。容器声明与生成代码直接使用 `cmeta_type(...)`；旧 `typed(...)` 入口不再受支持。固定字节使用完整 CMeta exact fixed/buffer-v2 provider，精确长度赋值、借用读取、
 独立 copy、清零源对象的无分配 move 与幂等 restore 共享同一 inline 存储。
 Binary FIXED BYTES 的 `scalar_bits` 为零，`wire_extent` 是唯一 wire 长度事实源；
 不添加长度前缀、不做端序转换。reader 借用完整 wire span 到 close，writer 在
@@ -78,6 +78,26 @@ DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema�
 
 ## 设计边界
 
+### Runtime 链接边界
+
+运行时统一链接 `Salts::DataBind`，交付一个 `data_bind` 共享库。原 Core、JSON/YAML/CSV/XML、
+Temporal、CMeta 与 CFlow 适配实现作为独立源码编入该库，使用统一的 `DATA_BIND_API` 导出。
+这项调整解决了薄适配层分别安装、导出和部署带来的复杂度；源码分层仍负责维护格式、
+反射与执行的职责边界。`Salts::DataBindPlugin` 仅为可选的 INTERFACE 集成目标，不产生二进制库。
+
+保留拆分库可以让消费者只链接部分能力，但会继续维护多套产物和依赖入口；仅添加聚合
+INTERFACE 目标也不能消除 DLL 部署链。因此选择合并 runtime，接受主库包含全部格式与
+CFlow 适配代码的体积代价，不宣称性能收益。Parser/Query 实现依赖保持 PRIVATE，公开
+头文件需要的 Salts 基础依赖由目标传递。Compiler、Producer、Schema 与 IDL 的既有目标
+保留，不把构建期工具并入 runtime。
+
+迁移时将旧 `DataBindCore`、`DataBind*Adapter`、`DataBindCMeta`、`DataBindCFlow` 链接项
+替换为 `Salts::DataBind`，重新构建调用方，并使用干净的 SDK 安装目录；旧静态库和适配
+DLL 不再安装，也不提供兼容目标。已编译的旧程序不能直接换用新包。函数签名、C 数据
+布局、数据格式、对象所有权、状态提交及失败清理语义保持不变；C ABI 版本仍为 10。
+回滚应恢复旧版 SDK 与对应调用方产物，不能混用两版库。验证范围包括 provider、native
+生命周期、格式输出、CMeta/CFlow、C/C++ 消费与既有 package-config 测试。
+
 成功准入的 Service 调用使用 `data_bind_binding_plan_bind_call` 与
 `DataBindBindingCallLifetime` 建立一项整帧释放义务。入口先验证帧边界，初始化
 request、IN/OUT staging、按值返回的 response 与 NONE error envelope，再绑定输入；
@@ -100,14 +120,63 @@ DataBind presence/null overlay；清理不需要 workspace、分配或 resolver 
 验证范围包括失败 init、partial ingress、成功/typed-error、egress 失败、按值返回、
 重复终止、无 workspace 的 warm 清理与安装后的 C/C++ 真实调用。
 完整可编译调用见安装测试的
-[Service call fixture](../idl/compiler/package_config/databind_target/service_call_fixture.h)，
+[Service call fixture](../compiler/package_config/databind_target/service_call_fixture.h)，
 同一实现由公开 SDK 下的 C 与 C++ 消费者编译执行。
 
-生成的 text decode helper 在渲染前建立编译器私有 cleanup-action stack，
-取得顺序为暂存 allocation、workspace、FormatPlan、format reader、native 临时值。
-每个义务有显式 live 状态，退出代码从同一列表逆序生成；heap、workspace、format
-和 CMeta 值各自调用既有 owner 的 API，执行端只有直接 C 调用和固定数量的局部状态位。
+生成的 composite、group、message 描述符共用一份 record 模板。lowering 完成后，compiler
+从原记录建立只供渲染使用的 `cmeta_records` 快照，由任务根节点统一拥有；构建失败释放
+未发布快照并返回错误。字段行通过 Salts 2.1 的 `Schema/Replay` 同时生成 layout、semantic
+field 和字段数量，每组最多 16 行，多个分组覆盖大结构。空字段列表不调用非空 Schema
+宏，描述符计数仍为零。没有旧生成方式或 SDK 版本探测分支。
+
+这里选择 Schema/Replay，而非直接使用 `cmeta_reflect_value`：生成图需要导出的
+TypeDesc/DataDesc、泛型 declared-type 元数据和任意字段数量。字段地址统一由已有
+`cmeta_once` 初始化，调用 `Type_cmeta_data()` 或 `Type_init()` 后才可读取导出图。
+初始化按生成索引赋值，时间为 O(F)、描述符空间为 O(F)，F 为字段数；不再按名称搜索
+外部 provider。layout 与 semantic 字段名统一使用 schema 名，满足 CMeta 的同名对应
+契约；`[c(...)]` 只决定实际 C 成员及 `offsetof`，字段 stable ID 也使用 schema 名。
+这修正了重命名字段无法通过 MessagePlan 准入的问题，并改变此类字段的元数据名称与 ID。
+所有权、optional/nullable 准入与错误策略仍由各自 lowering 决定。
+构建期快照增加与记录树大小成正比的临时存储，不新增运行时分配或依赖。
+
+升级时重新生成并编译全部 schema 产物；不维护旧版产物的兼容路径。验证涵盖三组
+33 字段、C 成员重命名、composite/group/message 生命周期、嵌套泛型及共享库导出图。
+如需回滚，应回滚 compiler/templates 并整组重新生成，不能混用不同生成版本的头与源。
+
+生成的 text decode helper 使用固定大小、栈内存储的 `cmeta_cleanup` 数组，
+按取得顺序登记暂存 allocation、workspace、FormatPlan 和 native 临时值，退出时
+由 `cmeta_cleanup_reverse` 逆序释放；编译器不再生成独立的 live 标志与清理状态机。
+释放回调调用既有 owner 的无失败 API；已准入 CMeta provider 若违反无失败恢复契约，
+立即终止，不把部分释放当作成功。义务记录、binding 与资源在同步调用内保持地址稳定。
 codec 拥有的 MessagePlan 和 canonical reader view 均为借用，不进入释放列表。
+
+FormatPlan 的输入别名表与输出名称表使用受管 CSTL Vec，元素的两个 `tstr` 由同一
+CMeta value reflection 提供复制、移动和释放语义。`cmeta_reflect_value` 字段显式保留
+`tstr` 的 owning provider；CSTL storage descriptor 只桥接相同 stable identity 与
+反射生成的 traits，不维护第二份字段或生命周期实现；不从 `char *` 布局猜测
+所有权。表容量分别受 schema 的输入名称总数与
+根字段数约束，计数只由 Vec 维护。编译失败销毁整个未发布 plan，包括尚未填完的
+元素；成功后 plan 独占名称存储，即使 codec 已释放也可查询。查询沿用线性扫描，
+接受有长度的借用 slice，不分配内存；输出名称借用 plan，至 plan 释放时失效。
+
+CSV 展平过程也使用受管 Vec：每个 cell 通过 `cmeta_reflect_value` 声明两个 owning
+`tstr`（列路径与文本）。先插入空 cell，再原位填充；任何阶段失败均由 Vec 释放已完成
+及部分完成的元素，不再额外遍历释放字符串。cell 指针只在下一次 Vec 修改前使用，
+整个过程由同步调用独占；成功后输出仍是独立的序列化缓冲区，CSV 路径、CRLF 与错误码
+保持原有约定。公开 API 回归覆盖多列增长、文本拒绝后的部分构建清理和再次序列化。
+
+计划构建分为准入检查、未发布对象填充与成功发布。Schema 是名称和别名的事实源，
+scan 仅在同步编译期间借用 schema；FormatPlan 保存派生快照，TransportPlan 独占其
+ingress/egress 子计划。填充函数只返回错误，创建边界统一销毁部分对象；出口计划失败
+会连同已成功的入口计划一起释放，调用方输出保持 NULL。发布后只读查询不推进状态，
+info、canonical reader/writer 均借用 plan，必须先结束使用再释放 plan；构建和释放
+由单线程 owner 执行，不允许与查询并发。
+
+此处选择复用已有析构函数和 CMeta 元素生命周期，避免为两个堆对象再增加一套 scope
+owner 状态。相比分散清理分支，失败归属集中；相比分拆为新子系统，不增加依赖层。
+保留原有校验/分配顺序、错误码、容量限制、线性查找和公开 ABI，迁移仅限内部实现。
+回退可恢复旧构建函数和元素描述，无需迁移数据或调用方。回归覆盖别名表增长、codec
+释放后的名称查询，以及入口成功/出口失败后重试和 transport 快照的独立生命周期。
 
 MessagePlan 保证失败解码的回滚，helper 只在解码成功后接管临时值；成功 move 后
 立即解除源值义务，后续状态位复制失败也不会再次 restore 已移动的源值。
@@ -449,6 +518,13 @@ raw storage 的 `data_bind_native_init/clear` 会先验证完整 CMeta 图，再
 重复 clear 或重新赋值后重用。相邻 owner、非法布局的读写准入及失败后重试见
 [`native_ownership_boundary_test.c`](../tests/native_storage/native_ownership_boundary_test.c)。
 
+native 生命周期复用 CMeta 的 `cmeta_data_value_*` 接口：叶子值与 Map 的 semantic-zero
+判断由 CMeta 负责，DataBind 不维护另一份按原生标量类型展开的零值表。DataBind 只补充
+自身的结构存储 envelope 检查，以及固定集合元素中的 overlay 检查。清理在 CMeta
+释放资源后，沿反射字段递归复位内联子 Struct 的未反射字节；不会再次调用子值的释放
+回调，也不会用整体清零覆盖 provider 定义的 semantic zero。该操作要求对象与 workspace
+由本次同步调用独占，沿用已准入图的深度限制，不增加分配、缓存或所有权状态。
+
 1. 用 CMeta layout 和 `cmeta_data_desc` 声明原生成员。拥有字符串的 `tstr` 使用
    `cmeta_tstr_cmeta_data`；该 provider 负责初始化、移动与释放。图中保留 canonical
    字段名，schema 的 name/alias 等格式属性由 overlay 表达。
@@ -547,8 +623,8 @@ data_bind_free(codec);
 
 ## CMeta / CFlow / Reactive 可选适配
 
-通过 SaltsUtils 的唯一公开目标 `Salts::DataBind` 使用 DataBind，包括将已解析的
-不可变动态值接入 CMeta 或 CFlow 的适配 API。内部依赖由 SaltsUtils 封装：
+解析、序列化以及将不可变动态值接入 CMeta range、CFlow Stream/Publisher，均链接
+`Salts::DataBind`；所需的 Salts 基础依赖由该目标传递：
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED
@@ -556,9 +632,17 @@ find_package(SaltsUtils CONFIG REQUIRED
 target_link_libraries(my_app PRIVATE Salts::DataBind)
 ```
 
-消费者不直接链接内部 CMeta/CFlow 适配目标。LIST/SET 映射为 `DataBindValueRef`，OBJECT 映射为
+LIST/SET 映射为 `DataBindValueRef`，OBJECT 映射为
 `DataBindFieldRef`，MAP 映射为 `DataBindMapEntryRef`。三者均有稳定的 CMeta type
 identity，并保持 DataBind 的 encounter/schema order。
+
+动态对象的 JSON/YAML、XML、CSV 输出与公开 CMeta adapter 共用内部 borrowed range 实现，
+通过同一套字段、元素和 map entry 访问器读取 CSTL 存储；这些实现位于同一运行时库。
+遍历状态位于栈上，不分配或保留 payload；owner 在整个序列化调用中必须保持存活且不可变，
+generation 检查不提供并发访问保证。单次子节点访问为 O(1)，遍历为 O(节点数)，递归栈
+受既有深度上限约束；名称映射、DOM 构造和文本输出仍有各自的分配成本。
+各格式保留自己的标量表示、XML 重复字段和 CSV 路径/空集合规则。文本输出不借用
+`data_bind_value_reader` 的 CSerde 标量转换，因为 UUID、日期、金额等文本语义不同。
 
 ```c
 #include "data_bind_cflow.h"
@@ -576,7 +660,7 @@ if (data_bind_cflow_publisher_from_value(
 range、stream、publisher 和 subscription 都只借用 `DataBindValue` owner；适配器不
 释放 owner，也不预取或缓存 payload。owner 必须存活至 range 遍历完成、stream 销毁，
 或 publisher/subscription 关闭。释放 owner 后，已发出的 value/name/key 指针立即
-失效。只有由 `data_bind_cmeta_range_init()` 创建的 `cmeta_range` 捕获容器 generation；
+失效。公开的 `data_bind_cmeta_range_init()` 与上述内部 range 均捕获容器 generation；
 后续结构性修改会使该 range 的遍历返回 `CMETA_GEN_MUTATED`，而不是继续读取可能已经
 移动的槽位。普通 Record/List/Map borrowed view 不携带 generation，也不返回
 `CMETA_GEN_MUTATED`；它们按 owner 生命周期与各 accessor 的失效规则使用。SET/MAP 始终遍历 owning

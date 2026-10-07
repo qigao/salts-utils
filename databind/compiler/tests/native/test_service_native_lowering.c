@@ -1,0 +1,883 @@
+#include "data_bind_binding_plan.h"
+#include "data_bind_method_plan.h"
+#include "service_native_generated.h"
+#include "tinytest.h"
+
+#include <cmeta/function.h>
+#include <cflow/function_projection.h>
+#include <cflow/plan.h>
+#include <cflow/publishers.h>
+#include <cflow/reactive.h>
+#include <cflow/scheduler.h>
+#include <string.h>
+
+const cmeta_function_desc *
+databind_13_ServiceNative_4_Calc_3_Add__databind_function(void);
+const cmeta_function_abi_desc *
+databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi(void);
+const DataBindNativeExecution *
+databind_13_ServiceNative_4_Calc_3_Add__databind_execution(void);
+cflow_function_projection_status
+databind_13_ServiceNative_4_Calc_3_Add__databind_cflow_projection(
+    cflow_function_typed_adapter_projection *out);
+const cmeta_function_desc *
+databind_13_ServiceNative_4_Calc_4_Find__databind_function(void);
+const cmeta_function_abi_desc *
+databind_13_ServiceNative_4_Calc_4_Find__databind_function_abi(void);
+const DataBindNativeExecution *
+databind_13_ServiceNative_4_Calc_4_Find__databind_execution(void);
+cflow_function_projection_status
+databind_13_ServiceNative_4_Calc_4_Find__databind_cflow_projection(
+    cflow_function_typed_adapter_projection *out);
+DataBindStatus databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
+    DataBindNativeTypeBinding *request_out,
+    DataBindNativeTypeBinding *response_out,
+    DataBindServiceNativeBinding *service_out,
+    DataBindError *error);
+DataBindStatus databind_13_ServiceNative_4_Calc_4_Find__databind_native_binding(
+    DataBindNativeTypeBinding *request_out,
+    DataBindNativeTypeBinding *response_out,
+    DataBindServiceNativeBinding *service_out,
+    DataBindError *error);
+
+int databind_13_ServiceNative_4_Calc_4_Find(
+    const AddRequest_t *request,
+    AddResponse_t *response,
+    databind_13_ServiceNative_4_Calc_4_Find__error *error);
+
+typedef struct ServiceCFlowProbe {
+  AddResponse_t values[2];
+  size_t count;
+  int failed;
+  int done;
+} ServiceCFlowProbe;
+
+static bool service_cflow_on_value(
+    void *user, const cmeta_type_desc *type, const void *value) {
+  ServiceCFlowProbe *probe = (ServiceCFlowProbe *)user;
+  if (probe == NULL || value == NULL || probe->count >= 2u ||
+      type == NULL || type->size != sizeof(AddResponse_t)) {
+    if (probe != NULL) probe->failed = 1;
+    return false;
+  }
+  probe->values[probe->count++].sum =
+      ((const AddResponse_t *)value)->sum;
+  return true;
+}
+
+static void service_cflow_on_error(void *user, const char *message) {
+  ServiceCFlowProbe *probe = (ServiceCFlowProbe *)user;
+  (void)message;
+  if (probe != NULL) probe->failed = 1;
+}
+
+static void service_cflow_on_done(void *user) {
+  ServiceCFlowProbe *probe = (ServiceCFlowProbe *)user;
+  if (probe != NULL) probe->done = 1;
+}
+
+static DataBindStatus project_field(
+    void *context,
+    const DataBindServiceOperation *operation,
+    const DataBindSchemaField *field,
+    DataBindBindingDirection direction,
+    DataBindBindingAddress *out,
+    DataBindError *error) {
+  (void)context;
+  (void)operation;
+  (void)error;
+  if (field == NULL || out == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  *out = (DataBindBindingAddress)DATA_BIND_BINDING_ADDRESS_INIT;
+  out->binding_class =
+      direction == DATA_BIND_BINDING_INGRESS
+          ? DATA_BIND_BINDING_VALUE
+          : DATA_BIND_BINDING_RESULT;
+  out->space = "native-test";
+  out->name = field->name;
+  return DATA_BIND_OK;
+}
+
+typedef struct OutcomeProviderState {
+  size_t begin_calls;
+  size_t write_calls;
+  size_t result_calls;
+  size_t error_calls;
+  size_t commit_calls;
+  size_t abort_calls;
+  uint32_t result_value;
+  uint32_t error_value;
+  const char *error_name;
+  int fail_write;
+} OutcomeProviderState;
+
+static DataBindStatus outcome_begin(void *context, DataBindError *error) {
+  OutcomeProviderState *state = (OutcomeProviderState *)context;
+  (void)error;
+  if (state == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  ++state->begin_calls;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus outcome_write(
+    void *context, const DataBindBindingPlanEntry *entry,
+    DataBindBindingValueState value_state, const void *value,
+    size_t value_bytes, DataBindError *error) {
+  OutcomeProviderState *state = (OutcomeProviderState *)context;
+  (void)error;
+  if (state == NULL || entry == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  ++state->write_calls;
+  if (state->fail_write) return DATA_BIND_ERR_RUNTIME;
+  if (value_state != DATA_BIND_VALUE_STATE_VALUE || value == NULL)
+    return DATA_BIND_ERR_TYPE_MISMATCH;
+
+  if (entry->address.binding_class == DATA_BIND_BINDING_RESULT) {
+    if (entry->schema_field == NULL ||
+        strcmp(entry->schema_field, "sum") != 0 ||
+        value_bytes != sizeof(uint32_t))
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    state->result_value = *(const uint32_t *)value;
+    ++state->result_calls;
+    return DATA_BIND_OK;
+  }
+
+  if (entry->address.binding_class == DATA_BIND_BINDING_ERROR) {
+    if (entry->address.name == NULL) return DATA_BIND_ERR_SCHEMA;
+    state->error_name = entry->address.name;
+    if (strcmp(entry->address.name, "NotFound") == 0) {
+      if (value_bytes != sizeof(NotFound_t))
+        return DATA_BIND_ERR_TYPE_MISMATCH;
+      state->error_value = ((const NotFound_t *)value)->id;
+    } else if (strcmp(entry->address.name, "PermissionDenied") == 0) {
+      if (value_bytes != sizeof(PermissionDenied_t))
+        return DATA_BIND_ERR_TYPE_MISMATCH;
+      state->error_value = ((const PermissionDenied_t *)value)->code;
+    } else {
+      return DATA_BIND_ERR_SCHEMA;
+    }
+    ++state->error_calls;
+    return DATA_BIND_OK;
+  }
+
+  return DATA_BIND_ERR_SCHEMA;
+}
+
+static DataBindStatus outcome_commit(void *context, DataBindError *error) {
+  OutcomeProviderState *state = (OutcomeProviderState *)context;
+  (void)error;
+  if (state == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  ++state->commit_calls;
+  return DATA_BIND_OK;
+}
+
+static void outcome_abort(void *context) {
+  OutcomeProviderState *state = (OutcomeProviderState *)context;
+  if (state != NULL) ++state->abort_calls;
+}
+
+static DataBindBindingProvider outcome_provider(OutcomeProviderState *state) {
+  DataBindBindingProvider provider =
+      (DataBindBindingProvider)DATA_BIND_BINDING_PROVIDER_INIT;
+  provider.context = state;
+  provider.begin_output = outcome_begin;
+  provider.write_output = outcome_write;
+  provider.commit_output = outcome_commit;
+  provider.abort_output = outcome_abort;
+  return provider;
+}
+
+spec("DataBind canonical Service native lowering") {
+  it("projects generated no-error Service execution through CFlow Graph and Plan") {
+    cflow_function_typed_adapter_projection projection = {0};
+    cflow_function_typed_adapter_projection rejected = {0};
+    cflow_graph graph = {0};
+    cflow_plan plan = {0};
+    cflow_result compiled = {0};
+    cflow_publisher publisher = {0};
+    cflow_scheduler scheduler = {0};
+    cflow_subscription subscription = {0};
+    ServiceCFlowProbe probe = {0};
+    cflow_subscriber_callbacks callbacks = {
+        service_cflow_on_value,
+        service_cflow_on_error,
+        service_cflow_on_done,
+        &probe};
+    cflow_subscriber subscriber =
+        cflow_subscriber_from_callbacks(&callbacks);
+    const AddRequest_t input[] = {
+        {.left = 7u, .scale = 3u},
+        {.left = 2u, .scale = 5u}};
+    const AddResponse_t expected[] = {
+        {.sum = 21u},
+        {.sum = 10u}};
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_3_Add__databind_cflow_projection(
+            &projection),
+        CFLOW_FUNCTION_PROJECTION_OK);
+    check_true(cflow_function_typed_adapter_projection_valid(&projection));
+    check_true(
+        projection.function ==
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function());
+    check_true(
+        projection.abi ==
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi());
+    check_equal(
+        projection.callable.meta.effects, projection.function->effects);
+    check_equal(
+        projection.callable.meta.properties, projection.function->properties);
+    check_equal(projection.callable.meta.sig, CMETA_SIG_INVALID);
+    check_equal(
+        projection.callable.dispatch, CMETA_CALLABLE_DISPATCH_ADAPTER);
+    check_null(projection.callable.resolve);
+    check_not_null(projection.callable.invoke);
+    check_equal(projection.callable.capture_size,
+                sizeof(const cmeta_data_desc *));
+    check_not_null(projection.input_type);
+    check_not_null(projection.output_type);
+
+    cflow_graph_init(&graph, projection.input_type);
+    check_true(cflow_graph_add_function_typed_adapter_projection(
+        &graph, &projection));
+
+    /*
+     * DataBind messages carry managed COPY/MOVE/DESTROY lifecycle traits.
+     * cflow_eval_array() is intentionally the trivial-storage compatibility
+     * wrapper, so qualify the interpreted path through the lifecycle-capable
+     * Publisher/Subscription API instead.
+     */
+    check_true(cflow_scheduler_inline_init(&scheduler));
+    check_true(cflow_publisher_from_array(
+        &publisher, projection.input_type, input, 2u));
+    check_true(cflow_subscribe(
+        &subscription, &graph, &publisher, &scheduler, &subscriber));
+    check_true(cflow_subscription_request(&subscription, 2u));
+    check_false(probe.failed);
+    check_true(probe.done);
+    check_equal(probe.count, (size_t)2u);
+    check_equal(probe.values, expected, sizeof(expected));
+    check_true(cflow_subscription_is_done(&subscription));
+
+    check_true(cflow_plan_compile_surface(&plan, &graph, NULL));
+    check_true(cflow_plan_eval_array(&plan, input, 2u, &compiled));
+    check_equal(compiled.count, (size_t)2u);
+    check_true(cmeta_type_equal(compiled.type, projection.output_type));
+    check_equal(compiled.data, expected, sizeof(expected));
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_4_Find__databind_cflow_projection(
+            &rejected),
+        CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE);
+    check_equal(rejected.size, (size_t)0u);
+
+    cflow_result_destroy(&compiled);
+    cflow_subscription_close(&subscription);
+    cflow_scheduler_destroy(&scheduler);
+    cflow_plan_destroy(&plan);
+    cflow_graph_destroy(&graph);
+  }
+
+  it("emits complete FunctionAbi and compiles the shared BindingPlan tuple") {
+    const cmeta_function_desc *function =
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function();
+    const cmeta_function_abi_desc *abi =
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi();
+    const DataBindNativeExecution *execution =
+        databind_13_ServiceNative_4_Calc_3_Add__databind_execution();
+    const DataBindNativeExecution *other_execution =
+        databind_13_ServiceNative_4_Calc_4_Find__databind_execution();
+    DataBindNativeExecution mismatch;
+    AddRequest_t invoke_request = {0};
+    AddResponse_t invoke_response = {0};
+    void *invoke_params[] = {&invoke_request, &invoke_response};
+    int invoke_status = -99;
+    DataBindNativeTypeBinding request =
+        (DataBindNativeTypeBinding){0};
+    DataBindNativeTypeBinding response =
+        (DataBindNativeTypeBinding){0};
+    DataBindServiceNativeBinding native =
+        (DataBindServiceNativeBinding){0};
+    DataBindBindingProjection projection = {
+        sizeof(DataBindBindingProjection),
+        DATA_BIND_BINDING_PLAN_ABI_VERSION,
+        "native-test",
+        NULL,
+        project_field,
+    };
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_not_null(function);
+    check_not_null(abi);
+    check_not_null(execution);
+    check_not_null(other_execution);
+    check_true(data_bind_native_execution_valid(execution));
+    check_true(data_bind_native_execution_valid(other_execution));
+    check_true(execution->function == function);
+    check_true(execution->abi == abi);
+    check_not_null(execution->invoke);
+
+    invoke_request.left = 7u;
+    invoke_request.scale = 3u;
+    check_true(execution->invoke(
+        execution->context, &invoke_status, invoke_params, 2u));
+    check_equal(invoke_status, 0);
+    check_equal(invoke_response.sum, (uint32_t)21u);
+
+    mismatch = *execution;
+    mismatch.abi = other_execution->abi;
+    check_false(data_bind_native_execution_valid(&mismatch));
+
+    check_true(cmeta_function_desc_valid(function));
+    check_true(cmeta_function_abi_desc_valid(abi));
+    check_true(abi->function == function);
+    check_equal(function->name, "ServiceNative.Calc.Add");
+    check_equal(function->param_count, (size_t)2u);
+    check_equal(function->effects, (cmeta_effects)CMETA_EFFECT_UNKNOWN);
+    check_equal(function->properties, (cmeta_properties)CMETA_PROP_NONE);
+    check_equal(function->result_flags,
+                (cmeta_result_flags)CMETA_RESULT_VALUE);
+    check_equal(function->params[0].flags,
+                (cmeta_param_flags)(CMETA_PARAM_IN | CMETA_PARAM_BORROWED));
+    check_equal(function->params[1].flags,
+                (cmeta_param_flags)(CMETA_PARAM_OUT | CMETA_PARAM_BORROWED));
+    check_equal(function->params[0].type->kind, CMETA_T_POINTER);
+    check_equal(function->params[1].type->kind, CMETA_T_POINTER);
+    check_equal(abi->return_carrier, CMETA_ABI_SCALAR);
+    check_equal(cmeta_function_param_abi(abi, 0u),
+                CMETA_ABI_OBJECT_POINTER);
+    check_equal(cmeta_function_param_abi(abi, 1u),
+                CMETA_ABI_OBJECT_POINTER);
+
+    check_equal(databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
+                    &request, &response, &native, &error),
+                DATA_BIND_OK);
+    check_equal(request.presence_count, (size_t)0u);
+    check_equal(response.presence_count, (size_t)0u);
+    check_null(request.presence);
+    check_null(response.presence);
+    check_true(native.function == function);
+    check_true(native.request == &request);
+    check_true(native.response == &response);
+
+    check_equal(ServiceNative_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Calc", "Add", &projection,
+                    &native, &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    check_true(data_bind_binding_plan_function(plan) == function);
+    check_equal(data_bind_binding_plan_ingress_count(plan), (size_t)2u);
+    check_equal(data_bind_binding_plan_egress_count(plan), (size_t)1u);
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("publishes success, native status and typed errors as distinct BindingPlan outcomes") {
+    const cmeta_function_desc *function =
+        databind_13_ServiceNative_4_Calc_4_Find__databind_function();
+    DataBindNativeTypeBinding request_binding =
+        (DataBindNativeTypeBinding){0};
+    DataBindNativeTypeBinding response_binding =
+        (DataBindNativeTypeBinding){0};
+    DataBindServiceNativeBinding native =
+        (DataBindServiceNativeBinding){0};
+    DataBindBindingProjection projection = {
+        sizeof(DataBindBindingProjection),
+        DATA_BIND_BINDING_PLAN_ABI_VERSION,
+        "native-test",
+        NULL,
+        project_field,
+    };
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    AddRequest_t request = {0};
+    AddResponse_t response = {0};
+    databind_13_ServiceNative_4_Calc_4_Find__error typed_error =
+        databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    void *params[] = {&request, &response, &typed_error};
+    const size_t param_bytes[] = {
+        sizeof(request), sizeof(response), sizeof(typed_error)};
+    DataBindBindingCallFrame frame =
+        (DataBindBindingCallFrame)DATA_BIND_BINDING_CALL_FRAME_INIT;
+    OutcomeProviderState state = {0};
+    DataBindBindingProvider provider = outcome_provider(&state);
+    DataBindBindingOutcome outcome =
+        (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    int native_status;
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_4_Find__databind_native_binding(
+            &request_binding, &response_binding, &native, &error),
+        DATA_BIND_OK);
+    check_true(native.function == function);
+    check_equal(native.error_count, (size_t)2u);
+    check_equal(native.error_param_index, (size_t)2u);
+    check_equal(native.error_envelope_bytes, sizeof(typed_error));
+    check_equal(native.error_kind_offset, offsetof(
+        databind_13_ServiceNative_4_Calc_4_Find__error, kind));
+    check_equal(native.error_kind_bytes, sizeof(uint32_t));
+    check_equal(native.errors[0].kind_value, (uint32_t)1u);
+    check_equal(native.errors[0].idl_type_name, "NotFound");
+    check_equal(native.errors[1].kind_value, (uint32_t)2u);
+    check_equal(native.errors[1].idl_type_name, "PermissionDenied");
+
+    check_equal(ServiceNative_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_equal(
+        data_bind_binding_plan_compile_service(
+            codec, "Calc", "Find", &projection, &native, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    check_equal(data_bind_binding_plan_error_count(plan), (size_t)2u);
+    check_equal(data_bind_binding_plan_error_at(plan, 0u), "NotFound");
+    check_equal(data_bind_binding_plan_error_at(plan, 1u),
+                "PermissionDenied");
+
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 3u;
+
+    check_equal(
+        data_bind_binding_plan_write_outputs(
+            plan, &provider, &frame, &diagnostic),
+        DATA_BIND_ERR_INVALID_ARG);
+    check_equal(state.begin_calls, (size_t)0u);
+    check(strstr(diagnostic.message, "write_outcome") != NULL);
+
+    request.left = 7u;
+    request.scale = 3u;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(native_status, 0);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            plan, &provider, &frame, native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_SUCCESS);
+    check_equal(outcome.native_status, 0);
+    check_equal(outcome.typed_error_index, SIZE_MAX);
+    check_null(outcome.typed_error);
+    check_equal(state.begin_calls, (size_t)1u);
+    check_equal(state.write_calls, (size_t)1u);
+    check_equal(state.result_calls, (size_t)1u);
+    check_equal(state.error_calls, (size_t)0u);
+    check_equal(state.result_value, 21u);
+    check_equal(state.commit_calls, (size_t)1u);
+    check_equal(state.abort_calls, (size_t)0u);
+
+    memset(&state, 0, sizeof(state));
+    request.left = 0u;
+    request.scale = 41u;
+    response.sum = 999u;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(native_status, 0);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            plan, &provider, &frame, native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_TYPED_ERROR);
+    check_equal(outcome.typed_error_index, (size_t)0u);
+    check_equal(outcome.typed_error, "NotFound");
+    check_equal(state.begin_calls, (size_t)1u);
+    check_equal(state.write_calls, (size_t)1u);
+    check_equal(state.result_calls, (size_t)0u);
+    check_equal(state.error_calls, (size_t)1u);
+    check_equal(state.error_name, "NotFound");
+    check_equal(state.error_value, 41u);
+    check_equal(state.commit_calls, (size_t)1u);
+    check_equal(state.abort_calls, (size_t)0u);
+    check_equal(response.sum, 999u);
+
+    memset(&state, 0, sizeof(state));
+    request.left = 1u;
+    request.scale = 7u;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            plan, &provider, &frame, native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_TYPED_ERROR);
+    check_equal(outcome.typed_error_index, (size_t)1u);
+    check_equal(outcome.typed_error, "PermissionDenied");
+    check_equal(state.error_calls, (size_t)1u);
+    check_equal(state.error_name, "PermissionDenied");
+    check_equal(state.error_value, 7u);
+
+    memset(&state, 0, sizeof(state));
+    request.left = UINT32_MAX;
+    request.scale = 9u;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(native_status, -9);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            plan, NULL, &frame, native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_NATIVE_STATUS);
+    check_equal(outcome.native_status, -9);
+    check_equal(state.begin_calls, (size_t)0u);
+    check_equal(state.write_calls, (size_t)0u);
+    check_equal(state.commit_calls, (size_t)0u);
+
+    typed_error.kind =
+        databind_13_ServiceNative_4_Calc_4_Find__ERROR_1;
+    typed_error.payload.error_1.id = 77u;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            plan, NULL, &frame, -9, &outcome, &diagnostic),
+        DATA_BIND_ERR_SCHEMA);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_NONE);
+
+    memset(&state, 0, sizeof(state));
+    request.left = 0u;
+    request.scale = 55u;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    state.fail_write = 1;
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            plan, &provider, &frame, native_status, &outcome, &diagnostic),
+        DATA_BIND_ERR_RUNTIME);
+    check_equal(state.begin_calls, (size_t)1u);
+    check_equal(state.write_calls, (size_t)1u);
+    check_equal(state.commit_calls, (size_t)0u);
+    check_equal(state.abort_calls, (size_t)1u);
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("maps canonical BindingPlan outcomes through HTTP and RPC MethodPlans") {
+    const DataBindHttpErrorMapping http_errors[] = {
+        {sizeof(DataBindHttpErrorMapping), "NotFound", 404},
+        {sizeof(DataBindHttpErrorMapping), "PermissionDenied", 403}};
+    DataBindHttpProjectionConfig http_config =
+        (DataBindHttpProjectionConfig)DATA_BIND_HTTP_PROJECTION_CONFIG_INIT;
+    const DataBindRpcErrorMapping rpc_errors[] = {
+        {sizeof(DataBindRpcErrorMapping), "NotFound", -32004},
+        {sizeof(DataBindRpcErrorMapping), "PermissionDenied", -32003}};
+    DataBindRpcProjectionConfig rpc_config =
+        (DataBindRpcProjectionConfig)DATA_BIND_RPC_PROJECTION_CONFIG_INIT;
+    DataBindNativeTypeBinding request_binding = {0};
+    DataBindNativeTypeBinding response_binding = {0};
+    DataBindServiceNativeBinding native = {0};
+    DataBindHttpMethodPlan *http = NULL;
+    DataBindRpcMethodPlan *rpc = NULL;
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    AddRequest_t request = {0};
+    AddResponse_t response = {0};
+    databind_13_ServiceNative_4_Calc_4_Find__error typed_error =
+        databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    void *params[] = {&request, &response, &typed_error};
+    const size_t param_bytes[] = {
+        sizeof(request), sizeof(response), sizeof(typed_error)};
+    DataBindBindingCallFrame frame =
+        (DataBindBindingCallFrame)DATA_BIND_BINDING_CALL_FRAME_INIT;
+    OutcomeProviderState state = {0};
+    DataBindBindingProvider provider = outcome_provider(&state);
+    DataBindBindingOutcome outcome =
+        (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    DataBindHttpErrorMapping http_mapping =
+        (DataBindHttpErrorMapping)DATA_BIND_HTTP_ERROR_MAPPING_INIT;
+    DataBindRpcErrorMapping rpc_mapping =
+        (DataBindRpcErrorMapping)DATA_BIND_RPC_ERROR_MAPPING_INIT;
+    DataBindTransportPlanInfo http_transport =
+        (DataBindTransportPlanInfo)DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+    DataBindTransportPlanInfo rpc_transport =
+        (DataBindTransportPlanInfo)DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+    DataBindFormatPlanInfo format =
+        (DataBindFormatPlanInfo)DATA_BIND_FORMAT_PLAN_INFO_INIT;
+    int native_status;
+    int http_status = -1;
+    int rpc_code = 1;
+
+    http_config.success_status = 201;
+    http_config.errors = http_errors;
+    http_config.error_count = 2u;
+    rpc_config.errors = rpc_errors;
+    rpc_config.error_count = 2u;
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_4_Find__databind_native_binding(
+            &request_binding, &response_binding, &native, &error),
+        DATA_BIND_OK);
+    check_equal(ServiceNative_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+
+    check_equal(
+        data_bind_http_method_plan_compile_service(
+            codec, "Calc", "Find", &http_config, &native,
+            &http, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(http);
+    check_equal(data_bind_http_method_plan_method(http), "POST");
+    check_equal(data_bind_http_method_plan_route(http), "/Calc/Find");
+    check_equal(data_bind_http_method_plan_success_status(http), 201);
+    check_equal(data_bind_http_method_plan_error_count(http), (size_t)2u);
+    {
+      DataBindTransportPlanInfo transport = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo ingress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo egress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      check(data_bind_transport_plan_info(
+          data_bind_http_method_plan_transport(http), &transport));
+      check_equal(transport.kind, DATA_BIND_TRANSPORT_HTTP);
+      check(data_bind_format_plan_info(transport.ingress, &ingress));
+      check(data_bind_format_plan_info(transport.egress, &egress));
+      check_equal(ingress.format, DATA_BIND_FORMAT_JSON);
+      check_equal(egress.format, DATA_BIND_FORMAT_JSON);
+    }
+    check(data_bind_http_method_plan_error_at(http, 0u, &http_mapping));
+    check_equal(http_mapping.error_type, "NotFound");
+    check_equal(http_mapping.status, 404);
+    check(data_bind_transport_plan_info(
+        data_bind_http_method_plan_transport(http), &http_transport));
+    check_equal(http_transport.kind, DATA_BIND_TRANSPORT_HTTP);
+    check_equal(http_transport.service_name, "Calc");
+    check_equal(http_transport.operation_name, "Find");
+    check_not_null(http_transport.ingress);
+    check_not_null(http_transport.egress);
+    check(data_bind_format_plan_info(http_transport.ingress, &format));
+    check_equal(format.format, DATA_BIND_FORMAT_JSON);
+    format = (DataBindFormatPlanInfo)DATA_BIND_FORMAT_PLAN_INFO_INIT;
+    check(data_bind_format_plan_info(http_transport.egress, &format));
+    check_equal(format.format, DATA_BIND_FORMAT_JSON);
+
+    check_equal(
+        data_bind_rpc_method_plan_compile_service(
+            codec, "Calc", "Find", &rpc_config, &native,
+            &rpc, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(rpc);
+    check_equal(data_bind_rpc_method_plan_wire_method(rpc), "Calc.Find");
+    check_equal(data_bind_rpc_method_plan_error_count(rpc), (size_t)2u);
+    {
+      DataBindTransportPlanInfo transport = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo ingress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo egress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      check(data_bind_transport_plan_info(
+          data_bind_rpc_method_plan_transport(rpc), &transport));
+      check_equal(transport.kind, DATA_BIND_TRANSPORT_RPC);
+      check(data_bind_format_plan_info(transport.ingress, &ingress));
+      check(data_bind_format_plan_info(transport.egress, &egress));
+      check_equal(ingress.format, DATA_BIND_FORMAT_JSON);
+      check_equal(egress.format, DATA_BIND_FORMAT_JSON);
+    }
+    check(data_bind_rpc_method_plan_error_at(rpc, 1u, &rpc_mapping));
+    check_equal(rpc_mapping.error_type, "PermissionDenied");
+    check_equal(rpc_mapping.code, -32003);
+    check(data_bind_transport_plan_info(
+        data_bind_rpc_method_plan_transport(rpc), &rpc_transport));
+    check_equal(rpc_transport.kind, DATA_BIND_TRANSPORT_RPC);
+    check_equal(rpc_transport.service_name, "Calc");
+    check_equal(rpc_transport.operation_name, "Find");
+    format = (DataBindFormatPlanInfo)DATA_BIND_FORMAT_PLAN_INFO_INIT;
+    check(data_bind_format_plan_info(rpc_transport.ingress, &format));
+    check_equal(format.format, DATA_BIND_FORMAT_JSON);
+    format = (DataBindFormatPlanInfo)DATA_BIND_FORMAT_PLAN_INFO_INIT;
+    check(data_bind_format_plan_info(rpc_transport.egress, &format));
+    check_equal(format.format, DATA_BIND_FORMAT_JSON);
+
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 3u;
+
+    request.left = 7u;
+    request.scale = 3u;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(native_status, 0);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            data_bind_http_method_plan_binding(http), &provider, &frame,
+            native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_SUCCESS);
+    check(data_bind_http_method_plan_status_for_outcome(
+        http, &outcome, &http_status));
+    check_equal(http_status, 201);
+    check(data_bind_rpc_method_plan_code_for_outcome(
+        rpc, &outcome, &rpc_code));
+    check_equal(rpc_code, 0);
+
+    memset(&state, 0, sizeof(state));
+    request.left = 0u;
+    request.scale = 41u;
+    response.sum = 999u;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            data_bind_http_method_plan_binding(http), &provider, &frame,
+            native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_TYPED_ERROR);
+    check_equal(outcome.typed_error, "NotFound");
+    check(data_bind_http_method_plan_status_for_outcome(
+        http, &outcome, &http_status));
+    check_equal(http_status, 404);
+    check(data_bind_rpc_method_plan_code_for_outcome(
+        rpc, &outcome, &rpc_code));
+    check_equal(rpc_code, -32004);
+
+    memset(&state, 0, sizeof(state));
+    request.left = 1u;
+    request.scale = 7u;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            data_bind_http_method_plan_binding(http), &provider, &frame,
+            native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.typed_error, "PermissionDenied");
+    check(data_bind_http_method_plan_status_for_outcome(
+        http, &outcome, &http_status));
+    check_equal(http_status, 403);
+    check(data_bind_rpc_method_plan_code_for_outcome(
+        rpc, &outcome, &rpc_code));
+    check_equal(rpc_code, -32003);
+
+    {
+      DataBindBindingOutcome mismatched =
+          (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+      int sentinel_http = 298;
+      int sentinel_rpc = 18;
+      mismatched.kind = DATA_BIND_BINDING_OUTCOME_TYPED_ERROR;
+      mismatched.typed_error_index = 0u;
+      mismatched.typed_error = "PermissionDenied";
+      check_false(data_bind_http_method_plan_status_for_outcome(
+          http, &mismatched, &sentinel_http));
+      check_equal(sentinel_http, 298);
+      check_false(data_bind_rpc_method_plan_code_for_outcome(
+          rpc, &mismatched, &sentinel_rpc));
+      check_equal(sentinel_rpc, 18);
+
+      mismatched.typed_error_index = 99u;
+      mismatched.typed_error = NULL;
+      check_false(data_bind_http_method_plan_status_for_outcome(
+          http, &mismatched, &sentinel_http));
+      check_false(data_bind_rpc_method_plan_code_for_outcome(
+          rpc, &mismatched, &sentinel_rpc));
+    }
+
+    request.left = UINT32_MAX;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            data_bind_http_method_plan_binding(http), NULL, &frame,
+            native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_NATIVE_STATUS);
+    http_status = 299;
+    rpc_code = 17;
+    check_false(data_bind_http_method_plan_status_for_outcome(
+        http, &outcome, &http_status));
+    check_equal(http_status, 299);
+    check_false(data_bind_rpc_method_plan_code_for_outcome(
+        rpc, &outcome, &rpc_code));
+    check_equal(rpc_code, 17);
+
+    data_bind_rpc_method_plan_free(rpc);
+    data_bind_http_method_plan_free(http);
+    data_bind_free(codec);
+  }
+
+  it("emits deterministic typed-error envelope and third FunctionAbi parameter") {
+    const cmeta_function_desc *function =
+        databind_13_ServiceNative_4_Calc_4_Find__databind_function();
+    const cmeta_function_abi_desc *abi =
+        databind_13_ServiceNative_4_Calc_4_Find__databind_function_abi();
+    databind_13_ServiceNative_4_Calc_4_Find__error error = {0};
+
+    check_not_null(function);
+    check_not_null(abi);
+    check_true(cmeta_function_desc_valid(function));
+    check_true(cmeta_function_abi_desc_valid(abi));
+    check_true(abi->function == function);
+    check_equal(function->name, "ServiceNative.Calc.Find");
+    check_equal(function->param_count, (size_t)3u);
+    check_equal(function->result_flags,
+                (cmeta_result_flags)CMETA_RESULT_VALUE);
+
+    check_equal(function->params[0].flags,
+                (cmeta_param_flags)(CMETA_PARAM_IN | CMETA_PARAM_BORROWED));
+    check_equal(function->params[1].flags,
+                (cmeta_param_flags)(CMETA_PARAM_OUT | CMETA_PARAM_BORROWED));
+    check_equal(function->params[2].flags,
+                (cmeta_param_flags)(CMETA_PARAM_OUT | CMETA_PARAM_BORROWED));
+    check_equal(function->params[2].type->kind, CMETA_T_POINTER);
+    check_not_null(function->params[2].type->pointee);
+    check_equal(
+        cmeta_type_identity_of(function->params[2].type->pointee)->stable_atom_id,
+        "tbe.native.ServiceNative.Calc.Find.error_t");
+
+    check_equal(abi->return_carrier, CMETA_ABI_SCALAR);
+    check_equal(cmeta_function_param_abi(abi, 0u),
+                CMETA_ABI_OBJECT_POINTER);
+    check_equal(cmeta_function_param_abi(abi, 1u),
+                CMETA_ABI_OBJECT_POINTER);
+    check_equal(cmeta_function_param_abi(abi, 2u),
+                CMETA_ABI_OBJECT_POINTER);
+
+    check_equal((unsigned)databind_13_ServiceNative_4_Calc_4_Find__ERROR_NONE,
+                0u);
+    check_equal((unsigned)databind_13_ServiceNative_4_Calc_4_Find__ERROR_1,
+                1u);
+    check_equal((unsigned)databind_13_ServiceNative_4_Calc_4_Find__ERROR_2,
+                2u);
+
+    error.kind = databind_13_ServiceNative_4_Calc_4_Find__ERROR_1;
+    error.payload.error_1.id = 41u;
+    check_equal(error.payload.error_1.id, 41u);
+
+    error.kind = databind_13_ServiceNative_4_Calc_4_Find__ERROR_2;
+    error.payload.error_2.code = 7u;
+    check_equal(error.payload.error_2.code, 7u);
+  }
+}

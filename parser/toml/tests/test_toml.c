@@ -87,10 +87,16 @@ spec("toml_parser") {
         check_equal(toml_array_len(users), 2);
 
         toml_table_t* u0 = toml_array_table(users, 0);
-        check_equal(toml_table_string(u0, "name").u.s, "alice");
+        toml_value_t name0 = toml_table_string(u0, "name");
+        check(name0.ok);
+        check_equal(name0.u.s, "alice");
+        free(name0.u.s);
 
         toml_table_t* u1 = toml_array_table(users, 1);
-        check_equal(toml_table_string(u1, "name").u.s, "bob");
+        toml_value_t name1 = toml_table_string(u1, "name");
+        check(name1.ok);
+        check_equal(name1.u.s, "bob");
+        free(name1.u.s);
 
         toml_free(tbl);
     }
@@ -108,7 +114,10 @@ spec("toml_parser") {
 
         toml_table_t* sub = toml_table_table(pt, "sub");
         check_not_null(sub);
-        check_equal(toml_table_string(sub, "id").u.s, "A");
+        toml_value_t id = toml_table_string(sub, "id");
+        check(id.ok);
+        check_equal(id.u.s, "A");
+        free(id.u.s);
 
         toml_free(tbl);
     }
@@ -134,7 +143,10 @@ spec("toml_parser") {
         check_not_null(sub_tbl);
         check_equal(toml_table_int(sub_tbl, "val").u.i, 3);
 
-        check_equal(toml_array_string(data, 2).u.s, "four");
+        toml_value_t text = toml_array_string(data, 2);
+        check(text.ok);
+        check_equal(text.u.s, "four");
+        free(text.u.s);
 
         toml_free(tbl);
     }
@@ -148,7 +160,10 @@ spec("toml_parser") {
         toml_array_t* mixed = toml_table_array(tbl, "mixed");
         check_equal(toml_array_len(mixed), 4);
         check_equal(toml_array_int(mixed, 0).u.i, 1);
-        check_equal(toml_array_string(mixed, 1).u.s, "two");
+        toml_value_t text = toml_array_string(mixed, 1);
+        check(text.ok);
+        check_equal(text.u.s, "two");
+        free(text.u.s);
 
         toml_free(tbl);
     }

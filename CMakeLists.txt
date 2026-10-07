@@ -46,58 +46,39 @@ include(CmakeUtils)
 include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
-if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
-  message(FATAL_ERROR "SALTS_ROOT must name the installed Salts profile")
-endif()
-file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" SALTS_ROOT_PATH)
-if(NOT IS_DIRECTORY "${SALTS_ROOT_PATH}")
-  message(FATAL_ERROR "SALTS_ROOT is not a directory: $ENV{SALTS_ROOT}")
-endif()
 
+if(NOT DEFINED ENV{SALTS_ROOT} OR NOT IS_DIRECTORY "$ENV{SALTS_ROOT}")
+  message(FATAL_ERROR "SALTS_ROOT must name the restored Salts SDK; run cmake/ci/restore-native-sdk first")
+endif()
+# A previous configure must not keep selecting an older restored SDK.
+file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" SALTS_ROOT_PATH)
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-set(SALTS_UTILS_MINIMUM_SALTS_VERSION 2.0.0)
-find_package(Salts ${SALTS_UTILS_MINIMUM_SALTS_VERSION} CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
+find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
- 
-# Additional components
-#
-# The focused qualification profile is deliberately internal to CI. It proves
-# Plugin/DataBind contracts without configuring unrelated product components
-# whose third-party dependencies do not participate in those contracts.
-if(SALTS_UTILS_QUALIFY_DATABIND)
-  add_subdirectory(tools/lemon)
-  include(FindTools)
-  add_subdirectory(parser)
-  add_subdirectory(mustache)
-  add_subdirectory(databind)
-elseif(SALTS_UTILS_QUALIFY_BINDINGS)
-  add_subdirectory(bindings)
-else()
-  add_subdirectory(tools)
-  include(FindTools)
-  add_subdirectory(vendor)
-  add_subdirectory(parser)
-  add_subdirectory(bindings)
-  add_subdirectory(tools/junit_to_html)
-  add_subdirectory(crypto)
-  add_subdirectory(cflow-fs)
-  add_subdirectory(cflow-process)
+add_subdirectory(tools)
+include(FindTools)
+add_subdirectory(vendor)
+add_subdirectory(parser)
+add_subdirectory(bindings)
+add_subdirectory(tools/junit_to_html)
+add_subdirectory(crypto)
+add_subdirectory(cflow-fs)
+add_subdirectory(cflow-process)
+if(SALTS_UTILS_ENABLE_CAPTURE)
   add_subdirectory(playback)
-  if(SALTS_UTILS_ENABLE_CAPTURE)
-    add_subdirectory(capture)
-  endif()
-  add_subdirectory(salts_serial)
-  if(SALTS_UTILS_ENABLE_CFLOW_USB)
-    add_subdirectory(cflow-usb)
-  endif()
-  add_subdirectory(cron)
-  add_subdirectory(mustache)
-  add_subdirectory(unicode)
-  add_subdirectory(jinja)
-  add_subdirectory(databind)
+  add_subdirectory(capture)
 endif()
+add_subdirectory(salts_serial)
+if(SALTS_UTILS_ENABLE_CFLOW_USB)
+  add_subdirectory(cflow-usb)
+endif()
+add_subdirectory(cron)
+add_subdirectory(mustache)
+add_subdirectory(unicode)
+add_subdirectory(jinja)
+add_subdirectory(databind)
 
 # Package Configuration
 include(CMakePackageConfigHelpers)
@@ -117,11 +98,12 @@ write_basic_package_version_file(
   COMPATIBILITY SameMajorVersion)
 
 # Install the config files
-install(FILES "${CMAKE_BINARY_DIR}/SaltsUtilsConfig.cmake"
-              "${CMAKE_BINARY_DIR}/SaltsUtilsConfigVersion.cmake"
-              "${CMAKE_SOURCE_DIR}/cmake/IDL.cmake"
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils"
-        COMPONENT Development)
+install(
+  FILES "${CMAKE_BINARY_DIR}/SaltsUtilsConfig.cmake"
+        "${CMAKE_BINARY_DIR}/SaltsUtilsConfigVersion.cmake"
+        "${CMAKE_SOURCE_DIR}/cmake/IDL.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils"
+  COMPONENT Development)
 
 # Install the export set
 export(

@@ -1,0 +1,17 @@
+set(DATABIND_COMPILER_SOURCE_DIR "${DATABIND_SOURCE_ROOT}/compiler")
+set(DATABIND_COMPILER_TEST_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+
+include("${CMAKE_SOURCE_DIR}/cmake/IDL.cmake")
+
+add_subdirectory(core)
+add_subdirectory(cmeta)
+add_subdirectory(projection)
+add_subdirectory(message)
+add_subdirectory(native)
+add_subdirectory(binary)
+add_subdirectory(http-rpc)
+add_subdirectory(socket)
+add_subdirectory(flowmq)
+add_subdirectory(multi-transport)
+add_subdirectory(openapi)
+add_subdirectory(plugin)

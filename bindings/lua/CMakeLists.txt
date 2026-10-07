@@ -1,28 +1,22 @@
-find_package(Lua REQUIRED)
+find_package(unofficial-lua CONFIG REQUIRED)
 
-# FindLua in older supported CMake releases does not always provide Lua::Lua.
-# Normalize it to one relocatable imported dependency name so SaltsTargets never
-# captures a build-machine Lua library path.
+# Keep the binding's dependency name stable while using vcpkg's relocatable target.
 if(NOT TARGET Lua::Lua)
   add_library(Lua::Lua INTERFACE IMPORTED)
-  set_target_properties(Lua::Lua PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${LUA_INCLUDE_DIR}"
-    INTERFACE_LINK_LIBRARIES "${LUA_LIBRARIES}")
+  target_link_libraries(Lua::Lua INTERFACE lua)
 endif()
 
-add_library(salts_lua_binding STATIC salts_lua_cmeta.c)
+add_library(salts_lua_binding STATIC salts_lua_cmeta.c salts_lua_module.c)
 add_library(Salts::Lua ALIAS salts_lua_binding)
 set_target_properties(salts_lua_binding PROPERTIES EXPORT_NAME Lua)
 
 target_include_directories(salts_lua_binding
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-  PRIVATE
-    ${LUA_INCLUDE_DIR})
+    $<INSTALL_INTERFACE:include>)
 
 target_link_libraries(salts_lua_binding
-  PUBLIC Salts::CMeta Lua::Lua)
+  PUBLIC Salts::Bindings Lua::Lua)
 
 target_compile_features(salts_lua_binding PUBLIC c_std_11)
 set_target_properties(salts_lua_binding PROPERTIES FOLDER "bindings")

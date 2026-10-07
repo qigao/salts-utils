@@ -372,15 +372,7 @@ static const cmeta_data_struct_shape *plan_struct_shape(
 
 static const cmeta_data_field_desc *plan_native_field(
     const DataBindNativeTypeBinding *binding, const char *name) {
-  const cmeta_data_struct_shape *shape = plan_struct_shape(binding);
-  size_t i;
-  if (shape == NULL || name == NULL) return NULL;
-  for (i = 0u; i < shape->field_count; ++i) {
-    const cmeta_data_field_desc *field = &shape->fields[i];
-    if (field->name != NULL && strcmp(field->name, name) == 0)
-      return field;
-  }
-  return NULL;
+  return cmeta_data_struct_find_field(plan_struct_shape(binding), name);
 }
 
 static const DataBindNativeStateBinding *plan_state_binding(

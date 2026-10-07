@@ -163,6 +163,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             m)
 elseif(APPLE)
   enable_language(OBJC)
+  # Miniaudio's CoreAudio implementation includes Blocks-based system headers.
+  set_source_files_properties(src/miniaudio_impl.c PROPERTIES LANGUAGE OBJC)
   target_sources(
     salts_capture
     PRIVATE src/capture_audio_miniaudio.c src/capture_macos.c

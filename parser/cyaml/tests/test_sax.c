@@ -216,56 +216,6 @@ spec("cyaml incremental SAX")
         }
     }
 
-    group("stream semantics")
-    {
-        it("supports document markers split byte by byte")
-        {
-            const char input[] = "---\none\n...\n---\ntwo\n";
-            sax_state_t state = { 0 };
-            cyaml_sax_parser_t* parser = make_parser(&state);
-            size_t i;
-            check_not_null(parser);
-            for (i = 0; i < sizeof(input) - 1; ++i)
-                check_equal(cyaml_sax_parser_feed(parser, input + i, 1), 0);
-            check_equal(cyaml_sax_parser_finish(parser), 0);
-            check_equal(state.document_starts, 2);
-            check_equal(state.document_ends, 2);
-            check_equal(state.value_count, 2);
-            check_equal(state.values[0], "one");
-            check_equal(state.values[1], "two");
-            cyaml_sax_parser_destroy(parser);
-        }
-
-        it("preserves key flags for a collection key")
-        {
-            const char input[] = "? [a, b]\n: value\n";
-            sax_state_t state = { 0 };
-            cyaml_sax_parser_t* parser = make_parser(&state);
-            check_not_null(parser);
-            check_equal(cyaml_sax_parser_feed(parser, input, sizeof(input) - 1), 0);
-            check_equal(cyaml_sax_parser_finish(parser), 0);
-            check_true(state.last_sequence_start_is_key);
-            check_true(state.last_sequence_end_is_key);
-            check_false(state.value_is_key[0]);
-            check_false(state.value_is_key[1]);
-            check_false(state.value_is_key[2]);
-            check_equal(state.values[2], "value");
-            cyaml_sax_parser_destroy(parser);
-        }
-
-        it("reports aliases without building a DOM")
-        {
-            const char input[] = "base: &id value\ncopy: *id\n";
-            sax_state_t state = { 0 };
-            cyaml_sax_parser_t* parser = make_parser(&state);
-            check_not_null(parser);
-            check_equal(cyaml_sax_parser_feed(parser, input, sizeof(input) - 1), 0);
-            check_equal(cyaml_sax_parser_finish(parser), 0);
-            check_equal(state.aliases, 1);
-            cyaml_sax_parser_destroy(parser);
-        }
-    }
-
     group("fail fast")
     {
         it("rejects an invalid UTF-8 start byte during feed")

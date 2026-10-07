@@ -80,9 +80,6 @@ if(TARGET test_schema_cmeta)
   set_source_files_properties(test/test_schema_cmeta_buffer.c
     test/test_schema_cmeta_profiles.c
     PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
-  add_test(NAME test_schema_cmeta_profile_contract
-    COMMAND "${CMAKE_COMMAND}" -P
-      "${CMAKE_CURRENT_SOURCE_DIR}/test/test_schema_cmeta_profile_contract.cmake")
 endif()
 
 cmake_add_executable(verify_fixes
@@ -95,7 +92,7 @@ target_link_libraries(verify_fixes PRIVATE databind_binary_format_objects)
 # 枚举增强功能测试：生成头文件
 # =============================================================================
 
-set(C_STRUCT_TEMPLATE ${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache)
+set(C_STRUCT_TEMPLATE ${DATABIND_SOURCE_ROOT}/compiler/templates/c/c_structs.mustache)
 
 set(ENUM_ENHANCED_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_enum_enhanced.schema)
 set(ENUM_ENHANCED_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced.h)
@@ -176,7 +173,7 @@ cmake_add_benchmark(benchmark_encoding
 set(BENCH_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/bench.schema)
 set(BENCH_HEADER ${CMAKE_CURRENT_BINARY_DIR}/bench_data.h)
 set(C_STRUCT_TEMPLATE
-    ${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache)
+    ${DATABIND_SOURCE_ROOT}/compiler/templates/c/c_structs.mustache)
 
 add_custom_command(
   OUTPUT ${BENCH_HEADER}

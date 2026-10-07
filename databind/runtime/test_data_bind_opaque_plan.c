@@ -21,7 +21,7 @@ spec("DataBind opaque bytes pass-through plan") {
         DATA_BIND_OK);
     check_equal(span.state, DATA_BIND_OPAQUE_VALUE);
     check_equal(span.ownership, DATA_BIND_OPAQUE_BORROWED);
-    check_equal(span.data, source);
+    check_true(span.data == source);
     check_equal(span.bytes, sizeof(source));
 
     span = (DataBindOpaqueSpan)DATA_BIND_OPAQUE_SPAN_INIT;
@@ -32,7 +32,7 @@ spec("DataBind opaque bytes pass-through plan") {
             destination, sizeof(destination), &span, &error),
         DATA_BIND_OK);
     check_equal(span.ownership, DATA_BIND_OPAQUE_CALLER_OWNED);
-    check_equal(span.data, destination);
+    check_true(span.data == destination);
     check_equal(span.bytes, sizeof(source));
     check_equal(memcmp(destination, source, sizeof(source)), 0);
   }

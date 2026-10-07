@@ -2,11 +2,16 @@ set(TARGET_NAME json_parser)
 
 # Generated files
 cmake_add_grammar(JSON
+  RE2C_EXECUTABLE "${RE2C_EXECUTABLE}"
+  LEMON_TARGET lemon
+  LEMON_TEMPLATE "${LEMPAR}"
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/parser/json_lexer.re
   GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/parser/json_grammar.y
   FOLDER "parser/${TARGET_NAME}/grammar")
 
 cmake_add_grammar(JSONPATH
+  LEMON_TARGET lemon
+  LEMON_TEMPLATE "${LEMPAR}"
   GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/parser/jsonpath_grammar.y
   FOLDER "parser/${TARGET_NAME}/grammar")
 
@@ -31,7 +36,7 @@ target_include_directories(
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/parser ${CMAKE_CURRENT_BINARY_DIR})
-find_path(SIMDE_INCLUDE_DIRS NAMES simde/x86/sse2.h REQUIRED)
+find_path(SIMDE_INCLUDE_DIRS "simde/arm/neon.h")
 target_include_directories(${TARGET_NAME} PRIVATE ${SIMDE_INCLUDE_DIRS})
 target_link_libraries(${TARGET_NAME}
   PRIVATE Salts::CSTL

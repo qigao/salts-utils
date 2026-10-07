@@ -16,7 +16,6 @@
         },
         {
             "name": "release-win-msvc-ninja",
-            "hidden": true,
             "displayName": "Release (Windows, MSVC, Ninja Multi-Config)",
             "inherits": [
                 "base-release-windows",
@@ -36,7 +35,6 @@
         },
         {
             "name": "release-linux-ninja",
-            "hidden": true,
             "displayName": "Release (Linux, Ninja)",
             "inherits": [
                 "base-release-linux",
@@ -47,25 +45,8 @@
         {
             "name": "release-mac-ninja",
             "displayName": "Release (Mac, Ninja)",
-            "inherits": "base-release-mac",
-            "generator": "Ninja"
-        },
-        {
-            "name": "dev-win-clang-ninja",
-            "hidden": true,
-            "displayName": "Developer (Windows, Clang, Ninja)",
             "inherits": [
-                "base-developer-windows-clang",
-                "pkg-vcpkg"
-            ],
-            "generator": "Ninja"
-        },
-        {
-            "name": "release-win-clang-ninja",
-            "hidden": true,
-            "displayName": "Release (Windows, Clang, Ninja)",
-            "inherits": [
-                "base-release-windows-clang",
+                "base-release-mac",
                 "pkg-vcpkg"
             ],
             "generator": "Ninja"

@@ -106,6 +106,20 @@ cleanup:
 }
 
 spec("mustache runtime regressions") {
+  it("does not call the renderer for empty indentation") {
+    static const char template_text[] = "{{!comment}}";
+    MUSTACHE_TEMPLATE *templ = mustache_compile(template_text, sizeof(template_text) - 1,
+                                                NULL, NULL, 0);
+    MUSTACHE_DATAPROVIDER provider = runtime_provider();
+    MUSTACHE_RENDERER renderer = {failing_output, failing_output};
+    RUNTIME_PROVIDER_DATA data = {0};
+
+    check_not_null(templ);
+    int result = mustache_process(templ, &renderer, NULL, &provider, &data);
+    mustache_release(templ);
+    check_equal(result, 0);
+  }
+
   describe("arena renderer") {
     it("should reserve the full escaped quote plus terminator") {
       mem_pool_t pool = {0};

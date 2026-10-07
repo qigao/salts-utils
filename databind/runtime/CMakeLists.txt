@@ -1,136 +1,24 @@
-set(DATA_BIND_CORE_TARGET data_bind_core)
-add_library(
-  ${DATA_BIND_CORE_TARGET} STATIC
-  data_bind_format_provider.c
-  data_bind_format_provider.h
-  data_bind_native.c
-  data_bind_native.h)
-target_include_directories(
-  ${DATA_BIND_CORE_TARGET}
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>)
-target_link_libraries(
-  ${DATA_BIND_CORE_TARGET}
-  PUBLIC
-    Salts::Core
-    Salts::CMeta
-    Salts::CSTL
-    Salts::CSerde)
-cmake_config_target(
-  ${DATA_BIND_CORE_TARGET}
-  ALIAS Salts::DataBindCore
-  FOLDER "databind/runtime"
-  EXPORT_NAME DataBindCore)
-
-set(DATA_BIND_JSON_ADAPTER_TARGET data_bind_json_adapter)
-add_library(
-  ${DATA_BIND_JSON_ADAPTER_TARGET} STATIC
-  data_bind_json_provider.c
-  data_bind_json_provider.h)
-target_include_directories(
-  ${DATA_BIND_JSON_ADAPTER_TARGET}
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>)
-target_link_libraries(
-  ${DATA_BIND_JSON_ADAPTER_TARGET}
-  PUBLIC
-    Salts::DataBindCore
-    Salts::JsonCSerdeAdapter)
-cmake_config_target(
-  ${DATA_BIND_JSON_ADAPTER_TARGET}
-  ALIAS Salts::DataBindJsonAdapter
-  FOLDER "databind/runtime"
-  EXPORT_NAME DataBindJsonAdapter)
-
-set(DATA_BIND_YAML_ADAPTER_TARGET data_bind_yaml_adapter)
-add_library(
-  ${DATA_BIND_YAML_ADAPTER_TARGET} STATIC
-  data_bind_yaml_provider.c
-  data_bind_yaml_provider.h)
-target_include_directories(
-  ${DATA_BIND_YAML_ADAPTER_TARGET}
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>)
-target_link_libraries(
-  ${DATA_BIND_YAML_ADAPTER_TARGET}
-  PUBLIC
-    Salts::DataBindCore
-    Salts::CYamlJsonAdapter
-    Salts::JsonCSerdeAdapter)
-cmake_config_target(
-  ${DATA_BIND_YAML_ADAPTER_TARGET}
-  ALIAS Salts::DataBindYamlAdapter
-  FOLDER "databind/runtime"
-  EXPORT_NAME DataBindYamlAdapter)
-
-set(DATA_BIND_CSV_ADAPTER_TARGET data_bind_csv_adapter)
-add_library(
-  ${DATA_BIND_CSV_ADAPTER_TARGET} STATIC
-  data_bind_csv_provider.c
-  data_bind_csv_provider.h)
-target_include_directories(
-  ${DATA_BIND_CSV_ADAPTER_TARGET}
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>)
-target_link_libraries(
-  ${DATA_BIND_CSV_ADAPTER_TARGET}
-  PUBLIC
-    Salts::DataBindCore
-    Salts::CsvParser)
-cmake_config_target(
-  ${DATA_BIND_CSV_ADAPTER_TARGET}
-  ALIAS Salts::DataBindCsvAdapter
-  FOLDER "databind/runtime"
-  EXPORT_NAME DataBindCsvAdapter)
-
-set(DATA_BIND_XML_ADAPTER_TARGET data_bind_xml_adapter)
-add_library(
-  ${DATA_BIND_XML_ADAPTER_TARGET} STATIC
-  data_bind_xml_provider.c
-  data_bind_xml_provider.h)
-target_include_directories(
-  ${DATA_BIND_XML_ADAPTER_TARGET}
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>)
-target_link_libraries(
-  ${DATA_BIND_XML_ADAPTER_TARGET}
-  PUBLIC
-    Salts::DataBindCore
-    Salts::XmlParser)
-cmake_config_target(
-  ${DATA_BIND_XML_ADAPTER_TARGET}
-  ALIAS Salts::DataBindXmlAdapter
-  FOLDER "databind/runtime"
-  EXPORT_NAME DataBindXmlAdapter)
-
-set(DATA_BIND_TEMPORAL_ADAPTER_TARGET data_bind_temporal_adapter)
-add_library(
-  ${DATA_BIND_TEMPORAL_ADAPTER_TARGET} STATIC
-  data_bind_temporal_adapter.c
-  data_bind_temporal_adapter.h)
-target_include_directories(
-  ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>)
-target_link_libraries(
-  ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
-  PUBLIC Salts::DataBindCore
-  PRIVATE Salts::DateTimeParser)
-cmake_config_target(
-  ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
-  ALIAS Salts::DataBindTemporalAdapter
-  FOLDER "databind/runtime"
-  EXPORT_NAME DataBindTemporalAdapter)
-
 set(DATA_BIND_TARGET data_bind)
 add_library(
   ${DATA_BIND_TARGET} SHARED
+  data_bind_format_provider.c
+  data_bind_format_provider.h
+  data_bind_native.c
+  data_bind_native.h
+  data_bind_json_provider.c
+  data_bind_json_provider.h
+  data_bind_yaml_provider.c
+  data_bind_yaml_provider.h
+  data_bind_csv_provider.c
+  data_bind_csv_provider.h
+  data_bind_xml_provider.c
+  data_bind_xml_provider.h
+  data_bind_temporal_adapter.c
+  data_bind_temporal_adapter.h
+  data_bind_cmeta.c
+  data_bind_cmeta.h
+  data_bind_cflow.c
+  data_bind_cflow.h
   data_bind.c
   data_bind_contract_fingerprint.c
   data_bind_contract_fingerprint.h
@@ -181,21 +69,25 @@ target_include_directories(
   PRIVATE
     $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/parser>
     $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/binary/internal>
-    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/binary/compiler/include>)
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/compiler/binary/include>)
 target_link_libraries(
   ${DATA_BIND_TARGET}
   PRIVATE
     databind_monocypher
-    Salts::DataBindJsonAdapter
-    Salts::DataBindYamlAdapter
-    Salts::DataBindCsvAdapter
-    Salts::DataBindXmlAdapter
-    Salts::DataBindTemporalAdapter
+    Salts::JsonCSerdeAdapter
+    Salts::CYamlJsonAdapter
+    Salts::CsvParser
+    Salts::XmlParser
+    Salts::DateTimeParser
     Salts::Schema
     Salts::IDL
     databind_binary_contract
   PUBLIC
-    Salts::DataBindCore)
+    Salts::Core
+    Salts::CMeta
+    Salts::CSTL
+    Salts::CSerde
+    Salts::CFlow)
 
 if(BUILD_TESTS)
   get_target_property(DATA_BIND_PUBLIC_LINKS
@@ -229,35 +121,8 @@ cmake_config_target(
   FOLDER "databind/runtime"
   EXPORT_NAME DataBindPlugin)
 
-add_library(data_bind_cmeta SHARED data_bind_cmeta.c data_bind_cmeta.h)
-target_compile_definitions(data_bind_cmeta PRIVATE DATA_BIND_CMETA_BUILD_DLL)
-target_include_directories(data_bind_cmeta
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-         $<INSTALL_INTERFACE:include>)
-target_link_libraries(data_bind_cmeta
-  PUBLIC Salts::DataBind Salts::CMeta)
-cmake_config_target(
-  data_bind_cmeta
-  ALIAS Salts::DataBindCMeta
-  FOLDER databind/runtime
-  EXPORT_NAME DataBindCMeta)
-
-add_library(data_bind_cflow SHARED data_bind_cflow.c data_bind_cflow.h)
-target_compile_definitions(data_bind_cflow PRIVATE DATA_BIND_CFLOW_BUILD_DLL)
-target_include_directories(data_bind_cflow
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-         $<INSTALL_INTERFACE:include>)
-target_link_libraries(data_bind_cflow
-  PUBLIC Salts::DataBindCMeta Salts::CFlow)
-cmake_config_target(
-  data_bind_cflow
-  ALIAS Salts::DataBindCFlow
-  FOLDER databind/runtime
-  EXPORT_NAME DataBindCFlow)
-
 install(
-  TARGETS ${DATA_BIND_CORE_TARGET}
-          ${DATA_BIND_TARGET} data_bind_cmeta data_bind_cflow
+  TARGETS ${DATA_BIND_TARGET}
   EXPORT SaltsUtilsTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
@@ -267,16 +132,6 @@ install(
   TARGETS data_bind_plugin
   EXPORT SaltsUtilsTargets)
 
-install(
-  TARGETS ${DATA_BIND_JSON_ADAPTER_TARGET}
-          ${DATA_BIND_YAML_ADAPTER_TARGET}
-          ${DATA_BIND_CSV_ADAPTER_TARGET}
-          ${DATA_BIND_XML_ADAPTER_TARGET}
-          ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
-  EXPORT SaltsUtilsTargets
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind)
 install(
   FILES
     data_bind.h
@@ -315,8 +170,8 @@ add_executable(test_data_bind_opaque_plan
 target_compile_features(test_data_bind_opaque_plan PRIVATE c_std_11)
 target_link_libraries(test_data_bind_opaque_plan
   PRIVATE Salts::DataBind Salts::TinyTest)
-set_target_properties(test_data_bind_opaque_plan
-  PROPERTIES FOLDER "databind/runtime/tests")
+cmake_config_target(test_data_bind_opaque_plan
+  FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_opaque_plan
   COMMAND test_data_bind_opaque_plan)
 set_tests_properties(test_data_bind_opaque_plan PROPERTIES
@@ -326,9 +181,9 @@ add_executable(test_data_bind_format_provider
   test_data_bind_format_provider.c)
 target_compile_features(test_data_bind_format_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_format_provider
-  PRIVATE Salts::DataBindCore)
-set_target_properties(test_data_bind_format_provider
-  PROPERTIES FOLDER "databind/runtime/tests")
+  PRIVATE Salts::DataBind)
+cmake_config_target(test_data_bind_format_provider
+  FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_format_provider
   COMMAND test_data_bind_format_provider)
 
@@ -336,9 +191,9 @@ add_executable(test_data_bind_json_provider
   test_data_bind_json_provider.c)
 target_compile_features(test_data_bind_json_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_json_provider
-  PRIVATE Salts::DataBindJsonAdapter)
-set_target_properties(test_data_bind_json_provider
-  PROPERTIES FOLDER "databind/runtime/tests")
+  PRIVATE Salts::DataBind)
+cmake_config_target(test_data_bind_json_provider
+  FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_json_provider
   COMMAND test_data_bind_json_provider)
 
@@ -346,9 +201,9 @@ add_executable(test_data_bind_yaml_provider
   test_data_bind_yaml_provider.c)
 target_compile_features(test_data_bind_yaml_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_yaml_provider
-  PRIVATE Salts::DataBindYamlAdapter)
-set_target_properties(test_data_bind_yaml_provider
-  PROPERTIES FOLDER "databind/runtime/tests")
+  PRIVATE Salts::DataBind)
+cmake_config_target(test_data_bind_yaml_provider
+  FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_yaml_provider
   COMMAND test_data_bind_yaml_provider)
 
@@ -356,9 +211,9 @@ add_executable(test_data_bind_csv_provider
   test_data_bind_csv_provider.c)
 target_compile_features(test_data_bind_csv_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_csv_provider
-  PRIVATE Salts::DataBindCsvAdapter)
-set_target_properties(test_data_bind_csv_provider
-  PROPERTIES FOLDER "databind/runtime/tests")
+  PRIVATE Salts::DataBind)
+cmake_config_target(test_data_bind_csv_provider
+  FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_csv_provider
   COMMAND test_data_bind_csv_provider)
 
@@ -366,9 +221,9 @@ add_executable(test_data_bind_xml_provider
   test_data_bind_xml_provider.c)
 target_compile_features(test_data_bind_xml_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_xml_provider
-  PRIVATE Salts::DataBind Salts::DataBindXmlAdapter)
-set_target_properties(test_data_bind_xml_provider
-  PROPERTIES FOLDER "databind/runtime/tests")
+  PRIVATE Salts::DataBind)
+cmake_config_target(test_data_bind_xml_provider
+  FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_xml_provider
   COMMAND test_data_bind_xml_provider)
 
@@ -376,9 +231,9 @@ add_executable(test_data_bind_temporal_adapter
   test_data_bind_temporal_adapter.c)
 target_compile_features(test_data_bind_temporal_adapter PRIVATE c_std_11)
 target_link_libraries(test_data_bind_temporal_adapter
-  PRIVATE Salts::DataBindTemporalAdapter)
-set_target_properties(test_data_bind_temporal_adapter
-  PROPERTIES FOLDER "databind/runtime/tests")
+  PRIVATE Salts::DataBind)
+cmake_config_target(test_data_bind_temporal_adapter
+  FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_temporal_adapter
   COMMAND test_data_bind_temporal_adapter)
 
@@ -397,8 +252,8 @@ add_executable(test_data_bind_public_header_boundary
   test_data_bind_public_header_boundary.c)
 target_compile_features(test_data_bind_public_header_boundary PRIVATE c_std_11)
 target_link_libraries(test_data_bind_public_header_boundary PRIVATE Salts::DataBind)
-set_target_properties(test_data_bind_public_header_boundary
-  PROPERTIES FOLDER "databind/runtime/tests")
+cmake_config_target(test_data_bind_public_header_boundary
+  FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_public_header_boundary
   COMMAND test_data_bind_public_header_boundary)
 cmake_add_test(test_data_bind_value_boundary
@@ -407,16 +262,12 @@ cmake_add_test(test_data_bind_value_boundary
   FOLDER "databind/runtime/tests")
 cmake_add_test(test_data_bind_dynamic_cstl
   SOURCES test_data_bind_dynamic_cstl.c
-  LIBS Salts::DataBind Salts::DataBindCMeta Salts::TinyTest
+  LIBS Salts::DataBind Salts::TinyTest
        Salts::CsvParser Salts::JsonParser
   INCLUDES ${DATABIND_SOURCE_ROOT}/schema/include
   FOLDER "databind/runtime/tests")
 set_tests_properties(test_data_bind_dynamic_cstl PROPERTIES
   LABELS "databind;cmeta;cstl;dynamic")
-cmake_add_test(test_data_bind_schema_reflection_contract
-  SOURCES test_data_bind_schema_reflection_contract.c
-  LIBS ${DATA_BIND_TEST_LIBS}
-  FOLDER "databind/runtime/tests")
 cmake_add_test(test_data_bind_validation_plan
   SOURCES test_data_bind_validation_plan.c
   LIBS ${DATA_BIND_TEST_LIBS}
@@ -470,7 +321,7 @@ set_tests_properties(test_data_bind_flowmq_plan_public_cpp PROPERTIES
 
 cmake_add_test(test_data_bind_socket_execution_plan
   SOURCES test_data_bind_socket_execution_plan.c
-  LIBS ${DATA_BIND_TEST_LIBS} Salts::DataBindJsonAdapter
+  LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
 set_tests_properties(test_data_bind_socket_execution_plan PROPERTIES
   LABELS "databind;socket-plan;message-plan;execution")
@@ -497,13 +348,6 @@ set_target_properties(test_data_bind_plugin_execution_public_cpp PROPERTIES
 set_tests_properties(test_data_bind_plugin_execution_public_cpp PROPERTIES
   LABELS "databind;plugin;execution;public;cpp")
 
-cmake_add_test(test_data_bind_binding_plan
-  SOURCES test_data_bind_binding_plan.c
-  LIBS ${DATA_BIND_TEST_LIBS} Salts::CFlow
-  FOLDER "databind/runtime/tests")
-set_tests_properties(test_data_bind_binding_plan PROPERTIES
-  LABELS "databind;cmeta;service-contract;binding-plan")
-
 cmake_add_test(test_data_bind_object_message_plan
   SOURCES test_data_bind_object_message_plan.c
   LIBS ${DATA_BIND_TEST_LIBS}
@@ -519,21 +363,6 @@ set_target_properties(test_data_bind_object_message_plan_public_cpp PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 set_tests_properties(test_data_bind_object_message_plan_public_cpp PROPERTIES
   LABELS "databind;cmeta;message-plan;dynamic-object;public;cpp")
-
-cmake_add_test(test_data_bind_owned_error_validation
-  SOURCES test_data_bind_owned_error_validation.c
-  LIBS ${DATA_BIND_TEST_LIBS}
-  FOLDER "databind/runtime/tests")
-set_tests_properties(test_data_bind_owned_error_validation PROPERTIES
-  LABELS "databind;cmeta;service-contract;binding-plan;typed-error;validation")
-
-
-cmake_add_test(test_data_bind_service_native_error
-  SOURCES test_data_bind_service_native_error.c
-  LIBS ${DATA_BIND_TEST_LIBS}
-  FOLDER "databind/runtime/tests")
-set_tests_properties(test_data_bind_service_native_error PROPERTIES
-  LABELS "databind;cmeta;service-contract;typed-error;lifecycle")
 
 cmake_add_test(test_data_bind_projection_plan
   SOURCES test_data_bind_projection_plan.c
@@ -558,16 +387,16 @@ set_target_properties(test_data_bind_cmeta_public_cpp PROPERTIES
 
 cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
-  LIBS Salts::DataBindCMeta Salts::Schema Salts::TinyTest
+  LIBS Salts::DataBind Salts::Schema Salts::TinyTest
   FOLDER "databind/runtime/tests")
 cmake_add_test(test_data_bind_cflow
   SOURCES test_data_bind_cflow.c
-  LIBS Salts::DataBindCFlow Salts::TinyTest
+  LIBS Salts::DataBind Salts::TinyTest
   FOLDER "databind/runtime/tests")
 
 cmake_add_test(test_data_bind_adapters_cpp
   SOURCES test_data_bind_adapters_cpp.cpp
-  LIBS Salts::DataBindCFlow Salts::TinyTest
+  LIBS Salts::DataBind Salts::TinyTest
   FOLDER "databind/runtime/tests")
 cmake_add_test(test_data_bind_record
   SOURCES test_data_bind_record.c
@@ -666,13 +495,13 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     OUTPUT "${BINARY_ADMISSION_GENERATED_HEADER}" "${BINARY_ADMISSION_GENERATED_SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${BINARY_ADMISSION_GENERATED_DIR}"
     COMMAND $<TARGET_FILE:salts_idlc>
-            "${DATABIND_SOURCE_ROOT}/idl/compiler/example.schema"
+            "${DATABIND_SOURCE_ROOT}/compiler/tests/core/example.schema"
             --lang c --output "${BINARY_ADMISSION_GENERATED_HEADER}"
             --source-output "${BINARY_ADMISSION_GENERATED_SOURCE}"
     DEPENDS salts_idlc
-            "${DATABIND_SOURCE_ROOT}/idl/compiler/example.schema"
-            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache"
-            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_typed_source.mustache"
+            "${DATABIND_SOURCE_ROOT}/compiler/tests/core/example.schema"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c/c_typed_source.mustache"
     COMMENT "Generating canonical Binary admission fixture"
     VERBATIM)
   cmake_add_test(test_databind_generated_binary_admission
@@ -698,8 +527,8 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
             --source-output "${DATABIND_OWNED_BUFFER_SOURCE}"
     DEPENDS salts_idlc
             "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_owned_buffers.schema"
-            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache"
-            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_typed_source.mustache"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c/c_typed_source.mustache"
     COMMENT "Generating canonical owned-buffer native fixture"
     VERBATIM)
   cmake_add_test(test_databind_generated_owned_buffers
@@ -739,6 +568,8 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   add_custom_target(tbe_cmeta_graph_generation
     DEPENDS "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
             "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c")
+  cmake_config_target(tbe_cmeta_graph_generation
+    FOLDER "databind/runtime/generated")
   cmake_add_test(test_databind_generated_cmeta_graph
     SOURCES test_databind_generated_cmeta_graph.c
             "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
@@ -758,7 +589,8 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   target_link_libraries(tbe_cmeta_graph_public_fixture PUBLIC Salts::DataBind)
   target_include_directories(tbe_cmeta_graph_public_fixture PUBLIC "${TBE_CMETA_GRAPH_DIR}")
   add_dependencies(tbe_cmeta_graph_public_fixture tbe_cmeta_graph_generation)
-  set_target_properties(tbe_cmeta_graph_public_fixture PROPERTIES FOLDER "databind/runtime/tests")
+  cmake_config_target(tbe_cmeta_graph_public_fixture
+    FOLDER "databind/runtime/tests")
 
   cmake_add_test(test_tbe_cmeta_acceptance
     SOURCES test_tbe_cmeta_acceptance.c
@@ -770,37 +602,26 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
       "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cmeta_cli_gates"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_cli_gates.cmake")
 
-  cmake_add_test(test_databind_generated_cmeta_public
-    SOURCES test_databind_generated_cmeta_public.c
-    LIBS tbe_cmeta_graph_public_fixture Salts::IDL
-    FOLDER "databind/runtime/tests")
-  set_tests_properties(test_databind_generated_cmeta_public PROPERTIES
-    LABELS "databind;cmeta;typed-contract")
-  cmake_add_test(test_databind_generated_cmeta_public_cpp
-    SOURCES test_databind_generated_cmeta_public_cpp.cpp
-    LIBS tbe_cmeta_graph_public_fixture Salts::Schema
-    FOLDER "databind/runtime/tests")
-  set_target_properties(test_databind_generated_cmeta_public_cpp PROPERTIES
-    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 endif()
 
 endif()
 
-cmake_add_benchmark(benchmark_data_bind_pool
-  SOURCES benchmark_data_bind_pool.c
-  LIBS ${DATA_BIND_TEST_LIBS}
-  FOLDER "databind/runtime/benchmarks")
-cmake_add_benchmark(benchmark_data_bind_json_path
-  SOURCES benchmark_data_bind_json_path.c
-  LIBS ${DATA_BIND_TEST_LIBS}
-  FOLDER "databind/runtime/benchmarks")
-cmake_add_benchmark(benchmark_data_bind_native
-  SOURCES benchmark_data_bind_native.c
-  LIBS ${DATA_BIND_TEST_LIBS}
-  FOLDER "databind/runtime/benchmarks")
+if(BUILD_BENCHMARKS)
+  cmake_add_benchmark(benchmark_data_bind_pool
+    SOURCES benchmark_data_bind_pool.c
+    LIBS Salts::DataBind Salts::TinyTest
+    FOLDER "databind/runtime/benchmarks")
+  cmake_add_benchmark(benchmark_data_bind_json_path
+    SOURCES benchmark_data_bind_json_path.c
+    LIBS Salts::DataBind Salts::TinyTest
+    FOLDER "databind/runtime/benchmarks")
+  cmake_add_benchmark(benchmark_data_bind_native
+    SOURCES benchmark_data_bind_native.c
+    LIBS Salts::DataBind Salts::TinyTest
+    FOLDER "databind/runtime/benchmarks")
+endif()
 
 if(BUILD_TESTS AND TARGET benchmark_data_bind_native)
   add_test(NAME benchmark_data_bind_native COMMAND benchmark_data_bind_native)
-  cmake_set_test_runtime_path(benchmark_data_bind_native benchmark_data_bind_native)
   set_tests_properties(benchmark_data_bind_native PROPERTIES LABELS "databind;cmeta;benchmark")
 endif()

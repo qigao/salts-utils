@@ -992,6 +992,52 @@ spec("data_bind public API") {
     data_bind_free(codec);
   }
 
+  it("should discard partially built CSV cells and allow a later serialization") {
+    const char *schema = "message Item { uint32 id; string name; }";
+    const char *invalid_csv_json = "{\"id\":7,\"name\":\"bad\\u0000text\"}";
+    const char *valid_json = "{\"id\":8,\"name\":\"ready\"}";
+    DataBind *codec = NULL;
+    DataBindObject *object = NULL;
+    DataBindError err = DATA_BIND_ERROR_INIT;
+    char *csv = NULL;
+    size_t csv_len = 0;
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    if (codec) {
+      check_equal(data_bind_object_from_json(codec, "Item", invalid_csv_json,
+                                             strlen(invalid_csv_json), &object, &err),
+                  DATA_BIND_OK);
+    }
+    if (object) {
+      /* The first cell is complete; the second owns its path when text fails. */
+      check_equal(data_bind_object_serialize_csv(codec, object, &csv, &csv_len, &err),
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+      check_null(csv);
+      check_equal(csv_len, 0u);
+      check_equal(data_bind_object_serialize_csv(codec, object, &csv, &csv_len, &err),
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+      check_null(csv);
+      check_equal(csv_len, 0u);
+    }
+    data_bind_object_free(object);
+    object = NULL;
+    if (codec) {
+      check_equal(data_bind_object_from_json(codec, "Item", valid_json, strlen(valid_json),
+                                             &object, &err), DATA_BIND_OK);
+    }
+    if (object) {
+      check_equal(data_bind_object_serialize_csv(codec, object, &csv, &csv_len, &err),
+                  DATA_BIND_OK);
+      if (csv) {
+        check_equal(csv, "id,name\r\n8,ready\r\n");
+        check_equal(csv_len, strlen(csv));
+      }
+    }
+    data_bind_serialized_free(csv);
+    data_bind_object_free(object);
+    data_bind_free(codec);
+  }
+
   it("should create the same object handle from YAML and XML") {
     const char *schema = "message Item { int32 id; string name; }\n";
     const char *yaml = "id: 3\nname: yaml\n";

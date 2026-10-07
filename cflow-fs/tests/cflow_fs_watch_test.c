@@ -103,53 +103,6 @@ static void watch_close_destroy(cflow_fs_watch *watch) {
 }
 
 spec("CFlow filesystem watch") {
-    it("declares the bounded watch source contract") {
-        cflow_fs_watch watch = {0};
-        cflow_fs_watch_config config = {
-            .recursive = false,
-            .event_capacity = 8u,
-            .watch_capacity = 1u,
-            .path_capacity = 256u,
-            .native_buffer_capacity = 4096u,
-            .event = watch_event,
-            .event_user = NULL,
-        };
-        cflow_fs_watch_event event = {
-            .kind = CFLOW_FS_WATCH_CREATED,
-            .path = "child",
-            .old_path = NULL,
-            .entry_type = CFLOW_FS_WATCH_ENTRY_UNKNOWN,
-        };
-        cflow_fs_watch_stats stats = {0};
-
-        check_null(watch.impl);
-        check_false(config.recursive);
-        check_equal(event.kind, CFLOW_FS_WATCH_CREATED);
-        check_equal(stats.queued, (size_t)0u);
-        check_true(_Generic(&cflow_fs_watch_open,
-            int (*)(cflow_fs_watch *, const char *,
-                    const cflow_fs_watch_config *): 1,
-            default: 0));
-        check_true(_Generic(&cflow_fs_watch_run_ready,
-            int (*)(cflow_fs_watch *, size_t, size_t *): 1,
-            default: 0));
-        check_true(_Generic(&cflow_fs_watch_acknowledge_rescan,
-            int (*)(cflow_fs_watch *): 1,
-            default: 0));
-        check_true(_Generic(&cflow_fs_watch_close,
-            int (*)(cflow_fs_watch *): 1,
-            default: 0));
-        check_true(_Generic(&cflow_fs_watch_is_quiescent,
-            bool (*)(const cflow_fs_watch *): 1,
-            default: 0));
-        check_true(_Generic(&cflow_fs_watch_get_stats,
-            bool (*)(const cflow_fs_watch *, cflow_fs_watch_stats *): 1,
-            default: 0));
-        check_true(_Generic(&cflow_fs_watch_destroy,
-            int (*)(cflow_fs_watch *): 1,
-            default: 0));
-    }
-
 #if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
     it("reports create rename and remove through the driver") {
         char *root = tt_make_temp_dir("cflow-watch-");

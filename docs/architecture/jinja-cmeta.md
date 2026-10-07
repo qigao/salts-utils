@@ -1,5 +1,49 @@
 # Jinja CMeta 设计与语法契约
 
+## 2026-10-07 CMeta 生命周期与反射接入
+
+- 环境快照在每项成功复制后提交初始化计数；失败时只销毁已拥有的名字与字符串。
+  创建期间由私有 `JINJA_CMETA_ENV_OWNER` 的 canonical lifecycle 和 `cmeta_scope` 管理，
+  成功后移动句柄给调用方；失败保留错误并统一销毁。环境地址不变，避免内嵌配置字符串的 view 失效。
+  owner 只在单线程创建调用内使用；registry 容量和分配次数不变，不额外分配清理记录。
+  渲染由单个 `JINJA_CMETA_PROVIDER` 拥有资源，通过 CMeta `cmeta_scope` 在正常和早退路径统一销毁。
+  原始输入和 descriptor 借用至 render 返回；闭包 cells、已发布值地址与实例元数据保持原有生命周期。
+- 原生 sequence/set 循环持有独立 `cmeta_data_collection_borrow_cursor`，复用 CSTL 的迭代和版本检查。
+  游标对象保持固定地址，由有界 CSTL allocator Vec 保存拥有指针；上限来自本次 render 的 `max_nodes`，
+  分配走同一内存账本，插入失败回收未发布游标。嵌套循环不共享消费进度，结束时统一销毁。
+  顺序消费 n 项为 O(n) 次游标推进，空间为 O(本次渲染保留的循环数)；随机索引仍保持原有语义。
+- 借用对象身份由对象地址与 `cmeta_data_desc_equal` 共同判断。等价 descriptor 副本不会改变 `sameas`；
+  不同对象仍保持不同身份，模板内部临时值继续使用 render-local serial。
+- 新增可选头 `jinja_cmeta_reflection.h`。`jinja_cmeta_callable_from_invokable` 将已准入 CMeta binding
+  适配为既有 registry callable，参数类型、名称、方向、效果和结果所有权来自 canonical Function metadata。
+  支持已安装 SDK callable universe 内的同步 IN 数值调用（bool/int/long/float/double），结果需显式 VALUE；
+  参数按类型分类检查，整数越界与 float 溢出返回 CAPACITY，重复/缺失/未知参数返回 RENDER。
+  binding、descriptor、capture 与外层模块 lease 均借用，必须覆盖环境和模板的全部使用期。
+  原 callback ABI 保持不变；完整可运行示例见 [反射调用测试](../../jinja/test/test_jinja_reflection.c)。
+- CFlow 仍保留为后续候选：当前模板执行同步、有序，包含惰性消费、Undefined、宏闭包与有副作用回调。
+  直接复用 CMeta 游标即可消除本次发现的重复遍历；本次不新增 CFlow 依赖。
+  若后续基准确认 select/map 管线仍是瓶颈，应单独验证需求驱动、短路、异常、回调顺序与 effects 边界后接入。
+- 兼容性：新增反射函数为附加 API，不改变既有公开结构体；其有限类型范围在注册时明确拒绝，不隐式降级。
+  迁移可分别应用环境计数、身份比较、游标和 scope；反射调用由消费者显式选择。
+  回滚时先移除新 API 的消费点，再撤回适配器；不修改模板格式或持久化数据。
+- 正式验证入口：`test_jinja_environment_memory` 扫描快照所有分配失败点；
+  `test_jinja_cmeta_identity` 验证 descriptor 副本下的别名；`test_jinja_cmeta_cstl_collections`
+  计数原生 List 的游标推进并覆盖嵌套过滤循环；`test_jinja_reflection` 覆盖调用、filter、拒绝和效果边界。
+
+### Salts 2.1 既有类型反射
+
+- 标量及 canonical CSTL 集合测试模型使用 `<cmeta/data_reflect.h>` 的 `cmeta_reflect_data`，
+  字段类型、偏移和布局由同一声明生成，替代手工维护的平行 metadata。已有标量字段 ID 保持不变。
+  需要动态构造或故意破坏 metadata 的测试仍使用可变 fixture，不改写静态反射声明。
+- 这些声明是只读投影，可省略字段；不会获得输入对象、字符串或容器的值所有权。
+  调用方持有对象至同步 render 返回，CSTL 容器仍由原生 owner 销毁。
+  Jinja 继续消费公开 DataDesc，不增加专用 reflection 执行分支或改变模板语法。
+- `test_jinja_cmeta_header_cpp` 覆盖既有 C++ record 的嵌套投影、`attr` 和省略字段的 Undefined；
+  标量与集合行为沿用现有回归。环境分配失败测试同时验证同一 registry 可再次创建成功。
+- 兼容性：新反射 shape 需要 Salts 2.1 SDK/runtime 一起更新；公开 Jinja ABI 保持不变。
+  可分别回退测试模型的 metadata 声明和环境的 scope 接入，无数据迁移。
+  版本与恢复要求见 [Salts v2.1.0 发布说明](https://github.com/qigao/salts/releases/tag/v2.1.0)。
+
 ## 2026-09-09 原生执行决策（issue #26，已实现）
 
 本节覆盖下文历史 lowering 与 `legacy-subset-v1` 设计。用户明确要求两个模块独立，
