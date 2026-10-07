@@ -36,6 +36,8 @@ QuickJS-ng 0.16.2 版本、源码摘要和库配置，但依照
 构建与测试，以及 Android arm64-v8a、iOS device/simulator arm64 交叉构建。
 发布准备额外加入 Linux arm64 Release；该平台保持现有 Capture 关闭契约。
 交叉编译成功不代表移动设备运行测试通过。Release 与 sanitizer 使用独立构建树。
+macOS C/C++ 使用与 Salts 发布 SDK 一致的 GCC 15，保证 TinyTest 等库的 TLS ABI
+一致；平台 Objective-C 源码使用 Apple Clang。构建与测试 host 都安装 GCC 运行库。
 
 ## 构建产物与生命周期
 

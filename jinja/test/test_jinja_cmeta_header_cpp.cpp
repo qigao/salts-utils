@@ -7,7 +7,8 @@
 struct JinjaCppLeaf { int count; };
 struct JinjaCppRoot { JinjaCppLeaf child; int private_value; };
 cmeta_reflect_data(JinjaCppLeaf, "test.jinja.cpp.Leaf",
-    cmeta_field(int, count)
+    // GCC ASan does not treat imported descriptor addresses as constant expressions.
+    cmeta_data_field(int, count, &cmeta_data_int, &cmeta_type_int)
 );
 cmeta_reflect_data(JinjaCppRoot, "test.jinja.cpp.Root",
     cmeta_data_field(JinjaCppLeaf, child, cmeta_reflected_data(JinjaCppLeaf),

@@ -592,6 +592,15 @@
             }
         },
         {
+            "name": "ci-macos-release-user",
+            "inherits": "ci-native-release-user",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc-15",
+                "CMAKE_CXX_COMPILER": "g++-15",
+                "CMAKE_OBJC_COMPILER": "clang"
+            }
+        },
+        {
             "name": "ci-native-minimal-release-user",
             "inherits": "ci-sdk-release-user",
             "cacheVariables": {
@@ -915,6 +924,17 @@
             ]
         },
         {
+            "name": "ci-macos-release-user",
+            "configurePreset": "ci-macos-release-user"
+        },
+        {
+            "name": "install-ci-macos-release-user",
+            "configurePreset": "ci-macos-release-user",
+            "targets": [
+                "install"
+            ]
+        },
+        {
             "name": "ci-native-minimal-release-user",
             "configurePreset": "ci-native-minimal-release-user"
         },
@@ -1009,6 +1029,11 @@
             "execution": {
                 "noTestsAction": "error"
             }
+        },
+        {
+            "name": "ci-macos-release-user",
+            "inherits": "ci-native-release-user",
+            "configurePreset": "ci-macos-release-user"
         },
         {
             "name": "ci-native-minimal-release-user",

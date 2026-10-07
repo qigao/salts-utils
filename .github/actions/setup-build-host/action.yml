@@ -15,7 +15,8 @@ runs:
     shell: bash
     run: |
       set -euo pipefail
-      brew install ninja nasm autoconf automake autoconf-archive libtool
+      brew install ninja nasm autoconf automake autoconf-archive libtool gcc@15
+      echo "$(brew --prefix gcc@15)/bin" >> "$GITHUB_PATH"
   - name: Prepare Windows dependencies
     if: runner.os == 'Windows'
     shell: pwsh

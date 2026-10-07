@@ -28,7 +28,8 @@ cmake_add_executable(salts_idlc
 target_include_directories(salts_idlc
   PRIVATE ${DATABIND_SOURCE_ROOT}/idl/contract)
 set_target_properties(salts_idlc PROPERTIES
-  OUTPUT_NAME "salts-idlc")
+  OUTPUT_NAME "salts-idlc"
+  MACOSX_BUNDLE FALSE)
 
 add_subdirectory(templates)
 get_target_property(TBE_COMPILER_TEMPLATE_FILES salts_idlc SOURCES)
