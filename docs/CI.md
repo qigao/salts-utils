@@ -24,6 +24,14 @@ vcpkg 优先读取共享二进制缓存；未命中时按 manifest 和 baseline 
 生成的缓存只写入本地目录。CI 不要求所有平台的新依赖事先发布到共享 feed；
 认证、下载与编译失败仍立即终止构建。
 
+iOS preset 通过 `cmake/vcpkg-ports/quickjs-ng` 修正工具打包：保持共享 port 的
+QuickJS-ng 0.16.2 版本、源码摘要和库配置，但依照
+[上游 iOS 安装规则](https://github.com/quickjs-ng/quickjs/blob/v0.16.2/CMakeLists.txt#L517)
+不复制未生成的 `qjs/qjsc`。共享 port 来源为
+[qigao/vcpkg-cache 6f23a1e](https://github.com/qigao/vcpkg-cache/tree/6f23a1e4a5fc51ed5377d92611b66769f87280e9/ports/quickjs-ng)。
+其他平台继续使用共享 port；共享版本修正并经 iOS device/simulator 构建验证后，
+删除该本地 recipe 和 preset 中的 overlay 设置。
+
 普通 CI 覆盖 Linux x64、Windows x64、macOS arm64 Release 和 Linux ASan/UBSan
 构建与测试，以及 Android arm64-v8a、iOS device/simulator arm64 交叉构建。
 发布准备额外加入 Linux arm64 Release；该平台保持现有 Capture 关闭契约。
