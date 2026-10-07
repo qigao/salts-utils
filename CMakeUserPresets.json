@@ -23,7 +23,8 @@
                 "VCPKG_HOST_TRIPLET": "x64-windows"
             },
             "environment": {
-                "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{LOCALAPPDATA}/qigao/vcpkg-cache"
+                "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{LOCALAPPDATA}/qigao/vcpkg-cache",
+                "RE2C_ROOT": "$env{PKG_ROOT}/re2c/windows-x64"
             }
         },
         {
@@ -273,7 +274,6 @@
                 "PROJECT_ROOT": "$penv{PROJECT_ROOT}",
                 "PKG_ROOT": "$env{PROJECT_ROOT}/external/pkgs",
                 "VCPKG_ROOT": "$penv{VCPKG_ROOT}",
-                "RE2C_ROOT": "$penv{RE2C_ROOT}",
                 "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed"
             },
             "inherits": "vcpkg-cache-windows"
@@ -379,7 +379,6 @@
             },
             "environment": {
                 "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/windows-x64",
-                "RE2C_ROOT": "$penv{RE2C_ROOT}",
                 "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
@@ -576,7 +575,6 @@
             },
             "environment": {
                 "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/windows-x64",
-                "RE2C_ROOT": "$penv{RE2C_ROOT}",
                 "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Clang-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [

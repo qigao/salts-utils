@@ -46,7 +46,9 @@ macOS C/C++ 使用与 Salts 发布 SDK 一致的 GCC 15，保证 TinyTest 等库
 测试 job 不再解析 latest；不同 profile 不共享可变构建树。
 构建和测试 job 使用同一版本的共享 vcpkg setup action，以只读模式恢复临时目录中的
 工具链、triplet 和缓存凭据。现有包配置测试会启动嵌套 CMake，并继承生产构建的
-编译器、配置与 sanitizer 链接参数；仅恢复 vcpkg 安装树不足以运行这些测试。
+vcpkg 安装目录、triplet、编译器、配置与 sanitizer 链接参数；仅恢复 vcpkg 安装树
+不足以运行这些测试。Lua 绑定和导出的 SDK 配置统一依赖 manifest 已安装的
+`unofficial-lua` CMake config，由其 imported target 提供头文件及 Debug/Release 库。
 
 恢复前核对 commit、工作区绝对路径、OS/架构和 profile。归档同时保存源文件时间戳、
 构建树、vcpkg 安装树、SDK 以及公开 SDK 路径，不保存 token 或 NuGet 凭据配置。

@@ -2,8 +2,10 @@ list(JOIN SANITIZER_LINK_FLAGS " " _databind_package_sanitizer_link_flags)
 # Nested package tests must use the ABI and instrumentation of the exported tree.
 set(_databind_package_test_args
   "-DSALTS_UTILS_PACKAGE_DIR=${CMAKE_BINARY_DIR}"
-  "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
   "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+  "-DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}"
+  "-DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}"
+  "-DVCPKG_HOST_TRIPLET=${VCPKG_HOST_TRIPLET}"
   "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
   "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
   "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
@@ -19,6 +21,7 @@ add_test(
     -S "${CMAKE_CURRENT_SOURCE_DIR}/databind_repeated_find"
     -B "${CMAKE_CURRENT_BINARY_DIR}/databind_repeated_find_build"
     -G "${CMAKE_GENERATOR}"
+    "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
     ${_databind_package_test_args})
 
 set_tests_properties(
@@ -34,6 +37,7 @@ add_test(
     -S "${CMAKE_CURRENT_SOURCE_DIR}/databind_adapters"
     -B "${CMAKE_CURRENT_BINARY_DIR}/databind_adapters_build"
     -G "${CMAKE_GENERATOR}"
+    "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
     ${_databind_package_test_args})
 
 set_tests_properties(

@@ -11,12 +11,10 @@ unset(Salts_DIR)
 find_dependency(Salts CONFIG REQUIRED PATHS "${_salts_utils_salts_root}"
                 NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
-find_dependency(Lua)
+find_dependency(unofficial-lua CONFIG)
 if(NOT TARGET Lua::Lua)
   add_library(Lua::Lua INTERFACE IMPORTED)
-  set_target_properties(Lua::Lua PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${LUA_INCLUDE_DIR}"
-    INTERFACE_LINK_LIBRARIES "${LUA_LIBRARIES}")
+  target_link_libraries(Lua::Lua INTERFACE lua)
 endif()
 find_dependency(qjs CONFIG)
 
