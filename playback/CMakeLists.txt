@@ -4,8 +4,9 @@ if(NOT WIN32 AND NOT ANDROID AND NOT APPLE AND
           "Salts Playback supports only Windows, Linux, macOS, Android, and iOS")
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(APPLE)
   enable_language(OBJC)
+  # CoreAudio headers use Blocks even when the public playback API is C.
   set_source_files_properties(src/miniaudio_impl.c PROPERTIES LANGUAGE OBJC)
 endif()
 
