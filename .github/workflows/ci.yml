@@ -50,6 +50,9 @@ jobs:
             throw 'CMake and package versions differ'
           }
           "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Qualify nupkg permission rewrite
+        shell: bash
+        run: python3 packaging/nuget/test_preserve_nupkg_permissions.py
   native:
     needs: scope
     if: needs.scope.outputs.has_builds == 'true'
