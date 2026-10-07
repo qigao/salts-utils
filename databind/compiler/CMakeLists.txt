@@ -53,9 +53,12 @@ foreach(template_file IN LISTS TBE_COMPILER_TEMPLATE_FILES)
     VERBATIM)
 endforeach()
 
-install(
-  TARGETS salts_idlc
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind)
+# iOS consumers run the compiler from a separate host SDK.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  install(
+    TARGETS salts_idlc
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind)
+endif()
 
 # =============================================================================
 # Tests

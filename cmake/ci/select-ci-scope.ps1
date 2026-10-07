@@ -26,8 +26,7 @@ $profiles = @(
   @{ id='macos-release'; runner='macos-15'; family='mac'; rid='macos-arm64'; host='macos-arm64'; triplet='arm64-osx'; host_triplet='arm64-osx'; preset='ci-macos-release-user' },
   @{ id='linux-sanitizers'; runner='ubuntu-24.04'; family='linux'; rid='linux-x64'; host='linux-x64'; triplet='x64-linux'; host_triplet='x64-linux'; preset='ci-linux-dev-user' },
   @{ id='android-release'; runner='ubuntu-24.04'; family='android'; rid='android-arm64-v8a'; host='linux-x64'; triplet='arm64-android'; host_triplet='x64-linux'; preset='ci-android-sdk-release-user' },
-  @{ id='ios-release'; runner='macos-15'; family='ios'; rid='ios-arm64'; host='macos-arm64'; triplet='arm64-ios'; host_triplet='arm64-osx'; sysroot='iphoneos'; preset='ci-ios-sdk-release-user' },
-  @{ id='ios-simulator-release'; runner='macos-15'; family='ios'; rid='ios-simulator-arm64'; host='macos-arm64'; triplet='arm64-ios-simulator'; host_triplet='arm64-osx'; sysroot='iphonesimulator'; preset='ci-ios-sdk-release-user' }
+  @{ id='ios-release'; runner='macos-15'; family='ios'; rid='ios-arm64'; host='macos-arm64'; triplet='arm64-ios'; host_triplet='arm64-osx'; sysroot='iphoneos'; preset='ci-ios-sdk-release-user' }
 )
 if ($PrepareRelease) {
   $profiles += @{ id='linux-arm64-release'; runner='ubuntu-24.04-arm'; family='linux'; rid='linux-arm64'; host='linux-arm64'; triplet='arm64-linux'; host_triplet='arm64-linux'; preset='ci-native-minimal-release-user' }

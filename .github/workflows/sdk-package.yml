@@ -26,6 +26,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
+        trap 'echo "::error::Package payload check failed at line $LINENO: $BASH_COMMAND"' ERR
         test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
         test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake
         test -f package/sdk/linux-x64/include/data_bind_binding_plan.h
@@ -54,18 +55,17 @@ jobs:
         test -f package/sdk/android-arm64-v8a/include/data_bind_cmeta_adapter_plan.h
         test -f package/sdk/android-arm64-v8a/include/salts_capture.h
         test -f package/sdk/android-arm64-v8a/include/salts_playback.h
-        for rid in ios-arm64 ios-simulator-arm64; do
-          test -f "package/sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -f "package/sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake"
-          test -f "package/sdk/$rid/include/data_bind_binding_plan.h"
-          test -f "package/sdk/$rid/include/data_bind_cmeta_adapter_plan.h"
-          test -f "package/sdk/$rid/include/salts_capture.h"
-          test -f "package/sdk/$rid/include/salts_playback.h"
-          test ! -e "package/sdk/$rid/bin/salts-idlc"
-          test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
-          test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
-        done
-        test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 7
+        rid=ios-arm64
+        test -f "package/sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+        test -f "package/sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake"
+        test -f "package/sdk/$rid/include/data_bind_binding_plan.h"
+        test -f "package/sdk/$rid/include/data_bind_cmeta_adapter_plan.h"
+        test -f "package/sdk/$rid/include/salts_capture.h"
+        test -f "package/sdk/$rid/include/salts_playback.h"
+        test ! -e "package/sdk/$rid/bin/salts-idlc"
+        test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
+        test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
+        test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 6
     - uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
@@ -132,20 +132,19 @@ jobs:
         grep -Fx "sdk/android-arm64-v8a/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/android-arm64-v8a/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/android-arm64-v8a/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        for rid in ios-arm64 ios-simulator-arm64; do
-          grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$rid/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$rid/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$rid/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$rid/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$rid/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          if grep -Fxq "sdk/$rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
-            echo "target iOS RID must not package host salts-idlc: $rid" >&2
-            exit 1
-          fi
-        done
+        rid=ios-arm64
+        grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/$rid/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/$rid/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/$rid/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/$rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/$rid/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/$rid/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        if grep -Fxq "sdk/$rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
+          echo "target iOS RID must not package host salts-idlc: $rid" >&2
+          exit 1
+        fi
         mac_rid=macos-arm64
         grep -Fx "sdk/$mac_rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/$mac_rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"

@@ -13,7 +13,6 @@ The re2c host generator is a build-time tool and is not a runtime dependency of 
 - `sdk/macos-arm64/`
 - `sdk/android-arm64-v8a/`
 - `sdk/ios-arm64/`
-- `sdk/ios-simulator-arm64/`
 
 Each directory is a normal CMake install prefix containing
 `lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake`.

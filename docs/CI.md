@@ -12,7 +12,7 @@ Capture、宿主生成器及 sanitizer 配置。CI 只编排已有 CMake/CTest g
 | [select-ci-scope.ps1](../cmake/ci/select-ci-scope.ps1) | 根据实际 git diff 生成构建和测试矩阵 |
 | [native-build.yml](../.github/workflows/native-build.yml) | 每个配置完整编译一次，上传构建产物；发布准备时安装 SDK |
 | [native-tests.yml](../.github/workflows/native-tests.yml) | 恢复相同提交的产物和工具链，运行完整 CTest graph，不重建主工程 |
-| [sdk-package.yml](../.github/workflows/sdk-package.yml) | 合并本轮七个平台 SDK，生成 NuGet 工件 |
+| [sdk-package.yml](../.github/workflows/sdk-package.yml) | 合并本轮六个平台 SDK，生成 NuGet 工件 |
 | [native-sdk-release.yml](../.github/workflows/native-sdk-release.yml) | 校验既有 tag、精确 SHA 和成功准备 run，原样发布包 |
 
 矩阵由 selector 单独维护；编译器、模块开关和依赖路径由 `CMakeUserPresets.json`
@@ -29,11 +29,11 @@ QuickJS-ng 0.16.2 版本、源码摘要和库配置，但依照
 [上游 iOS 安装规则](https://github.com/quickjs-ng/quickjs/blob/v0.16.2/CMakeLists.txt#L517)
 不复制未生成的 `qjs/qjsc`。共享 port 来源为
 [qigao/vcpkg-cache 6f23a1e](https://github.com/qigao/vcpkg-cache/tree/6f23a1e4a5fc51ed5377d92611b66769f87280e9/ports/quickjs-ng)。
-其他平台继续使用共享 port；共享版本修正并经 iOS device/simulator 构建验证后，
+其他平台继续使用共享 port；共享版本修正并经 iOS 真机构建验证后，
 删除该本地 recipe 和 preset 中的 overlay 设置。
 
 普通 CI 覆盖 Linux x64、Windows x64、macOS arm64 Release 和 Linux ASan/UBSan
-构建与测试，以及 Android arm64-v8a、iOS device/simulator arm64 交叉构建。
+构建与测试，以及 Android arm64-v8a、iOS 真机 arm64 交叉构建。
 发布准备额外加入 Linux arm64 Release；该平台保持现有 Capture 关闭契约。
 交叉编译成功不代表移动设备运行测试通过。Release 与 sanitizer 使用独立构建树。
 macOS C/C++ 使用与 Salts 发布 SDK 一致的 GCC 15，保证 TinyTest 等库的 TLS ABI
@@ -70,7 +70,7 @@ Windows 恢复原 triplet，通过 preset 的 PATH 选择依赖；不手工复�
 4. 手动运行 `native-sdk-release.yml`，传入 `release_sha`、`tag`、`ci_run_id`。
 
 发布 job 校验准备 run 来自本仓库、默认分支、`ci.yml` 的手动成功运行，并逐个核对包内
-七个平台 manifest 的版本、提交与 Release profile。仅 publisher 持有发布权限；PR 和
+六个平台 manifest 的版本、提交与 Release profile。仅 publisher 持有发布权限；PR 和
 普通 CI 不发布。包名仍为 `SaltsUtils.Native`，平台 install tree 保持 `sdk/<RID>`。
 
 分支保护应使用新的 `CI result` 状态。需要回滚时，回滚整套 workflow、actions、selector
@@ -88,4 +88,4 @@ cmake --build --preset ci-win-release-user --parallel 2
 ctest --preset ci-win-release-user --no-tests=error --output-on-failure --timeout 180 --parallel 2
 ```
 
-本地构建与语法检查不能替代 hosted runner 的跨 job 恢复、七平台构建及发布权限验证。
+本地构建与语法检查不能替代 hosted runner 的跨 job 恢复、六平台构建及发布权限验证。
