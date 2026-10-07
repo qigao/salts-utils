@@ -56,23 +56,30 @@ static wchar_t *utf8_to_wchar(const char *utf8_str) {
   return wstr;
 }
 
-static char *wchar_to_utf8(const wchar_t *wstr) {
+static tstr wchar_to_utf8(const wchar_t *wstr) {
   int len;
-  char *str;
+  tstr str;
 
   if (!wstr) return NULL;
   len = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
   if (len <= 0) return NULL;
 
-  str = (char *)malloc((size_t)len);
+  /* Port storage clones and destroys these values through tstr traits. */
+  str = tstr_new_len(NULL, (size_t)len - 1);
   if (!str) return NULL;
 
   if (WideCharToMultiByte(CP_UTF8, 0, wstr, -1, str, len, NULL, NULL) <= 0) {
-    free(str);
+    tstr_free(str);
     return NULL;
   }
   return str;
 }
+
+#ifdef SALTS_SERIAL_TESTING
+tstr salts_serial_test_wchar_to_utf8(const wchar_t *wstr) {
+  return wchar_to_utf8(wstr);
+}
+#endif
 
 static void format_device_path(const char *port_name, wchar_t *out_path, size_t max_chars) {
   if (_strnicmp(port_name, "\\\\.\\", 4) == 0) {
@@ -152,6 +159,11 @@ static salts_serial_result_t win32_list_ports(salts_serial_port_info_vec_t *vec)
       storage.name = wchar_to_utf8(port_name_w);
       storage.description = wchar_to_utf8(desc_w);
       storage.usb_manufacturer = wchar_to_utf8(mfg_w);
+      if (!storage.name || !storage.description || !storage.usb_manufacturer) {
+        salts_serial_port_info_storage_destroy(&storage);
+        SetupDiDestroyDeviceInfoList(dev_info);
+        return SALTS_SERIAL_NO_MEMORY;
+      }
 
       storage.view.name = storage.name;
       storage.view.description = storage.description;

@@ -101,6 +101,27 @@ static const salts_serial_backend_ops_t fake_backend_ops = {
 };
 
 suite("salts_serial mocked backend") {
+#if defined(_WIN32) || defined(__CYGWIN__)
+  it("owns converted Windows metadata through tstr storage traits") {
+    salts_serial_port_info_storage_t source = {0};
+    salts_serial_port_info_storage_t copy = {0};
+    source.name = salts_serial_test_wchar_to_utf8(L"COM7");
+    source.description = salts_serial_test_wchar_to_utf8(L"\u4e32\u53e3");
+    source.usb_manufacturer = salts_serial_test_wchar_to_utf8(L"");
+    check_not_null(source.name);
+    check_not_null(source.description);
+    check_not_null(source.usb_manufacturer);
+    check_equal(tstr_len(source.name), 4u);
+    check_equal(tstr_len(source.description), 6u);
+    check_equal(tstr_len(source.usb_manufacturer), 0u);
+    check_true(salts_serial_port_info_storage_copy(&copy, &source));
+    salts_serial_port_info_storage_destroy(&source);
+    check_equal(copy.view.name, "COM7");
+    check_equal(copy.view.description, "\xe4\xb8\xb2\xe5\x8f\xa3");
+    check_equal(copy.view.usb_manufacturer, "");
+    salts_serial_port_info_storage_destroy(&copy);
+  }
+#endif
   static salts_serial_t *serial;
 
   before_each() {

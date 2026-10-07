@@ -64,6 +64,7 @@ runs:
         throw "Compiled artifact runtime is missing"
       }
       "VCPKG_WINDOWS_TRIPLET=$triplet" >> $env:GITHUB_ENV
+      "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
       "QIGAO_TARGET_TRIPLET=$triplet" >> $env:GITHUB_ENV
       "QIGAO_HOST_TRIPLET=$triplet" >> $env:GITHUB_ENV
       $runtime >> $env:GITHUB_PATH

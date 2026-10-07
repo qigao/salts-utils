@@ -11,7 +11,7 @@ Capture、宿主生成器及 sanitizer 配置。CI 只编排已有 CMake/CTest g
 | [ci.yml](../.github/workflows/ci.yml) | PR、master push、手动入口；提供统一 `CI result` 状态 |
 | [select-ci-scope.ps1](../cmake/ci/select-ci-scope.ps1) | 根据实际 git diff 生成构建和测试矩阵 |
 | [native-build.yml](../.github/workflows/native-build.yml) | 每个配置完整编译一次，上传构建产物；发布准备时安装 SDK |
-| [native-tests.yml](../.github/workflows/native-tests.yml) | 恢复相同提交的产物，运行完整 CTest graph，不重新 configure/build |
+| [native-tests.yml](../.github/workflows/native-tests.yml) | 恢复相同提交的产物和工具链，运行完整 CTest graph，不重建主工程 |
 | [sdk-package.yml](../.github/workflows/sdk-package.yml) | 合并本轮七个平台 SDK，生成 NuGet 工件 |
 | [native-sdk-release.yml](../.github/workflows/native-sdk-release.yml) | 校验既有 tag、精确 SHA 和成功准备 run，原样发布包 |
 
@@ -44,6 +44,9 @@ macOS C/C++ 使用与 Salts 发布 SDK 一致的 GCC 15，保证 TinyTest 等库
 每个 build job 是其源码、编译产物和已解析依赖的唯一生产者。Salts/re2c 的 latest
 只在该 job 中解析，包存放于工作区 `stage/nuget`，随构建归档交给测试 job。
 测试 job 不再解析 latest；不同 profile 不共享可变构建树。
+构建和测试 job 使用同一版本的共享 vcpkg setup action，以只读模式恢复临时目录中的
+工具链、triplet 和缓存凭据。现有包配置测试会启动嵌套 CMake，并继承生产构建的
+编译器、配置与 sanitizer 链接参数；仅恢复 vcpkg 安装树不足以运行这些测试。
 
 恢复前核对 commit、工作区绝对路径、OS/架构和 profile。归档同时保存源文件时间戳、
 构建树、vcpkg 安装树、SDK 以及公开 SDK 路径，不保存 token 或 NuGet 凭据配置。

@@ -1374,7 +1374,8 @@ static int mustache_process_impl(const MUSTACHE_TEMPLATE *t, const MUSTACHE_REND
     }
 
     case MUSTACHE_OP_INDENT:
-      if (renderer->out_verbatim((const char *)(indent_buffer.data), indent_buffer.n,
+      if (indent_buffer.n != 0 &&
+          renderer->out_verbatim((const char *)(indent_buffer.data), indent_buffer.n,
                                  renderer_data) != 0)
         goto err;
       break;
