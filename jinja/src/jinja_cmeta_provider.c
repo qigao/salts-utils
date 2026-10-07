@@ -5014,8 +5014,10 @@ static JINJA_CMETA_STATUS jinja_slice_value(JINJA_CMETA_PROVIDER *provider,
   if (base->kind == JINJA_CMETA_VALUE_RANGE) length = base->range.count;
   else if (jinja_value_is_collection(base->kind)) length = base->collection_item_count;
   else if (base->kind == JINJA_CMETA_VALUE_NODE && jinja_is_sequence_desc(base->node.desc)) {
-    status = jinja_collection_length(&base->node, &length);
+    size_t borrowed_count = 0u;
+    status = jinja_collection_length(&base->node, &borrowed_count);
     if (status != JINJA_CMETA_OK) return status;
+    length = borrowed_count;
   } else return JINJA_CMETA_ERR_RENDER;
   status = jinja_slice_normalize(provider, bounds, length, &slice);
   if (status != JINJA_CMETA_OK) return status;
