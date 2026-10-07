@@ -56,8 +56,7 @@
             "cacheVariables": {
                 "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
                 "VCPKG_TARGET_TRIPLET": "$env{QIGAO_TARGET_TRIPLET}",
-                "VCPKG_HOST_TRIPLET": "$env{QIGAO_TARGET_TRIPLET}",
-                "VCPKG_INSTALL_OPTIONS": "--only-binarycaching"
+                "VCPKG_HOST_TRIPLET": "$env{QIGAO_TARGET_TRIPLET}"
             },
             "environment": {
                 "PKG_ROOT": "${sourceDir}/stage",
@@ -215,7 +214,6 @@
             "cacheVariables": {
                 "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
                 "VCPKG_TARGET_TRIPLET": "x64-linux",
-                "VCPKG_INSTALL_OPTIONS": "--only-binarycaching",
                 "SALTS_UTILS_ENABLE_CAPTURE": false,
                 "BUILD_TESTS": true,
                 "BUILD_BENCHMARKS": true,

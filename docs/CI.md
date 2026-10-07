@@ -20,6 +20,10 @@ Capture、宿主生成器及 sanitizer 配置。CI 只编排已有 CMake/CTest g
 源码路径或 target 白名单。手动运行始终选择完整图。新增构建依赖或功能后，失败应在
 所属 CMake/preset/模块中修复，不能通过排除对应测试来恢复绿色。
 
+vcpkg 优先读取共享二进制缓存；未命中时按 manifest 和 baseline 正常从源码构建，
+生成的缓存只写入本地目录。CI 不要求所有平台的新依赖事先发布到共享 feed；
+认证、下载与编译失败仍立即终止构建。
+
 普通 CI 覆盖 Linux x64、Windows x64、macOS arm64 Release 和 Linux ASan/UBSan
 构建与测试，以及 Android arm64-v8a、iOS device/simulator arm64 交叉构建。
 发布准备额外加入 Linux arm64 Release；该平台保持现有 Capture 关闭契约。

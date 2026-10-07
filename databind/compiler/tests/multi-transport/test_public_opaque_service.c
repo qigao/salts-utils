@@ -69,7 +69,7 @@ spec("generated opaque bytes Service composition") {
             plan, DATA_BIND_OPAQUE_VALUE,
             payload, sizeof(payload), &span, &error),
         DATA_BIND_OK);
-    check_equal(span.data, payload);
+    check_true(span.data == payload);
     check_equal(span.bytes, sizeof(payload));
 
     check_equal(
