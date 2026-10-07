@@ -12,14 +12,16 @@
             "cacheVariables": {
                 "CMAKE_SYSTEM_NAME": "Android",
                 "ANDROID_STL": "c++_shared",
-                "ANDROID_PLATFORM": "android-26"
+                "ANDROID_PLATFORM": "android-24",
+                "BUILD_TESTING": false
             }
         },
         {
             "name": "android-vcpkg-chainload",
             "hidden": true,
             "cacheVariables": {
-                "VCPKG_MANIFEST_MODE": true
+                "VCPKG_MANIFEST_MODE": true,
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake"
             }
         },
         {
@@ -27,8 +29,6 @@
             "hidden": true,
             "inherits": "ISWindows",
             "cacheVariables": {
-                "PKG_CONFIG_EXECUTABLE": "${sourceDir}/vcpkg_installed/x64-windows/tools/pkgconf/pkgconf.exe",
-                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
                 "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed"
             }
         },
@@ -40,20 +40,23 @@
             "cacheVariables": {
                 "ANDROID_ABI": "arm64-v8a",
                 "VCPKG_TARGET_TRIPLET": "arm64-android",
+                "ENABLE_TESTS": false,
                 "BUILD_TESTS": "OFF",
                 "BUILD_EXAMPLES": "OFF"
             }
         },
         {
             "name": "android-arm64-v8a-release",
-            "hidden": true,
+            "displayName": "Android arm64-v8a Release",
             "inherits": ["android-base", "release-mode"],
             "binaryDir": "${sourceDir}/build/android-arm64-v8a-release",
             "cacheVariables": {
                 "ANDROID_ABI": "arm64-v8a",
                 "VCPKG_TARGET_TRIPLET": "arm64-android",
+                "ENABLE_TESTS": false,
                 "BUILD_TESTS": "OFF",
-                "BUILD_EXAMPLES": "OFF"
+                "BUILD_EXAMPLES": "OFF",
+                "BUILD_BENCHMARKS": "OFF"
             }
         },
         {
@@ -64,6 +67,7 @@
             "cacheVariables": {
                 "ANDROID_ABI": "x86_64",
                 "VCPKG_TARGET_TRIPLET": "x64-android",
+                "ENABLE_TESTS": false,
                 "BUILD_TESTS": "OFF",
                 "BUILD_EXAMPLES": "OFF"
             }
@@ -76,6 +80,7 @@
             "cacheVariables": {
                 "ANDROID_ABI": "x86_64",
                 "VCPKG_TARGET_TRIPLET": "x64-android",
+                "ENABLE_TESTS": false,
                 "BUILD_TESTS": "OFF",
                 "BUILD_EXAMPLES": "OFF"
             }
@@ -88,6 +93,7 @@
             "cacheVariables": {
                 "ANDROID_ABI": "x86",
                 "VCPKG_TARGET_TRIPLET": "x86-android",
+                "ENABLE_TESTS": false,
                 "BUILD_TESTS": "OFF",
                 "BUILD_EXAMPLES": "OFF"
             }
@@ -100,6 +106,7 @@
             "cacheVariables": {
                 "ANDROID_ABI": "x86",
                 "VCPKG_TARGET_TRIPLET": "x86-android",
+                "ENABLE_TESTS": false,
                 "BUILD_TESTS": "OFF",
                 "BUILD_EXAMPLES": "OFF"
             }

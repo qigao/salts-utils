@@ -10,7 +10,9 @@
             "toolchainFile": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/cmake/QigaoVcpkgToolchain.cmake",
             "environment": {
                 "VCPKG_BINARY_SOURCES": "clear;default,readwrite;nugettimeout,1800;nugetconfig,${sourceDir}/cmake/vcpkg-cache.nuget.config,read",
-                "VCPKG_OVERLAY_PORTS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/ports"
+                "VCPKG_OVERLAY_PORTS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/ports",
+                "RE2C_ROOT": "$penv{RE2C_ROOT}",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}$penv{PATH}"
             }
         },
         {
@@ -84,7 +86,7 @@
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}",
                 "LD_LIBRARY_PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}",
                 "DYLD_LIBRARY_PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{DYLD_LIBRARY_PATH}"
             }
@@ -145,7 +147,7 @@
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}",
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "PATH": "${sourceDir}/build/ci-win-dev/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/ci-win-dev/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             }
         },
         {
@@ -202,7 +204,7 @@
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/stage/sdk/windows-x64"
             },
             "environment": {
-                "PATH": "${sourceDir}/build/Msvc-SDK-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-SDK-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             }
         },
         {
@@ -361,7 +363,7 @@
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "PATH": "${sourceDir}/build/Msvc/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-dev-user",
@@ -377,8 +379,8 @@
             },
             "environment": {
                 "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/windows-x64",
-                "RE2C_ROOT": "${sourceDir}/stage/dependencies/re2c/windows-x64",
-                "PATH": "${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "RE2C_ROOT": "$penv{RE2C_ROOT}",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-release-user",
@@ -389,7 +391,7 @@
             "name": "win-capture-dev-user",
             "binaryDir": "${sourceDir}/build/Msvc-Capture",
             "environment": {
-                "PATH": "${sourceDir}/build/Msvc-Capture/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-Capture/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": "win-dev-user"
         },
@@ -397,7 +399,7 @@
             "name": "win-capture-release-user",
             "binaryDir": "${sourceDir}/build/Msvc-Capture-Release",
             "environment": {
-                "PATH": "${sourceDir}/build/Msvc-Capture-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-Capture-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": "win-release-user"
         },
@@ -437,7 +439,7 @@
             },
             "environment": {
                 "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/linux-x64",
-                "RE2C_ROOT": "${sourceDir}/stage/dependencies/re2c/linux-x64",
+                "RE2C_ROOT": "$penv{RE2C_ROOT}",
                 "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": [
@@ -469,7 +471,7 @@
             },
             "environment": {
                 "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/linux-x64",
-                "RE2C_ROOT": "${sourceDir}/stage/dependencies/re2c/linux-x64"
+                "RE2C_ROOT": "$penv{RE2C_ROOT}"
             },
             "inherits": [
                 "release-linux-ninja",
@@ -557,7 +559,7 @@
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "PATH": "${sourceDir}/build/Clang/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Clang/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-dev-clang-user",
@@ -574,8 +576,8 @@
             },
             "environment": {
                 "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/windows-x64",
-                "RE2C_ROOT": "${sourceDir}/stage/dependencies/re2c/windows-x64",
-                "PATH": "${sourceDir}/build/Clang-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "RE2C_ROOT": "$penv{RE2C_ROOT}",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Clang-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-release-clang-user",
@@ -949,22 +951,22 @@
     "testPresets": [
         {
             "name": "ci-win-dev-user",
-            "inherits": "base-test",
+            "inherits": "ci-native-release-user",
             "configurePreset": "ci-win-dev-user"
         },
         {
             "name": "ci-win-release-user",
-            "inherits": "base-test",
+            "inherits": "ci-native-release-user",
             "configurePreset": "ci-win-release-user"
         },
         {
             "name": "ci-linux-release-user",
-            "inherits": "base-test",
+            "inherits": "ci-native-release-user",
             "configurePreset": "ci-linux-release-user"
         },
         {
             "name": "ci-linux-dev-user",
-            "inherits": "base-test",
+            "inherits": "ci-native-release-user",
             "configurePreset": "ci-linux-dev-user",
             "environment": {
                 "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1"
