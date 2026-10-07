@@ -17,6 +17,8 @@ runs:
       set -euo pipefail
       brew install ninja nasm autoconf automake autoconf-archive libtool gcc@15
       echo "$(brew --prefix gcc@15)/bin" >> "$GITHUB_PATH"
+      apple_clang="$(xcrun --find clang)"
+      echo "QIGAO_APPLE_CLANG=$apple_clang" >> "$GITHUB_ENV"
   - name: Prepare Windows dependencies
     if: runner.os == 'Windows'
     shell: pwsh

@@ -597,7 +597,7 @@
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "gcc-15",
                 "CMAKE_CXX_COMPILER": "g++-15",
-                "CMAKE_OBJC_COMPILER": "clang"
+                "CMAKE_OBJC_COMPILER": "$penv{QIGAO_APPLE_CLANG}"
             }
         },
         {
