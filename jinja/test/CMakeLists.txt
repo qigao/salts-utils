@@ -99,16 +99,22 @@ foreach(test_source IN LISTS JINJA_TEMPLATE_TEST_SOURCES)
 endforeach()
 
 set(JINJA_NATIVE_TEST_SOURCES
+  test_jinja_environment_memory.c
   test_jinja_native_functions_size.c
   test_jinja_native_functions_execution.c
   test_jinja_native_functions_stable_cells.c
   test_jinja_native_functions_lowering.c)
 foreach(test_source IN LISTS JINJA_NATIVE_TEST_SOURCES)
   get_filename_component(test_target "${test_source}" NAME_WE)
+  set(environment_source ../src/jinja_cmeta_environment.c)
+  if(test_source STREQUAL "test_jinja_environment_memory.c")
+    # The allocation-failure fixture compiles this owner with its test allocator.
+    set(environment_source)
+  endif()
   cmake_add_test(${test_target}
     SOURCES ${test_source}
             ../src/jinja_cmeta.c ../src/jinja_cmeta_provider.c ../src/jinja_cmeta_layout.c ../src/jinja_float.c
-            ../src/jinja_cmeta_cells.c ../src/jinja_cmeta_environment.c ../src/jinja_cmeta_runtime.c
+            ../src/jinja_cmeta_cells.c ${environment_source} ../src/jinja_cmeta_runtime.c
             ../src/parser/jinja_template_parser.c ../src/parser/jinja_expression_parser.c
             ${JINJA_TEXT_LEXER_GEN}
             ${JINJA_EXPRESSION_LEXER_GEN} ${JINJA_EXPRESSION_GRAMMAR_GEN} ${JINJA_TEMPLATE_LEXER_GEN}
@@ -148,3 +154,9 @@ cmake_add_test(test_jinja_artifact_storage
   INCLUDES ${TEST_INCLUDES}
   FOLDER "jinja/tests")
 set_tests_properties(test_jinja_artifact_storage PROPERTIES LABELS "jinja;compiler;storage;unit")
+
+cmake_add_test(test_jinja_reflection
+  SOURCES test_jinja_reflection.c
+  LIBS Salts::JinjaCMeta Salts::TinyTest
+  FOLDER "jinja/tests")
+set_tests_properties(test_jinja_reflection PROPERTIES LABELS "jinja;cmeta;unit")

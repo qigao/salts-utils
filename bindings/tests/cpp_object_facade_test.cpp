@@ -1,5 +1,6 @@
 #include <salts/bindings/lua.hpp>
 #include <salts/bindings/quickjs.hpp>
+#include <data_bind_typescript.h>
 
 extern "C" {
 #include <lauxlib.h>
@@ -13,6 +14,7 @@ extern "C" {
 #include <cstring>
 #include <type_traits>
 #include <utility>
+#include <string>
 
 static_assert(!std::is_copy_constructible_v<Salts::Lua::StackGuard>);
 static_assert(std::is_move_constructible_v<Salts::Lua::StackGuard>);
@@ -115,6 +117,32 @@ static JSValue cpp_object_eval(JSContext *context, const char *source) {
 }
 
 spec("C++ canonical object binding facade") {
+  it("derives declaration mutability from the canonical field provider") {
+    cpp_object_box box{7};
+    cmeta_object_ref object = CMETA_OBJECT_REF_INIT;
+    const salts_binding_object exports[] = {{"box", &object}};
+    const salts_binding_module module{nullptr, 0, exports, 1};
+    const DataBindTypeScriptOptions options{"Native", 8, 8, 32, 4096};
+    std::string text;
+    auto write = [](void *context, const char *bytes, size_t size) -> bool {
+      static_cast<std::string *>(context)->append(bytes, size);
+      return true;
+    };
+    check_equal(cmeta_object_borrow(&object, &box, &cpp_object_data, nullptr), CMETA_OK);
+    check_equal(data_bind_typescript_emit(&module, &options, write, &text), CMETA_OK);
+    check_equal(text.c_str(),
+        "export interface NativeBindings {\n  \"box\": { readonly \"value\": number; };\n}\n");
+    cmeta_object_release(&object);
+    text.clear();
+    check_equal(cmeta_object_borrow_with_providers(&object, &box, &cpp_object_data,
+        &cpp_object_field_provider, nullptr), CMETA_OK);
+    check_equal(data_bind_typescript_emit(&module, &options, write, &text), CMETA_OK);
+    check_equal(text.c_str(),
+        "export interface NativeBindings {\n  \"box\": { \"value\": number; };\n}\n");
+    check_equal(box.value, 7);
+    cmeta_object_release(&object);
+  }
+
   it("binds one typed native object into both runtimes") {
     lua_State *lua_state = luaL_newstate();
     JSRuntime *runtime = JS_NewRuntime();

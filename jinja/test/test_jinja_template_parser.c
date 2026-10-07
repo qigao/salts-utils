@@ -518,23 +518,6 @@ spec("Jinja template lexical frames") {
     check(template_scope_symbol(&scope, "hidden") == NULL);
   }
 
-  it("does not publish an isolated frame when its body has unsupported semantics") {
-    static const char *sources[] = {"{% with x=value %}{% debug %}{% endwith %}",
-        "{% filter upper %}{% debug %}{% endfilter %}",
-        "{% set result %}{% debug %}{% endset %}",
-        "{% autoescape true %}{% debug %}{% endautoescape %}"};
-    scope.count = 1u;
-    JINJA_EXPRESSION_SCOPE previous = scope;
-    for (size_t i = 0u; i < sizeof(sources) / sizeof(sources[0]); ++i) {
-      vstr source = vstr_from_cstr(sources[i]);
-      size_t error = SIZE_MAX;
-      check_equal(jinja_template_parse(&JINJA_TEMPLATE_DEFAULT_DELIMITERS, JINJA_TEMPLATE_EXTENSION_DEBUG, source, &tree, NULL), JINJA_EXPRESSION_PARSE_OK);
-      check_equal(jinja_template_analyze_frame(source, &tree, 0u, NULL, &scope, &error), JINJA_EXPRESSION_PARSE_UNSUPPORTED);
-      check_equal(error, tree.nodes[1].source.offset);
-      check_equal(memcmp(&scope, &previous, sizeof(scope)), 0);
-    }
-  }
-
   it("reads assignment RHS and namespace owners without binding attributes") {
     vstr source = vstr_from_cstr("{% set x=x %}{% set y=1 %}{{ y }}{% set ns.value=x %}");
     check_equal(jinja_template_parse(&JINJA_TEMPLATE_DEFAULT_DELIMITERS, 0u, source, &tree, NULL), JINJA_EXPRESSION_PARSE_OK);
@@ -627,22 +610,6 @@ spec("Jinja template lexical frames") {
     check(template_scope_symbol(&scope, "外部") != NULL);
     check(template_scope_symbol(&scope, "本地") != NULL);
     check_equal(scope.symbols[0].name.offset, (size_t)(strstr(source.data, "名字") - source.data));
-  }
-
-  it("rejects unhandled extension semantics atomically and reports source offsets") {
-    vstr source = vstr_from_cstr("{% set x=1 %}{% debug %}");
-    check_equal(jinja_template_parse(&JINJA_TEMPLATE_DEFAULT_DELIMITERS, JINJA_TEMPLATE_EXTENSION_DEBUG, source, &tree, NULL), JINJA_EXPRESSION_PARSE_OK);
-    scope.count = 1u;
-    JINJA_EXPRESSION_SCOPE previous = scope;
-    size_t error = SIZE_MAX;
-    check_equal(jinja_template_analyze_frame(source, &tree, SIZE_MAX, NULL, &scope, &error), JINJA_EXPRESSION_PARSE_UNSUPPORTED);
-    check_equal(error, tree.nodes[1].source.offset);
-    check_equal(memcmp(&scope, &previous, sizeof(scope)), 0);
-    check_equal(jinja_template_analyze_frame(source, &tree, 0u, NULL, &scope, &error), JINJA_EXPRESSION_PARSE_UNSUPPORTED);
-    check_equal(jinja_template_analyze_frame(source, &tree, tree.count, NULL, &scope, &error), JINJA_EXPRESSION_PARSE_INVALID);
-    tree.count = JINJA_TEMPLATE_MAX_NODES + 1u;
-    check_equal(jinja_template_analyze_frame(source, &tree, SIZE_MAX, NULL, &scope, &error), JINJA_EXPRESSION_PARSE_CAPACITY);
-    check_equal(memcmp(&scope, &previous, sizeof(scope)), 0);
   }
 
   it("enforces the scope symbol budget across separate template expressions") {

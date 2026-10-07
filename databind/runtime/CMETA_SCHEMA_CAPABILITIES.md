@@ -70,7 +70,7 @@ Wire octets, reader names and host-language projections remain explicit schema r
 
 The actual parser-to-compiler annotation path now treats `f32` as `float` and `f64` as `double`, including list/set elements and map values, while leaving the schema's original `type` spelling and wire layout unchanged. BOOL retains its existing backend-specific representation, including `uint8_t` storage for generated C, without becoming UINT. UUID and string/bytes retain their existing explicit backend mappings; no buffer ownership is inferred.
 
-`databind/idl/compiler/test_scalar_projection.c` covers all 25 integer aliases, independent floating backend expectations, source spelling, typed metadata and collection-element projections through `parse_schema` followed by `tbe_compiler_annotate_language_types`. `test_tbe_cmeta_acceptance` compares all 29 numeric spellings against separately compiled generated C fields. This does not claim every generated language consumer or concrete container storage has migrated.
+`databind/compiler/tests/core/test_scalar_projection.c` covers all 25 integer aliases, independent floating backend expectations, source spelling, typed metadata and collection-element projections through `parse_schema` followed by `tbe_compiler_annotate_language_types`. `test_tbe_cmeta_acceptance` compares all 29 numeric spellings against separately compiled generated C fields. This does not claim every generated language consumer or concrete container storage has migrated.
 
 ## Production enum/flags normalization
 

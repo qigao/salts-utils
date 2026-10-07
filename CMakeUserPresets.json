@@ -87,7 +87,7 @@
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
                 "PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}",
                 "LD_LIBRARY_PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}",
-                "DYLD_LIBRARY_PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{DYLD_LIBRARY_PATH}"
+                "DYLD_LIBRARY_PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{DYLD_LIBRARY_PATH}"
             }
         },
         {
@@ -100,8 +100,13 @@
         },
         {
             "name": "ci-win-sdk-release-user",
-            "inherits": ["ci-sdk-capture-release-user", "base-win-release-user"],
-            "environment": {"VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}"},
+            "inherits": [
+                "ci-sdk-capture-release-user",
+                "base-win-release-user"
+            ],
+            "environment": {
+                "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}"
+            },
             "cacheVariables": {
                 "CMAKE_C_COMPILER_LAUNCHER": "ccache",
                 "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
@@ -109,7 +114,10 @@
         },
         {
             "name": "ci-win-release-user",
-            "inherits": ["ci-sdk-release-user", "base-win-release-user"],
+            "inherits": [
+                "ci-native-release-user",
+                "base-win-release-user"
+            ],
             "binaryDir": "${sourceDir}/build/ci-win-release",
             "cacheVariables": {
                 "BUILD_TESTS": true
@@ -121,7 +129,10 @@
         },
         {
             "name": "ci-win-dev-user",
-            "inherits": ["ci-native-paths", "base-win-dev-user"],
+            "inherits": [
+                "ci-native-paths",
+                "base-win-dev-user"
+            ],
             "binaryDir": "${sourceDir}/build/ci-win-dev",
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug",
@@ -143,9 +154,7 @@
             "inherits": "ci-sdk-release-user",
             "binaryDir": "${sourceDir}/build/ci-host",
             "cacheVariables": {
-                "SALTS_UTILS_QUALIFY_DATABIND": true,
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils-host/release",
-                "VCPKG_MANIFEST_DIR": "${sourceDir}/cmake/ci/vcpkg/plugin-databind"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils-host/release"
             },
             "environment": {
                 "QIGAO_TARGET_TRIPLET": "$env{QIGAO_HOST_TRIPLET}",
@@ -179,7 +188,6 @@
                 "CMAKE_OSX_SYSROOT": "$env{QIGAO_IOS_SYSROOT}",
                 "CMAKE_OSX_ARCHITECTURES": "arm64",
                 "VCPKG_HOST_TRIPLET": "$env{QIGAO_HOST_TRIPLET}",
-                "SALTS_UTILS_BUILD_IDLC": false,
                 "SALTS_UTILS_HOST_LEMON_EXECUTABLE": "${sourceDir}/build/ci-host/bin/lemon"
             }
         },
@@ -220,7 +228,10 @@
         },
         {
             "name": "ci-linux-release-user",
-            "inherits": ["release-linux-ninja", "ci-linux-paths"],
+            "inherits": [
+                "release-linux-ninja",
+                "ci-linux-paths"
+            ],
             "binaryDir": "${sourceDir}/build/ci-linux-release",
             "cacheVariables": {
                 "BUILD_TESTS": true,
@@ -236,13 +247,17 @@
         },
         {
             "name": "ci-linux-dev-user",
-            "inherits": ["dev-linux-ninja", "ci-linux-paths"],
+            "inherits": [
+                "dev-linux-ninja",
+                "ci-linux-paths"
+            ],
             "binaryDir": "${sourceDir}/build/ci-linux-dev",
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux/debug",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug",
                 "ENABLE_SANITIZER_ADDRESS": true,
-                "ENABLE_SANITIZER_UNDEFINED": true
+                "ENABLE_SANITIZER_UNDEFINED": true,
+                "CMAKE_SUPPRESS_REGENERATION": true
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
@@ -362,7 +377,8 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
+                "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/windows-x64",
+                "RE2C_ROOT": "${sourceDir}/stage/dependencies/re2c/windows-x64",
                 "PATH": "${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
@@ -421,7 +437,8 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
+                "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/linux-x64",
+                "RE2C_ROOT": "${sourceDir}/stage/dependencies/re2c/linux-x64",
                 "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": [
@@ -452,7 +469,8 @@
                 "BUILD_EXAMPLES": "OFF"
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}"
+                "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/linux-x64",
+                "RE2C_ROOT": "${sourceDir}/stage/dependencies/re2c/linux-x64"
             },
             "inherits": [
                 "release-linux-ninja",
@@ -556,13 +574,32 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
+                "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/windows-x64",
+                "RE2C_ROOT": "${sourceDir}/stage/dependencies/re2c/windows-x64",
                 "PATH": "${sourceDir}/build/Clang-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-release-clang-user",
                 "win-paths"
             ]
+        },
+        {
+            "name": "ci-native-release-user",
+            "inherits": "ci-sdk-capture-release-user",
+            "cacheVariables": {
+                "BUILD_TESTS": true,
+                "BUILD_BENCHMARKS": true,
+                "CMAKE_SUPPRESS_REGENERATION": true
+            }
+        },
+        {
+            "name": "ci-native-minimal-release-user",
+            "inherits": "ci-sdk-release-user",
+            "cacheVariables": {
+                "BUILD_TESTS": true,
+                "BUILD_BENCHMARKS": true,
+                "CMAKE_SUPPRESS_REGENERATION": true
+            }
         }
     ],
     "buildPresets": [
@@ -676,12 +713,16 @@
         {
             "name": "install-ci-linux-release-user",
             "configurePreset": "ci-linux-release-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "install-ci-linux-dev-user",
             "configurePreset": "ci-linux-dev-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "win-dev-user",
@@ -722,42 +763,58 @@
         {
             "name": "install-win-dev-user",
             "configurePreset": "win-dev-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "install-win-release-user",
             "configurePreset": "win-release-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "install-win-capture-dev-user",
             "configurePreset": "win-capture-dev-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "install-linux-dev-user",
             "configurePreset": "linux-dev-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "install-linux-release-user",
             "configurePreset": "linux-release-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "install-linux-capture-dev-user",
             "configurePreset": "linux-capture-dev-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "install-linux-capture-release-user",
             "configurePreset": "linux-capture-release-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "install-linux-sdk-package",
             "configurePreset": "linux-sdk-package",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "android-arm64-v8a-debug-win",
@@ -836,12 +893,38 @@
         {
             "name": "install-win-clang-user",
             "configurePreset": "win-clang-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
         },
         {
             "name": "install-win-clang-release-user",
             "configurePreset": "win-clang-release-user",
-            "targets": ["install"]
+            "targets": [
+                "install"
+            ]
+        },
+        {
+            "name": "ci-native-release-user",
+            "configurePreset": "ci-native-release-user"
+        },
+        {
+            "name": "install-ci-native-release-user",
+            "configurePreset": "ci-native-release-user",
+            "targets": [
+                "install"
+            ]
+        },
+        {
+            "name": "ci-native-minimal-release-user",
+            "configurePreset": "ci-native-minimal-release-user"
+        },
+        {
+            "name": "install-ci-native-minimal-release-user",
+            "configurePreset": "ci-native-minimal-release-user",
+            "targets": [
+                "install"
+            ]
         }
     ],
     "testPresets": [
@@ -917,6 +1000,26 @@
             "name": "win-clang-release-user",
             "inherits": "base-test",
             "configurePreset": "win-clang-release-user"
+        },
+        {
+            "name": "ci-native-release-user",
+            "configurePreset": "ci-native-release-user",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "ci-native-minimal-release-user",
+            "configurePreset": "ci-native-minimal-release-user",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
         }
     ]
 }

@@ -1,9 +1,17 @@
 #include <salts/bindings/member.hpp>
+#include <salts/bindings/lua/module.h>
+#include <salts/bindings/quickjs/module.h>
+#include <data_bind_typescript.h>
+
+extern "C" {
+#include <lauxlib.h>
+}
 
 #include "tinytest.hpp"
 
 #include <cstddef>
 #include <type_traits>
+#include <string>
 
 struct member_counter {
   int value;
@@ -360,6 +368,65 @@ static_assert(
     std::is_member_function_pointer_v<decltype(&member_virtual_base::scale)>);
 
 spec("C++ exact member-function thunk") {
+  it("exports the same existing C++ instance to both VMs and TypeScript") {
+    Salts::MemberMethodProvider provider{
+        &member_counter_method_set,
+        Salts::member_method<&member_counter::add>(
+            &member_counter_methods[0], &member_add_projected_data),
+        Salts::member_method<&member_counter::preview>(
+            &member_counter_methods[1], &member_preview_projected_data)};
+    member_counter counter{1};
+    cmeta_object_ref object = CMETA_OBJECT_REF_INIT;
+    check_equal(cmeta_object_borrow_with_provider(
+        &object, &counter, &member_counter_data, provider.c_provider()), CMETA_OK);
+    const salts_binding_object objects[] = {{"counter", &object}};
+    const salts_binding_module module{nullptr, 0, objects, 1};
+    constexpr size_t depth = 8, items = 32, bytes = 4096;
+    lua_State *lua = luaL_newstate();
+    JSRuntime *runtime = JS_NewRuntime();
+    JSContext *js = JS_NewContext(runtime);
+    check_not_null(lua);
+    check_not_null(js);
+    check_equal(salts_lua_push_module(lua, &module, {depth, items, bytes}), CMETA_OK);
+    lua_setglobal(lua, "native");
+    check_equal(luaL_dostring(lua, "return native.counter:add(4)"), LUA_OK);
+    check_equal(lua_tointeger(lua, -1), 5);
+    check_equal(counter.value, 5);
+
+    JSValue value = JS_UNDEFINED;
+    check_equal(salts_quickjs_push_module(js, &module, {depth, items, bytes}, &value), CMETA_OK);
+    JSValue global = JS_GetGlobalObject(js);
+    check_equal(JS_SetPropertyStr(js, global, "native", value), 1);
+    JS_FreeValue(js, global);
+    const char script[] = "native.counter.add(3); native.counter.preview(2)";
+    JSValue result = JS_Eval(js, script, sizeof(script) - 1, "counter.js", JS_EVAL_TYPE_GLOBAL);
+    check_false(JS_IsException(result));
+    int32_t number = 0;
+    check_equal(JS_ToInt32(js, &number, result), 0);
+    check_equal(number, 10);
+    check_equal(counter.value, 8);
+    JS_FreeValue(js, result);
+
+    std::string declaration;
+    const DataBindTypeScriptOptions options{"Native", items, depth, items, bytes};
+    check_equal(data_bind_typescript_emit(&module, &options,
+        [](void *context, const char *text, size_t size) -> bool {
+          static_cast<std::string *>(context)->append(text, size);
+          return true;
+        }, &declaration), CMETA_OK);
+    check_equal(declaration.c_str(),
+        "export interface NativeBindings {\n  \"counter\": { readonly \"add\": (arg0: number) => number; "
+        "readonly \"preview\": (arg0: number) => number; };\n}\n");
+    check_equal(counter.value, 8);
+    check_true(cmeta_object_ref_valid(&object));
+
+    /* Both VMs must release their proxies before the borrowed owner/provider. */
+    lua_close(lua);
+    JS_FreeContext(js);
+    JS_FreeRuntime(runtime);
+    cmeta_object_release(&object);
+  }
+
   it("binds complete non-const and const member sets") {
     Salts::MemberMethodProvider provider{
         &member_counter_method_set,

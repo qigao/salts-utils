@@ -1,10 +1,12 @@
 #include <salts/bindings/lua/cmeta.h>
+#include <salts/bindings/lua/module.h>
 
 #include <lua.h>
 #include <lauxlib.h>
 
 #include <float.h>
 #include <math.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -69,7 +71,7 @@ static cmeta_status salts_lua_push_float(
 static cmeta_status salts_lua_push_buffer(
     salts_lua_push_context *context, const cmeta_data_desc *data,
     const void *object) {
-  const void *bytes = NULL;
+  const unsigned char *bytes = NULL;
   size_t size = 0u;
   cmeta_status status = cmeta_data_buffer_read(
       data, object, context->limits.max_bytes, &bytes, &size);
@@ -635,6 +637,13 @@ cmeta_status salts_lua_call_invokable(
     lua_State *state, const cmeta_invokable *invokable,
     int first_argument, size_t argument_count, salts_lua_limits limits,
     int *out_result_count) {
+  salts_binding_function binding = {NULL, invokable, NULL, NULL};
+  return salts_lua_call_binding(state, &binding, first_argument, argument_count, limits, out_result_count);
+}
+
+cmeta_status salts_lua_call_binding(lua_State *state,
+    const salts_binding_function *binding, int first_argument,
+    size_t argument_count, salts_lua_limits limits, int *out_result_count) {
   const cmeta_function_data_desc *data;
   const cmeta_function_desc *function;
   cmeta_data_temp *temporaries = NULL;
@@ -646,26 +655,16 @@ cmeta_status salts_lua_call_invokable(
   cmeta_status status = CMETA_OK;
 
   if (out_result_count != NULL) *out_result_count = 0;
-  if (state == NULL || invokable == NULL || !cmeta_invokable_valid(invokable))
+  if (state == NULL)
     return CMETA_INVALID_ARGUMENT;
-  data = invokable->data;
-  if (!cmeta_function_data_desc_valid(data))
-    return CMETA_TRAIT_MISSING;
+  status = salts_binding_function_validate(binding);
+  if (status != CMETA_OK) return status;
+  data = salts_binding_function_data(binding);
   function = data->function;
   if (argument_count != function->param_count)
     return CMETA_INVALID_ARGUMENT;
-  if (argument_count > limits.max_items)
+  if (argument_count > limits.max_items || argument_count > INT_MAX)
     return CMETA_CAPACITY_EXCEEDED;
-
-  for (i = 0u; i < function->param_count; ++i) {
-    const cmeta_param_desc *param = cmeta_function_param(function, i);
-    cmeta_param_flags direction;
-    if (param == NULL) return CMETA_INVALID_ARGUMENT;
-    direction = param->flags & CMETA_PARAM_DIRECTION_MASK;
-    if (direction != CMETA_PARAM_IN ||
-        (param->flags & CMETA_PARAM_OWNED) != 0u)
-      return CMETA_TRAIT_MISSING;
-  }
 
   if (argument_count != 0u) {
     temporaries = (cmeta_data_temp *)calloc(
@@ -696,7 +695,7 @@ cmeta_status salts_lua_call_invokable(
     result_storage = result.storage;
   }
 
-  status = cmeta_invokable_invoke(invokable, result_storage, arguments);
+  status = salts_binding_function_invoke(binding, result_storage, arguments, argument_count);
   if (status != CMETA_OK) goto done;
 
   if (data->return_data != NULL) {

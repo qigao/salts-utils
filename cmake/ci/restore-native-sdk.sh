@@ -37,7 +37,7 @@ cat > "$project" <<'EOF'
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="[2.0.0]" />
+    <PackageReference Include="Salts.Native" Version="*" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -66,7 +66,7 @@ matches = [v['path'] for k, v in assets['libraries'].items()
            if k.lower().startswith(sys.argv[3].lower() + '/')]
 if len(matches) != 1:
     raise SystemExit('expected one resolved ' + sys.argv[3] + ' package')
-print(pathlib.Path(sys.argv[2]) / matches[0])
+print((pathlib.Path(sys.argv[2]) / matches[0]).resolve())
 PY
 }
 
@@ -109,6 +109,19 @@ if [ "$with_turbowasm" = "1" ]; then
 fi
 
 if [ "$mode" = local ]; then
+  # Presets use stable links; NuGet assets remain the package-version source.
+  local_package_link() {
+    local link="$repository_root/stage/dependencies/$1" target="$2"
+    mkdir -p "$(dirname "$link")"
+    if [ -e "$link" ] && [ ! -L "$link" ]; then
+      fail "refusing to replace non-symlink SDK path: $link"
+    fi
+    ln -sfn "$target" "$link"
+    printf '%s\n' "$link"
+  }
+  salts_root="$(local_package_link "salts/$salts_rid" "$salts_root")"
+  salts_host_root="$(local_package_link "salts/$re2c_rid" "$salts_host_root")"
+  re2c_root="$(local_package_link "re2c/$re2c_rid" "$re2c_root")"
   {
     printf 'export SALTS_ROOT=%q\n' "$salts_root"
     printf 'export SALTS_HOST_ROOT=%q\n' "$salts_host_root"

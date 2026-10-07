@@ -1,7 +1,6 @@
 cmake_add_test(salts_lua_invokable_test
   SOURCES lua_cmeta_invokable_test.c
-  LIBS Salts::Lua Salts::TinyTest ${LUA_LIBRARIES}
-  INCLUDES ${LUA_INCLUDE_DIR}
+  LIBS Salts::Lua Salts::TinyTest
   FOLDER "bindings/lua/tests")
 
 set_target_properties(salts_lua_invokable_test PROPERTIES
@@ -11,8 +10,7 @@ set_target_properties(salts_lua_invokable_test PROPERTIES
 
 cmake_add_test(salts_lua_object_test
   SOURCES lua_cmeta_object_test.c
-  LIBS Salts::Lua Salts::TinyTest ${LUA_LIBRARIES}
-  INCLUDES ${LUA_INCLUDE_DIR}
+  LIBS Salts::Lua Salts::TinyTest
   FOLDER "bindings/lua/tests")
 
 set_target_properties(salts_lua_object_test PROPERTIES
@@ -22,8 +20,7 @@ set_target_properties(salts_lua_object_test PROPERTIES
 
 cmake_add_test(salts_lua_conversion_test
   SOURCES lua_cmeta_conversion_test.c
-  LIBS Salts::Lua Salts::TinyTest ${LUA_LIBRARIES}
-  INCLUDES ${LUA_INCLUDE_DIR}
+  LIBS Salts::Lua Salts::TinyTest
   FOLDER "bindings/lua/tests")
 
 set_target_properties(salts_lua_conversion_test PROPERTIES

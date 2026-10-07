@@ -15,10 +15,7 @@ foreach(required_target IN ITEMS
     Salts::IDL
     Salts::Schema
     Salts::DataBindProducer
-    Salts::DataBindCore
     Salts::DataBind
-    Salts::DataBindCMeta
-    Salts::DataBindCFlow
     Salts::JsonParser
     Salts::CsvParser
     Salts::XmlParser

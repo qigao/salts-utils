@@ -9,7 +9,6 @@
 #include "platform.h"
 #include "mustache.h"
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -38,10 +37,9 @@ typedef struct MUSTACHE_JSON_PROVIDER {
  * @param user_data User data passed to template loader
  * @return 0 on success, -1 on error
  */
-MUSTACHE_API int mustache_json_provider_init(MUSTACHE_JSON_PROVIDER *provider, json_value_t *json_data,
-                                          MUSTACHE_TEMPLATE *(*template_loader)(const char *,
-                                                                                size_t, void *),
-                                          void *user_data);
+int mustache_json_provider_init(MUSTACHE_JSON_PROVIDER *provider, json_value_t *json_data,
+                                MUSTACHE_TEMPLATE *(*template_loader)(const char *, size_t, void *),
+                                void *user_data);
 /**
  * Initialize a JSON provider associated with an arena lifetime.
  *
@@ -55,12 +53,10 @@ MUSTACHE_API int mustache_json_provider_init(MUSTACHE_JSON_PROVIDER *provider, j
  * @param arena Non-NULL arena that outlives the render.
  * @return 0 on success, -1 for invalid arguments.
  */
-MUSTACHE_API int mustache_json_provider_init_arena(MUSTACHE_JSON_PROVIDER *provider,
-                                                json_value_t *json_data,
-                                                MUSTACHE_TEMPLATE *(*template_loader)(const char *,
-                                                                                      size_t,
-                                                                                      void *),
-                                                void *user_data, mem_pool_t *arena);
+int mustache_json_provider_init_arena(MUSTACHE_JSON_PROVIDER *provider, json_value_t *json_data,
+                                      MUSTACHE_TEMPLATE *(*template_loader)(const char *, size_t,
+                                                                            void *),
+                                      void *user_data, mem_pool_t *arena);
 
 /**
  * Render a mustache template with JSON data
@@ -74,11 +70,10 @@ MUSTACHE_API int mustache_json_provider_init_arena(MUSTACHE_JSON_PROVIDER *provi
  * @return 0 on success; -1 on invalid arguments, callback failure, allocation
  *         failure, or expansion-depth exhaustion. Partial output is retained.
  */
-MUSTACHE_API int mustache_render_json(const MUSTACHE_TEMPLATE *templ, json_value_t *json_data,
-                                   const MUSTACHE_RENDERER *renderer, void *renderer_data,
-                                   MUSTACHE_TEMPLATE *(*template_loader)(const char *, size_t,
-                                                                         void *),
-                                   void *user_data);
+int mustache_render_json(const MUSTACHE_TEMPLATE *templ, json_value_t *json_data,
+                         const MUSTACHE_RENDERER *renderer, void *renderer_data,
+                         MUSTACHE_TEMPLATE *(*template_loader)(const char *, size_t, void *),
+                         void *user_data);
 
 #ifdef __cplusplus
 }

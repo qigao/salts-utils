@@ -143,7 +143,7 @@ typedef struct DataBindFormatWriter {
  * state behind owner and must keep any token views valid according to the
  * cserde_reader contract.
  */
-DataBindStatus data_bind_format_reader_open(
+DATA_BIND_API DataBindStatus data_bind_format_reader_open(
     const DataBindFormatProvider *provider,
     const char *data,
     size_t len,
@@ -160,7 +160,7 @@ DataBindStatus data_bind_format_reader_open(
  * fail with DATA_BIND_ERR_INVALID_ARG rather than falling back to another
  * provider or parser.
  */
-DataBindStatus data_bind_format_reader_open_selected(
+DATA_BIND_API DataBindStatus data_bind_format_reader_open_selected(
     const DataBindFormatProvider *provider,
     const char *data,
     size_t len,
@@ -175,7 +175,7 @@ DataBindStatus data_bind_format_reader_open_selected(
 /**
  * Close an explicit provider lease. A zero/closed lease is accepted.
  */
-DataBindStatus data_bind_format_reader_close(DataBindFormatReader *reader);
+DATA_BIND_API DataBindStatus data_bind_format_reader_close(DataBindFormatReader *reader);
 
 /**
  * Open one explicit format provider as a streaming CSerde writer.
@@ -183,7 +183,7 @@ DataBindStatus data_bind_format_reader_close(DataBindFormatReader *reader);
  * The caller owns the byte sink and any retained output storage. Providers
  * without writer capability fail explicitly; no format fallback is selected.
  */
-DataBindStatus data_bind_format_writer_open(
+DATA_BIND_API DataBindStatus data_bind_format_writer_open(
     const DataBindFormatProvider *provider,
     DataBindWriteFn write,
     void *write_user,
@@ -195,7 +195,7 @@ DataBindStatus data_bind_format_writer_open(
  * Finish and close one writer lease. Provider finish/sink errors are returned.
  * A zero/closed lease is accepted.
  */
-DataBindStatus data_bind_format_writer_close(
+DATA_BIND_API DataBindStatus data_bind_format_writer_close(
     DataBindFormatWriter *writer,
     DataBindError *error);
 

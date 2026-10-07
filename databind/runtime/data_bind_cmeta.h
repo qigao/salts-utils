@@ -6,12 +6,6 @@
 #include <cmeta/data.h>
 #include <cmeta/range.h>
 
-#if defined(_WIN32) && defined(DATA_BIND_CMETA_BUILD_DLL)
-  #define DATA_BIND_CMETA_API __declspec(dllexport)
-#else
-  #define DATA_BIND_CMETA_API
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -40,9 +34,9 @@ typedef struct DataBindMapEntryRef {
   const DataBindValue *value;
 } DataBindMapEntryRef;
 
-DATA_BIND_CMETA_API const cmeta_type_desc *data_bind_cmeta_value_ref_type(void);
-DATA_BIND_CMETA_API const cmeta_type_desc *data_bind_cmeta_field_ref_type(void);
-DATA_BIND_CMETA_API const cmeta_type_desc *data_bind_cmeta_map_entry_ref_type(void);
+DATA_BIND_API const cmeta_type_desc *data_bind_cmeta_value_ref_type(void);
+DATA_BIND_API const cmeta_type_desc *data_bind_cmeta_field_ref_type(void);
+DATA_BIND_API const cmeta_type_desc *data_bind_cmeta_map_entry_ref_type(void);
 
 /**
  * Creates a synchronous, allocation-free range over an immutable DataBind value.
@@ -51,7 +45,7 @@ DATA_BIND_CMETA_API const cmeta_type_desc *data_bind_cmeta_map_entry_ref_type(vo
  * The returned range and every emitted reference borrow owner; owner must outlive
  * all cursors and consumers. On failure, out_range is reset to all-bits-zero.
  */
-DATA_BIND_CMETA_API DataBindStatus data_bind_cmeta_range_init(
+DATA_BIND_API DataBindStatus data_bind_cmeta_range_init(
     const DataBindValue *owner, DataBindCMetaRangeKind kind, cmeta_range *out_range);
 
 #ifdef __cplusplus

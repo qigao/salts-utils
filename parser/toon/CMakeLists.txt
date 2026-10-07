@@ -1,6 +1,9 @@
 set(TARGET_NAME toon)
 
 cmake_add_grammar(TOON
+  RE2C_EXECUTABLE "${RE2C_EXECUTABLE}"
+  LEMON_TARGET lemon
+  LEMON_TEMPLATE "${LEMPAR}"
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/parser/toon_lexer.re
   GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/parser/toon_grammar.y
   FOLDER "parser/${TARGET_NAME}/grammar")
@@ -29,7 +32,7 @@ target_include_directories(
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/parser ${CMAKE_CURRENT_SOURCE_DIR}/..
           ${CMAKE_CURRENT_BINARY_DIR}
 )
-find_path(SIMDE_INCLUDE_DIRS NAMES simde/x86/sse2.h REQUIRED)
+find_path(SIMDE_INCLUDE_DIRS "simde/arm/neon.h")
 target_include_directories(${TARGET_NAME} PRIVATE ${SIMDE_INCLUDE_DIRS})
 
 # Link dependencies

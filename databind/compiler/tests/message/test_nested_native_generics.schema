@@ -1,0 +1,73 @@
+schema NestedNative;
+
+message User {
+  @Min(1) int32 id;
+  string name;
+}
+
+message Flat {
+  list<uint32> values;
+  set<uint32> ids;
+  map<string,uint32> counters;
+}
+
+message Batch {
+  list<list<int32>> matrix;
+  list<map<string,User>> records;
+  map<string,list<User>> groups;
+}
+
+message Mirror {
+  list<list<int32>> values;
+}
+
+message Overlay {
+  optional list<list<int32>> matrix;
+  nullable map<string,list<User>> groups;
+}
+
+composite ReflectionPoint {
+  [c(x_axis)] int32 x;
+  int32 y;
+}
+
+group ReflectionEntry {
+  uint32 code;
+  string label;
+}
+
+message ReflectionWide {
+  uint32 f00;
+  uint32 f01;
+  uint32 f02;
+  uint32 f03;
+  uint32 f04;
+  uint32 f05;
+  uint32 f06;
+  uint32 f07;
+  uint32 f08;
+  uint32 f09;
+  uint32 f10;
+  uint32 f11;
+  uint32 f12;
+  uint32 f13;
+  uint32 f14;
+  uint32 f15;
+  uint32 f16;
+  uint32 f17;
+  uint32 f18;
+  uint32 f19;
+  uint32 f20;
+  uint32 f21;
+  uint32 f22;
+  uint32 f23;
+  uint32 f24;
+  uint32 f25;
+  uint32 f26;
+  uint32 f27;
+  uint32 f28;
+  uint32 f29;
+  uint32 f30;
+  ReflectionPoint point;
+  string tail;
+}

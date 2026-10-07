@@ -3,7 +3,7 @@
 #include "data_bind_projection_plan.h"
 #include "tinytest.h"
 
-#include <cmeta/struct.h>
+#include <cmeta/data_reflect.h>
 #include <cmeta_cmeta_data.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -15,33 +15,24 @@ enum {
   NATIVE_BENCH_OUTPUT_BYTES = 128,
   NATIVE_BENCH_MAX_DEPTH = 4,
   NATIVE_BENCH_MAX_ITEMS = 16,
-  NATIVE_BENCH_MAX_OWNED_BYTES = 64,
-  NATIVE_BENCH_FIELD_COUNT = 3,
-  NATIVE_BENCH_SYMBOL_INDEX = 1
+  NATIVE_BENCH_MAX_OWNED_BYTES = 64
 };
 
-Struct(NativeBenchOrder, (uint32_t, id), (tstr, symbol), (double, price));
-static const cmeta_type_identity ORDER_ID =
-    CMETA_TYPE_ID_ATOM_INIT("benchmark.native.Order");
-static const cmeta_type_desc ORDER_TYPE = {
-    .name = "NativeBenchOrder", .size = sizeof(NativeBenchOrder),
-    .align = _Alignof(NativeBenchOrder), .kind = CMETA_T_OBJECT, .identity = &ORDER_ID};
-static cmeta_field_desc order_layout_fields[NATIVE_BENCH_FIELD_COUNT];
-static const cmeta_struct_desc ORDER_LAYOUT = {
-    "NativeBenchOrder", sizeof(NativeBenchOrder), _Alignof(NativeBenchOrder),
-    order_layout_fields, NATIVE_BENCH_FIELD_COUNT};
-static cmeta_data_field_desc order_fields[] = {
-    {"benchmark.native.Order.id", "id", offsetof(NativeBenchOrder, id), &cmeta_data_uint32},
-    {"benchmark.native.Order.symbol", "symbol", offsetof(NativeBenchOrder, symbol), NULL},
-    {"benchmark.native.Order.price", "price", offsetof(NativeBenchOrder, price), &cmeta_data_double}};
-static const cmeta_data_struct_shape ORDER_SHAPE = {
-    &ORDER_LAYOUT, order_fields, NATIVE_BENCH_FIELD_COUNT};
-static const cmeta_data_desc ORDER_DATA = {
-    .struct_size = sizeof(cmeta_data_desc), .abi_version = CMETA_DATA_DESC_ABI_VERSION,
-    .stable_id = "benchmark.native.Order.data", .display_name = "NativeBenchOrder",
-    .kind = CMETA_DATA_STRUCT, .storage_type = &ORDER_TYPE, .shape = &ORDER_SHAPE};
+typedef struct NativeBenchOrder {
+  uint32_t id;
+  tstr symbol;
+  double price;
+} NativeBenchOrder;
+cmeta_reflect_value(NativeBenchOrder, "benchmark.native.Order.data",
+    cmeta_data_field_id(uint32_t, id, "benchmark.native.Order.id",
+        &cmeta_data_uint32, &cmeta_type_uint32)
+    cmeta_data_field_id(tstr, symbol, "benchmark.native.Order.symbol",
+        SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+    cmeta_data_field_id(double, price, "benchmark.native.Order.price",
+        &cmeta_data_double, &cmeta_type_double)
+);
 static const DataBindNativeTypeBinding ORDER_BINDING =
-    DATA_BIND_NATIVE_TYPE_BINDING_INIT("Order", &ORDER_DATA);
+    DATA_BIND_NATIVE_TYPE_BINDING_INIT("Order", cmeta_reflected_data(NativeBenchOrder));
 static const char ORDER_SCHEMA[] =
     "message Order { [name(orderId), alias(legacyId)] uint32 id; double price; string symbol; }";
 static const char ORDER_JSON[] =
@@ -85,7 +76,7 @@ static DataBindStatus native_bench_replace(const char *input, size_t size) {
   DataBindFormatCanonicalReader canonical = DATA_BIND_FORMAT_CANONICAL_READER_INIT;
   NativeBenchOrder staging;
   DataBindStatus status, close_status;
-  if (cmeta_data_value_init_zero(&ORDER_DATA, &staging) != CMETA_OK)
+  if (cmeta_data_value_init_zero(cmeta_reflected_data(NativeBenchOrder), &staging) != CMETA_OK)
     return DATA_BIND_ERR_SCHEMA;
   status = data_bind_format_reader_open(
       data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON), input, size,
@@ -102,10 +93,10 @@ cleanup:
   if (status == DATA_BIND_OK) {
     /* Supported CMeta lifecycle makes publication no-fail. A rejected input
      * leaves the old value intact; a successful replacement releases it once. */
-    cmeta_data_value_destroy(&ORDER_DATA, &order);
-    cmeta_data_trait_move_construct(&ORDER_DATA, &order, &staging);
+    cmeta_data_value_destroy(cmeta_reflected_data(NativeBenchOrder), &order);
+    cmeta_data_trait_move_construct(cmeta_reflected_data(NativeBenchOrder), &order, &staging);
   }
-  cmeta_data_value_destroy(&ORDER_DATA, &staging);
+  cmeta_data_value_destroy(cmeta_reflected_data(NativeBenchOrder), &staging);
   return status;
 }
 
@@ -133,15 +124,8 @@ cleanup:
 
 spec("DataBind native JSON benchmark") {
   before_all() {
-    /* Preserve Struct offsets and bind canonical semantic storage types.
-     * Imported provider metadata is resolved at runtime, including on Windows. */
-    order_fields[NATIVE_BENCH_SYMBOL_INDEX].value = &cmeta_tstr_cmeta_data;
-    for (size_t i = 0; i < NATIVE_BENCH_FIELD_COUNT; ++i) {
-      order_layout_fields[i] = StructMeta(NativeBenchOrder)->fields[i];
-      order_layout_fields[i].type = order_fields[i].value->storage_type;
-    }
-    check_true(cmeta_data_desc_valid(&ORDER_DATA));
-    check_true(cmeta_data_value_move_supported(&ORDER_DATA));
+    check_true(cmeta_data_desc_valid(cmeta_reflected_data(NativeBenchOrder)));
+    check_true(cmeta_data_value_move_supported(cmeta_reflected_data(NativeBenchOrder)));
     options = (DataBindNativeOptions)DATA_BIND_NATIVE_OPTIONS_INIT;
     options.workspace = workspace.bytes;
     options.workspace_bytes = sizeof(workspace.bytes);
@@ -159,13 +143,13 @@ spec("DataBind native JSON benchmark") {
                                               &format_plan, &error), DATA_BIND_OK);
   }
   before_each() {
-    check_equal(cmeta_data_value_init_zero(&ORDER_DATA, &order), CMETA_OK);
+    check_equal(cmeta_data_value_init_zero(cmeta_reflected_data(NativeBenchOrder), &order), CMETA_OK);
     DataBindStatus status = native_bench_replace(ORDER_JSON, sizeof(ORDER_JSON) - 1u);
     info("decode: %s; provider: %s", diagnostic.message, error.message);
     check_equal(status, DATA_BIND_OK);
   }
   after_each() {
-    cmeta_data_value_destroy(&ORDER_DATA, &order);
+    cmeta_data_value_destroy(cmeta_reflected_data(NativeBenchOrder), &order);
     check_true(cmeta_tstr_cmeta_buffer_ops.is_zero(&order.symbol));
   }
   after_all() {

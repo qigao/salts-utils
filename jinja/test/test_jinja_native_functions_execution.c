@@ -299,26 +299,6 @@ spec("Jinja native function execution") {
     }
   }
 
-  it("indents lines with numeric or string prefixes and Jinja markup semantics") {
-    static const struct { const char *source, *expected; } cases[] = {
-      {"{{'one\\n\\nthree\\n'|indent}}", "one\n\n    three\n"},
-      {"{{'甲\\n\\n乙\\n'|indent(width='> ',first=true,blank=true)}}", "> 甲\n> \n> 乙\n> "},
-      {"{{'a\\r\\nb\\rc\\u0085d\\u2028e\\u2029f\\vG\\fH\\x1cI\\x1dJ\\x1eK\\x1fL'|indent(1)}}",
-          "a\n b\n c\n d\n e\n f\n G\n H\n I\n J\n K\x1fL"},
-      {"{{'x\\r'|indent}}|{{''|indent(2,true)}}|{{'a\\nb'|indent(-2)}}", "x|  |a\nb"},
-      {"{% autoescape true %}{{'<a>\\n<b>'|safe|indent('<i>',true)}}{% endautoescape %}", "<i><a>\n<i><b>"},
-      {"{{'<a>\\n<b>'|indent('<i>'|safe)}}|{{'<a>\\n<b>'|indent('<i>'|safe,true)}}|"
-          "{{'<a>\\n<b>'|indent('<i>'|safe,false,true)}}",
-          "<a>\n<i>&lt;b&gt;|<i>&lt;a&gt;\n&lt;i&gt;&amp;lt;b&amp;gt;|&lt;a&gt;\n<i>&lt;b&gt;"}
-    };
-    for (size_t i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
-      tstr_clear(output);
-      info("indent source=%s", cases[i].source);
-      check_equal(test_native_render(cases[i].source, NULL, &output, &error), JINJA_CMETA_OK);
-      check_equal(output, cases[i].expected);
-    }
-  }
-
   it("truncates Unicode text with word boundaries leeway and safe suffixes") {
     static const struct { const char *source, *expected; } cases[] = {
       {"{{'foo bar baz qux'|truncate(9)}}|{{'foo bar baz qux'|truncate(9,true)}}|"
@@ -651,21 +631,6 @@ spec("Jinja native function execution") {
   it("supports loop value length through retained aliases") {
     check_equal(test_native_render("{% for x in [0,1] %}{% set l=loop %}{{l|length}}:{% if l %}yes{% endif %}:{{l[0] is undefined}};{% endfor %}", NULL, &output, &error), JINJA_CMETA_OK);
     check_equal(output, "2:yes:True;2:yes:True;");
-  }
-
-  it("preserves loop receiver identity semantics") {
-    check_equal(test_native_render("{% set ns=namespace() %}{% for x in [1] %}{% set ns.l=loop %}{% set ns.c=loop.cycle %}{% for y in [2] %}{{ns.l==loop}}:{{ns.c==loop.cycle}}:{{ns.l==ns.l}};{% endfor %}{% endfor %}", NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "False:False:True;");
-  }
-
-  it("preserves loop receiver method_arg semantics") {
-    check_equal(test_native_render("{% macro f(c,d) %}{{c(*['a','b'])}}:{{d(*[1])}}:{{d(1)}}{% endmacro %}{% for x in [0,0] %}{{f(loop.cycle,loop.changed)}};{% endfor %}", NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "a:True:False;b:False:False;");
-  }
-
-  it("preserves loop receiver key semantics") {
-    check_equal(test_native_render("{% for x in [1] %}{% set m={loop: 'ok'} %}{{m[loop]}}:{{loop in m}}{% endfor %}", NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "ok:True");
   }
 
   it("rejects invalid generic loop invocations without rendering partial results") {

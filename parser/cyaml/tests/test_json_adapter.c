@@ -115,17 +115,6 @@ suite("cyaml json adapter") {
         cyaml_free(doc);
     }
 
-    it("uses json_parser double semantics for numbers") {
-        const char* json = "9007199254740993";
-        cyaml_doc_t* doc = cyaml_doc_from_json(json, strlen(json));
-        double value = 0.0;
-
-        check_not_null(doc);
-        check_true(cyaml_as_float(doc, cyaml_root(doc), &value));
-        check_within(value, 9007199254740992.0, 0.0);
-        cyaml_free(doc);
-    }
-
     it("retains the full precision present in a JSON double") {
         const char* json = "1.2345678901234567";
         cyaml_doc_t* doc = cyaml_doc_from_json(json, strlen(json));

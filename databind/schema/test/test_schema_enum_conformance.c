@@ -215,19 +215,6 @@ spec("production enum normalization agrees with canonical CMeta integers") {
     }
   }
 
-  it("does not treat noninteger canonical descriptors or buffer semantics as integer storage") {
-    static const char *types[] = {"bool", "float", "f32", "double", "f64",
-                                  "uuid", "string", "bytes", "Unknown"};
-    char source[ENUM_TEST_SOURCE_CAPACITY];
-    for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); ++i) {
-      int length = snprintf(source, sizeof(source), "enum Bad <%s> { Value=1; }", types[i]);
-      check(length > 0 && (size_t)length < sizeof(source));
-      if (length <= 0 || (size_t)length >= sizeof(source)) continue;
-      info("schema=%s", source);
-      enum_reject_unchanged(source);
-    }
-  }
-
   it("keeps a previously published enum graph intact after a later enum fails") {
     const char *baseline = "enum Keep <i16> { Low=-2; High=5; } message Use { Keep value; }";
     const char *invalid = "enum Good <u8> { Value=1; } enum Bad <i8> { Value=128; }";

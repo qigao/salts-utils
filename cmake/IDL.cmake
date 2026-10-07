@@ -142,6 +142,7 @@ function(salts_idl_target)
   set(options)
   set(one_value_args
       TARGET
+      FOLDER
       IDL
       COMPONENT
       VERSION
@@ -155,6 +156,14 @@ function(salts_idl_target)
       LIBRARIES)
   cmake_parse_arguments(DB
     "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+  if("FOLDER" IN_LIST DB_KEYWORDS_MISSING_VALUES)
+    message(FATAL_ERROR "salts_idl_target() requires a value for FOLDER")
+  endif()
+  # Function scope keeps every generated target together without changing callers.
+  if(DEFINED DB_FOLDER)
+    set(CMAKE_FOLDER "${DB_FOLDER}")
+  endif()
 
   foreach(required_arg IN ITEMS TARGET IDL)
     if(NOT DB_${required_arg})

@@ -4,6 +4,72 @@
 #include <string.h>
 
 spec("data_bind record API") {
+  it("preserves collection order and format-specific collection shapes") {
+    static const char schema[] =
+        "message Collections { list<uint32> values; set<string> tags; "
+        "map<string,int32> attrs; }";
+    static const char input[] =
+        "{\"values\":[3,1,3],\"tags\":[\"z\",\"a\",\"z\"],"
+        "\"attrs\":{\"z\":9,\"a\":2}}";
+    static const char expected[] =
+        "{\"values\":[3,1,3],\"tags\":[\"z\",\"a\"],\"attrs\":{\"z\":9,\"a\":2}}";
+    DataBind *codec = NULL;
+    DataBindRecord *record = NULL;
+    DataBindRecord *decoded = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    char *text = NULL;
+    size_t text_len = 0;
+
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+                DATA_BIND_OK);
+    if (codec == NULL) return;
+    check_equal(data_bind_record_from_json(codec, "Collections", input, sizeof(input) - 1,
+                                          &record, &error), DATA_BIND_OK);
+    if (record == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    check_equal(data_bind_record_serialize_xml(codec, record, &text, &text_len, &error),
+                DATA_BIND_OK);
+    check_contains(text, "<values>3</values><values>1</values><values>3</values>");
+    check_contains(text, "<tags>z</tags><tags>a</tags>");
+    check_contains(text, "<attrs><z>9</z><a>2</a></attrs>");
+    data_bind_serialized_free(text);
+    text = NULL;
+
+    check_equal(data_bind_record_serialize_csv(codec, record, &text, &text_len, &error),
+                DATA_BIND_OK);
+    check_equal(text,
+                "values[0],values[1],values[2],tags[0],tags[1],attrs.z,attrs.a\r\n"
+                "3,1,3,z,a,9,2\r\n");
+    data_bind_serialized_free(text);
+    text = NULL;
+
+    check_equal(data_bind_record_serialize_yaml(codec, record, &text, &text_len, &error),
+                DATA_BIND_OK);
+    if (text != NULL) {
+      check_equal(data_bind_record_from_yaml(codec, "Collections", text, text_len,
+                                            &decoded, &error), DATA_BIND_OK);
+    }
+    data_bind_serialized_free(text);
+    text = NULL;
+    check_not_null(decoded);
+    check_equal(data_bind_record_serialize_json(codec, decoded, &text, &text_len, &error),
+                DATA_BIND_OK);
+    check_equal(text, expected);
+    data_bind_serialized_free(text);
+    text = NULL;
+
+    check_equal(data_bind_record_serialize_json(codec, record, &text, &text_len, &error),
+                DATA_BIND_OK);
+    check_equal(text, expected);
+    data_bind_serialized_free(text);
+    data_bind_record_free(decoded);
+    data_bind_record_free(record);
+    data_bind_free(codec);
+  }
+
   it("reads native text formats and pure C binary records") {
     static const char schema[] = "message Order { uint32 id; string symbol; }";
     static const char json[] = "{\"id\":7,\"symbol\":\"JSON\"}";

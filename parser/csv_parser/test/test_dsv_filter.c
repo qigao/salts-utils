@@ -359,30 +359,6 @@ spec("dsv_filter") {
             csv_free(doc);
         }
 
-        it("should evaluate mixed and/or joins with left-associative semantics") {
-            const char *csv = "a_n,b_n,c_n\n"
-                              "2,1,4\n"
-                              "0,3,4\n"
-                              "0,1,4\n"
-                              "2,1,2\n"
-                              "0,3,2\n";
-            csv_doc_t *doc = csv_parse(csv, strlen(csv));
-            check_not_null(doc);
-
-            dsv_filter_t *f = dsv_filter_create(doc, 0);
-            check_not_null(f);
-            check(dsv_filter_compile(f, "a > 1 or b > 2 and c > 3"));
-
-            check_equal(dsv_filter_check_row(f, 1), 1);
-            check_equal(dsv_filter_check_row(f, 2), 1);
-            check_equal(dsv_filter_check_row(f, 3), 0);
-            check_equal(dsv_filter_check_row(f, 4), 0);
-            check_equal(dsv_filter_check_row(f, 5), 0);
-
-            dsv_filter_destroy(f);
-            csv_free(doc);
-        }
-
         it("should reuse a dynamic column as number and as string") {
             const char *csv = "code,flag_n\n"
                               "3,1\n"

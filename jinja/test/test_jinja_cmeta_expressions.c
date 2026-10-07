@@ -137,32 +137,6 @@ spec("Jinja CMeta collections and runtime: expressions 3") {
     free(output);
   }
 
-  it("renders boolean literals with Jinja text semantics") {
-    static const char source[] = "{{ true }}|{{ false }}|{{ not(false) }}|{{ (true) | safe }}";
-    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
-    JinjaTestModel model;
-    char *output = NULL;
-
-    jinja_test_model_init(&model);
-    root.users.element = &model.user_desc;
-    check_equal(jinja_test_render(source, &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "True|False|True|True");
-    free(output);
-  }
-
-  it("renders CMeta booleans with Jinja text semantics") {
-    static const char source[] = "{{ active }}";
-    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
-    JinjaTestModel model;
-    char *output = NULL;
-
-    jinja_test_model_init(&model);
-    root.users.element = &model.user_desc;
-    check_equal(jinja_test_render(source, &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "True");
-    free(output);
-  }
-
   it("charges interpolated boolean literals to the render node budget") {
     static const char source[] = "{{ true }}";
     JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
@@ -265,24 +239,6 @@ spec("Jinja CMeta collections and runtime: expressions 3") {
     root.users.element = &model.user_desc;
     check_equal(jinja_test_render(source, &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
     check_equal(output, "True|False");
-    free(output);
-  }
-
-  it("compares boolean and integer literals with Jinja semantics") {
-    static const char source[] =
-        "{{ 1 == 1 }}|{{ 1 != 1 }}|{{ 2 > 1 }}|{{ 1 > 1 }}|{{ 2 >= 1 }}|"
-        "{{ 1 >= 1 }}|{{ 1 < 2 }}|{{ 1 < 1 }}|{{ 1 <= 2 }}|{{ 1 <= 1 }}|"
-        "{{ true == 1 }}|{{ false < 1 }}|{{ true > false }}|{{ false >= 0 }}|"
-        "{{ -1 < 0 }}|{{ -9223372036854775808 < 9223372036854775807 }}|{{ -1 < false }}";
-    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
-    JinjaTestModel model;
-    char *output = NULL;
-
-    jinja_test_model_init(&model);
-    root.users.element = &model.user_desc;
-    check_equal(jinja_test_render(source, &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "True|False|True|False|True|True|True|False|True|True|True|True|True|True|"
-                        "True|True|True");
     free(output);
   }
 

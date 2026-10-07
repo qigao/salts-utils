@@ -1,6 +1,7 @@
 set(TARGET_NAME cmd_parser)
 
 cmake_add_grammar(CMD_ARGER
+  RE2C_EXECUTABLE "${RE2C_EXECUTABLE}"
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/src/cmd_arger.re
   LEXER_OUTPUT cmd_arger_gen.c
   FOLDER "parser/${TARGET_NAME}/grammar")

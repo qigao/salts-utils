@@ -1,4 +1,6 @@
 #include <salts/bindings/quickjs/cmeta.h>
+#include <salts/bindings/quickjs/module.h>
+#include <data_bind_typescript.h>
 
 #include <cmeta/interface.h>
 #include <cstl/typed.h>
@@ -175,6 +177,89 @@ static const cmeta_data_desc quickjs_test_state_data = {
     .shape = &quickjs_test_state_shape,
     .enum_ops = &quickjs_test_state_ops
 };
+
+typedef struct quickjs_declaration_record {
+  quickjs_test_state state;
+  uint64_t total;
+} quickjs_declaration_record;
+
+static const cmeta_type_desc declaration_type = {
+    .name = "quickjs_declaration_record", .size = sizeof(quickjs_declaration_record),
+    .align = _Alignof(quickjs_declaration_record), .kind = CMETA_T_OBJECT};
+static const cmeta_field_desc declaration_layout_fields[] = {
+    {"state", "quickjs_test_state", offsetof(quickjs_declaration_record, state),
+     sizeof(quickjs_test_state), _Alignof(quickjs_test_state), &quickjs_test_state_type, NULL},
+    {"total", "uint64_t", offsetof(quickjs_declaration_record, total),
+     sizeof(uint64_t), _Alignof(uint64_t), &cmeta_type_uint64, NULL}};
+static const cmeta_struct_desc declaration_layout = {
+    "quickjs_declaration_record", sizeof(quickjs_declaration_record),
+    _Alignof(quickjs_declaration_record), declaration_layout_fields, 2};
+static const cmeta_data_field_desc declaration_fields[] = {
+    {"test.declaration.state", "state", offsetof(quickjs_declaration_record, state), &quickjs_test_state_data},
+    {"test.declaration.total", "total", offsetof(quickjs_declaration_record, total), &cmeta_data_uint64}};
+static const cmeta_data_struct_shape declaration_shape = {&declaration_layout, declaration_fields, 2};
+static const cmeta_data_desc declaration_data = {
+    .struct_size = sizeof(cmeta_data_desc), .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.declaration.record", .display_name = "Declaration record",
+    .kind = CMETA_DATA_STRUCT, .storage_type = &declaration_type, .shape = &declaration_shape};
+
+enum { DECLARATION_CAPACITY = 1024 };
+typedef struct DeclarationOutput {
+  char text[DECLARATION_CAPACITY];
+  size_t size;
+} DeclarationOutput;
+
+static bool declaration_write(void *context, const char *text, size_t size) {
+  DeclarationOutput *out = context;
+  if (size >= sizeof(out->text) - out->size) return false;
+  memcpy(out->text + out->size, text, size);
+  out->size += size;
+  out->text[out->size] = 0;
+  return true;
+}
+
+spec("Native declaration projection") {
+  it("matches the VM enum symbols and exact 64-bit integer representation") {
+    quickjs_declaration_record record = {QUICKJS_TEST_READY, UINT64_MAX};
+    cmeta_object_ref object = CMETA_OBJECT_REF_INIT;
+    const salts_binding_object exports[] = {{"record", &object}};
+    const salts_binding_module module = {NULL, 0, exports, 1};
+    DataBindTypeScriptOptions options = {"Native", 8, 8, 32, DECLARATION_CAPACITY};
+    DeclarationOutput output = {{0}, 0};
+    JSRuntime *runtime = JS_NewRuntime();
+    JSContext *context = JS_NewContext(runtime);
+    JSValue root = JS_UNDEFINED, proxy, value;
+    const char *symbol;
+    uint64_t total = 0;
+    salts_quickjs_limits limits = {8, 8, DECLARATION_CAPACITY};
+    check_equal(cmeta_object_borrow(&object, &record, &declaration_data, NULL), CMETA_OK);
+    check_equal(data_bind_typescript_emit(&module, &options, declaration_write, &output), CMETA_OK);
+    check_equal(output.text,
+        "export interface NativeBindings {\n  \"record\": { readonly \"state\": \"QUICKJS_TEST_IDLE\" | "
+        "\"QUICKJS_TEST_READY\"; readonly \"total\": bigint; };\n}\n");
+    check_equal(salts_quickjs_push_module(context, &module, limits, &root), CMETA_OK);
+    proxy = JS_GetPropertyStr(context, root, "record");
+    value = JS_GetPropertyStr(context, proxy, "state");
+    symbol = JS_ToCString(context, value);
+    check_equal(symbol, "QUICKJS_TEST_READY");
+    JS_FreeCString(context, symbol);
+    JS_FreeValue(context, value);
+    value = JS_GetPropertyStr(context, proxy, "total");
+    check_true(JS_IsBigInt(value));
+    check_equal(JS_ToBigUint64(context, &total, value), 0);
+    check_equal(total, UINT64_MAX);
+    JS_FreeValue(context, value);
+    JS_FreeValue(context, proxy);
+    JS_FreeValue(context, root);
+    JS_FreeContext(context);
+    JS_FreeRuntime(runtime);
+    output.size = 0;
+    options.max_nodes = 1;
+    check_equal(data_bind_typescript_emit(&module, &options, declaration_write, &output), CMETA_CAPACITY_EXCEEDED);
+    check_equal(output.size, (size_t)0);
+    cmeta_object_release(&object);
+  }
+}
 
 typedef struct quickjs_test_record {
   quickjs_test_buffer label;

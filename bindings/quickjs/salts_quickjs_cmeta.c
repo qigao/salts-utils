@@ -1,4 +1,5 @@
 #include <salts/bindings/quickjs/cmeta.h>
+#include <salts/bindings/quickjs/module.h>
 
 #include <float.h>
 #include <math.h>
@@ -797,6 +798,14 @@ cmeta_status salts_quickjs_call_invokable(
     JSContext *context, const cmeta_invokable *invokable,
     int argument_count, JSValueConst *arguments, salts_quickjs_limits limits,
     JSValue *out_result, bool *out_has_result) {
+  salts_binding_function binding = {NULL, invokable, NULL, NULL};
+  return salts_quickjs_call_binding(context, &binding, argument_count, arguments, limits, out_result, out_has_result);
+}
+
+cmeta_status salts_quickjs_call_binding(JSContext *context,
+    const salts_binding_function *binding, int argument_count,
+    JSValueConst *arguments, salts_quickjs_limits limits,
+    JSValue *out_result, bool *out_has_result) {
   const cmeta_function_data_desc *data;
   const cmeta_function_desc *function;
   cmeta_data_temp *temporaries = NULL;
@@ -807,27 +816,17 @@ cmeta_status salts_quickjs_call_invokable(
   cmeta_status status = CMETA_OK;
   if (out_result != NULL) *out_result = JS_UNDEFINED;
   if (out_has_result != NULL) *out_has_result = false;
-  if (context == NULL || invokable == NULL || out_result == NULL ||
+  if (context == NULL || out_result == NULL ||
       argument_count < 0 ||
-      (argument_count != 0 && arguments == NULL) ||
-      !cmeta_invokable_valid(invokable))
+      (argument_count != 0 && arguments == NULL))
     return CMETA_INVALID_ARGUMENT;
-  data = invokable->data;
-  if (!cmeta_function_data_desc_valid(data)) return CMETA_TRAIT_MISSING;
+  status = salts_binding_function_validate(binding);
+  if (status != CMETA_OK) return status;
+  data = salts_binding_function_data(binding);
   function = data->function;
   count = (size_t)argument_count;
   if (count != function->param_count) return CMETA_INVALID_ARGUMENT;
   if (count > limits.max_items) return CMETA_CAPACITY_EXCEEDED;
-
-  for (i = 0u; i < count; ++i) {
-    const cmeta_param_desc *param = cmeta_function_param(function, i);
-    cmeta_param_flags direction;
-    if (param == NULL) return CMETA_INVALID_ARGUMENT;
-    direction = param->flags & CMETA_PARAM_DIRECTION_MASK;
-    if (direction != CMETA_PARAM_IN ||
-        (param->flags & CMETA_PARAM_OWNED) != 0u)
-      return CMETA_TRAIT_MISSING;
-  }
 
   if (count != 0u) {
     temporaries = (cmeta_data_temp *)calloc(
@@ -854,9 +853,9 @@ cmeta_status salts_quickjs_call_invokable(
         data->return_data, limits.max_bytes, &result);
     if (status != CMETA_OK) goto done;
   }
-  status = cmeta_invokable_invoke(
-      invokable, data->return_data != NULL ? result.storage : NULL,
-      native_arguments);
+  status = salts_binding_function_invoke(
+      binding, data->return_data != NULL ? result.storage : NULL,
+      native_arguments, count);
   if (status != CMETA_OK) goto done;
   if (data->return_data != NULL) {
     status = salts_quickjs_push_cmeta(

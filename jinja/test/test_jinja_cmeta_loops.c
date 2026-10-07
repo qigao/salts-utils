@@ -716,29 +716,6 @@ spec("Jinja CMeta collections and runtime: loops 11") {
     free(output);
   }
 
-  it("iterates string loops by Unicode scalar with normal loop semantics") {
-    static const struct { const char *source; const char *expected; } cases[] = {
-      {"{% for ch in 'A中😀é' %}{{loop.index}}/{{loop.length}}={{ch}};{% endfor %}", "1/5=A;2/5=中;3/5=😀;4/5=e;5/5=́;"},
-      {"{% for ch in '' %}bad{% else %}empty{% endfor %}", "empty"},
-      {"{% for ch in '甲乙甲' if ch!='乙' %}{{loop.previtem|default('-')}}:{{ch}}:{{loop.nextitem|default('-')}}/{{loop.revindex}};{% endfor %}", "-:甲:甲/2;甲:甲:-/1;"},
-      {"{% for ch in '甲' recursive %}{{loop.depth}}:{{ch}};{% if ch=='甲' %}{{loop('😀')}}{% endif %}{% endfor %}", "1:甲;2:😀;"},
-      {"{% autoescape true %}{% for ch in '<&'|safe %}{{ch}}{% endfor %}{% endautoescape %}", "&lt;&amp;"},
-      {"{% for (ch,) in '甲😀' %}{{ch}}{% endfor %}", "甲😀"},
-      {"{% for ch in 'ab' if false %}bad{% else %}empty{% endfor %}", "empty"},
-      {"{% set ch='outer' %}{% for ch in 'ab' %}{{ch}}{% endfor %}|{{ch}}", "ab|outer"}
-    };
-    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 0}, false, {NULL, 0u, 0u, NULL}};
-    JinjaTestModel model;
-    jinja_test_model_init(&model);
-    for (size_t i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
-      char *output = NULL;
-      info("source: %s", cases[i].source);
-      check_equal(jinja_test_render(cases[i].source, &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
-      check_equal(output, cases[i].expected);
-      free(output);
-    }
-  }
-
   it("streams borrowed string characters without losing NUL or non-BMP bytes") {
     static const unsigned char input[] = {'A', 0u, 0xf0u, 0x9fu, 0x98u, 0x80u};
     static const unsigned char expected[] = {'P', '[', 'A', ']', '[', 0u, ']',

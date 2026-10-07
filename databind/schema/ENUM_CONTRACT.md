@@ -62,7 +62,7 @@ canonical metadata, range rejection and unchanged caller roots. The enum CI buil
 the real compiler and runs the complete TBE tests with ASan and UBSan, then runs:
 
 ```sh
-python3 databind/idl/compiler/test/enum_conformance.py \
+python3 databind/compiler/tests/core/enum_conformance.py \
   --compiler build/linux-gcc-debug/bin/salts-idlc \
   --source "$PWD" --salts-include /opt/salts/debug/include
 ```

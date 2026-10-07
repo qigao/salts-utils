@@ -2,6 +2,9 @@
 #include "data_bind_internal.h"
 
 #include <vstr.h>
+#include <cstl/typed.h>
+#include <cmeta_cmeta_data.h>
+#include <cmeta/data_reflect.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,10 +12,31 @@
 
 enum { DATA_BIND_PLAN_MAX_TYPES = 64u };
 
+/* Layout alone cannot infer owning tstr semantics from its char * storage. */
 typedef struct DataBindFormatNameMap {
-  char *external_name;
-  char *canonical_name;
+  tstr external_name;
+  tstr canonical_name;
 } DataBindFormatNameMap;
+
+#define PLAN_NAME_STABLE_ID "salts-utils.databind.format-name"
+cmeta_reflect_value(DataBindFormatNameMap, PLAN_NAME_STABLE_ID,
+    cmeta_data_field_id(tstr, external_name, PLAN_NAME_STABLE_ID ".external",
+        SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+    cmeta_data_field_id(tstr, canonical_name, PLAN_NAME_STABLE_ID ".canonical",
+        SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+);
+CMETA_DEFINE_DATA_TRAITS(DataBindFormatNameMap, cmeta_reflected_data(DataBindFormatNameMap));
+/* CSTL needs a trait-bearing storage descriptor. Its lifecycle delegates to
+ * the same reflected value; the bridge preserves the canonical identity. */
+static const cmeta_type_identity PLAN_NAME_ID =
+    CMETA_TYPE_ID_ATOM_INIT(PLAN_NAME_STABLE_ID);
+static const cmeta_type_desc PLAN_NAME_TYPE = {
+    "DataBindFormatNameMap", sizeof(DataBindFormatNameMap),
+    _Alignof(DataBindFormatNameMap), CMETA_T_OBJECT, NULL,
+    &cmeta_traits_DataBindFormatNameMap, &PLAN_NAME_ID};
+cmeta_type(Vec, DataBindFormatNames, DataBindFormatNameMap,
+           &PLAN_NAME_TYPE, cmeta_reflected_data(DataBindFormatNameMap));
+#undef PLAN_NAME_STABLE_ID
 
 struct DataBindFormatPlan {
   char *type_name;
@@ -21,10 +45,8 @@ struct DataBindFormatPlan {
   DataBindSchemaKind root_kind;
   int has_optional;
   int has_nullable;
-  DataBindFormatNameMap *names;
-  size_t name_count;
-  DataBindFormatNameMap *outputs;
-  size_t output_count;
+  DataBindFormatNames names;
+  DataBindFormatNames outputs;
 };
 
 struct DataBindTransportPlan {
@@ -195,15 +217,26 @@ static int plan_type_requires_name_mapping(
   return 0;
 }
 
-static void plan_name_map_free(
-    DataBindFormatNameMap *names, size_t count) {
-  size_t i;
-  if (names == NULL) return;
-  for (i = 0u; i < count; ++i) {
-    free(names[i].external_name);
-    free(names[i].canonical_name);
-  }
-  free(names);
+static DataBindStatus plan_name_map_append(
+    DataBindFormatNames *names,
+    const char *external_name,
+    const char *canonical_name,
+    DataBindError *error) {
+  DataBindFormatNameMap empty = {0};
+  DataBindFormatNameMap *entry;
+  stl_status status = DataBindFormatNames_push(names, empty);
+  if (status != STL_OK)
+    return plan_error(error,
+        status == STL_CAPACITY_EXCEEDED ? DATA_BIND_ERR_LIMIT :
+        status == STL_OUT_OF_MEMORY ? DATA_BIND_ERR_OOM : DATA_BIND_ERR_RUNTIME,
+        "Unable to append FormatPlan field-name mapping");
+  /* The unpublished plan owns partial entries too; Vec destroys them on failure. */
+  entry = DataBindFormatNames_at(names, DataBindFormatNames_size(names) - 1u);
+  if ((entry->external_name = tstr_dup(external_name)) == NULL ||
+      (entry->canonical_name = tstr_dup(canonical_name)) == NULL)
+    return plan_error(error, DATA_BIND_ERR_OOM,
+                      "Unable to copy FormatPlan field-name mapping");
+  return DATA_BIND_OK;
 }
 
 static DataBindStatus plan_add_name_map(
@@ -211,7 +244,6 @@ static DataBindStatus plan_add_name_map(
     const char *external_name,
     const char *canonical_name,
     DataBindError *error) {
-  DataBindFormatNameMap *grown;
   size_t i;
 
   if (plan == NULL || external_name == NULL ||
@@ -221,43 +253,18 @@ static DataBindStatus plan_add_name_map(
         error, DATA_BIND_ERR_SCHEMA,
         "FormatPlan field-name mapping is incomplete");
 
-  for (i = 0u; i < plan->name_count; ++i) {
-    if (strcmp(plan->names[i].external_name, external_name) != 0)
+  for (i = 0u; i < DataBindFormatNames_size(&plan->names); ++i) {
+    const DataBindFormatNameMap *entry = DataBindFormatNames_at_const(&plan->names, i);
+    if (strcmp(entry->external_name, external_name) != 0)
       continue;
-    if (strcmp(plan->names[i].canonical_name, canonical_name) == 0)
+    if (strcmp(entry->canonical_name, canonical_name) == 0)
       return DATA_BIND_OK;
     return plan_error(
         error, DATA_BIND_ERR_SCHEMA,
         "FormatPlan input field name collides across canonical fields");
   }
 
-  if (plan->name_count == SIZE_MAX / sizeof(*plan->names))
-    return plan_error(
-        error, DATA_BIND_ERR_LIMIT,
-        "FormatPlan field-name mapping exceeds addressable capacity");
-  grown = (DataBindFormatNameMap *)realloc(
-      plan->names, (plan->name_count + 1u) * sizeof(*plan->names));
-  if (grown == NULL)
-    return plan_error(
-        error, DATA_BIND_ERR_OOM,
-        "Unable to allocate FormatPlan field-name mapping");
-  plan->names = grown;
-  plan->names[plan->name_count] = (DataBindFormatNameMap){0};
-  plan->names[plan->name_count].external_name =
-      plan_strdup(external_name);
-  plan->names[plan->name_count].canonical_name =
-      plan_strdup(canonical_name);
-  if (plan->names[plan->name_count].external_name == NULL ||
-      plan->names[plan->name_count].canonical_name == NULL) {
-    free(plan->names[plan->name_count].external_name);
-    free(plan->names[plan->name_count].canonical_name);
-    plan->names[plan->name_count] = (DataBindFormatNameMap){0};
-    return plan_error(
-        error, DATA_BIND_ERR_OOM,
-        "Unable to copy FormatPlan field-name mapping");
-  }
-  ++plan->name_count;
-  return DATA_BIND_OK;
+  return plan_name_map_append(&plan->names, external_name, canonical_name, error);
 }
 
 
@@ -266,7 +273,6 @@ static DataBindStatus plan_add_output_name(
     const char *external_name,
     const char *canonical_name,
     DataBindError *error) {
-  DataBindFormatNameMap *grown;
   size_t i;
 
   if (plan == NULL || external_name == NULL || external_name[0] == '\0' ||
@@ -275,41 +281,18 @@ static DataBindStatus plan_add_output_name(
         error, DATA_BIND_ERR_SCHEMA,
         "FormatPlan output field-name mapping is incomplete");
 
-  for (i = 0u; i < plan->output_count; ++i) {
-    if (strcmp(plan->outputs[i].canonical_name, canonical_name) != 0)
+  for (i = 0u; i < DataBindFormatNames_size(&plan->outputs); ++i) {
+    const DataBindFormatNameMap *entry = DataBindFormatNames_at_const(&plan->outputs, i);
+    if (strcmp(entry->canonical_name, canonical_name) != 0)
       continue;
-    if (strcmp(plan->outputs[i].external_name, external_name) == 0)
+    if (strcmp(entry->external_name, external_name) == 0)
       return DATA_BIND_OK;
     return plan_error(
         error, DATA_BIND_ERR_SCHEMA,
         "FormatPlan canonical field has multiple primary output names");
   }
 
-  if (plan->output_count == SIZE_MAX / sizeof(*plan->outputs))
-    return plan_error(
-        error, DATA_BIND_ERR_LIMIT,
-        "FormatPlan output field-name mapping exceeds addressable capacity");
-  grown = (DataBindFormatNameMap *)realloc(
-      plan->outputs, (plan->output_count + 1u) * sizeof(*plan->outputs));
-  if (grown == NULL)
-    return plan_error(
-        error, DATA_BIND_ERR_OOM,
-        "Unable to allocate FormatPlan output field-name mapping");
-  plan->outputs = grown;
-  plan->outputs[plan->output_count] = (DataBindFormatNameMap){0};
-  plan->outputs[plan->output_count].external_name = plan_strdup(external_name);
-  plan->outputs[plan->output_count].canonical_name = plan_strdup(canonical_name);
-  if (plan->outputs[plan->output_count].external_name == NULL ||
-      plan->outputs[plan->output_count].canonical_name == NULL) {
-    free(plan->outputs[plan->output_count].external_name);
-    free(plan->outputs[plan->output_count].canonical_name);
-    plan->outputs[plan->output_count] = (DataBindFormatNameMap){0};
-    return plan_error(
-        error, DATA_BIND_ERR_OOM,
-        "Unable to copy FormatPlan output field-name mapping");
-  }
-  ++plan->output_count;
-  return DATA_BIND_OK;
+  return plan_name_map_append(&plan->outputs, external_name, canonical_name, error);
 }
 
 static DataBindStatus plan_compile_root_name_map(
@@ -318,6 +301,8 @@ static DataBindStatus plan_compile_root_name_map(
     DataBindFormatPlan *plan,
     DataBindError *error) {
   size_t field_count;
+  size_t name_limit = 0u;
+  const size_t max_entries = SIZE_MAX / sizeof(DataBindFormatNameMap);
   size_t i;
   if (codec == NULL || type_name == NULL || plan == NULL)
     return plan_error(
@@ -325,6 +310,21 @@ static DataBindStatus plan_compile_root_name_map(
         "Invalid FormatPlan name-map compile request");
 
   field_count = data_bind_schema_field_count(codec, type_name);
+  if (field_count > max_entries)
+    return plan_error(error, DATA_BIND_ERR_LIMIT,
+                      "FormatPlan output names exceed addressable capacity");
+  for (i = 0u; i < field_count; ++i) {
+    size_t count = data_bind_internal_field_input_name_count(codec, type_name, i);
+    if (count > max_entries - name_limit)
+      return plan_error(error, DATA_BIND_ERR_LIMIT,
+                        "FormatPlan input names exceed addressable capacity");
+    name_limit += count;
+  }
+  /* Immutable schema cardinality bounds both tables, including duplicate aliases. */
+  if (DataBindFormatNames_init(&plan->names, name_limit) != STL_OK ||
+      DataBindFormatNames_init(&plan->outputs, field_count) != STL_OK)
+    return plan_error(error, DATA_BIND_ERR_RUNTIME,
+                      "Unable to initialize FormatPlan name storage");
   for (i = 0u; i < field_count; ++i) {
     DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
     size_t input_count;
@@ -373,10 +373,11 @@ static const char *plan_canonical_name(
     const cserde_slice *external_name) {
   size_t i;
   if (plan == NULL || external_name == NULL) return NULL;
-  for (i = 0u; i < plan->name_count; ++i)
-    if (plan_slice_equal_cstr(
-            external_name, plan->names[i].external_name))
-      return plan->names[i].canonical_name;
+  for (i = 0u; i < DataBindFormatNames_size(&plan->names); ++i) {
+    const DataBindFormatNameMap *entry = DataBindFormatNames_at_const(&plan->names, i);
+    if (plan_slice_equal_cstr(external_name, entry->external_name))
+      return entry->canonical_name;
+  }
   return NULL;
 }
 
@@ -385,10 +386,11 @@ static const char *plan_external_name(
     const cserde_slice *canonical_name) {
   size_t i;
   if (plan == NULL || canonical_name == NULL) return NULL;
-  for (i = 0u; i < plan->output_count; ++i)
-    if (plan_slice_equal_cstr(
-            canonical_name, plan->outputs[i].canonical_name))
-      return plan->outputs[i].external_name;
+  for (i = 0u; i < DataBindFormatNames_size(&plan->outputs); ++i) {
+    const DataBindFormatNameMap *entry = DataBindFormatNames_at_const(&plan->outputs, i);
+    if (plan_slice_equal_cstr(canonical_name, entry->canonical_name))
+      return entry->external_name;
+  }
   return NULL;
 }
 
@@ -567,43 +569,35 @@ static DataBindStatus plan_scan_type(
   return DATA_BIND_OK;
 }
 
-static DataBindStatus plan_format_plan_compile(
+static DataBindStatus plan_format_admit(
     DataBind *codec,
     const char *type_name,
     DataBindFormat format,
     int require_state_preservation,
-    DataBindFormatPlan **out_plan,
+    DataBindPlanScan *scan,
     DataBindError *error) {
-  DataBindPlanScan scan = {0};
-  DataBindFormatPlan *plan;
   DataBindStatus status;
-  uint32_t states;
-
-  if (out_plan == NULL)
-    return plan_error(error, DATA_BIND_ERR_INVALID_ARG,
-                      "FormatPlan output is required");
-  *out_plan = NULL;
+  uint32_t states = plan_format_states(format);
   if (codec == NULL || type_name == NULL || type_name[0] == '\0' ||
       !plan_format_valid(format))
     return plan_error(error, DATA_BIND_ERR_INVALID_ARG,
                       "Invalid FormatPlan compile request");
 
-  states = plan_format_states(format);
-  status = plan_scan_type(codec, type_name, &scan, error);
+  status = plan_scan_type(codec, type_name, scan, error);
   if (status != DATA_BIND_OK) return status;
 
   if (format == DATA_BIND_FORMAT_CSV) {
     char message[sizeof(((DataBindError *)0)->message)];
-    if (!plan_csv_root_kind_supported(scan.root_kind))
+    if (!plan_csv_root_kind_supported(scan->root_kind))
       return plan_error(
           error, DATA_BIND_ERR_SCHEMA,
           "CSV FormatPlan requires a flat message/composite root");
-    if (scan.has_csv_unsupported_shape) {
-      if (scan.csv_unsupported_field != NULL)
+    if (scan->has_csv_unsupported_shape) {
+      if (scan->csv_unsupported_field != NULL)
         snprintf(message, sizeof(message),
                  "CSV FormatPlan field '%s' is not flat scalar/enum data; "
                  "explicit projection mapping is required",
-                 scan.csv_unsupported_field);
+                 scan->csv_unsupported_field);
       else
         snprintf(message, sizeof(message),
                  "CSV FormatPlan contains non-flat data; "
@@ -614,15 +608,15 @@ static DataBindStatus plan_format_plan_compile(
 
   if (format == DATA_BIND_FORMAT_XML) {
     char message[sizeof(((DataBindError *)0)->message)];
-    if (!plan_xml_root_kind_supported(scan.root_kind))
+    if (!plan_xml_root_kind_supported(scan->root_kind))
       return plan_error(
           error, DATA_BIND_ERR_SCHEMA,
           "XML FormatPlan root cannot be represented without explicit projection mapping");
-    if (scan.has_xml_unsupported_shape) {
-      if (scan.xml_unsupported_field != NULL)
+    if (scan->has_xml_unsupported_shape) {
+      if (scan->xml_unsupported_field != NULL)
         snprintf(message, sizeof(message),
                  "XML FormatPlan field '%s' requires collection/variant projection mapping",
-                 scan.xml_unsupported_field);
+                 scan->xml_unsupported_field);
       else
         snprintf(message, sizeof(message),
                  "XML FormatPlan contains a shape that requires explicit projection mapping");
@@ -630,49 +624,79 @@ static DataBindStatus plan_format_plan_compile(
     }
   }
 
-  if (require_state_preservation && scan.has_nullable &&
+  if (require_state_preservation && scan->has_nullable &&
       (states & DATA_BIND_FORMAT_STATE_NULL) == 0u)
     return plan_error(
         error, DATA_BIND_ERR_SCHEMA,
         "Selected format cannot preserve explicit NULL for this contract");
 
-  plan = (DataBindFormatPlan *)calloc(1u, sizeof(*plan));
-  if (plan == NULL)
-    return plan_error(error, DATA_BIND_ERR_OOM,
-                      "Unable to allocate FormatPlan");
+  return DATA_BIND_OK;
+}
+
+/* The caller owns even a partially populated plan. Borrowed scan/schema data
+ * never escapes this synchronous construction step. */
+static DataBindStatus plan_format_populate(
+    DataBindFormatPlan *plan,
+    DataBind *codec,
+    const char *type_name,
+    const DataBindPlanScan *scan,
+    DataBindError *error) {
   plan->type_name = plan_strdup(type_name);
-  if (plan->type_name == NULL) {
-    free(plan);
+  if (plan->type_name == NULL)
     return plan_error(error, DATA_BIND_ERR_OOM,
                       "Unable to copy FormatPlan type identity");
-  }
-  plan->format = format;
-  plan->value_states = states;
-  plan->root_kind = scan.root_kind;
-  plan->has_optional = scan.has_optional;
-  plan->has_nullable = scan.has_nullable;
+  plan->value_states = plan_format_states(plan->format);
+  plan->root_kind = scan->root_kind;
+  plan->has_optional = scan->has_optional;
+  plan->has_nullable = scan->has_nullable;
 
-  if (plan_format_uses_field_names(format)) {
-    if (scan.has_nested_name_mapping) {
+  if (plan_format_uses_field_names(plan->format)) {
+    if (scan->has_nested_name_mapping) {
       char message[sizeof(((DataBindError *)0)->message)];
       snprintf(
           message, sizeof(message),
           "FormatPlan nested type '%s' requires field-name canonicalization "
           "that is not admitted by the v1 root reader",
-          scan.nested_name_mapping_type != NULL
-              ? scan.nested_name_mapping_type
+          scan->nested_name_mapping_type != NULL
+              ? scan->nested_name_mapping_type
               : "<unknown>");
-      data_bind_format_plan_free(plan);
       return plan_error(error, DATA_BIND_ERR_SCHEMA, message);
     }
-    status = plan_compile_root_name_map(
-        codec, type_name, plan, error);
-    if (status != DATA_BIND_OK) {
-      data_bind_format_plan_free(plan);
-      return status;
-    }
+    return plan_compile_root_name_map(codec, type_name, plan, error);
   }
+  return DATA_BIND_OK;
+}
 
+static DataBindStatus plan_format_plan_compile(
+    DataBind *codec,
+    const char *type_name,
+    DataBindFormat format,
+    int require_state_preservation,
+    DataBindFormatPlan **out_plan,
+    DataBindError *error) {
+  DataBindPlanScan scan = {0};
+  DataBindFormatPlan *plan;
+  DataBindStatus status;
+
+  if (out_plan == NULL)
+    return plan_error(error, DATA_BIND_ERR_INVALID_ARG,
+                      "FormatPlan output is required");
+  *out_plan = NULL;
+  status = plan_format_admit(
+      codec, type_name, format, require_state_preservation, &scan, error);
+  if (status != DATA_BIND_OK) return status;
+
+  plan = (DataBindFormatPlan *)calloc(1u, sizeof(*plan));
+  if (plan == NULL)
+    return plan_error(error, DATA_BIND_ERR_OOM,
+                      "Unable to allocate FormatPlan");
+  plan->format = format;
+  status = plan_format_populate(plan, codec, type_name, &scan, error);
+  if (status != DATA_BIND_OK) {
+    data_bind_format_plan_free(plan);
+    return status;
+  }
+  /* Only complete plans cross the ownership boundary. */
   *out_plan = plan;
   return DATA_BIND_OK;
 }
@@ -700,8 +724,8 @@ DataBindStatus data_bind_format_plan_compile_reader(
 
 void data_bind_format_plan_free(DataBindFormatPlan *plan) {
   if (plan == NULL) return;
-  plan_name_map_free(plan->names, plan->name_count);
-  plan_name_map_free(plan->outputs, plan->output_count);
+  DataBindFormatNames_destroy(&plan->names);
+  DataBindFormatNames_destroy(&plan->outputs);
   free(plan->type_name);
   free(plan);
 }
@@ -942,6 +966,27 @@ static int plan_transport_kind_valid(DataBindTransportKind kind) {
          kind == DATA_BIND_TRANSPORT_RPC;
 }
 
+static DataBindStatus plan_transport_populate(
+    DataBindTransportPlan *plan,
+    DataBind *codec,
+    const DataBindServiceOperation *operation,
+    DataBindFormat ingress_format,
+    DataBindFormat egress_format,
+    DataBindError *error) {
+  DataBindStatus status;
+  if (operation->request_type != NULL &&
+      strcmp(operation->request_type, "void") != 0) {
+    status = data_bind_format_plan_compile(
+        codec, operation->request_type, ingress_format, &plan->ingress, error);
+    if (status != DATA_BIND_OK) return status;
+  }
+  if (operation->response_type != NULL &&
+      strcmp(operation->response_type, "void") != 0)
+    return data_bind_format_plan_compile(
+        codec, operation->response_type, egress_format, &plan->egress, error);
+  return DATA_BIND_OK;
+}
+
 DataBindStatus data_bind_transport_plan_compile_service(
     DataBind *codec,
     const char *service_name,
@@ -980,31 +1025,15 @@ DataBindStatus data_bind_transport_plan_compile_service(
   plan->service_name = plan_strdup(service_name);
   plan->operation_name = plan_strdup(operation_name);
   if (plan->service_name == NULL || plan->operation_name == NULL) {
-    data_bind_transport_plan_free(plan);
-    return plan_error(error, DATA_BIND_ERR_OOM,
+    status = plan_error(error, DATA_BIND_ERR_OOM,
                       "Unable to copy TransportPlan identity");
+  } else {
+    status = plan_transport_populate(
+        plan, codec, &operation, ingress_format, egress_format, error);
   }
-
-  if (operation.request_type != NULL &&
-      strcmp(operation.request_type, "void") != 0) {
-    status = data_bind_format_plan_compile(
-        codec, operation.request_type, ingress_format,
-        &plan->ingress, error);
-    if (status != DATA_BIND_OK) {
-      data_bind_transport_plan_free(plan);
-      return status;
-    }
-  }
-
-  if (operation.response_type != NULL &&
-      strcmp(operation.response_type, "void") != 0) {
-    status = data_bind_format_plan_compile(
-        codec, operation.response_type, egress_format,
-        &plan->egress, error);
-    if (status != DATA_BIND_OK) {
-      data_bind_transport_plan_free(plan);
-      return status;
-    }
+  if (status != DATA_BIND_OK) {
+    data_bind_transport_plan_free(plan);
+    return status;
   }
 
   *out_plan = plan;

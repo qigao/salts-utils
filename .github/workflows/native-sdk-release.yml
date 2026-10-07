@@ -1,1233 +1,203 @@
 name: SaltsUtils native SDK release
-
-on:
-  pull_request:
-    paths:
-      - ".github/workflows/native-sdk-release.yml"
-      - "cmake/ci/restore-native-sdk.sh"
-      - "cmake/ci/restore-native-sdk.ps1"
-      - "cmake/vcpkg-cache.nuget.config"
-      - "packaging/nuget/**"
-      - "CMakeLists.txt"
-      - "CMakeUserPresets.json"
-      - "presets/**"
-      - "vcpkg.json"
-      - "vcpkg-configuration.json"
-      - "crypto/**"
-      - "cmake/SaltsUtilsConfig.cmake.in"
-      - "databind/CMakeLists.txt"
-      - "databind/producer/**"
-      - "databind/idl/**"
-      - "databind/formats/binary/**"
-      - "databind/schema/**"
-      - "databind/runtime/**"
-      - "capture/**"
-      - "parser/xml_parser/**"
-  push:
-    branches: [master]
-    tags: ["v*"]
-    paths:
-      - ".github/workflows/native-sdk-release.yml"
-      - "cmake/ci/restore-native-sdk.sh"
-      - "cmake/ci/restore-native-sdk.ps1"
-      - "cmake/vcpkg-cache.nuget.config"
-      - "packaging/nuget/**"
-      - "CMakeLists.txt"
-      - "CMakeUserPresets.json"
-      - "presets/**"
-      - "vcpkg.json"
-      - "vcpkg-configuration.json"
-      - "crypto/**"
-      - "cmake/SaltsUtilsConfig.cmake.in"
-      - "databind/CMakeLists.txt"
-      - "databind/producer/**"
-      - "databind/idl/**"
-      - "databind/formats/binary/**"
-      - "databind/schema/**"
-      - "databind/runtime/**"
-      - "capture/**"
-      - "parser/xml_parser/**"
-
+'on':
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact immutable release commit SHA
+        required: true
+        type: string
+      tag:
+        description: Existing immutable release tag
+        required: true
+        type: string
+      ci_run_id:
+        description: Successful SaltsUtils CI run with prepare_release enabled for this exact commit
+        required: true
+        type: string
 permissions:
   contents: read
   packages: read
-
+  actions: read
 concurrency:
-  group: salts-utils-native-sdk-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: salts-utils-native-release-${{ inputs.tag }}
+  cancel-in-progress: false
 jobs:
   metadata:
-    runs-on: ubuntu-latest
+    name: Release metadata
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
-      source_commit: ${{ steps.version.outputs.source_commit }}
+      release_sha: ${{ steps.version.outputs.release_sha }}
+      release: ${{ steps.version.outputs.release }}
+      publish: ${{ steps.version.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
-      - id: version
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(awk '/^[[:space:]]*VERSION[[:space:]]+[0-9]/{print $2; exit}' CMakeLists.txt)"
-          test -n "$version"
-          tag="v$version"
-          source_commit="$(git rev-parse HEAD)"
-          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
-            if [ "${GITHUB_REF_NAME:-}" != "$tag" ]; then
-              echo "release tag ${GITHUB_REF_NAME:-<unset>} does not match project version $tag" >&2
-              exit 1
-            fi
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            :
-          else
-            test "${GITHUB_REF_NAME:-}" = "master"
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "source_commit=$source_commit" >> "$GITHUB_OUTPUT"
-
-  xml-parser:
-    name: XML parser sanitizer contract
-    needs: metadata
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Checkout exact source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Configure shared vcpkg binary cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Prepare focused native toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config
-          test -n "${VCPKG_ROOT:-}"
-          test -n "${VCPKG_BINARY_SOURCES:-}"
-
-      - name: Restore latest published Salts SDK
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
-
-      - name: Configure focused XML sanitizer build
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake --preset ci-linux-dev-user
-          cmake --build --preset ci-linux-dev-user \
-            --target xml_parser_test xml_sax_parser_test test_databind_generated_cmeta_graph \
-                     test_databind_generated_cmeta_public test_databind_generated_cmeta_public_cpp \
-                     test_optional_scalar_lifecycle test_databind_message_native_artifact \
-                     test_data_bind_native_nullable --parallel 2
-
-      - name: Run XML parser and native lifecycle ASan UBSan and leak contracts
-        shell: bash
-        run: |
-          set -euxo pipefail
-          ctest --preset ci-linux-dev-user --no-tests=error -R '^(xml_parser_test|xml_sax_parser_test|test_databind_generated_cmeta_graph|test_databind_generated_cmeta_public|test_databind_generated_cmeta_public_cpp|test_optional_scalar_lifecycle|test_databind_message_native_artifact|test_data_bind_native_nullable)$' --output-on-failure
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          test -z "$(git status --porcelain --untracked-files=no)"
-
-  binding-plan:
-    name: DataBind BindingPlan contract
-    needs: metadata
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - name: Checkout exact source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Configure shared vcpkg binary cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Prepare focused native toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm libpipewire-0.3-dev libx11-dev libxext-dev
-          test -n "${VCPKG_ROOT:-}"
-          test -n "${VCPKG_BINARY_SOURCES:-}"
-          case "$VCPKG_BINARY_SOURCES" in
-            *nugetconfig*) ;;
-            *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
-          esac
-          test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
-
-      - name: Restore Salts 2.0 and published native tools
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
-
-      - name: Configure focused BindingPlan test build
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake --preset ci-linux-release-user
-          cmake --build --preset ci-linux-release-user \
-            --target test_data_bind_native_control_records test_data_bind_native_enum test_data_bind_native_scalar test_data_bind_native_message test_data_bind_native_collection_message test_data_bind_native_ownership_boundary test_data_bind_native_bytes_json test_data_bind_native_value_reader test_data_bind_native_value_reader_cpp test_data_bind_value_boundary test_data_bind_binary_native test_data_bind_binary_writer test_databind_generated_binary_admission test_binary_tail_only benchmark_data_bind_native test_data_bind_binding_plan test_data_bind_owned_error_validation test_data_bind_object_message_plan \
-                     test_data_bind_native_nullable test_generated_message_plan \
-                     test_data_bind_projection_plan test_data_bind_record_exact \
-                     test_data_bind_binary_reader test_data_bind_opaque_plan \
-                     test_databind_binary_reader_codegen test_databind_binary_layout_ir \
-                     test_databind_binary_var_data_transport test_databind_opaque_transport \
-                     test_databind_opaque_service test_databind_method_plan_binary_admission \
-                     test_databind_flowmq_plan_projection \
-                     test_data_bind_service_native_error \
-                     test_data_bind_native_reader test_data_bind_native_reader_cpp \
-                     test_data_bind_native_writer test_data_bind_native_container test_data_bind_native_storage_requirements \
-                     test_data_bind_yaml_provider test_data_bind_xml_provider \
-                     test_data_bind_cmeta_public_cpp \
-                     test_databind_generated_owned_buffers \
-                     test_databind_generated_sequence_public_cpp \
-                     test_databind_nested_native_generics test_databind_generated_text_cleanup test_idl_contract test_data_bind_validation_plan test_tbe_compiler test_api \
-                     test_tbe_compiler test_tbe_compiler_cmeta_fields \
-                     test_data_bind_cmeta_adapter_plan \
-                     test_databind_projection_frontend \
-                     test_databind_service_native_lowering \
-                     test_databind_native_service_public_artifact \
-                     test_databind_native_service_public_artifact_cpp \
-                     test_databind_message_native_artifact \
-                     test_databind_plugin_generic_descriptor_client \
-                     test_databind_plugin_generated_dso \
-                     test_databind_plugin_generated_client \
-                     test_databind_plugin_generated_client_cpp \
-                     test_databind_plugin_typed_error_client \
-                     test_databind_plugin_typed_error_client_cpp \
-                     test_databind_plugin_owned_typed_error_client \
-                     test_databind_plugin_owned_typed_error_client_cpp \
-                     test_databind_plugin_projection_rejection \
-            --parallel 2
-
-      - name: Run canonical BindingPlan runtime contract
-        shell: bash
-        run: |
-          set -euxo pipefail
-          ctest --preset ci-linux-release-user --no-tests=error \
-            -R '^(test_databind_nested_native_generics|test_databind_generated_text_cleanup|test_idl_contract|test_data_bind_validation_plan|test_tbe_compiler|test_api|test_data_bind_native_control_records|test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|test_generated_message_plan|benchmark_data_bind_native|test_data_bind_binding_plan|test_data_bind_owned_error_validation|test_data_bind_object_message_plan|test_data_bind_native_nullable|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_databind_binary_reader_codegen|test_databind_binary_layout_ir|test_databind_binary_var_data_transport|test_databind_opaque_transport|test_databind_opaque_service|test_databind_method_plan_binary_admission|test_databind_flowmq_plan_projection|test_data_bind_service_native_error|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_cmeta_public_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp|test_tbe_compiler|test_tbe_compiler_cmeta_fields|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_service_native_lowering|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact|test_databind_plugin_projection_rejection|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_tbe_cmeta_cli_gates)$' \
-            --output-on-failure
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          test -z "$(git status --porcelain --untracked-files=no)"
-
-      - name: Run generated sequence ASan and UBSan contract
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake --preset ci-linux-dev-user
-          cmake --build --preset ci-linux-dev-user \
-            --target test_data_bind_native_control_records test_data_bind_native_enum test_data_bind_native_scalar test_data_bind_native_message test_data_bind_native_collection_message test_data_bind_native_ownership_boundary test_data_bind_native_bytes_json test_data_bind_native_value_reader test_data_bind_native_value_reader_cpp test_data_bind_value_boundary test_data_bind_binary_native test_data_bind_binary_writer test_databind_generated_binary_admission test_binary_tail_only benchmark_data_bind_native test_data_bind_native_container test_data_bind_native_storage_requirements test_data_bind_binary_reader test_data_bind_opaque_plan \
-                     test_data_bind_yaml_provider test_data_bind_xml_provider \
-                     test_generated_message_plan test_data_bind_binding_plan test_data_bind_owned_error_validation test_data_bind_object_message_plan \
-                     test_data_bind_service_native_error \
-                     test_databind_message_native_artifact \
-                     test_databind_plugin_generic_descriptor_client \
-                     test_databind_plugin_generated_dso \
-                     test_databind_plugin_generated_client \
-                     test_databind_plugin_generated_client_cpp \
-                     test_databind_plugin_typed_error_client \
-                     test_databind_plugin_typed_error_client_cpp \
-                     test_databind_plugin_owned_typed_error_client \
-                     test_databind_plugin_owned_typed_error_client_cpp \
-                     test_databind_generated_owned_buffers \
-                     test_databind_generated_sequence_public_cpp \
-                     test_databind_nested_native_generics test_databind_generated_text_cleanup test_idl_contract test_data_bind_validation_plan test_tbe_compiler test_api \
-            --parallel 2
-          ctest --preset ci-linux-dev-user --no-tests=error \
-            -R '^(test_databind_nested_native_generics|test_databind_generated_text_cleanup|test_idl_contract|test_data_bind_validation_plan|test_tbe_compiler|test_api|test_data_bind_native_control_records|test_data_bind_native_enum|test_data_bind_native_scalar|test_data_bind_native_message|test_data_bind_native_collection_message|test_data_bind_native_ownership_boundary|test_data_bind_native_bytes_json|test_data_bind_native_value_reader|test_data_bind_native_value_reader_cpp|test_data_bind_value_boundary|test_data_bind_native_container|test_data_bind_native_storage_requirements|test_data_bind_binary_native|test_data_bind_binary_writer|test_databind_generated_binary_admission|test_binary_tail_only|test_generated_message_plan|benchmark_data_bind_native|test_data_bind_binding_plan|test_data_bind_owned_error_validation|test_data_bind_object_message_plan|test_data_bind_binary_reader|test_data_bind_opaque_plan|test_data_bind_yaml_provider|test_data_bind_xml_provider|test_data_bind_service_native_error|test_databind_message_native_artifact|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp)$' \
-            --output-on-failure
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-
-  jinja-cmeta:
-    name: Jinja CMeta/CSTL contract
-    needs: metadata
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - name: Checkout exact source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Configure shared vcpkg binary cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Prepare focused native toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm
-          test -n "${VCPKG_ROOT:-}"
-          test -n "${VCPKG_BINARY_SOURCES:-}"
-          case "$VCPKG_BINARY_SOURCES" in
-            *nugetconfig*) ;;
-            *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
-          esac
-          test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
-
-      - name: Restore Salts 2.0 and published native tools
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
-
-      - name: Configure focused Jinja CMeta build
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake --preset ci-linux-release-user
-          cmake --build --preset ci-linux-release-user \
-            --target test_jinja_cmeta_cstl_collections \
-                     test_jinja_cmeta_iterators \
-                     test_jinja_cmeta_attributes \
-                     test_jinja_cmeta_budgets \
-                     test_jinja_cmeta_identity \
-                     test_jinja_cmeta_templates \
-                     test_jinja_cmeta_header_cpp \
-                     test_jinja_runtime_header_cpp \
-            --parallel 2
-
-      - name: Run canonical Jinja CMeta/CSTL contract
-        shell: bash
-        run: |
-          set -euxo pipefail
-          ctest --preset ci-linux-release-user --no-tests=error \
-            -R '^(test_jinja_cmeta_(cstl_collections|iterators|attributes|budgets|identity|templates|header_cpp))$' \
-            --output-on-failure
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          test -z "$(git status --porcelain --untracked-files=no)"
-
-  linux:
-    name: Linux x64 SDK
-    needs: metadata
-    runs-on: ubuntu-24.04
-    env:
-      QIGAO_TARGET_TRIPLET: x64-linux
-      QIGAO_SDK_RID: linux-x64
-    steps:
-      - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-      - name: Prepare native toolchain
-        id: env
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm libpipewire-0.3-dev libx11-dev libxext-dev
-          test -n "${VCPKG_ROOT:-}"
-          test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
-          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
-
-      - name: Restore Salts 2.0 and published native tools
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64 1
-      - name: Configure and install SaltsUtils
-        shell: bash
-        run: |
-          set -euxo pipefail
-          prefix="$GITHUB_WORKSPACE/stage/sdk/linux-x64"
-          cmake --preset ci-sdk-capture-release-user
-          cmake --build --preset install-ci-sdk-capture-release-user --parallel 2
-          export SALTS_UTILS_ROOT="$prefix"
-          pushd databind/runtime/package_config/plugin_execution
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          pushd databind/producer/package_config
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target databind_generated_plan_consumer --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          pushd databind/idl/compiler/package_config/databind_target
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          pushd databind/idl/compiler/package_config/wasm_execution
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target wasm_execution_consumer --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
-          version=${{ needs.metadata.outputs.version }}
-          commit=$GITHUB_SHA
-          os=linux
-          arch=x64
-          profile=release
-          EOF
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: salts-utils-sdk-linux-x64
-          path: stage/sdk
-          if-no-files-found: error
-          compression-level: 9
-
-  linux_arm64:
-    name: Linux arm64 SDK
-    needs: metadata
-    runs-on: ubuntu-24.04-arm
-    env:
-      QIGAO_TARGET_TRIPLET: arm64-linux
-      QIGAO_SDK_RID: linux-arm64
-    steps:
-      - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Prepare native arm64 toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(uname -m)" = "aarch64"
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build pkg-config
-          test -n "${VCPKG_ROOT:-}"
-          test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
-          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
-          case "${VCPKG_BINARY_SOURCES:-}" in
-            *nugetconfig*) ;;
-            *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
-          esac
-          test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
-
-      - name: Restore latest published Salts SDK and host re2c
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh linux-arm64 linux-arm64
-
-
-
-      - name: Configure, build and install SaltsUtils
-        shell: bash
-        run: |
-          set -euxo pipefail
-          prefix="$GITHUB_WORKSPACE/stage/sdk/linux-arm64"
-          cmake --preset ci-sdk-release-user
-          cmake --build --preset install-ci-sdk-release-user --parallel 2
-          export SALTS_UTILS_ROOT="$prefix"
-          pushd databind/producer/package_config
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target databind_generated_plan_consumer --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          pushd databind/idl/compiler/package_config/databind_target
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
-          version=${{ needs.metadata.outputs.version }}
-          commit=$GITHUB_SHA
-          os=linux
-          arch=arm64
-          rid=linux-arm64
-          triplet=arm64-linux
-          capture=off
-          profile=release
-          EOF
-
-      - name: Preserve failed arm64 dependency admission evidence
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: salts-utils-arm64-vcpkg-admission
-          path: |
-            vcpkg_installed/arm64-linux/share/simde/vcpkg_abi_info.txt
-            ${{ env.VCPKG_ROOT }}/buildtrees/simde/*vcpkg_abi_info.txt
-            databind/producer/package_config/build/native/vcpkg-manifest-install.log
-          if-no-files-found: error
-          retention-days: 3
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: salts-utils-sdk-linux-arm64
-          path: stage/sdk
-          if-no-files-found: error
-          compression-level: 9
-
-  macos:
-    name: macOS SDK
-    needs: metadata
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-      - name: Prepare native toolchain
-        id: env
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew install nasm ninja
-          test -n "${VCPKG_ROOT:-}"
-          test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
-          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
-          case "$RUNNER_ARCH" in
-            X64) rid=macos-x64; triplet=x64-osx ;;
-            ARM64) rid=macos-arm64; triplet=arm64-osx ;;
-            *) echo "unsupported RUNNER_ARCH=$RUNNER_ARCH" >&2; exit 1 ;;
-          esac
-          echo "rid=$rid" >> "$GITHUB_OUTPUT"
-          echo "triplet=$triplet" >> "$GITHUB_OUTPUT"
-          echo "QIGAO_TARGET_TRIPLET=$triplet" >> "$GITHUB_ENV"
-          echo "QIGAO_SDK_RID=$rid" >> "$GITHUB_ENV"
-
-      - name: Restore Salts 2.0 and published native tools
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh "${{ steps.env.outputs.rid }}" "${{ steps.env.outputs.rid }}" 1
-      - name: Configure and install SaltsUtils
-        shell: bash
-        run: |
-          set -euxo pipefail
-          prefix="$GITHUB_WORKSPACE/stage/sdk/${{ steps.env.outputs.rid }}"
-          cmake --preset ci-sdk-capture-release-user
-          cmake --build --preset install-ci-sdk-capture-release-user --parallel 2
-          export SALTS_UTILS_ROOT="$prefix"
-          pushd databind/producer/package_config
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target databind_generated_plan_consumer --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          pushd databind/runtime/package_config/plugin_execution
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          pushd databind/idl/compiler/package_config/databind_target
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          pushd databind/idl/compiler/package_config/databind_public
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target databind_public_consumer --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          pushd databind/idl/compiler/package_config/wasm_execution
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target wasm_execution_consumer --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-          popd
-          cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
-          version=${{ needs.metadata.outputs.version }}
-          commit=$GITHUB_SHA
-          os=macos
-          arch=$RUNNER_ARCH
-          profile=release
-          EOF
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: salts-utils-sdk-macos
-          path: stage/sdk
-          if-no-files-found: error
-          compression-level: 9
-
-  windows:
-    name: Windows x64 SDK
-    needs: metadata
-    runs-on: windows-2025
-    env:
-      QIGAO_SDK_RID: windows-x64
-      CCACHE_DIR: ${{ github.workspace }}\.ccache
-      CCACHE_BASEDIR: ${{ github.workspace }}
-      CCACHE_COMPILERCHECK: content
-      CCACHE_MAXSIZE: 1G
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Restore SaltsUtils compiler object cache
-        uses: actions/cache@v6.1.0
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: salts-utils-ccache-windows-msvc-v1-${{ github.sha }}
-          restore-keys: |
-            salts-utils-ccache-windows-msvc-v1-
-
-      - name: Install ccache
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          choco install ccache -y --no-progress
-          $ccache = Get-Command ccache.exe -ErrorAction SilentlyContinue
-          if ($null -eq $ccache) { throw "Chocolatey ccache executable is unavailable" }
-          & $ccache.Source --version
-          if ($LASTEXITCODE -ne 0) { throw "ccache executable probe failed" }
-
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-
-      - name: Prepare native toolchain
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          choco install nasm ninja -y --no-progress
-          $ninjaCommand = Get-Command ninja.exe -ErrorAction Stop
-          & $ninjaCommand.Source --version
-          if ($LASTEXITCODE -ne 0) { throw "Ninja executable probe failed" }
-          $vcpkgRoot = $env:VCPKG_ROOT
-          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            throw "canonical VCPKG_ROOT is unavailable"
-          }
-          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe") -PathType Leaf)) {
-            throw "canonical vcpkg executable is unavailable"
-          }
-          if ([string]::IsNullOrWhiteSpace($env:VCPKG_CACHE_REPOSITORY_ROOT) -or
-              -not (Test-Path -LiteralPath (Join-Path $env:VCPKG_CACHE_REPOSITORY_ROOT "cmake/QigaoVcpkgToolchain.cmake") -PathType Leaf)) {
-            throw "canonical qigao vcpkg toolchain is unavailable"
-          }
-          if ([string]::IsNullOrWhiteSpace($env:VCPKG_BINARY_SOURCES) -or $env:VCPKG_BINARY_SOURCES -notmatch "nugetconfig") {
-            throw "Windows shared vcpkg NuGet cache is unavailable"
-          }
-          if ($env:VCPKG_NUGET_REPOSITORY -ne "https://github.com/qigao/vcpkg-cache") {
-            throw "unexpected Windows vcpkg cache repository: $env:VCPKG_NUGET_REPOSITORY"
-          }
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstall = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if ([string]::IsNullOrWhiteSpace($vsInstall)) {
-            throw "Visual Studio x64 C++ toolchain not found"
-          }
-          "QIGAO_VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
-          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
-          "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
-          "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
-
-      - name: Restore Salts 2.0 and published native tools
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64 -WithTurboWasm
-
-      - name: Configure, build and install SaltsUtils SDK
-        shell: cmd
-        run: |
-          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-          if errorlevel 1 exit /b 1
-          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          if errorlevel 1 exit /b 1
-          cmake --preset ci-win-sdk-release-user
-          if errorlevel 1 exit /b 1
-          cmake --build --preset install-ci-win-sdk-release-user --parallel 2
-          if errorlevel 1 exit /b 1
-
-      - name: Qualify generated Plugin clients and descriptor graph
-        shell: cmd
-        run: |
-          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-          if errorlevel 1 exit /b 1
-          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          if errorlevel 1 exit /b 1
-          cmake --preset ci-win-release-user
-          if errorlevel 1 exit /b 1
-          cmake --build --preset ci-win-release-user --target test_databind_nested_native_generics test_databind_generated_text_cleanup test_idl_contract test_data_bind_validation_plan test_tbe_compiler test_api test_data_bind_native_control_records test_data_bind_binding_plan test_data_bind_owned_error_validation test_data_bind_service_native_error test_databind_plugin_generic_descriptor_client test_databind_plugin_generated_dso test_databind_plugin_generated_client test_databind_plugin_generated_client_cpp test_databind_plugin_typed_error_client test_databind_plugin_typed_error_client_cpp test_databind_plugin_owned_typed_error_client test_databind_plugin_owned_typed_error_client_cpp test_databind_plugin_projection_rejection test_generated_message_plan test_binary_tail_only test_data_bind_binary_reader test_data_bind_binary_writer --parallel 2
-          if errorlevel 1 exit /b 1
-          ctest --preset ci-win-release-user -R "^(test_databind_nested_native_generics|test_databind_generated_text_cleanup|test_idl_contract|test_data_bind_validation_plan|test_tbe_compiler|test_api|test_data_bind_native_control_records|test_data_bind_binding_plan|test_data_bind_owned_error_validation|test_data_bind_service_native_error|test_databind_plugin_generic_descriptor_client|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_databind_plugin_projection_rejection|test_generated_message_plan|test_binary_tail_only|test_data_bind_binary_reader|test_data_bind_binary_writer)$" --output-on-failure
-          if errorlevel 1 exit /b 1
-
-      - name: Verify installed DataBind and salts_idl_target consumers
-        shell: cmd
-        run: |
-          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-          if errorlevel 1 exit /b 1
-          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          if errorlevel 1 exit /b 1
-          set "SALTS_UTILS_ROOT=%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
-          if errorlevel 1 exit /b 1
-          pushd databind\idl\compiler\package_config\databind_target
-          if errorlevel 1 exit /b 1
-          cmake --preset ci-native-release-user
-          if errorlevel 1 exit /b 1
-          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
-          if errorlevel 1 exit /b 1
-          ctest --preset ci-native-release-user --output-on-failure
-          if errorlevel 1 exit /b 1
-          popd
-          if errorlevel 1 exit /b 1
-          pushd databind\producer\package_config
-          if errorlevel 1 exit /b 1
-          cmake --preset ci-native-release-user
-          if errorlevel 1 exit /b 1
-          cmake --build --preset ci-native-release-user --target databind_generated_plan_consumer --parallel 2
-          if errorlevel 1 exit /b 1
-          ctest --preset ci-native-release-user --output-on-failure
-          if errorlevel 1 exit /b 1
-          popd
-          if errorlevel 1 exit /b 1
-          pushd databind\runtime\package_config\plugin_execution
-          if errorlevel 1 exit /b 1
-          cmake --preset ci-native-release-user
-          if errorlevel 1 exit /b 1
-          cmake --build --preset ci-native-release-user --parallel 2
-          if errorlevel 1 exit /b 1
-          ctest --preset ci-native-release-user --output-on-failure
-          if errorlevel 1 exit /b 1
-          popd
-          if errorlevel 1 exit /b 1
-          pushd databind\idl\compiler\package_config\wasm_execution
-          if errorlevel 1 exit /b 1
-          cmake --preset ci-native-release-user
-          if errorlevel 1 exit /b 1
-          cmake --build --preset ci-native-release-user --target wasm_execution_consumer --parallel 2
-          if errorlevel 1 exit /b 1
-          ctest --preset ci-native-release-user --output-on-failure
-          if errorlevel 1 exit /b 1
-          popd
-          if errorlevel 1 exit /b 1
-
-      - name: Report and verify compiler cache statistics
-        shell: pwsh
-        run: |
-          ccache --show-stats
-          if ($LASTEXITCODE -ne 0) { throw "ccache stats failed" }
-          $stats = ccache --print-stats --format json | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw "ccache machine-readable stats failed" }
-          $hits = [int64]$stats.direct_cache_hit + [int64]$stats.preprocessed_cache_hit
-          $misses = [int64]$stats.cache_miss
-          $cacheable = $hits + $misses
-          Write-Host "ccache cacheable=$cacheable hits=$hits misses=$misses"
-          if ($cacheable -le 0) {
-            throw "ccache did not observe any cacheable SaltsUtils compiler calls"
-          }
-
-      - name: Verify Windows SDK
-        shell: pwsh
-        run: |
-          $prefix = Join-Path $env:GITHUB_WORKSPACE "stage\sdk\windows-x64"
-          $config = Join-Path $prefix "lib\cmake\SaltsUtils\SaltsUtilsConfig.cmake"
-          $bindingPlanHeader = Join-Path $prefix "include\data_bind_binding_plan.h"
-          $producerHeader = Join-Path $prefix "include\data_bind_cmeta_adapter_plan.h"
-          $pluginCatalogHeader = Join-Path $prefix "include\data_bind_plugin_catalog.h"
-          $pluginExecutionHeader = Join-Path $prefix "include\data_bind_plugin_execution.h"
-          if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { throw "missing $config" }
-          if (-not (Test-Path -LiteralPath $bindingPlanHeader -PathType Leaf)) { throw "missing $bindingPlanHeader" }
-          if (-not (Test-Path -LiteralPath $producerHeader -PathType Leaf)) { throw "missing $producerHeader" }
-          if (-not (Test-Path -LiteralPath $pluginCatalogHeader -PathType Leaf)) { throw "missing $pluginCatalogHeader" }
-          if (-not (Test-Path -LiteralPath $pluginExecutionHeader -PathType Leaf)) { throw "missing $pluginExecutionHeader" }
-          $manifest = @(
-            "version=${{ needs.metadata.outputs.version }}"
-            "commit=$env:GITHUB_SHA"
-            "os=windows"
-            "arch=x64"
-            "profile=release"
-          )
-          $manifest | Set-Content -LiteralPath (Join-Path $prefix "salts-utils-sdk-manifest.txt")
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: salts-utils-sdk-windows-x64
-          path: stage/sdk
-          if-no-files-found: error
-          compression-level: 9
-
-  android:
-    name: Android arm64-v8a SDK
-    needs: metadata
-    runs-on: ubuntu-24.04
-    env:
-      QIGAO_TARGET_TRIPLET: arm64-android
-      QIGAO_HOST_TRIPLET: x64-linux
-      QIGAO_SDK_RID: android-arm64-v8a
-    steps:
-      - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-      - name: Prepare Android toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm
-          test -n "${VCPKG_ROOT:-}"
-          test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
-          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
-          test -n "${ANDROID_NDK_HOME:-}"
-          echo "Python3_EXECUTABLE=$(command -v python3)" >> "$GITHUB_ENV"
-
-      - name: Restore Salts 2.0 and published native tools
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh android-arm64-v8a linux-x64 1
-
-
-      - name: Build current host salts-idlc
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake --preset ci-host-release-user
-          cmake --build --preset ci-host-release-user --target salts_idlc lemon --parallel 2
-          echo "SALTS_UTILS_HOST_IDLC=$GITHUB_WORKSPACE/build/ci-host/bin/salts-idlc" >> "$GITHUB_ENV"
-
-      - name: Configure and install Android SaltsUtils
-        shell: bash
-        run: |
-          set -euxo pipefail
-          prefix="$GITHUB_WORKSPACE/stage/sdk/android-arm64-v8a"
-          cmake --preset ci-android-sdk-release-user
-          cmake --build --preset install-ci-android-sdk-release-user --parallel 2
-          export SALTS_UTILS_ROOT="$prefix"
-          pushd databind/runtime/package_config/plugin_execution
-          cmake --preset ci-android-release-user
-          cmake --build --preset ci-android-release-user --parallel 2
-          popd
-          pushd databind/producer/package_config
-          cmake --preset ci-android-release-user
-          cmake --build --preset ci-android-release-user --target databind_producer_generate --parallel 2
-          popd
-          pushd databind/idl/compiler/package_config/databind_public
-          cmake --preset ci-android-release-user
-          cmake --build --preset ci-android-release-user --target databind_public_consumer --parallel 2
-          popd
-          pushd databind/idl/compiler/package_config/databind_target
-          cmake --preset ci-android-release-user
-          cmake --build --preset ci-android-release-user --target installed_nested_generics installed_service_consumer installed_service_consumer_cpp --parallel 2
-          popd
-          pushd databind/idl/compiler/package_config/wasm_execution
-          cmake --preset ci-android-release-user
-          cmake --build --preset ci-android-release-user --target wasm_execution_consumer --parallel 2
-          popd
-          cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
-          version=${{ needs.metadata.outputs.version }}
-          commit=$GITHUB_SHA
-          os=android
-          abi=arm64-v8a
-          api=android-26
-          profile=release
-          EOF
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: salts-utils-sdk-android-arm64-v8a
-          path: stage/sdk
-          if-no-files-found: error
-          compression-level: 9
-
-
-  ios:
-    name: iOS SDK / ${{ matrix.name }}
-    needs: metadata
-    runs-on: macos-15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {name: device arm64, triplet: arm64-ios, rid: ios-arm64, sysroot: iphoneos}
-          - {name: simulator arm64, triplet: arm64-ios-simulator, rid: ios-simulator-arm64, sysroot: iphonesimulator}
-    env:
-      X_VCPKG_NUGET_ID_PREFIX: vcpkg-cache
-      QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
-      QIGAO_HOST_TRIPLET: arm64-osx
-      QIGAO_SDK_RID: ${{ matrix.rid }}
-      QIGAO_IOS_SYSROOT: ${{ matrix.sysroot }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Prepare iOS toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(uname -m)" = "arm64"
-          brew install ninja nasm
-          test -n "${VCPKG_ROOT:-}"
-          test -x "$VCPKG_ROOT/vcpkg"
-          test -n "${VCPKG_CACHE_REPOSITORY_ROOT:-}"
-          test -f "$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake"
-
-      - name: Restore latest published Salts SDK and host re2c
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh "${{ matrix.rid }}" macos-arm64
-
-
-
-
-
-      - name: Build current host salts-idlc
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake --preset ci-host-release-user
-          cmake --build --preset ci-host-release-user --target salts_idlc lemon --parallel 2
-          echo "SALTS_UTILS_HOST_IDLC=$GITHUB_WORKSPACE/build/ci-host/bin/salts-idlc" >> "$GITHUB_ENV"
-
-      - name: Configure and install iOS SaltsUtils
-        shell: bash
-        run: |
-          set -euxo pipefail
-          prefix="$GITHUB_WORKSPACE/stage/sdk/${{ matrix.rid }}"
-          cmake --preset ci-ios-sdk-release-user
-          cmake --build --preset install-ci-ios-sdk-release-user --parallel 2
-          export SALTS_UTILS_ROOT="$prefix"
-          pushd databind/runtime/package_config/plugin_execution
-          cmake --preset ci-ios-release-user
-          cmake --build --preset ci-ios-release-user --parallel 2
-          popd
-          pushd databind/producer/package_config
-          cmake --preset ci-ios-release-user
-          cmake --build --preset ci-ios-release-user --target databind_producer_generate --parallel 2
-          popd
-          pushd databind/idl/compiler/package_config/databind_public
-          cmake --preset ci-ios-release-user
-          cmake --build --preset ci-ios-release-user --target databind_public_consumer --parallel 2
-          popd
-          pushd databind/idl/compiler/package_config/databind_target
-          cmake --preset ci-ios-release-user
-          cmake --build --preset ci-ios-release-user --target installed_nested_generics installed_service_consumer installed_service_consumer_cpp --parallel 2
-          popd
-          cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
-          version=${{ needs.metadata.outputs.version }}
-          commit=$GITHUB_SHA
-          os=ios
-          rid=${{ matrix.rid }}
-          triplet=${{ matrix.triplet }}
-          profile=release
-          EOF
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: salts-utils-sdk-${{ matrix.rid }}
-          path: stage/sdk
-          if-no-files-found: error
-          compression-level: 9
-
-  pack:
-    name: Pack SaltsUtils.Native
-    needs: [metadata, linux, linux_arm64, macos, windows, android, ios]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: salts-utils-sdk-*
-          path: package/sdk
-          merge-multiple: true
-      - name: Verify package payload
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
-          test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake
-          test -f package/sdk/linux-x64/include/data_bind_binding_plan.h
-          test -f package/sdk/linux-x64/include/data_bind_cmeta_adapter_plan.h
-          test -f package/sdk/linux-x64/include/salts_capture.h
-          test -f package/sdk/linux-x64/include/salts_playback.h
-          test -f package/sdk/linux-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
-          test -f package/sdk/linux-arm64/lib/cmake/SaltsUtils/IDL.cmake
-          test -f package/sdk/linux-arm64/include/data_bind_binding_plan.h
-          test -f package/sdk/linux-arm64/include/data_bind_projection_plan.h
-          test -f package/sdk/linux-arm64/include/data_bind_native.h
-          test -f package/sdk/linux-arm64/include/data_bind_native_binding.h
-          test -f package/sdk/linux-arm64/include/data_bind_cmeta_adapter_plan.h
-          test -f package/sdk/linux-arm64/include/data_bind_plugin_catalog.h
-          test -f package/sdk/linux-arm64/include/data_bind_plugin_execution.h
-          test -f package/sdk/linux-arm64/bin/salts-idlc
-          test ! -e package/sdk/linux-arm64/include/salts_capture.h
-          test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
-          test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/IDL.cmake
-          test -f package/sdk/windows-x64/include/data_bind_binding_plan.h
-          test -f package/sdk/windows-x64/include/data_bind_cmeta_adapter_plan.h
-          test -f package/sdk/windows-x64/include/salts_capture.h
-          test -f package/sdk/windows-x64/include/salts_playback.h
-          test -f package/sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
-          test -f package/sdk/android-arm64-v8a/include/data_bind_binding_plan.h
-          test -f package/sdk/android-arm64-v8a/include/data_bind_cmeta_adapter_plan.h
-          test -f package/sdk/android-arm64-v8a/include/salts_capture.h
-          test -f package/sdk/android-arm64-v8a/include/salts_playback.h
-          for rid in ios-arm64 ios-simulator-arm64; do
-            test -f "package/sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-            test -f "package/sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake"
-            test -f "package/sdk/$rid/include/data_bind_binding_plan.h"
-            test -f "package/sdk/$rid/include/data_bind_cmeta_adapter_plan.h"
-            test -f "package/sdk/$rid/include/salts_capture.h"
-            test -f "package/sdk/$rid/include/salts_playback.h"
-            test ! -e "package/sdk/$rid/bin/salts-idlc"
-            test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
-            test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
-          done
-          test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 7
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-      - name: Configure GitHub Packages source
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          config="$RUNNER_TEMP/nuget.config"
-          printf '<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear /></packageSources></configuration>\n' > "$config"
-          dotnet nuget add source https://nuget.pkg.github.com/qigao/index.json --name github --username qigao --password "$GITHUB_TOKEN" --store-password-in-clear-text --configfile "$config"
-          echo "NUGET_CONFIG=$config" >> "$GITHUB_ENV"
-      - name: Create NuGet package
-        shell: bash
-        run: |
-          set -euo pipefail
-          dotnet restore packaging/nuget/SaltsUtils.Native.csproj --configfile "$NUGET_CONFIG" --packages "$RUNNER_TEMP/pack-nuget"
-          dotnet pack packaging/nuget/SaltsUtils.Native.csproj --no-restore --configuration Release --output dist -p:PackageVersion=${{ needs.metadata.outputs.version }} -p:PackageRoot="$GITHUB_WORKSPACE/package" -p:RestorePackagesPath="$RUNNER_TEMP/pack-nuget"
-          nupkg="dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg"
-          test -f "$nupkg"
-          unzip -p "$nupkg" '*.nuspec' > "$RUNNER_TEMP/salts-utils.nuspec"
-          if grep -q '<dependencies' "$RUNNER_TEMP/salts-utils.nuspec"; then
-            echo "SaltsUtils.Native must not publish dependency metadata" >&2
-            cat "$RUNNER_TEMP/salts-utils.nuspec" >&2
-            exit 1
-          fi
-          unzip -Z1 "$nupkg" | sort | tee "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/windows-x64/bin/salts-idlc.exe" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/include/data_bind_native_binding.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/include/data_bind_projection_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/include/data_bind_native_binding.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-arm64/include/data_bind_plugin_execution.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          if grep -Fxq "sdk/linux-arm64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
-            echo "Linux arm64 focused profile must not claim unwarmed capture support" >&2
-            exit 1
-          fi
-          grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/windows-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/windows-x64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/windows-x64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/windows-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/windows-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/android-arm64-v8a/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/android-arm64-v8a/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/android-arm64-v8a/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/android-arm64-v8a/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/android-arm64-v8a/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          for rid in ios-arm64 ios-simulator-arm64; do
-            grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-            grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-            grep -Fx "sdk/$rid/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-            grep -Fx "sdk/$rid/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-            grep -Fx "sdk/$rid/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-            grep -Fx "sdk/$rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-            grep -Fx "sdk/$rid/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-            grep -Fx "sdk/$rid/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-            if grep -Fxq "sdk/$rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
-              echo "target iOS RID must not package host salts-idlc: $rid" >&2
-              exit 1
-            fi
-          done
-          if grep -Fxq "sdk/macos-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
-            mac_rid=macos-arm64
-          else
-            mac_rid=macos-x64
-          fi
-          grep -Fx "sdk/$mac_rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$mac_rid/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$mac_rid/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$mac_rid/lib/libsalts_capture.dylib" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/$mac_rid/lib/libsalts_playback.dylib" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: salts-utils-native-nuget
-          path: dist/*.nupkg
-          if-no-files-found: error
-
-  qualify_linux_arm64:
-    name: Qualify restored Linux arm64 package
-    needs: [metadata, pack]
-    runs-on: ubuntu-24.04-arm
-    env:
-      QIGAO_TARGET_TRIPLET: arm64-linux
-    steps:
-      - uses: actions/checkout@v4
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Prepare restored-package toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(uname -m)" = "aarch64"
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build pkg-config
-
-      - name: Restore latest published Salts SDK
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh linux-arm64 linux-arm64
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: salts-utils-native-nuget
-          path: dist
-
-      - name: Restore packed Linux arm64 SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${{ needs.metadata.outputs.version }}"
-          nupkg="$GITHUB_WORKSPACE/dist/SaltsUtils.Native.$version.nupkg"
-          packages="$RUNNER_TEMP/salts-utils-arm64-packages"
-          project="$RUNNER_TEMP/salts-utils-arm64-restore.csproj"
-          config="$RUNNER_TEMP/salts-utils-arm64-nuget.config"
-          test -f "$nupkg"
-          rm -rf "$packages"
-          cat > "$project" <<EOF
-          <Project Sdk="Microsoft.NET.Sdk">
-            <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
-            <ItemGroup>
-              <PackageReference Include="SaltsUtils.Native" Version="$version" />
-            </ItemGroup>
-          </Project>
-          EOF
-          cat > "$config" <<EOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <configuration>
-            <packageSources>
-              <clear />
-              <add key="local" value="$GITHUB_WORKSPACE/dist" />
-            </packageSources>
-          </configuration>
-          EOF
-          dotnet restore "$project" --configfile "$config" --packages "$packages" \
-            --no-cache --force-evaluate
-          prefix="$packages/saltsutils.native/$version/sdk/linux-arm64"
-          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -f "$prefix/lib/cmake/SaltsUtils/IDL.cmake"
-          test -x "$prefix/bin/salts-idlc"
-          echo "SALTS_UTILS_ROOT=$prefix" >> "$GITHUB_ENV"
-
-      - name: Build installed salts_idl_target consumer
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cd databind/idl/compiler/package_config/databind_target
-          cmake --preset ci-native-release-user
-          cmake --build --preset ci-native-release-user --target installed_image --parallel 2
-          ctest --preset ci-native-release-user --output-on-failure
-
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Read project version
+      id: version
+      shell: bash
+      env:
+        RELEASE_SHA: ${{ inputs.release_sha }}
+        RELEASE_TAG: ${{ inputs.tag }}
+      run: |
+        set -euo pipefail
+        if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+          echo "unsupported native package event: $GITHUB_EVENT_NAME" >&2
+          exit 1
+        fi
+        release_sha="$RELEASE_SHA"
+        requested_tag="$RELEASE_TAG"
+
+        [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]]
+        git cat-file -e "$release_sha^{commit}"
+
+        version="$(
+          git show "$release_sha:CMakeLists.txt" |
+            awk '/^[[:space:]]*VERSION[[:space:]]+[0-9]/{print $2; exit}'
+        )"
+        test -n "$version"
+        vcpkg_version="$(
+          git show "$release_sha:vcpkg.json" |
+            python3 -c 'import json,sys; print(json.load(sys.stdin)["version-semver"])'
+        )"
+        if [ "$vcpkg_version" != "$version" ]; then
+          echo "release version mismatch: CMake=$version vcpkg=$vcpkg_version" >&2
+          exit 1
+        fi
+
+        expected_tag="v$version"
+        if [ "$requested_tag" != "$expected_tag" ]; then
+          echo "release tag mismatch: requested=$requested_tag expected=$expected_tag" >&2
+          exit 1
+        fi
+
+        git fetch origin "refs/tags/$expected_tag:refs/tags/$expected_tag" --force
+        tagged_commit="$(git rev-list -n 1 "$expected_tag")"
+        if [ "$tagged_commit" != "$release_sha" ]; then
+          echo "release tag $expected_tag resolves to $tagged_commit, not $release_sha" >&2
+          exit 1
+        fi
+
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "tag=$expected_tag" >> "$GITHUB_OUTPUT"
+        echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+        echo "release=true" >> "$GITHUB_OUTPUT"
+        echo "publish=true" >> "$GITHUB_OUTPUT"
+    - name: Require a successful release preparation run
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CI_RUN_ID: ${{ inputs.ci_run_id }}
+        RELEASE_SHA: ${{ inputs.release_sha }}
+      run: |
+        set -euo pipefail
+        case "$CI_RUN_ID" in ''|*[!0-9]*) echo "invalid CI run ID" >&2; exit 1 ;; esac
+        gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID" > "$RUNNER_TEMP/source-run.json"
+        gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch > "$RUNNER_TEMP/default-branch.txt"
+        python3 - <<'PY'
+        import json, os
+        from pathlib import Path
+        run = json.loads((Path(os.environ['RUNNER_TEMP']) / 'source-run.json').read_text())
+        branch = (Path(os.environ['RUNNER_TEMP']) / 'default-branch.txt').read_text().strip()
+        expected = {'conclusion': 'success', 'status': 'completed', 'event': 'workflow_dispatch',
+                    'path': '.github/workflows/ci.yml', 'head_sha': os.environ['RELEASE_SHA'], 'head_branch': branch}
+        for key, value in expected.items():
+            if run.get(key) != value:
+                raise SystemExit(f"CI run {key}: expected {value!r}, got {run.get(key)!r}")
+        if run['head_repository']['full_name'] != os.environ['GITHUB_REPOSITORY']:
+            raise SystemExit('CI artifacts must come from this repository')
+        PY
   publish:
     name: Publish package and GitHub Release
-    if: github.event_name == 'push' && github.ref_type == 'tag'
-    needs: [metadata, pack, qualify_linux_arm64]
-    runs-on: ubuntu-latest
+    needs: metadata
+    if: needs.metadata.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       packages: write
+      actions: read
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: salts-utils-native-nuget
-          path: dist
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-      - name: Publish to GitHub Packages
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          dotnet nuget add source --username qigao --password "$GITHUB_TOKEN" --store-password-in-clear-text --name github https://nuget.pkg.github.com/qigao/index.json
-          dotnet nuget push "dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg" --api-key "$GITHUB_TOKEN" --source github --skip-duplicate
-      - name: Create GitHub Release from version tag
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.metadata.outputs.tag }}
-          VERSION: ${{ needs.metadata.outputs.version }}
-        run: |
-          set -euo pipefail
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "release $TAG already exists"
-            exit 0
+    - uses: actions/download-artifact@v4
+      with:
+        name: salts-utils-native-nuget
+        path: dist
+        run-id: ${{ inputs.ci_run_id }}
+        github-token: ${{ github.token }}
+    - name: Verify downloaded package identity
+      shell: bash
+      env:
+        RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+        RELEASE_SHA: ${{ needs.metadata.outputs.release_sha }}
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import os, zipfile
+        from pathlib import Path
+        version = os.environ['RELEASE_VERSION']
+        package = Path('dist') / f'SaltsUtils.Native.{version}.nupkg'
+        expected_rids = {'linux-x64', 'linux-arm64', 'windows-x64', 'macos-arm64',
+                         'android-arm64-v8a', 'ios-arm64', 'ios-simulator-arm64'}
+        with zipfile.ZipFile(package) as archive:
+            manifests = [name for name in archive.namelist() if name.endswith('/salts-utils-sdk-manifest.txt')]
+            if {name.split('/')[1] for name in manifests} != expected_rids or len(manifests) != len(expected_rids):
+                raise SystemExit('Incomplete or unexpected SDK platform set')
+            for name in manifests:
+                values = dict(line.split('=', 1) for line in archive.read(name).decode('utf-8-sig').splitlines() if '=' in line)
+                for key, expected in [('version', version), ('commit', os.environ['RELEASE_SHA']), ('profile', 'release')]:
+                    if values.get(key) != expected:
+                        raise SystemExit(f'{name}: {key} mismatch')
+        PY
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+    - name: Enforce immutable release identity
+      shell: bash
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ needs.metadata.outputs.tag }}
+        RELEASE_SHA: ${{ needs.metadata.outputs.release_sha }}
+      run: |
+        set -euo pipefail
+        if existing_tag="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha 2>/dev/null)"; then
+          if [ "$existing_tag" != "$RELEASE_SHA" ]; then
+            echo "tag $TAG resolves to $existing_tag, not $RELEASE_SHA" >&2
+            echo "bump the SaltsUtils project/package version before publishing a changed SDK" >&2
+            exit 1
           fi
-          gh release create "$TAG" dist/*.nupkg --repo "$GITHUB_REPOSITORY" --verify-tag --title "SaltsUtils $VERSION" --generate-notes
+          echo "tag $TAG already resolves to this commit"
+        else
+          echo "required release tag $TAG does not exist" >&2
+          exit 1
+        fi
+        if existing_release="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq .targetCommitish 2>/dev/null)"; then
+          if [ "$existing_release" != "$RELEASE_SHA" ] && [ "$existing_release" != "$TAG" ]; then
+            echo "release $TAG targets $existing_release, not $RELEASE_SHA" >&2
+            exit 1
+          fi
+          echo "release $TAG already exists for this release identity"
+        fi
+    - name: Publish to GitHub Packages
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+        dotnet nuget add source --username qigao --password "$GITHUB_TOKEN" --store-password-in-clear-text --name github https://nuget.pkg.github.com/qigao/index.json
+        dotnet nuget push "dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg" --api-key "$GITHUB_TOKEN" --source github --skip-duplicate
+    - name: Create GitHub Release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ needs.metadata.outputs.tag }}
+        VERSION: ${{ needs.metadata.outputs.version }}
+        RELEASE_SHA: ${{ needs.metadata.outputs.release_sha }}
+      run: |
+        set -euo pipefail
+        if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "release $TAG already exists; package publish was idempotent"
+          exit 0
+        fi
+        gh release create "$TAG" dist/*.nupkg --repo "$GITHUB_REPOSITORY" \
+          --verify-tag --title "SaltsUtils $VERSION" --generate-notes

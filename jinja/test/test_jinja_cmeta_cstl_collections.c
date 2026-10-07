@@ -368,3 +368,69 @@ spec("Jinja consumes typed CSTL collections through canonical CMeta") {
     JinjaCMetaIntVec_destroy(&root.vec);
   }
 }
+
+static size_t counted_list_next_calls;
+static cmeta_gen_status counted_list_next(const void *object,
+    cmeta_range_cursor *cursor, const void **element) {
+  ++counted_list_next_calls;
+  return JinjaCMetaIntList_borrow_ops.next(object, cursor, element);
+}
+
+spec("Jinja borrowed CSTL loop cursors") {
+  enum { ITEM_COUNT = 64 };
+  static JinjaCMetaCstlRoot root;
+  static char *output;
+  static JINJA_CMETA_TEMPLATE *templ;
+  static JINJA_CMETA_ERROR error;
+  static cmeta_data_collection_borrow_ops borrow;
+  static cmeta_data_collection_ops operations;
+  static cmeta_data_desc list_data, root_data;
+  static cmeta_data_field_desc fields[10];
+  static cmeta_data_struct_shape shape;
+  before_each() {
+    root = (JinjaCMetaCstlRoot){0};
+    output = NULL;
+    templ = NULL;
+    error = (JINJA_CMETA_ERROR)JINJA_CMETA_ERROR_INIT;
+    counted_list_next_calls = 0u;
+    borrow = JinjaCMetaIntList_borrow_ops;
+    borrow.next = counted_list_next;
+    operations = JinjaCMetaIntList_collection_ops;
+    operations.borrow = &borrow;
+    list_data = JinjaCMetaIntList_collection_data;
+    list_data.collection_ops = &operations;
+    memcpy(fields, jinja_cstl_root_fields, sizeof(fields));
+    fields[2].value = &list_data;
+    shape = jinja_cstl_root_shape;
+    shape.fields = fields;
+    root_data = jinja_cstl_root_data;
+    root_data.shape = &shape;
+    check_equal(JinjaCMetaIntList_init(&root.list, ITEM_COUNT), STL_OK);
+  }
+  after_each() {
+    jinja_cmeta_release(templ);
+    free(output);
+    JinjaCMetaIntList_destroy(&root.list);
+  }
+  it("advances each native element once with repeated lookahead") {
+    for (int i = 0; i < ITEM_COUNT; ++i)
+      check_equal(JinjaCMetaIntList_push_back(&root.list, i), STL_OK);
+    templ = jinja_cmeta_compile(vstr_from_cstr(
+        "{% for x in list %}{% set a=loop.nextitem %}{% set b=loop.nextitem %}{% endfor %}"), NULL, &error);
+    check_not_null(templ);
+    check_equal(jinja_cmeta_render_string(templ, &root_data, &root, NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, "");
+    check_equal(counted_list_next_calls, (size_t)ITEM_COUNT);
+  }
+  it("keeps nested filtered loops over the same list independent") {
+    enum { NESTED_ITEMS = 3, MAX_ADVANCES = (NESTED_ITEMS + 1) * (NESTED_ITEMS + 1) };
+    for (int i = 0; i < NESTED_ITEMS; ++i)
+      check_equal(JinjaCMetaIntList_push_back(&root.list, i), STL_OK);
+    templ = jinja_cmeta_compile(vstr_from_cstr(
+        "{% for x in list %}{% for y in list if y>=0 %}{{x}}{{y}}{% endfor %}{% endfor %}"), NULL, &error);
+    check_not_null(templ);
+    check_equal(jinja_cmeta_render_string(templ, &root_data, &root, NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, "000102101112202122");
+    check_less_equal(counted_list_next_calls, (size_t)MAX_ADVANCES);
+  }
+}

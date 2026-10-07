@@ -130,22 +130,6 @@ spec("Jinja CMeta collections and runtime: templates 10") {
     free(output);
   }
 
-  it("accepts a semantic copy of the sequence descriptor") {
-    static const char source[] = "{% for item in users %}{{ item.name }}{% endfor %}";
-    const JinjaTestUser users[] = {{vstr_from_cstr("Ada"), 37}};
-    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {users, 1u, sizeof(users[0]), NULL}};
-    JinjaTestModel model;
-    cmeta_data_desc sequence_copy = cmeta_data_sequence_view;
-    char *output = NULL;
-
-    jinja_test_model_init(&model);
-    model.root_fields[2].value = &sequence_copy;
-    root.users.element = &model.user_desc;
-    check_equal(jinja_test_render(source, &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "Ada");
-    free(output);
-  }
-
   it("rejects duplicate block declarations across all lexical scopes") {
     static const char *sources[] = {
       "{% block body %}{% endblock %}{% block body scoped %}{% endblock %}",

@@ -10,7 +10,7 @@ target_compile_features(xml_parser PUBLIC c_std_11)
 target_link_libraries(xml_parser
   PUBLIC Salts::QueryVM
   PRIVATE Salts::Core)
-if(NOT MSVC)
+if(NOT WIN32)
   # cxml objects call libm; the final archive must carry that link requirement.
   target_link_libraries(xml_parser PRIVATE m)
 endif()

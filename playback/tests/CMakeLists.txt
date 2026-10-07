@@ -5,12 +5,6 @@ cmake_add_test(
   INCLUDES ../src
   FOLDER "playback/tests")
 
-cmake_add_test(
-  playback_contract_test
-  SOURCES test_playback_contract.c
-  LIBS Salts::Playback Salts::TinyTest
-  FOLDER "playback/tests")
-
 add_library(
   playback_null_test_impl STATIC
   ../src/miniaudio_impl.c

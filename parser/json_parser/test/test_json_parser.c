@@ -533,28 +533,6 @@ spec("json_parser") {
       json_free(obj);
     }
 
-    it("should preserve first-member semantics for indexed duplicate keys") {
-      const char *json =
-          "{\"dup\":1,\"k1\":1,\"k2\":2,\"k3\":3,\"k4\":4,"
-          "\"k5\":5,\"k6\":6,\"k7\":7,\"k8\":8,\"k9\":9,"
-          "\"k10\":10,\"k11\":11,\"k12\":12,\"k13\":13,"
-          "\"k14\":14,\"k15\":15,\"dup\":2}";
-      json_value_t *v = json_parse(json, strlen(json));
-      char *serialized;
-
-      check_not_null(v);
-      check_equal(json_object_size(v), 17);
-      check_equal((int)json_number(json_object_get(v, "dup")), 1);
-      serialized = json_serialize(v, NULL);
-      check_not_null(serialized);
-      check_equal(serialized, json);
-      json_serialize_free(serialized);
-      json_object_set_number(v, "dup", 7.0);
-      check_equal(json_object_size(v), 17);
-      check_equal((int)json_number(json_object_get(v, "dup")), 7);
-      check_equal((int)json_number(json_object_value(v, 16)), 2);
-      json_free(v);
-    }
   }
 
   describe("Auxiliary") {

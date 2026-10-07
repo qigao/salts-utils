@@ -1,6 +1,8 @@
 #include "data_bind_projection_plan.h"
 #include "tinytest.h"
 
+#include <tstr.h>
+#include <stdio.h>
 #include <string.h>
 
 static DataBind *projection_plan_codec(void) {
@@ -41,6 +43,7 @@ static DataBind *projection_plan_codec(void) {
       "service ShapeStore {"
       " Nested: CsvNested -> Response;"
       " List: CsvList -> Response;"
+      " ReadNames: NamedRoot -> CsvList;"
       "}";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
@@ -262,6 +265,90 @@ spec("DataBind FormatPlan and TransportPlan") {
     }
   }
 
+
+  it("retains every mapping across managed storage growth and codec destruction") {
+    enum { FIELD_COUNT = 20, NAME_BYTES = 32 };
+    static const char *const prefixes[] = {"field", "wire", "old"};
+    DataBind *codec = NULL;
+    DataBindFormatPlan *plan = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    tstr schema = tstr_dup("message ManyNames {");
+    size_t i, spelling;
+    check_not_null(schema);
+    if (schema == NULL) return;
+    for (i = 0u; i < FIELD_COUNT; ++i) {
+      tstr next = tstr_cat_fmt(schema,
+          "[name(wire%zu), alias(old%zu)] uint32 field%zu;", i, i, i);
+      check_not_null(next);
+      if (next == NULL) {
+        tstr_free(schema);
+        return;
+      }
+      schema = next;
+    }
+    {
+      tstr next = tstr_cat(schema, "}");
+      check_not_null(next);
+      if (next == NULL) {
+        tstr_free(schema);
+        return;
+      }
+      schema = next;
+    }
+    check_equal(data_bind_create_from_text(schema, tstr_len(schema), &codec, &error),
+                DATA_BIND_OK);
+    tstr_free(schema);
+    if (codec == NULL) return;
+    check_equal(data_bind_format_plan_compile(
+        codec, "ManyNames", DATA_BIND_FORMAT_JSON, &plan, &error), DATA_BIND_OK);
+    data_bind_free(codec);
+    if (plan == NULL) return;
+
+    for (i = 0u; i < FIELD_COUNT; ++i) {
+      for (spelling = 0u; spelling < sizeof(prefixes) / sizeof(prefixes[0]); ++spelling) {
+        char input_name[NAME_BYTES], canonical_name[NAME_BYTES], output_name[NAME_BYTES];
+        cserde_token tokens[] = {
+            {.kind = CSERDE_MAP_BEGIN}, {0},
+            {.kind = CSERDE_UINT, .value.uint = i}, {.kind = CSERDE_MAP_END}};
+        cserde_token token = {0};
+        cserde_reader raw = {0};
+        cserde_writer target = {0};
+        PlanTokenReader source = {0};
+        PlanTokenWriter sink = {0};
+        DataBindFormatCanonicalReader ingress = DATA_BIND_FORMAT_CANONICAL_READER_INIT;
+        DataBindFormatCanonicalWriter egress = DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
+        cserde_reader *reader;
+        cserde_writer *writer;
+        size_t n;
+        snprintf(input_name, sizeof(input_name), "%s%zu", prefixes[spelling], i);
+        snprintf(canonical_name, sizeof(canonical_name), "field%zu", i);
+        snprintf(output_name, sizeof(output_name), "wire%zu", i);
+        tokens[1] = plan_key(input_name);
+        /* Input tokens are length-delimited; lookup cannot require a C string. */
+        input_name[tokens[1].value.slice.size] = '#';
+        check_true(plan_reader_init(&raw, &source, tokens, sizeof(tokens) / sizeof(tokens[0])));
+        check_true(plan_writer_init(&target, &sink));
+        check_equal(data_bind_format_canonical_reader_init(plan, &raw, &ingress, &error),
+                    DATA_BIND_OK);
+        check_equal(data_bind_format_canonical_writer_init(plan, &target, &egress, &error),
+                    DATA_BIND_OK);
+        reader = data_bind_format_canonical_reader_reader(&ingress);
+        writer = data_bind_format_canonical_writer_writer(&egress);
+        for (n = 0u; n < sizeof(tokens) / sizeof(tokens[0]); ++n) {
+          check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+          if (n == 1u) check_true(token_key_equal(&token, canonical_name));
+          check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+        }
+        check_equal(cserde_reader_next(reader, &token), CSERDE_DONE);
+        check_equal(cserde_writer_finish(writer), CSERDE_OK);
+        check_equal(cserde_writer_finish(&target), CSERDE_OK);
+        check_equal(sink.count, sizeof(tokens) / sizeof(tokens[0]));
+        check_true(token_key_equal(&sink.tokens[1], output_name));
+        check_equal(sink.tokens[2].value.uint, (uint64_t)i);
+      }
+    }
+    data_bind_format_plan_free(plan);
+  }
 
   it("projects canonical egress names to primary external names only") {
     DataBind *codec = projection_plan_codec();
@@ -616,6 +703,66 @@ spec("DataBind FormatPlan and TransportPlan") {
     check_contains(error.message, "XML FormatPlan");
 
     data_bind_free(codec);
+  }
+
+  it("publishes no partial transport when egress fails and owns retry snapshots") {
+    DataBind *codec = projection_plan_codec();
+    DataBindTransportPlan *transport = NULL;
+    DataBindTransportPlanInfo info = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+    DataBindFormatPlanInfo egress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindFormatCanonicalReader canonical = DATA_BIND_FORMAT_CANONICAL_READER_INIT;
+    PlanTokenReader source = {0};
+    cserde_reader raw = {0};
+    cserde_reader *reader;
+    cserde_token token = {0};
+    const cserde_token tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN}, plan_key("legacyId"),
+        {.kind = CSERDE_UINT, .value.uint = 7u}, {.kind = CSERDE_MAP_END}};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    /* JSON ingress already owns alias strings when XML egress is rejected. */
+    check_equal(data_bind_transport_plan_compile_service(
+        codec, "ShapeStore", "ReadNames", DATA_BIND_TRANSPORT_RPC,
+        DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_XML, &transport, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_null(transport);
+    check_equal(error.code, DATA_BIND_ERR_SCHEMA);
+    check_contains(error.message, "XML FormatPlan");
+    data_bind_transport_plan_free(transport);
+
+    check_equal(data_bind_transport_plan_compile_service(
+        codec, "ShapeStore", "ReadNames", DATA_BIND_TRANSPORT_RPC,
+        DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_JSON, &transport, NULL),
+        DATA_BIND_OK);
+    check_not_null(transport);
+    data_bind_free(codec);
+
+    check_true(data_bind_transport_plan_info(transport, &info));
+    check_equal(info.service_name, "ShapeStore");
+    check_equal(info.operation_name, "ReadNames");
+    check_true(data_bind_format_plan_info(info.egress, &egress));
+    check_equal(egress.type_name, "CsvList");
+    check_equal(egress.format, DATA_BIND_FORMAT_JSON);
+    check_true(plan_reader_init(&raw, &source, tokens,
+        sizeof(tokens) / sizeof(tokens[0])));
+    check_equal(data_bind_format_canonical_reader_init(
+        info.ingress, &raw, &canonical, NULL), DATA_BIND_OK);
+    reader = data_bind_format_canonical_reader_reader(&canonical);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+      check_equal(token.kind, CSERDE_MAP_BEGIN);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+      check_true(token_key_equal(&token, "id"));
+      check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+      check_equal(token.value.uint, (uint64_t)7u);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
+      check_equal(token.kind, CSERDE_MAP_END);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_DONE);
+    }
+    data_bind_transport_plan_free(transport);
   }
 
   it("composes independent ingress and egress FormatPlans into one transport") {

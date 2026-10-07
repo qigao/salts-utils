@@ -1,8 +1,37 @@
 #include "jinja_cmeta.h"
+#include "jinja_cmeta_reflection.h"
 #include "tinytest.hpp"
+#include <cmeta/data_reflect.h>
 #include <cstdlib>
 
+struct JinjaCppLeaf { int count; };
+struct JinjaCppRoot { JinjaCppLeaf child; int private_value; };
+cmeta_reflect_data(JinjaCppLeaf, "test.jinja.cpp.Leaf",
+    cmeta_field(int, count)
+);
+cmeta_reflect_data(JinjaCppRoot, "test.jinja.cpp.Root",
+    cmeta_data_field(JinjaCppLeaf, child, cmeta_reflected_data(JinjaCppLeaf),
+        cmeta_reflected_storage(JinjaCppLeaf))
+);
+
 spec("Jinja CMeta C++ header") {
+  it("renders a nested read-only projection of existing C++ records") {
+    const JinjaCppRoot root = {{7}, 99};
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(vstr_from_cstr(
+        "{{child.count}}|{{child|attr('count')}}|{{private_value is undefined}}"),
+        nullptr, &error);
+    check_not_null(templ);
+    char *output = nullptr;
+    check_equal(jinja_cmeta_render_string(templ, cmeta_reflected_data(JinjaCppRoot),
+        &root, nullptr, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, "7|7|True");
+    std::free(output);
+    jinja_cmeta_release(templ);
+    check_equal(root.child.count, 7);
+    check_equal(root.private_value, 99);
+  }
+
   it("uses an owned environment through C linkage") {
     JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
     JINJA_CMETA_ENV_OPTIONS options = JINJA_CMETA_ENV_OPTIONS_INIT;

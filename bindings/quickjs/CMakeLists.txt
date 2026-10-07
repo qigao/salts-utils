@@ -1,6 +1,6 @@
 find_package(qjs CONFIG REQUIRED)
 
-add_library(salts_quickjs_binding STATIC salts_quickjs_cmeta.c)
+add_library(salts_quickjs_binding STATIC salts_quickjs_cmeta.c salts_quickjs_module.c)
 add_library(Salts::QuickJS ALIAS salts_quickjs_binding)
 set_target_properties(salts_quickjs_binding PROPERTIES EXPORT_NAME QuickJS)
 
@@ -10,7 +10,7 @@ target_include_directories(salts_quickjs_binding
     $<INSTALL_INTERFACE:include>)
 
 target_link_libraries(salts_quickjs_binding
-  PUBLIC Salts::CMeta qjs)
+  PUBLIC Salts::Bindings qjs)
 
 target_compile_features(salts_quickjs_binding PUBLIC c_std_11)
 set_target_properties(salts_quickjs_binding PROPERTIES FOLDER "bindings")

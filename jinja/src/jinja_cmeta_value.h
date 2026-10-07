@@ -10,7 +10,7 @@
 typedef struct JINJA_CMETA_IDENTITY {
   size_t serial;
   const void *source;
-  const void *type;
+  const cmeta_data_desc *type;
 } JINJA_CMETA_IDENTITY;
 
 typedef struct JINJA_CMETA_CLOSURE {
@@ -84,6 +84,7 @@ typedef struct JINJA_CMETA_NODE {
   struct JINJA_CMETA_NODE *loop_previous;
   struct JINJA_CMETA_NODE *loop_peek;
   size_t loop_next_index;
+  struct JINJA_CMETA_COLLECTION_CURSOR *collection_cursor;
   size_t loop_reported_length;
   int loop_length_known;
   size_t changed_value_offset;

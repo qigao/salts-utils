@@ -10,7 +10,8 @@ target_include_directories(${DATA_BIND_BINARY_FORMAT_OBJECTS}
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 set_target_properties(${DATA_BIND_BINARY_FORMAT_OBJECTS} PROPERTIES
-  POSITION_INDEPENDENT_CODE ON
+  POSITION_INDEPENDENT_CODE ON)
+cmake_config_target(${DATA_BIND_BINARY_FORMAT_OBJECTS}
   FOLDER "databind/formats/binary")
 
 # Install the canonical Binary wire headers used by generated code.
@@ -20,24 +21,3 @@ install(
   COMPONENT DataBind
   FILES_MATCHING
   PATTERN "*.h")
-
-# Private Binary layout compilation, shared by idlc and runtime-known schemas.
-# Wire facts belong here; the target exposes no native storage/lifecycle engine.
-add_library(databind_binary_contract STATIC
-  compiler/src/binary_contract_overlay.c
-  compiler/src/binary_layout_ir.c
-  compiler/src/binary_layout_lowering.c)
-target_compile_features(databind_binary_contract PUBLIC c_std_11)
-target_include_directories(databind_binary_contract
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/compiler/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/internal>
-  PRIVATE
-    ${DATABIND_SOURCE_ROOT}/runtime
-    ${DATABIND_SOURCE_ROOT}/schema/include
-    ${DATABIND_SOURCE_ROOT}/idl/src
-    ${DATABIND_SOURCE_ROOT}/idl/parser)
-set_target_properties(databind_binary_contract PROPERTIES
-  POSITION_INDEPENDENT_CODE ON
-  FOLDER "databind/formats/binary/compiler")

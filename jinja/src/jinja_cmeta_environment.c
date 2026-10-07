@@ -1,6 +1,7 @@
 #include "jinja_cmeta_environment.h"
 #include "jinja_cmeta_internal.h"
 #include "jinja_cmeta_artifact.h"
+#include <cmeta/scope.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -303,9 +304,38 @@ JINJA_CMETA_ENV *jinja_cmeta_env_create(
   return jinja_cmeta_env_create_with_registry(options, NULL, error);
 }
 
-JINJA_CMETA_ENV *jinja_cmeta_env_create_with_registry(
+/* The handle keeps inline configuration views at their final heap address.
+ * Only a complete snapshot is released to the caller. */
+typedef JINJA_CMETA_ENV *JINJA_CMETA_ENV_OWNER;
+
+static cmeta_status jinja_env_owner_init(JINJA_CMETA_ENV_OWNER *owner) {
+  *owner = NULL;
+  return CMETA_OK;
+}
+
+static void jinja_env_owner_restore(JINJA_CMETA_ENV_OWNER *owner) {
+  jinja_cmeta_env_destroy(*owner);
+  *owner = NULL;
+}
+
+static void jinja_env_owner_move(JINJA_CMETA_ENV_OWNER *out, JINJA_CMETA_ENV_OWNER *owner) {
+  *out = *owner;
+  *owner = NULL;
+}
+
+static const cmeta_type_identity jinja_env_owner_identity =
+    CMETA_TYPE_ID_ATOM_INIT("jinja.environment.owner");
+static const cmeta_type_desc jinja_env_owner_type = {
+    .name = "JINJA_CMETA_ENV_OWNER", .size = sizeof(JINJA_CMETA_ENV_OWNER),
+    .align = _Alignof(JINJA_CMETA_ENV_OWNER), .kind = CMETA_T_OBJECT,
+    .identity = &jinja_env_owner_identity};
+CMETA_DEFINE_LIFECYCLE(JINJA_CMETA_ENV_OWNER, &jinja_env_owner_type,
+    jinja_env_owner_init, jinja_env_owner_restore, jinja_env_owner_move,
+    CMETA_LIFECYCLE_INIT_NOFAIL | CMETA_LIFECYCLE_TRIVIAL_ZERO | CMETA_LIFECYCLE_MOVABLE);
+
+static JINJA_CMETA_STATUS jinja_env_create_owned(JINJA_CMETA_ENV_OWNER *owner,
     const JINJA_CMETA_ENV_OPTIONS *options, const JINJA_CMETA_REGISTRY *registry,
-    JINJA_CMETA_ERROR *error) {
+    JINJA_CMETA_ERROR *error, JINJA_CMETA_ENV **out) {
   static const JINJA_CMETA_ENV_OPTIONS defaults = JINJA_CMETA_ENV_OPTIONS_INIT;
   const JINJA_CMETA_ENV_OPTIONS *config = options != NULL ? options : &defaults;
   JINJA_TEMPLATE_DELIMITERS delimiters;
@@ -313,28 +343,29 @@ JINJA_CMETA_ENV *jinja_cmeta_env_create_with_registry(
   if ((config->loader.load == NULL) != (config->loader.release == NULL)) {
     jinja_cmeta_error_set(error, JINJA_CMETA_ERR_INVALID_ARGUMENT, 0u,
         "loader requires both load and release callbacks");
-    return NULL;
+    return JINJA_CMETA_ERR_INVALID_ARGUMENT;
   }
-  if (jinja_cmeta_compile_config(&config->compile, &delimiters, error) != JINJA_CMETA_OK)
-    return NULL;
+  JINJA_CMETA_STATUS status = jinja_cmeta_compile_config(&config->compile, &delimiters, error);
+  if (status != JINJA_CMETA_OK) return status;
   if (config->undefined_policy != JINJA_CMETA_UNDEFINED_DEFAULT &&
       config->undefined_policy != JINJA_CMETA_UNDEFINED_STRICT) {
     jinja_cmeta_error_set(error, JINJA_CMETA_ERR_INVALID_ARGUMENT, 0u,
         "invalid undefined value policy");
-    return NULL;
+    return JINJA_CMETA_ERR_INVALID_ARGUMENT;
   }
   if ((config->compile.extensions & JINJA_CMETA_EXTENSION_TAG_I18N) != 0u &&
       config->translation == NULL) {
     jinja_cmeta_error_set(error, JINJA_CMETA_ERR_INVALID_ARGUMENT, 0u,
         "i18n extension requires a translation callback");
-    return NULL;
+    return JINJA_CMETA_ERR_INVALID_ARGUMENT;
   }
   JINJA_CMETA_ENV *env = (JINJA_CMETA_ENV *)calloc(1u, sizeof(*env));
   if (env == NULL) {
     jinja_cmeta_error_set(error, JINJA_CMETA_ERR_OUT_OF_MEMORY, 0u,
         "unable to allocate template environment");
-    return NULL;
+    return JINJA_CMETA_ERR_OUT_OF_MEMORY;
   }
+  *owner = env;
   env->options = *config;
   vstr *views[JINJA_CMETA_CONFIG_STRING_COUNT] = {
     &env->options.compile.variable_start_string, &env->options.compile.variable_end_string,
@@ -357,63 +388,43 @@ JINJA_CMETA_ENV *jinja_cmeta_env_create_with_registry(
     if (env->functions == NULL) {
       jinja_registry_error(error, JINJA_CMETA_ERR_OUT_OF_MEMORY,
           "unable to allocate environment function registry");
-      free(env);
-      return NULL;
+      return JINJA_CMETA_ERR_OUT_OF_MEMORY;
     }
     for (size_t i = 0u; i < registry->count; ++i) {
-      JINJA_CMETA_STATUS status = jinja_registry_copy_name(&env->functions[i],
+      status = jinja_registry_copy_name(&env->functions[i],
           &registry->entries[i], error);
-      if (status != JINJA_CMETA_OK) {
-        while (i != 0u) free((void *)env->functions[--i].name.data);
-        free(env->functions);
-        free(env);
-        return NULL;
-      }
-    }
-    env->function_count = registry->count;
-    if (registry->global_count != 0u) {
-      env->globals = (JINJA_CMETA_ENV_GLOBAL *)calloc(registry->global_count, sizeof(*env->globals));
-      if (env->globals == NULL) {
-        jinja_cmeta_error_set(error, JINJA_CMETA_ERR_OUT_OF_MEMORY, 0u,
-            "unable to allocate environment global registry");
-        jinja_cmeta_env_destroy(env);
-        return NULL;
-      }
-      for (size_t i = 0u; i < registry->global_count; ++i) {
-        JINJA_CMETA_GLOBAL source = registry->globals[i];
-        JINJA_CMETA_GLOBAL copy;
-        JINJA_CMETA_STATUS status = jinja_registry_copy_global(&copy, &source, error);
-        if (status != JINJA_CMETA_OK) {
-          jinja_cmeta_env_destroy(env);
-          return NULL;
-        }
-        env->globals[i].name = copy.name;
-        env->globals[i].value = copy.value;
-      }
-      env->global_count = registry->global_count;
+      if (status != JINJA_CMETA_OK) return status;
+      ++env->function_count;
     }
   }
-  if (registry != NULL && registry->count == 0u && registry->global_count != 0u) {
+  if (registry != NULL && registry->global_count != 0u) {
     env->globals = (JINJA_CMETA_ENV_GLOBAL *)calloc(registry->global_count, sizeof(*env->globals));
     if (env->globals == NULL) {
       jinja_cmeta_error_set(error, JINJA_CMETA_ERR_OUT_OF_MEMORY, 0u,
           "unable to allocate environment global registry");
-      jinja_cmeta_env_destroy(env);
-      return NULL;
+      return JINJA_CMETA_ERR_OUT_OF_MEMORY;
     }
     for (size_t i = 0u; i < registry->global_count; ++i) {
       JINJA_CMETA_GLOBAL copy;
-      JINJA_CMETA_STATUS status = jinja_registry_copy_global(&copy, &registry->globals[i], error);
-      if (status != JINJA_CMETA_OK) {
-        jinja_cmeta_env_destroy(env);
-        return NULL;
-      }
+      status = jinja_registry_copy_global(&copy, &registry->globals[i], error);
+      if (status != JINJA_CMETA_OK) return status;
       env->globals[i].name = copy.name;
       env->globals[i].value = copy.value;
+      ++env->global_count;
     }
-    env->global_count = registry->global_count;
   }
-  return env;
+  jinja_env_owner_move(out, owner);
+  return JINJA_CMETA_OK;
+}
+
+JINJA_CMETA_ENV *jinja_cmeta_env_create_with_registry(
+    const JINJA_CMETA_ENV_OPTIONS *options, const JINJA_CMETA_REGISTRY *registry,
+    JINJA_CMETA_ERROR *error) {
+  JINJA_CMETA_ENV *env = NULL;
+  int status;
+  cmeta_scope(status, cmeta_autos((JINJA_CMETA_ENV_OWNER, owner)),
+      cmeta_body(jinja_env_create_owned(&owner, options, registry, error, &env)));
+  return status == JINJA_CMETA_OK ? env : NULL;
 }
 
 static uint64_t jinja_env_source_hash(vstr source) {

@@ -5,7 +5,7 @@
 #include "jinja_cmeta.h"
 #include "tinytest.h"
 
-#include <cmeta/struct.h>
+#include <cmeta/data_reflect.h>
 #include <tstr.h>
 #include <vstr.h>
 
@@ -20,23 +20,33 @@ Struct(JinjaTestUser, (vstr, name), (int, age));
 
 Struct(JinjaTestRoot, (JinjaTestUser, user), (bool, active), (cmeta_data_collection_view, users));
 
-Struct(JinjaTestIntegerRoot, (int, signed_value), (size_t, unsigned_value), (bool, boolean_value));
+typedef struct JinjaTestIntegerRoot {
+  int signed_value;
+  size_t unsigned_value;
+  bool boolean_value;
+} JinjaTestIntegerRoot;
+
+cmeta_reflect_data(JinjaTestIntegerRoot, "test.JinjaIntegerRoot.data",
+    cmeta_data_field_id(int, signed_value, "test.JinjaIntegerRoot.signed", &cmeta_data_int)
+    cmeta_data_field_id(size_t, unsigned_value, "test.JinjaIntegerRoot.unsigned",
+        &cmeta_data_size, &cmeta_type_size)
+    cmeta_data_field_id(bool, boolean_value, "test.JinjaIntegerRoot.boolean", &cmeta_data_bool)
+);
 
 Struct(JinjaTestMembershipRoot, (cmeta_data_collection_view, ages),
        (cmeta_data_collection_view, names), (cmeta_data_collection_view, empty));
 
-Struct(JinjaTestFloatRoot, (double, value));
+typedef struct JinjaTestFloatRoot { double value; } JinjaTestFloatRoot;
+cmeta_reflect_data(JinjaTestFloatRoot, "test.JinjaFloatRoot.data",
+    cmeta_data_field_id(double, value, "test.JinjaFloatRoot.value", &cmeta_data_double)
+);
 
 static const cmeta_type_identity jinja_test_user_identity =
     CMETA_TYPE_ID_ATOM_INIT("test.JinjaUser");
 static const cmeta_type_identity jinja_test_root_identity =
     CMETA_TYPE_ID_ATOM_INIT("test.JinjaRoot");
-static const cmeta_type_identity jinja_test_integer_root_identity =
-    CMETA_TYPE_ID_ATOM_INIT("test.JinjaIntegerRoot");
 static const cmeta_type_identity jinja_test_membership_root_identity =
     CMETA_TYPE_ID_ATOM_INIT("test.JinjaMembershipRoot");
-static const cmeta_type_identity jinja_test_float_root_identity =
-    CMETA_TYPE_ID_ATOM_INIT("test.JinjaFloatRoot");
 
 static const cmeta_type_desc jinja_test_user_type = {"JinjaTestUser",
                                                      sizeof(JinjaTestUser),
@@ -52,13 +62,6 @@ static const cmeta_type_desc jinja_test_root_type = {"JinjaTestRoot",
                                                      NULL,
                                                      NULL,
                                                      &jinja_test_root_identity};
-static const cmeta_type_desc jinja_test_integer_root_type = {"JinjaTestIntegerRoot",
-                                                             sizeof(JinjaTestIntegerRoot),
-                                                             _Alignof(JinjaTestIntegerRoot),
-                                                             CMETA_T_OBJECT,
-                                                             NULL,
-                                                             NULL,
-                                                             &jinja_test_integer_root_identity};
 static const cmeta_type_desc jinja_test_membership_root_type = {
     "JinjaTestMembershipRoot",
     sizeof(JinjaTestMembershipRoot),
@@ -67,13 +70,6 @@ static const cmeta_type_desc jinja_test_membership_root_type = {
     NULL,
     NULL,
     &jinja_test_membership_root_identity};
-static const cmeta_type_desc jinja_test_float_root_type = {"JinjaTestFloatRoot",
-                                                           sizeof(JinjaTestFloatRoot),
-                                                           _Alignof(JinjaTestFloatRoot),
-                                                           CMETA_T_OBJECT,
-                                                           NULL,
-                                                           NULL,
-                                                           &jinja_test_float_root_identity};
 
 typedef struct JinjaTestModel {
   cmeta_data_field_desc user_fields[2];
@@ -85,8 +81,6 @@ typedef struct JinjaTestModel {
 } JinjaTestModel;
 
 typedef struct JinjaTestIntegerModel {
-  cmeta_data_field_desc fields[3];
-  cmeta_data_struct_shape shape;
   cmeta_data_desc desc;
 } JinjaTestIntegerModel;
 
@@ -97,8 +91,6 @@ typedef struct JinjaTestMembershipModel {
 } JinjaTestMembershipModel;
 
 typedef struct JinjaTestFloatModel {
-  cmeta_data_field_desc fields[1];
-  cmeta_data_struct_shape shape;
   cmeta_data_desc desc;
 } JinjaTestFloatModel;
 
@@ -158,27 +150,7 @@ static void jinja_test_model_init(JinjaTestModel *model) {
 }
 
 static void jinja_test_integer_model_init(JinjaTestIntegerModel *model) {
-  memset(model, 0, sizeof(*model));
-  model->fields[0] =
-      (cmeta_data_field_desc){"test.JinjaIntegerRoot.signed", "signed_value",
-                              offsetof(JinjaTestIntegerRoot, signed_value), &cmeta_data_int};
-  model->fields[1] =
-      (cmeta_data_field_desc){"test.JinjaIntegerRoot.unsigned", "unsigned_value",
-                              offsetof(JinjaTestIntegerRoot, unsigned_value), &cmeta_data_size};
-  model->fields[2] =
-      (cmeta_data_field_desc){"test.JinjaIntegerRoot.boolean", "boolean_value",
-                              offsetof(JinjaTestIntegerRoot, boolean_value), &cmeta_data_bool};
-  model->shape = (cmeta_data_struct_shape){StructMeta(JinjaTestIntegerRoot), model->fields, 3u};
-  model->desc = (cmeta_data_desc){sizeof(cmeta_data_desc),
-                                  CMETA_DATA_DESC_ABI_VERSION,
-                                  "test.JinjaIntegerRoot.data",
-                                  "JinjaTestIntegerRoot",
-                                  CMETA_DATA_STRUCT,
-                                  &jinja_test_integer_root_type,
-                                  &model->shape,
-                                  NULL,
-                                  NULL,
-                                  NULL};
+  model->desc = *cmeta_reflected_data(JinjaTestIntegerRoot);
 }
 
 static void jinja_test_membership_model_init(JinjaTestMembershipModel *model) {
@@ -206,21 +178,7 @@ static void jinja_test_membership_model_init(JinjaTestMembershipModel *model) {
 }
 
 static void jinja_test_float_model_init(JinjaTestFloatModel *model) {
-  memset(model, 0, sizeof(*model));
-  model->fields[0] =
-      (cmeta_data_field_desc){"test.JinjaFloatRoot.value", "value",
-                              offsetof(JinjaTestFloatRoot, value), &cmeta_data_double};
-  model->shape = (cmeta_data_struct_shape){StructMeta(JinjaTestFloatRoot), model->fields, 1u};
-  model->desc = (cmeta_data_desc){sizeof(cmeta_data_desc),
-                                  CMETA_DATA_DESC_ABI_VERSION,
-                                  "test.JinjaFloatRoot.data",
-                                  "JinjaTestFloatRoot",
-                                  CMETA_DATA_STRUCT,
-                                  &jinja_test_float_root_type,
-                                  &model->shape,
-                                  NULL,
-                                  NULL,
-                                  NULL};
+  model->desc = *cmeta_reflected_data(JinjaTestFloatRoot);
 }
 
 static void jinja_test_compile_failure(vstr source, const JINJA_CMETA_COMPILE_OPTIONS *options,

@@ -6,12 +6,6 @@
 #include <cflow/reactive.h>
 #include <cflow/stream.h>
 
-#if defined(_WIN32) && defined(DATA_BIND_CFLOW_BUILD_DLL)
-  #define DATA_BIND_CFLOW_API __declspec(dllexport)
-#else
-  #define DATA_BIND_CFLOW_API
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -23,7 +17,7 @@ extern "C" {
  * cflow_stream_destroy(). owner must remain alive through every evaluation and
  * until the stream is destroyed.
  */
-DATA_BIND_CFLOW_API DataBindStatus data_bind_cflow_stream_from_value(
+DATA_BIND_API DataBindStatus data_bind_cflow_stream_from_value(
     const DataBindValue *owner, DataBindCMetaRangeKind kind, cflow_stream *out_stream);
 
 /**
@@ -33,7 +27,7 @@ DATA_BIND_CFLOW_API DataBindStatus data_bind_cflow_stream_from_value(
  * owner must remain alive until the publisher is destroyed or the subscription
  * is closed. The publisher buffers no DataBind values.
  */
-DATA_BIND_CFLOW_API DataBindStatus data_bind_cflow_publisher_from_value(
+DATA_BIND_API DataBindStatus data_bind_cflow_publisher_from_value(
     const DataBindValue *owner, DataBindCMetaRangeKind kind,
     cflow_publisher *out_publisher);
 

@@ -21,7 +21,7 @@ typedef struct MUSTACHE_XML_PROVIDER {
   const void *root_node;
   MUSTACHE_TEMPLATE *(*template_loader)(const char *name, size_t size, void *user_data);
   void *user_data;
-  
+
   // Internal cache for list nodes to handle multiple elements with same name
   void **allocated_lists;
   size_t list_count;
@@ -40,25 +40,23 @@ typedef struct MUSTACHE_XML_PROVIDER {
  * @param user_data User data passed to template loader
  * @return 0 on success, -1 on error
  */
-MUSTACHE_API int mustache_xml_provider_init(MUSTACHE_XML_PROVIDER *provider,
-                                          void *xml_node,
-                                          MUSTACHE_TEMPLATE *(*template_loader)(const char *,
-                                                                                size_t, void *),
-                                          void *user_data);
+int mustache_xml_provider_init(MUSTACHE_XML_PROVIDER *provider, void *xml_node,
+                               MUSTACHE_TEMPLATE *(*template_loader)(const char *, size_t, void *),
+                               void *user_data);
 
 /**
  * Free provider-owned surrogate lists. This does not free the borrowed XML tree
  * or partial templates.
  * @param provider Provider to free. May be @c NULL.
  */
-MUSTACHE_API void mustache_xml_provider_free(MUSTACHE_XML_PROVIDER *provider);
+void mustache_xml_provider_free(MUSTACHE_XML_PROVIDER *provider);
 
 /**
  * Return the provider status after direct use with mustache_process().
  * @param provider Provider to inspect.
  * @return 0 when no provider allocation failed, -1 for NULL or a failed provider.
  */
-MUSTACHE_API int mustache_xml_provider_status(const MUSTACHE_XML_PROVIDER *provider);
+int mustache_xml_provider_status(const MUSTACHE_XML_PROVIDER *provider);
 
 /**
  * Render a mustache template with XML data
@@ -73,12 +71,10 @@ MUSTACHE_API int mustache_xml_provider_status(const MUSTACHE_XML_PROVIDER *provi
  *         allocation failure, or expansion-depth exhaustion. Partial output is
  *         retained.
  */
-MUSTACHE_API int mustache_render_xml(const MUSTACHE_TEMPLATE *templ,
-                                   void *xml_node,
-                                   const MUSTACHE_RENDERER *renderer, void *renderer_data,
-                                   MUSTACHE_TEMPLATE *(*template_loader)(const char *, size_t,
-                                                                         void *),
-                                   void *user_data);
+int mustache_render_xml(const MUSTACHE_TEMPLATE *templ, void *xml_node,
+                        const MUSTACHE_RENDERER *renderer, void *renderer_data,
+                        MUSTACHE_TEMPLATE *(*template_loader)(const char *, size_t, void *),
+                        void *user_data);
 
 #ifdef __cplusplus
 }

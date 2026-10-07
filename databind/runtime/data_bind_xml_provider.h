@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 /**
- * Return the statically linked XML provider.
+ * Return the built-in XML provider.
  *
  * The provider projects the document root into DataBind's schema-facing token
  * model: element children and attributes become map entries, leaf elements
@@ -19,7 +19,7 @@ extern "C" {
  * matching the existing DataBind XML field-binding semantics. No XPath,
  * registry lookup, fallback or alternate parser is selected by this provider.
  */
-const DataBindFormatProvider *data_bind_xml_format_provider(void);
+DATA_BIND_API const DataBindFormatProvider *data_bind_xml_format_provider(void);
 
 #ifdef __cplusplus
 }

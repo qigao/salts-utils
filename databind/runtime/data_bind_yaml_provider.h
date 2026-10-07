@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 /**
- * Return the statically linked YAML provider.
+ * Return the built-in YAML provider.
  *
  * YAML input is parsed by CYaml, converted through the existing loss-checked
  * CYaml/JSON adapter, then exposed as canonical CSerde tokens.
@@ -19,7 +19,7 @@ extern "C" {
  * non-finite floating values fail explicitly because they have no canonical
  * YAML profile in this adapter.
  */
-const DataBindFormatProvider *data_bind_yaml_format_provider(void);
+DATA_BIND_API const DataBindFormatProvider *data_bind_yaml_format_provider(void);
 
 #ifdef __cplusplus
 }

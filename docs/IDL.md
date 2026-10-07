@@ -59,6 +59,37 @@ IDL source
 
 The CMake frontend is `cmake/IDL.cmake`.
 
+`salts_idl_target()` accepts an optional `FOLDER` argument for IDE grouping:
+
+```cmake
+salts_idl_target(
+  TARGET app_messages
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/messages.schema"
+  ARTIFACTS MESSAGE
+  FOLDER "generated/message")
+```
+
+The folder applies to the aggregate target, its `_idl_codegen` target, and all
+generated native, Plugin, Plugin client, or WASM library targets. Callers can
+group different artifact and transport templates under separate folder paths.
+Omitting `FOLDER` preserves the caller's `CMAKE_FOLDER`; specifying it without
+a value is a configuration error. It affects only IDE organization, not output
+paths, target names, dependencies, or generated content. IDE folders require
+`set_property(GLOBAL PROPERTY USE_FOLDERS ON)` in the consuming project.
+
+Physical directories are managed through `add_subdirectory()`: `databind/idl`
+contains `core`, `contract`, `frontend`, and `parser`, each with its own
+`CMakeLists.txt` contributing sources to `Salts::IDL`. Compiler tests and their
+`salts_idl_target()` fixtures belong to `databind/compiler/tests/<category>`.
+
+Built-in templates live in `databind/compiler/templates/<category>`, with
+categories `c`, `cpp`, `go`, `python`, `rust`, `typescript`, `reflection`, and
+`sql`. Each category registers its files and installation rules in its own
+`CMakeLists.txt`. Build and installed resources retain this hierarchy under
+`bin/templates`; for example, the C header template is now
+`templates/c/c_structs.mustache`. Built-in language selection uses these paths
+automatically; explicit `--template` paths must use the new locations.
+
 The old `databindc` compiler identity is removed without alias.
 
 ## Binding compilation

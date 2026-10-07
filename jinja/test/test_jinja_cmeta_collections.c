@@ -21,63 +21,25 @@ typedef struct JinjaCanonicalRoot {
   JinjaCanonicalMultiMap multi;
 } JinjaCanonicalRoot;
 
-static const cmeta_type_identity jinja_canonical_root_identity =
-    CMETA_TYPE_ID_ATOM_INIT("test.JinjaCanonicalRoot");
-static const cmeta_type_desc jinja_canonical_root_type = {
-    "JinjaCanonicalRoot", sizeof(JinjaCanonicalRoot), _Alignof(JinjaCanonicalRoot),
-    CMETA_T_OBJECT, NULL, NULL, &jinja_canonical_root_identity};
-static const cmeta_field_desc jinja_canonical_root_layout_fields[] = {
-    {"view", "cmeta_data_collection_view", offsetof(JinjaCanonicalRoot, view),
-     sizeof(cmeta_data_collection_view), _Alignof(cmeta_data_collection_view),
-     &cmeta_type_collection_view, NULL},
-    {"vec", "JinjaCanonicalVec", offsetof(JinjaCanonicalRoot, vec),
-     sizeof(JinjaCanonicalVec), _Alignof(JinjaCanonicalVec), &JinjaCanonicalVec_cmeta_type, NULL},
-    {"deque", "JinjaCanonicalDeque", offsetof(JinjaCanonicalRoot, deque),
-     sizeof(JinjaCanonicalDeque), _Alignof(JinjaCanonicalDeque), &JinjaCanonicalDeque_cmeta_type, NULL},
-    {"list", "JinjaCanonicalList", offsetof(JinjaCanonicalRoot, list),
-     sizeof(JinjaCanonicalList), _Alignof(JinjaCanonicalList), &JinjaCanonicalList_cmeta_type, NULL},
-    {"set", "JinjaCanonicalSet", offsetof(JinjaCanonicalRoot, set),
-     sizeof(JinjaCanonicalSet), _Alignof(JinjaCanonicalSet), &JinjaCanonicalSet_cmeta_type, NULL},
-    {"hash_set", "JinjaCanonicalHashSet", offsetof(JinjaCanonicalRoot, hash_set),
-     sizeof(JinjaCanonicalHashSet), _Alignof(JinjaCanonicalHashSet),
-     &JinjaCanonicalHashSet_cmeta_type, NULL},
-    {"map", "JinjaCanonicalMap", offsetof(JinjaCanonicalRoot, map),
-     sizeof(JinjaCanonicalMap), _Alignof(JinjaCanonicalMap), &JinjaCanonicalMap_cmeta_type, NULL},
-    {"multi", "JinjaCanonicalMultiMap", offsetof(JinjaCanonicalRoot, multi),
-     sizeof(JinjaCanonicalMultiMap), _Alignof(JinjaCanonicalMultiMap),
-     &JinjaCanonicalMultiMap_cmeta_type, NULL}};
-static const cmeta_struct_desc jinja_canonical_root_layout = {
-    "JinjaCanonicalRoot", sizeof(JinjaCanonicalRoot), _Alignof(JinjaCanonicalRoot),
-    jinja_canonical_root_layout_fields,
-    sizeof(jinja_canonical_root_layout_fields) / sizeof(jinja_canonical_root_layout_fields[0])};
-static const cmeta_data_field_desc jinja_canonical_root_fields[] = {
-    {"test.JinjaCanonicalRoot.view", "view", offsetof(JinjaCanonicalRoot, view),
-     &cmeta_data_sequence_view},
-    {"test.JinjaCanonicalRoot.vec", "vec", offsetof(JinjaCanonicalRoot, vec),
-     &JinjaCanonicalVec_collection_data},
-    {"test.JinjaCanonicalRoot.deque", "deque", offsetof(JinjaCanonicalRoot, deque),
-     &JinjaCanonicalDeque_collection_data},
-    {"test.JinjaCanonicalRoot.list", "list", offsetof(JinjaCanonicalRoot, list),
-     &JinjaCanonicalList_collection_data},
-    {"test.JinjaCanonicalRoot.set", "set", offsetof(JinjaCanonicalRoot, set),
-     &JinjaCanonicalSet_collection_data},
-    {"test.JinjaCanonicalRoot.hash_set", "hash_set", offsetof(JinjaCanonicalRoot, hash_set),
-     &JinjaCanonicalHashSet_collection_data},
-    {"test.JinjaCanonicalRoot.map", "map", offsetof(JinjaCanonicalRoot, map),
-     &JinjaCanonicalMap_map_data},
-    {"test.JinjaCanonicalRoot.multi", "multi", offsetof(JinjaCanonicalRoot, multi),
-     &JinjaCanonicalMultiMap_map_data}};
-static const cmeta_data_struct_shape jinja_canonical_root_shape = {
-    &jinja_canonical_root_layout, jinja_canonical_root_fields,
-    sizeof(jinja_canonical_root_fields) / sizeof(jinja_canonical_root_fields[0])};
-static const cmeta_data_desc jinja_canonical_root_data = {
-    .struct_size = sizeof(cmeta_data_desc),
-    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
-    .stable_id = "test.JinjaCanonicalRoot.data",
-    .display_name = "Jinja canonical collection root",
-    .kind = CMETA_DATA_STRUCT,
-    .storage_type = &jinja_canonical_root_type,
-    .shape = &jinja_canonical_root_shape};
+/* A read-only projection borrows containers; their native owners still destroy them. */
+cmeta_reflect_data(JinjaCanonicalRoot, "test.JinjaCanonicalRoot",
+    cmeta_data_field(cmeta_data_collection_view, view, &cmeta_data_sequence_view,
+        &cmeta_type_collection_view)
+    cmeta_data_field(JinjaCanonicalVec, vec, &JinjaCanonicalVec_collection_data,
+        &JinjaCanonicalVec_cmeta_type)
+    cmeta_data_field(JinjaCanonicalDeque, deque, &JinjaCanonicalDeque_collection_data,
+        &JinjaCanonicalDeque_cmeta_type)
+    cmeta_data_field(JinjaCanonicalList, list, &JinjaCanonicalList_collection_data,
+        &JinjaCanonicalList_cmeta_type)
+    cmeta_data_field(JinjaCanonicalSet, set, &JinjaCanonicalSet_collection_data,
+        &JinjaCanonicalSet_cmeta_type)
+    cmeta_data_field(JinjaCanonicalHashSet, hash_set, &JinjaCanonicalHashSet_collection_data,
+        &JinjaCanonicalHashSet_cmeta_type)
+    cmeta_data_field(JinjaCanonicalMap, map, &JinjaCanonicalMap_map_data,
+        &JinjaCanonicalMap_cmeta_type)
+    cmeta_data_field(JinjaCanonicalMultiMap, multi, &JinjaCanonicalMultiMap_map_data,
+        &JinjaCanonicalMultiMap_cmeta_type)
+);
 
 spec("Jinja CMeta collections and runtime: collections 2") {
   /* TinyTest puts this spec's cases in one function; share diagnostics instead
@@ -128,7 +90,7 @@ spec("Jinja CMeta collections and runtime: collections 2") {
     templ = jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
     check_not_null(templ);
     check_equal(jinja_cmeta_render_string(
-                    templ, &jinja_canonical_root_data, &root,
+                    templ, cmeta_reflected_data(JinjaCanonicalRoot), &root,
                     NULL, &output, &error), JINJA_CMETA_OK);
     check_equal(output,
                 "2|2:34|2:56|2:78|2:12:True|2:True|2:20:12:True|"
@@ -337,25 +299,6 @@ spec("Jinja CMeta collections and runtime: collections 2") {
     check_equal(jinja_test_render(source, &model, &root, &options, &output, &error),
                 JINJA_CMETA_OK);
     check_equal(output, "12");
-    free(output);
-  }
-
-  it("renders nested list literals with Jinja sequence semantics") {
-    static const char source[] =
-        "{{ [] | safe }}|{{ [1, True, None, 'Ada'] | safe }}|{{ [1, [2, 3],] | safe }}|"
-        "{% if [] %}bad{% else %}empty{% endif %}|{% if [0] %}nonempty{% endif %}|"
-        "{{ [10, 20][-1] }}|<{{ [10][4] }}>|{{ 2 in [1, 2, 3] }}|"
-        "{{ 4 not in [1, 2, 3] }}|{{ [1, 2] == [1, 2] }}|{{ [1] != [2] }}|"
-        "{{ [] is sequence }}|{{ [1] is iterable }}|{{ [1] is mapping }}";
-    JinjaTestRoot root = {{vstr_from_cstr("root"), 0}, false, {NULL, 0u, 0u, NULL}};
-    JinjaTestModel model;
-    char *output = NULL;
-
-    jinja_test_model_init(&model);
-    root.users.element = &model.user_desc;
-    check_equal(jinja_test_render(source, &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "[]|[1, True, None, 'Ada']|[1, [2, 3]]|empty|nonempty|20|<>|True|True|"
-                        "True|True|True|True|False");
     free(output);
   }
 

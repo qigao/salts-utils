@@ -224,77 +224,6 @@ static int native_scalar_supported(const cmeta_data_desc *data) {
   }
 }
 
-static int native_scalar_zero(const cmeta_data_desc *data, void *storage) {
-  if (native_data_matches(data, &cmeta_data_bool)) {
-    *(bool *)storage = false;
-  } else if (native_data_matches(data, &cmeta_bool8_cmeta_data)) {
-    *(uint8_t *)storage = 0u;
-  } else if (native_data_matches(data, &cmeta_data_int)) {
-    *(int *)storage = 0;
-  } else if (native_data_matches(data, &cmeta_data_long)) {
-    *(long *)storage = 0L;
-  } else if (native_data_matches(data, &cmeta_data_size)) {
-    *(size_t *)storage = 0u;
-  } else if (native_data_matches(data, &cmeta_data_int8)) {
-    *(int8_t *)storage = INT8_C(0);
-  } else if (native_data_matches(data, &cmeta_data_int16)) {
-    *(int16_t *)storage = INT16_C(0);
-  } else if (native_data_matches(data, &cmeta_data_int32)) {
-    *(int32_t *)storage = INT32_C(0);
-  } else if (native_data_matches(data, &cmeta_data_int64)) {
-    *(int64_t *)storage = INT64_C(0);
-  } else if (native_data_matches(data, &cmeta_data_uint8)) {
-    *(uint8_t *)storage = UINT8_C(0);
-  } else if (native_data_matches(data, &cmeta_data_uint16)) {
-    *(uint16_t *)storage = UINT16_C(0);
-  } else if (native_data_matches(data, &cmeta_data_uint32)) {
-    *(uint32_t *)storage = UINT32_C(0);
-  } else if (native_data_matches(data, &cmeta_data_uint64)) {
-    *(uint64_t *)storage = UINT64_C(0);
-  } else if (native_data_matches(data, &cmeta_data_float)) {
-    *(float *)storage = 0.0f;
-  } else if (native_data_matches(data, &cmeta_data_double)) {
-    *(double *)storage = 0.0;
-  } else {
-    return 0;
-  }
-  return 1;
-}
-
-static int native_scalar_is_zero(const cmeta_data_desc *data, const void *storage) {
-  if (native_data_matches(data, &cmeta_data_bool))
-    return *(const bool *)storage == false;
-  if (native_data_matches(data, &cmeta_bool8_cmeta_data))
-    return *(const uint8_t *)storage == 0u;
-  if (native_data_matches(data, &cmeta_data_int))
-    return *(const int *)storage == 0;
-  if (native_data_matches(data, &cmeta_data_long))
-    return *(const long *)storage == 0L;
-  if (native_data_matches(data, &cmeta_data_size))
-    return *(const size_t *)storage == 0u;
-  if (native_data_matches(data, &cmeta_data_int8))
-    return *(const int8_t *)storage == INT8_C(0);
-  if (native_data_matches(data, &cmeta_data_int16))
-    return *(const int16_t *)storage == INT16_C(0);
-  if (native_data_matches(data, &cmeta_data_int32))
-    return *(const int32_t *)storage == INT32_C(0);
-  if (native_data_matches(data, &cmeta_data_int64))
-    return *(const int64_t *)storage == INT64_C(0);
-  if (native_data_matches(data, &cmeta_data_uint8))
-    return *(const uint8_t *)storage == UINT8_C(0);
-  if (native_data_matches(data, &cmeta_data_uint16))
-    return *(const uint16_t *)storage == UINT16_C(0);
-  if (native_data_matches(data, &cmeta_data_uint32))
-    return *(const uint32_t *)storage == UINT32_C(0);
-  if (native_data_matches(data, &cmeta_data_uint64))
-    return *(const uint64_t *)storage == UINT64_C(0);
-  if (native_data_matches(data, &cmeta_data_float))
-    return *(const float *)storage == 0.0f;
-  if (native_data_matches(data, &cmeta_data_double))
-    return *(const double *)storage == 0.0;
-  return 0;
-}
-
 static int native_signed_token(const cserde_token *token, int64_t *out) {
   if (token->kind == CSERDE_SINT) {
     *out = token->value.sint;
@@ -789,6 +718,13 @@ static void native_zero_unreflected_struct_bytes(
   size_t i;
   for (i = 0u; i < data->storage_type->size; ++i)
     if (!native_struct_byte_is_reflected(shape, i)) bytes[i] = 0u;
+  /* CMeta restores reflected values; DataBind must also restore overlays in
+   * inline child Structs, whose whole envelope is reflected by the parent. */
+  for (i = 0u; i < shape->field_count; ++i) {
+    const cmeta_data_field_desc *field = &shape->fields[i];
+    if (field->value->kind == CMETA_DATA_STRUCT)
+      native_zero_unreflected_struct_bytes(field->value, bytes + field->offset);
+  }
 }
 
 static int native_unreflect_struct_bytes_are_zero(
@@ -839,19 +775,8 @@ static DataBindStatus native_restore_value(const cmeta_data_desc *data,
 
 static int native_value_is_zero(const cmeta_data_desc *data, const void *storage) {
   size_t i;
-  if (native_scalar_supported(data)) return native_scalar_is_zero(data, storage);
-  if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
-    bool zero = false;
-    return cmeta_data_buffer_is_zero(data, storage, &zero) == CMETA_OK && zero;
-  }
-  if (data->kind == CMETA_DATA_ENUM) {
-    bool zero = false;
-    return cmeta_data_enum_bits_is_zero(data, storage, &zero) == CMETA_OK && zero;
-  }
-  if (data->kind == CMETA_DATA_VARIANT) {
-    bool zero = false;
-    return cmeta_data_variant_is_zero(data, storage, &zero) == CMETA_OK && zero;
-  }
+  /* Only aggregate envelopes need DataBind-specific traversal. Canonical
+   * semantic zero for the value itself belongs to its CMeta provider. */
   if (data->kind == CMETA_DATA_STRUCT) {
     const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
     if (!native_unreflect_struct_bytes_are_zero(data, storage)) return 0;
@@ -888,14 +813,10 @@ static int native_value_is_zero(const cmeta_data_desc *data, const void *storage
     }
     return 1;
   }
-  if (data->kind == CMETA_DATA_MAP) {
-    cmeta_data_map_borrow_cursor cursor = {0};
-    size_t count = 0u;
-    return cmeta_data_map_borrow_begin(data, storage, &cursor) == CMETA_OK &&
-           cmeta_data_map_borrow_size(&cursor, &count) == CMETA_OK &&
-           count == 0u;
+  {
+    bool zero = false;
+    return cmeta_data_value_is_zero(data, storage, &zero) == CMETA_OK && zero;
   }
-  return 0;
 }
 
 static DataBindStatus native_publish_value(DataBindNativeDiagnostic *diagnostic,

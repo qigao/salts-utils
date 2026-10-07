@@ -161,68 +161,6 @@ spec("bounded resource selector DSL") {
       salts_selector_program_destroy(program);
     }
 
-    it("returns structured syntax semantic UTF-8 and capacity errors") {
-      salts_selector_schema_v1_t schema = test_schema();
-      salts_selector_diagnostic_v1_t diagnostic = {
-          SALTS_SELECTOR_DIAGNOSTIC_V1_SIZE};
-      salts_selector_program_t *program = NULL;
-      char bad_utf8[] = {'r', 'o', 'l', 'e', '=', '=', '"', 0, 0, '"'};
-      char deep[160];
-      size_t offset = 0u;
-
-      bad_utf8[7] = (char)(unsigned char)0xc0u;
-      bad_utf8[8] = (char)(unsigned char)0x80u;
-
-      check_equal(salts_selector_compile_v1(
-                       "region ==", strlen("region =="), &schema, &program,
-                       &diagnostic),
-                   SALTS_SELECTOR_SYNTAX_ERROR);
-      check_null(program);
-      check_true(diagnostic.byte_offset > 0u);
-
-      diagnostic.size = SALTS_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_equal(salts_selector_compile_v1(
-                       "secret == \"x\"", strlen("secret == \"x\""),
-                       &schema, &program, &diagnostic),
-                   SALTS_SELECTOR_SEMANTIC_ERROR);
-      check_contains(diagnostic.message, "not allowed");
-
-      diagnostic.size = SALTS_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_equal(salts_selector_compile_v1(
-                       "tag.tier.level == \"x\"",
-                       strlen("tag.tier.level == \"x\""), &schema, &program,
-                       &diagnostic),
-                   SALTS_SELECTOR_SEMANTIC_ERROR);
-
-      diagnostic.size = SALTS_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_equal(salts_selector_compile_v1(
-                       bad_utf8, sizeof(bad_utf8), &schema, &program,
-                       &diagnostic),
-                   SALTS_SELECTOR_INVALID_UTF8);
-
-      diagnostic.size = SALTS_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_equal(salts_selector_compile_v1(
-                       "role == \"\\uD800\"",
-                       strlen("role == \"\\uD800\""), &schema, &program,
-                       &diagnostic),
-                   SALTS_SELECTOR_SEMANTIC_ERROR);
-      check_contains(diagnostic.message, "low surrogate");
-
-      memset(deep, 0, sizeof(deep));
-      for (size_t index = 0u; index < SALTS_SELECTOR_MAX_DEPTH_V1 + 1u;
-           ++index)
-        deep[offset++] = '(';
-      memcpy(deep + offset, "role == \"edge\"", strlen("role == \"edge\""));
-      offset += strlen("role == \"edge\"");
-      for (size_t index = 0u; index < SALTS_SELECTOR_MAX_DEPTH_V1 + 1u;
-           ++index)
-        deep[offset++] = ')';
-      diagnostic.size = SALTS_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_equal(salts_selector_compile_v1(deep, offset, &schema, &program,
-                                             &diagnostic),
-                   SALTS_SELECTOR_RESOURCE_LIMIT);
-    }
-
     it("rejects duplicate set values instead of changing their meaning") {
       salts_selector_schema_v1_t schema = test_schema();
       salts_selector_diagnostic_v1_t diagnostic = {

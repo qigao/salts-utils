@@ -2,6 +2,9 @@ set(TARGET_NAME salts_selector)
 set(TARGET_FOLDER "parser/selector")
 
 cmake_add_grammar(SELECTOR_V1
+  RE2C_EXECUTABLE "${RE2C_EXECUTABLE}"
+  LEMON_TARGET lemon
+  LEMON_TEMPLATE "${LEMPAR}"
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/parser/selector_lexer.re
   GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/parser/selector_grammar.y
   LEXER_DEPENDS_ON_GRAMMAR

@@ -49,7 +49,6 @@ else()
 endif()
 
 cmake_config_target(salts_cxml
-  NO_INSTALL
   FOLDER "parser/xml_parser/vendor")
 
 # This private engine is embedded in multiple shared libraries. Its globals and
