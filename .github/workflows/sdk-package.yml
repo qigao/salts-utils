@@ -87,6 +87,29 @@ jobs:
         dotnet pack packaging/nuget/SaltsUtils.Native.csproj --no-restore --configuration Release --output dist -p:PackageVersion=${{ inputs.version }} -p:PackageRoot="$GITHUB_WORKSPACE/package" -p:RestorePackagesPath="$RUNNER_TEMP/pack-nuget"
         nupkg="dist/SaltsUtils.Native.${{ inputs.version }}.nupkg"
         test -f "$nupkg"
+        python3 packaging/nuget/preserve_nupkg_permissions.py "$nupkg"
+        python3 - "$nupkg" <<'PY'
+        import sys, zipfile
+        package = sys.argv[1]
+        required = (
+            "sdk/linux-x64/bin/salts-idlc",
+            "sdk/linux-arm64/bin/salts-idlc",
+            "sdk/macos-arm64/bin/salts-idlc",
+        )
+        with zipfile.ZipFile(package) as archive:
+            for name in required:
+                info = archive.getinfo(name)
+                mode = (info.external_attr >> 16) & 0o7777
+                if mode & 0o111 != 0o111:
+                    raise SystemExit(f"{name}: packaged mode is {oct(mode)}, expected executable")
+        PY
+        extracted="$RUNNER_TEMP/salts-utils-packed"
+        rm -rf "$extracted"
+        mkdir -p "$extracted"
+        unzip -q "$nupkg" -d "$extracted"
+        test -x "$extracted/sdk/linux-x64/bin/salts-idlc"
+        test -x "$extracted/sdk/linux-arm64/bin/salts-idlc"
+        test -x "$extracted/sdk/macos-arm64/bin/salts-idlc"
         unzip -p "$nupkg" '*.nuspec' > "$RUNNER_TEMP/salts-utils.nuspec"
         if grep -q '<dependencies' "$RUNNER_TEMP/salts-utils.nuspec"; then
           echo "SaltsUtils.Native must not publish dependency metadata" >&2
