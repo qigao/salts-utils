@@ -7,7 +7,9 @@ if(WIN32)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(salts_cflow_fs PRIVATE src/fs_watch_linux.c)
 elseif(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-  target_sources(salts_cflow_fs PRIVATE src/fs_watch_macos.c)
+  # CoreServices headers require Apple's Blocks-capable compiler.
+  enable_language(OBJC)
+  target_sources(salts_cflow_fs PRIVATE src/fs_watch_macos.m)
   target_link_libraries(salts_cflow_fs PRIVATE
     "-framework CoreServices")
 else()
