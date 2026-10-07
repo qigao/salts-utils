@@ -103,13 +103,33 @@ static void watch_close_destroy(cflow_fs_watch *watch) {
 }
 
 spec("CFlow filesystem watch") {
+    /* Keep callback state alive through teardown after a fatal assertion. */
+    static char *root;
+    static cflow_fs_watch watch;
+    static watch_probe probe;
+
+    before_each() {
+        root = NULL;
+        watch = (cflow_fs_watch){0};
+        probe = (watch_probe){0};
+    }
+
+    after_each() {
+        if (watch.impl != NULL)
+            watch_close_destroy(&watch);
+        if (root != NULL) {
+            int status = tt_is_dir(root) ? tt_remove_tree(root) : SALTS_OK;
+            free(root);
+            root = NULL;
+            check_equal(status, SALTS_OK);
+        }
+    }
+
 #if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
     it("reports create rename and remove through the driver") {
-        char *root = tt_make_temp_dir("cflow-watch-");
+        root = tt_make_temp_dir("cflow-watch-");
         char first[1024];
         char second[1024];
-        cflow_fs_watch watch = {0};
-        watch_probe probe = {0};
         cflow_fs_watch_config config = watch_config(&probe, 8u);
 
         check_not_null(root);
@@ -189,19 +209,13 @@ spec("CFlow filesystem watch") {
             check_true(probe_saw(&probe, CFLOW_FS_WATCH_REMOVED, "second.txt"));
 #endif
         }
-
-        watch_close_destroy(&watch);
-        check_equal(tt_remove_tree(root), SALTS_OK);
-        free(root);
     }
 
-    it("turns bounded queue loss into one rescan-required event") {
-        char *root = tt_make_temp_dir("cflow-watch-overflow-");
+    it("coalesces queue loss and repeats rescans until acknowledged") {
+        root = tt_make_temp_dir("cflow-watch-overflow-");
         char first[1024];
         char second[1024];
         char during_rescan[1024];
-        cflow_fs_watch watch = {0};
-        watch_probe probe = {0};
         cflow_fs_watch_config config = watch_config(&probe, 1u);
         cflow_fs_watch_stats stats = {0};
         size_t attempts = 0u;
@@ -244,19 +258,28 @@ spec("CFlow filesystem watch") {
         check_equal(watch_drive_until(&watch, &probe, 3u), SALTS_OK);
         check_equal(probe_count_kind(&probe,
                         CFLOW_FS_WATCH_RESCAN_REQUIRED), (size_t)2u);
-        check_equal(cflow_fs_watch_acknowledge_rescan(&watch), SALTS_OK);
-        check_true(cflow_fs_watch_get_stats(&watch, &stats));
+        /* A single write can produce several native notifications. Each one
+         * arriving after marker delivery requires another rescan cycle. */
+        attempts = 0u;
+        while (attempts++ < 5000u) {
+            size_t delivered = 0u;
+            check_equal(cflow_fs_watch_acknowledge_rescan(&watch), SALTS_OK);
+            check_true(cflow_fs_watch_get_stats(&watch, &stats));
+            if (!stats.awaiting_rescan)
+                break;
+            check_greater(stats.queued, (size_t)0u);
+            check_less_equal(stats.queued, config.event_capacity + 1u);
+            check_equal(cflow_fs_watch_run_ready(&watch, 8u, &delivered),
+                        SALTS_OK);
+            check_equal(delivered, stats.queued);
+            cmeta_sleep_ms(1u);
+        }
         check_false(stats.awaiting_rescan);
-
-        watch_close_destroy(&watch);
-        check_equal(tt_remove_tree(root), SALTS_OK);
-        free(root);
+        check_equal(cflow_fs_watch_acknowledge_rescan(&watch), SALTS_EALREADY);
     }
 
     it("reports deletion of the watched root") {
-        char *root = tt_make_temp_dir("cflow-watch-root-");
-        cflow_fs_watch watch = {0};
-        watch_probe probe = {0};
+        root = tt_make_temp_dir("cflow-watch-root-");
         cflow_fs_watch_config config = watch_config(&probe, 8u);
 
         check_not_null(root);
@@ -264,35 +287,26 @@ spec("CFlow filesystem watch") {
         check_equal(tt_remove_tree(root), SALTS_OK);
         check_equal(watch_drive_until(&watch, &probe, 1u), SALTS_OK);
         check_true(probe_saw(&probe, CFLOW_FS_WATCH_ROOT_CHANGED, NULL));
-
-        watch_close_destroy(&watch);
-        free(root);
     }
 
 #else
     it("fails fast when the native watch backend is unavailable") {
-        char *root = tt_make_temp_dir("cflow-watch-unsupported-");
-        cflow_fs_watch watch = {0};
-        watch_probe probe = {0};
+        root = tt_make_temp_dir("cflow-watch-unsupported-");
         cflow_fs_watch_config config = watch_config(&probe, 1u);
 
         check_not_null(root);
         check_equal(cflow_fs_watch_open(&watch, root, &config), SALTS_ENOTSUP);
         check_null(watch.impl);
-        check_equal(tt_remove_tree(root), SALTS_OK);
-        free(root);
     }
 #endif
 
 #if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
     it("reports recursive descendants with normalized relative paths") {
-        char *root = tt_make_temp_dir("cflow-watch-recursive-");
+        root = tt_make_temp_dir("cflow-watch-recursive-");
         char nested[1024];
         char child[1024];
         char dynamic[1024];
         char dynamic_child[1024];
-        cflow_fs_watch watch = {0};
-        watch_probe probe = {0};
         cflow_fs_watch_config config = watch_config(&probe, 8u);
         size_t attempts = 0u;
 
@@ -343,9 +357,6 @@ spec("CFlow filesystem watch") {
         }
         check_true(probe_saw(&probe, CFLOW_FS_WATCH_CREATED,
                              "dynamic/later.txt"));
-        watch_close_destroy(&watch);
-        check_equal(tt_remove_tree(root), SALTS_OK);
-        free(root);
     }
 #endif
 }
