@@ -606,18 +606,20 @@ endif()
 
 endif()
 
-cmake_add_benchmark(benchmark_data_bind_pool
-  SOURCES benchmark_data_bind_pool.c
-  LIBS ${DATA_BIND_TEST_LIBS}
-  FOLDER "databind/runtime/benchmarks")
-cmake_add_benchmark(benchmark_data_bind_json_path
-  SOURCES benchmark_data_bind_json_path.c
-  LIBS ${DATA_BIND_TEST_LIBS}
-  FOLDER "databind/runtime/benchmarks")
-cmake_add_benchmark(benchmark_data_bind_native
-  SOURCES benchmark_data_bind_native.c
-  LIBS ${DATA_BIND_TEST_LIBS}
-  FOLDER "databind/runtime/benchmarks")
+if(BUILD_BENCHMARKS)
+  cmake_add_benchmark(benchmark_data_bind_pool
+    SOURCES benchmark_data_bind_pool.c
+    LIBS Salts::DataBind Salts::TinyTest
+    FOLDER "databind/runtime/benchmarks")
+  cmake_add_benchmark(benchmark_data_bind_json_path
+    SOURCES benchmark_data_bind_json_path.c
+    LIBS Salts::DataBind Salts::TinyTest
+    FOLDER "databind/runtime/benchmarks")
+  cmake_add_benchmark(benchmark_data_bind_native
+    SOURCES benchmark_data_bind_native.c
+    LIBS Salts::DataBind Salts::TinyTest
+    FOLDER "databind/runtime/benchmarks")
+endif()
 
 if(BUILD_TESTS AND TARGET benchmark_data_bind_native)
   add_test(NAME benchmark_data_bind_native COMMAND benchmark_data_bind_native)

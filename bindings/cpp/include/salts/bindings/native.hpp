@@ -87,7 +87,7 @@ template <typename R, typename Call> cmeta_status result(void *out, Call &&call)
   } catch (...) { return CMETA_CALLBACK_ERROR; }
 }
 
-template <auto Function, typename Type = decltype(Function)> struct Thunk;
+template <auto Function, typename Type = std::remove_cv_t<decltype(Function)>> struct Thunk;
 
 template <auto Function, typename R, typename... A>
 struct Thunk<Function, R (*)(A...)> {

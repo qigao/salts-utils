@@ -52,7 +52,7 @@ spec("generated opaque bytes transport composition") {
             plan, DATA_BIND_OPAQUE_VALUE,
             payload, sizeof(payload), &span, &error),
         DATA_BIND_OK);
-    check_equal(span.data, payload);
+    check_true(span.data == payload);
     check_equal(span.bytes, sizeof(payload));
     check_equal(span.ownership, DATA_BIND_OPAQUE_BORROWED);
 
@@ -63,7 +63,7 @@ spec("generated opaque bytes transport composition") {
             payload, sizeof(payload),
             copy, sizeof(copy), &span, &error),
         DATA_BIND_OK);
-    check_equal(span.data, copy);
+    check_true(span.data == copy);
     check_equal(span.ownership, DATA_BIND_OPAQUE_CALLER_OWNED);
     check_equal(memcmp(copy, payload, sizeof(payload)), 0);
 
