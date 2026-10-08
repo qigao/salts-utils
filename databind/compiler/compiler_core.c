@@ -5088,7 +5088,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
           backend = &options->projection_backends[j];
           break;
         }
-      if (backend == NULL) { qualified = 0; break; }
+      if (backend == NULL) { qualified = 0; continue; }
       if (backend->generate == databind_compiler_native_service_generate &&
           request->id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
           request->id.kind == DATABIND_COMPILER_ARTIFACT_NATIVE) {
@@ -5103,7 +5103,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       } else if (backend->output_policy != DATABIND_COMPILER_OUTPUT_STAGED_SINGLE ||
                  request->output == NULL || request->output[0] == '\\0') {
         qualified = 0;
-        break;
+        continue;
       }
     }
     native_transaction = seen_native && qualified && options->output_path != NULL;
