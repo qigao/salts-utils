@@ -4082,11 +4082,22 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       return 1;
     }
     tbe_error_init(&format_error);
-    if (tbe_compiler_projection_requires_binary(options) &&
-        !databind_binary_format_plan_build(
-            task->contract, task->projection_root, &task->binary_format, &format_error)) {
-      fprintf(stderr, "Failed to compile Binary format plan: %s\n", format_error.message);
-      return 1;
+    if (tbe_compiler_projection_requires_binary(options)) {
+      /* A selected Binary transport compiles wire annotations in its private
+       * projection view. TypeScript and SQL never admit Binary implicitly. */
+      if ((database_language || typescript_language) &&
+          databind_binary_contract_apply(task->projection_root, &format_error) != 0) {
+        fprintf(stderr, "Selected Binary projection rejected: %s\n",
+                format_error.message);
+        return 1;
+      }
+      if (!databind_binary_format_plan_build(
+              task->contract, task->projection_root,
+              &task->binary_format, &format_error)) {
+        fprintf(stderr, "Failed to compile selected Binary format plan: %s\n",
+                format_error.message);
+        return 1;
+      }
     }
   }
 
