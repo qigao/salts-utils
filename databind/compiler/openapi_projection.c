@@ -1598,4 +1598,5 @@ const databind_compiler_projection_backend
          DATABIND_COMPILER_ARTIFACT_OPENAPI},
         "openapi",
         openapi_generate,
-        NULL};
+        NULL,
+        DATABIND_COMPILER_OUTPUT_STAGED_SINGLE};
