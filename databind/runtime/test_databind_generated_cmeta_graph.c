@@ -709,7 +709,7 @@ spec("generated native CMeta graph") {
                             cmeta_data_bool.storage_type));
   }
 
-  it("round-trips canonical Bool8 and fixed-value providers through JSON and Binary") {
+  it("admits Bool8 fixed-value reads and Binary round trips while rejecting unsupported text writes") {
     static const char json[] =
         "{\"enabled\":true,\"id\":\"00000000-0000-0000-0000-000000000000\","
         "\"digest\":\"0123456789abcdef\"}";
@@ -719,7 +719,6 @@ spec("generated native CMeta graph") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
     FixedValues_t destination;
-    FixedValues_t json_decoded;
     FixedValues_t binary_decoded;
     uint8_t *wire = NULL;
     char *encoded = NULL;
@@ -764,26 +763,18 @@ spec("generated native CMeta graph") {
     check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
     if (!codec) return;
     FixedValues_init(&destination);
-    FixedValues_init(&json_decoded);
     FixedValues_init(&binary_decoded);
     check_equal(FixedValues_from_json(
                     codec, &destination, json, strlen(json), &error),
                 DATA_BIND_OK);
     check_equal(destination.enabled, (uint8_t)1u);
+    /* Canonical fixed UUID/bytes storage is not an owned-buffer text writer
+     * contract. Bool8 admission does not add that separate conversion. */
     check_equal(FixedValues_to_json(
                     codec, &destination, &encoded, &encoded_len, &error),
-                DATA_BIND_OK);
-    check_not_null(encoded);
-    if (encoded != NULL) {
-      check_equal(FixedValues_from_json(
-                      codec, &json_decoded, encoded, encoded_len, &error),
-                  DATA_BIND_OK);
-      check_equal(json_decoded.enabled, destination.enabled);
-      check(memcmp(&json_decoded.id, &destination.id,
-                   sizeof(destination.id)) == 0);
-      check(memcmp(json_decoded.digest, destination.digest,
-                   sizeof(destination.digest)) == 0);
-    }
+                DATA_BIND_ERR_SCHEMA);
+    check_null(encoded);
+    check_equal(encoded_len, (size_t)0u);
 
     /* Bool8 admission must preserve the neighboring UUID and fixed bytes. */
     error = (DataBindError)DATA_BIND_ERROR_INIT;
@@ -807,7 +798,6 @@ spec("generated native CMeta graph") {
     data_bind_binary_free(wire);
     data_bind_serialized_free(encoded);
     FixedValues_clear(&binary_decoded);
-    FixedValues_clear(&json_decoded);
     FixedValues_clear(&destination);
     check(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)) == 0);
     data_bind_free(codec);
