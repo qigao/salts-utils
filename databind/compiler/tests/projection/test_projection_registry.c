@@ -8,6 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef SCHEMA_WASM_EXECUTION_FILE
+#error "SCHEMA_WASM_EXECUTION_FILE is required"
+#endif
+
 #ifndef SCHEMA_NATIVE_SERVICE_FILE
 #error "SCHEMA_NATIVE_SERVICE_FILE is required"
 #endif
@@ -866,6 +870,58 @@ describe("compiler integration") {
     check_false(file_exists(guest_header));
     (void)remove(primary);
     (void)remove(shared);
+  }
+
+  it("preserves all Wasm finals when selected core module is missing") {
+    static const char primary[] = "projection_wasm_missing_core.h";
+    static const char component[] = "projection_wasm_missing_core.wasm";
+    static const char host_h[] = "projection_wasm_missing_core.host.h";
+    static const char host_c[] = "projection_wasm_missing_core.host.c";
+    static const char guest_h[] = "projection_wasm_missing_core.guest.h";
+    databind_compiler_wasm_config config = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = "projection_wasm_missing_core.DOES_NOT_EXIST.wasm",
+        .host_header_output = host_h,
+        .host_source_output = host_c,
+        .guest_header_output = guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_WASM_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(host_h);
+    (void)remove(host_c);
+    (void)remove(guest_h);
+    (void)remove(config.core_module_path);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(component, "old-component"));
+    check_true(write_sentinel(host_h, "old-host-header"));
+    check_true(write_sentinel(host_c, "old-host-source"));
+    check_true(write_sentinel(guest_h, "old-guest-header"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(component, "old-component"));
+    check_true(file_matches(host_h, "old-host-header"));
+    check_true(file_matches(host_c, "old-host-source"));
+    check_true(file_matches(guest_h, "old-guest-header"));
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(host_h);
+    (void)remove(host_c);
+    (void)remove(guest_h);
   }
 
   it("rejects incomplete or dishonest selected staging capability sets") {
