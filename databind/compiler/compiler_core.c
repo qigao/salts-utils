@@ -5097,7 +5097,6 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
             native_config->header_output == NULL ||
             native_config->header_output[0] == '\\0') {
           qualified = 0;
-          break;
         }
         seen_native = 1;
       } else if (backend->output_policy != DATABIND_COMPILER_OUTPUT_STAGED_SINGLE ||
