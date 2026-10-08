@@ -3755,6 +3755,7 @@ static int tbe_source_type_expression(
     const IdlContract *contract, const char *expression, size_t length,
     int64_t language, char *buffer, size_t capacity, size_t *used) {
   const int python = language == TBE_COMPILER_LANG_PYTHON;
+  const int go = language == TBE_COMPILER_LANG_GO;
   IdlTypeRef type;
   char name[IDL_TYPE_REF_MAX_BYTES + 1u];
   const char *mapped = NULL;
@@ -3767,24 +3768,25 @@ static int tbe_source_type_expression(
     return 0;
   if (type.collection_kind != IDL_COLLECTION_NONE) {
     const char *prefix = type.collection_kind == IDL_COLLECTION_LIST
-        ? (python ? "list[" : "Array<")
+        ? (go ? "[]" : python ? "list[" : "Array<")
         : type.collection_kind == IDL_COLLECTION_SET
-        ? (python ? "set[" : "Set<")
+        ? (go ? "map[" : python ? "set[" : "Set<")
         : type.collection_kind == IDL_COLLECTION_MAP
-        ? (python ? "dict[" : "Map<") : NULL;
+        ? (go ? "map[" : python ? "dict[" : "Map<") : NULL;
     if (!tbe_source_append_cstr(buffer, capacity, used, prefix))
       return 0;
     for (i = 0u; i < type.argument_count; ++i) {
       if (i != 0u && !tbe_source_append_cstr(
-                           buffer, capacity, used, ", "))
+                           buffer, capacity, used, go ? "]" : ", "))
         return 0;
       if (!tbe_source_type_expression(
               contract, type.arguments[i], type.argument_lengths[i],
               language, buffer, capacity, used))
         return 0;
     }
-    return tbe_source_append_cstr(
-        buffer, capacity, used, python ? "]" : ">");
+    return tbe_source_append_cstr(buffer, capacity, used,
+        go ? (type.collection_kind == IDL_COLLECTION_SET ? "]struct{}" : "")
+           : python ? "]" : ">");
   }
 
   if (type.name_length == 0u || type.name_length >= sizeof(name))
@@ -3794,21 +3796,25 @@ static int tbe_source_type_expression(
 
   scalar = tbe_compiler_scalar_projection(name);
   if (scalar != NULL) {
-    if (!python &&
+    if (!python && !go &&
         (scalar->data->kind == CMETA_DATA_SINT ||
          scalar->data->kind == CMETA_DATA_UINT) &&
         ((const cmeta_data_integer_shape *)scalar->data->shape)->bits == 64u)
       mapped = "bigint";
     else
-      mapped = python ? scalar->python_type : scalar->ts_type;
+      mapped = go ? scalar->go_type :
+               python ? scalar->python_type : scalar->ts_type;
   } else if (strcmp(name, "varint") == 0 ||
              strcmp(name, "bigint") == 0) {
+    /* No implicit Go varint width/range or arbitrary integer owner. */
+    if (go) return 0;
     mapped = python ? "int" : "bigint";
   } else if (strcmp(name, "string") == 0 ||
              strcmp(name, "uuid") == 0) {
-    mapped = python ? "str" : "string";
+    mapped = go ? (strcmp(name, "uuid") == 0 ? "[16]byte" : "string")
+                : python ? "str" : "string";
   } else if (strcmp(name, "bytes") == 0) {
-    mapped = python ? "bytes" : "Uint8Array";
+    mapped = go ? "[]byte" : python ? "bytes" : "Uint8Array";
   } else {
     decl = idl_contract_find_data(contract, name);
     if (decl == NULL || decl->kind == IDL_DATA_UNION)
@@ -3818,10 +3824,37 @@ static int tbe_source_type_expression(
   return tbe_source_append_cstr(buffer, capacity, used, mapped);
 }
 
+/* Go map keys and set elements must have comparable value representations.
+ * Reject slice/float/record keys instead of emitting Go code that cannot typecheck. */
+static int tbe_go_comparable_type(const IdlContract *contract,
+                                  const char *expression) {
+  IdlTypeRef ref;
+  char name[IDL_TYPE_REF_MAX_BYTES + 1u];
+  const tbe_compiler_scalar_projection_t *scalar;
+  const IdlDataDecl *decl;
+  if (expression == NULL ||
+      !idl_type_ref_parse(expression, strlen(expression), &ref) ||
+      ref.collection_kind != IDL_COLLECTION_NONE ||
+      ref.name_length >= sizeof(name))
+    return 0;
+  memcpy(name, ref.name, ref.name_length);
+  name[ref.name_length] = '\0';
+  if (strcmp(name, "string") == 0 || strcmp(name, "uuid") == 0)
+    return 1;
+  scalar = tbe_compiler_scalar_projection(name);
+  if (scalar != NULL)
+    return scalar->data->kind == CMETA_DATA_BOOL ||
+           scalar->data->kind == CMETA_DATA_SINT ||
+           scalar->data->kind == CMETA_DATA_UINT;
+  decl = idl_contract_find_data(contract, name);
+  return decl != NULL && decl->kind == IDL_DATA_ENUM;
+}
+
 static int tbe_source_field_type(
     const IdlContract *contract, const IdlField *field,
     int64_t language, char output[TBE_SOURCE_TYPE_CAPACITY]) {
   const int python = language == TBE_COMPILER_LANG_PYTHON;
+  const int go = language == TBE_COMPILER_LANG_GO;
   size_t used = 0u;
   const char *inner;
   const char *prefix = NULL;
@@ -3830,9 +3863,13 @@ static int tbe_source_field_type(
   /* Python dataclass cannot express omitted vs explicit null with a plain
    * field and may not silently discard IDL default values. Both require a
    * separately designed presence/default representation. */
-  if (python && (field->optional || field->default_value != NULL))
+  if ((python || go) &&
+      (field->optional || field->default_value != NULL))
     return 0;
   output[0] = '\0';
+  if (go && field->nullable &&
+      !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "*"))
+    return 0;
   switch (field->collection_kind) {
   case IDL_COLLECTION_NONE:
     if (field->type_name == NULL ||
@@ -3846,39 +3883,62 @@ static int tbe_source_field_type(
   case IDL_COLLECTION_GROUP:
   case IDL_COLLECTION_SET:
     prefix = field->collection_kind == IDL_COLLECTION_SET
-        ? (python ? "set[" : "Set<")
-        : (python ? "list[" : "Array<");
+        ? (go ? "map[" : python ? "set[" : "Set<")
+        : (go ? "[]" : python ? "list[" : "Array<");
     inner = field->inner_type;
+    if (go && field->collection_kind == IDL_COLLECTION_SET &&
+        !tbe_go_comparable_type(contract, inner))
+      return 0;
+    if (go && field->collection_kind == IDL_COLLECTION_ARRAY) {
+      size_t fixed_length;
+      if (!tbe_compiler_parse_size(field->length, &fixed_length) ||
+          fixed_length == 0u)
+        return 0;
+      /* A fixed array is a value of exactly N elements, not a slice.
+       * Symbolic length references require a separate array representation. */
+      prefix = NULL;
+      if (!tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "[") ||
+          !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used,
+                                  field->length) ||
+          !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "]"))
+        return 0;
+    }
     if (inner == NULL ||
+        (!go || field->collection_kind != IDL_COLLECTION_ARRAY) &&
         !tbe_source_append_cstr(
-            output, TBE_SOURCE_TYPE_CAPACITY, &used, prefix) ||
-        !tbe_source_type_expression(
+            output, TBE_SOURCE_TYPE_CAPACITY, &used, prefix))
+      return 0;
+    if (!tbe_source_type_expression(
             contract, inner, strlen(inner),
             language, output, TBE_SOURCE_TYPE_CAPACITY, &used) ||
         !tbe_source_append_cstr(
-            output, TBE_SOURCE_TYPE_CAPACITY, &used, python ? "]" : ">"))
+            output, TBE_SOURCE_TYPE_CAPACITY, &used,
+            go ? (field->collection_kind == IDL_COLLECTION_SET ? "]struct{}" : "")
+               : python ? "]" : ">"))
       return 0;
     break;
   case IDL_COLLECTION_MAP:
     if (field->key_type == NULL || field->value_type == NULL ||
+        (go && !tbe_go_comparable_type(contract, field->key_type)) ||
         !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY,
-                                &used, python ? "dict[" : "Map<") ||
+                                &used, go ? "map[" : python ? "dict[" : "Map<") ||
         !tbe_source_type_expression(
             contract, field->key_type, strlen(field->key_type),
             language, output, TBE_SOURCE_TYPE_CAPACITY, &used) ||
         !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY,
-                                &used, ", ") ||
+                                &used, go ? "]" : ", ") ||
         !tbe_source_type_expression(
             contract, field->value_type, strlen(field->value_type),
             language, output, TBE_SOURCE_TYPE_CAPACITY, &used) ||
         !tbe_source_append_cstr(
-            output, TBE_SOURCE_TYPE_CAPACITY, &used, python ? "]" : ">"))
+            output, TBE_SOURCE_TYPE_CAPACITY, &used,
+            go ? "" : python ? "]" : ">"))
       return 0;
     break;
   default:
     return 0;
   }
-  return !field->nullable ||
+  return !field->nullable || go ||
       tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used,
                              python ? " | None" : " | null");
 }
