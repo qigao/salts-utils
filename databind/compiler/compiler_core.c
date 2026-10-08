@@ -5147,6 +5147,11 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       fprintf(stderr, "Multi-output projection requires all selected backends staged; no output published\n");
       return 1;
     }
+    if (seen_wasm && !wasm_transaction) {
+      fprintf(stderr,
+              "Wasm requires a named output and fully staged selected backends; no output published\n");
+      return 1;
+    }
     if (seen_native && !native_transaction) {
       fprintf(stderr,
               "Native Service requires a named output and fully staged selected backends; no output published\n");
