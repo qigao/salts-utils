@@ -56,6 +56,13 @@ const char *tbe_compiler_resolve_template(const char *user_template,
 void tbe_compiler_annotate_language_types(
     const IdlContract *contract, Node *root);
 
+/* Compiler-private semantic freeze without Binary layout admission.
+ * Returned legacy tree is unannotated and must not be used by C wire templates.
+ * Caller owns tree, contract and schema data. */
+int databind_compiler_parse_contract_only_file(
+    const char *schema_path, Node **out_legacy_tree,
+    IdlContract **out_contract, char **out_schema_data);
+
 int databind_compiler_parse_contract_file(
     const char *schema_path, Node **out_legacy_tree,
     IdlContract **out_contract, char **out_schema_data);
