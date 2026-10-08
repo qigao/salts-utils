@@ -1,6 +1,7 @@
 #include "projection.h"
 
 #include "compiler_core.h"
+#include "native_source_ir.h"
 #include "native_service_projection.h"
 #include "wasm_projection.h"
 #include "plugin_projection.h"
@@ -1320,6 +1321,44 @@ describe("compiler integration") {
     check_equal(plugin.calls, (size_t)0u);
     check_false(file_exists(output));
     check_false(file_exists(source));
+  }
+
+  it("lowers fixed-width C fields from Contract without Binary offsets") {
+    static const char schema_path[] = "native_source_scalar.schema";
+    static const char valid[] = "message Packet { uint32 count; int16 delta; }";
+    static const char unsupported[] = "message Packet { string label; uint32 count; }";
+    Node *tree = NULL;
+    IdlContract *contract = NULL;
+    char *source = NULL;
+    databind_native_source_ir ir = {0};
+    (void)remove(schema_path);
+    check_true(write_sentinel(schema_path, valid));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), 0);
+    check_equal(ir.record_count, (size_t)1u);
+    check_equal(ir.records[0].name, "Packet");
+    check_equal(ir.records[0].field_count, (size_t)2u);
+    check_equal(ir.records[0].fields[0].name, "count");
+    check_equal(ir.records[0].fields[0].c_type, "uint32_t");
+    check_equal(ir.records[0].fields[1].c_type, "int16_t");
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    tree = NULL;
+    contract = NULL;
+    source = NULL;
+    check_true(write_sentinel(schema_path, unsupported));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), -1);
+    check_true(ir.records == NULL);
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    (void)remove(schema_path);
   }
 
   it("freezes a Binary-incompatible logical Contract without wire admission") {
