@@ -90,9 +90,11 @@ static int staged_projection_generate(
   length = strlen(probe->content);
   file = fopen(request->output, "wb");
   if (file == NULL) return -1;
-  if (fwrite(probe->content, 1u, length, file) != length ||
-      fclose(file) != 0)
-    return -1;
+  {
+    int wrote = fwrite(probe->content, 1u, length, file) == length;
+    int closed = fclose(file) == 0;
+    if (!wrote || !closed) return -1;
+  }
   return probe->fail_after_write ? -1 : 0;
 }
 
