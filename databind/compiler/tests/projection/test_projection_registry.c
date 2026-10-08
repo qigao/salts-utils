@@ -1395,6 +1395,9 @@ describe("compiler integration") {
     check_true(file_contains(output, "bool has_active;"));
     check_true(file_contains(output, "bool is_null_active;"));
     check_true(file_contains(output, "bool active;"));
+    check_true(file_contains(output, "Packet_init(Packet *value)"));
+    check_true(file_contains(output, "Packet_clear(Packet *value)"));
+    check_true(file_contains(output, "*value = (Packet){0};"));
     check_false(file_contains(output, "binary_wire"));
     (void)remove(output);
     (void)remove(schema_path);
