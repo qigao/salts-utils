@@ -49,7 +49,7 @@ static char *copy_text(const char *text) {
   return copy;
 }
 
-static void diagnostic_set(
+void idl_contract_diagnostic_set(
     IdlDiagnostic *diagnostic, IdlStatus status,
     int line, int column, const char *message) {
   size_t size;
@@ -424,7 +424,7 @@ static int idl_contract_validate_data_names(
   for (i = 0u; i < count; ++i) {
     const IdlDataDecl *decl = &data[i];
     if (decl->name == NULL || decl->name[0] == '\0') {
-      diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1,
+      idl_contract_diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1,
                      "Data declaration must have a name");
       return 0;
     }
@@ -432,7 +432,7 @@ static int idl_contract_validate_data_names(
       if (strcmp(data[j].name, decl->name) == 0) {
         snprintf(message, sizeof(message), "Duplicate Data declaration '%s'",
                  decl->name);
-        diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1, message);
+        idl_contract_diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1, message);
         return 0;
       }
     }
@@ -441,7 +441,7 @@ static int idl_contract_validate_data_names(
       if (field_name == NULL || field_name[0] == '\0') {
         snprintf(message, sizeof(message),
                  "Data declaration '%s' has an unnamed field", decl->name);
-        diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1, message);
+        idl_contract_diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1, message);
         return 0;
       }
       for (k = 0u; k < j; ++k) {
@@ -449,7 +449,7 @@ static int idl_contract_validate_data_names(
           snprintf(message, sizeof(message),
                    "Duplicate field '%s' in Data declaration '%s'",
                    field_name, decl->name);
-          diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1, message);
+          idl_contract_diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1, message);
           return 0;
         }
       }
@@ -761,7 +761,7 @@ int idl_contract_build_from_tree(
 
   if (out_contract != NULL) *out_contract = NULL;
   if (root == NULL || out_contract == NULL) {
-    diagnostic_set(diagnostic, IDL_INVALID_ARGUMENT, -1, -1,
+    idl_contract_diagnostic_set(diagnostic, IDL_INVALID_ARGUMENT, -1, -1,
                    "Invalid IDL contract build arguments");
     return 0;
   }
@@ -801,12 +801,14 @@ int idl_contract_build_from_tree(
   contract->channel_count = channel_count;
   contract->components = components;
   contract->component_count = component_count;
-  diagnostic_set(diagnostic, IDL_OK, -1, -1, NULL);
+  if (!idl_contract_validate_types(contract, diagnostic))
+    goto failed;
+  idl_contract_diagnostic_set(diagnostic, IDL_OK, -1, -1, NULL);
   *out_contract = contract;
   return 1;
 
 oom:
-  diagnostic_set(diagnostic, IDL_NO_MEMORY, -1, -1,
+  idl_contract_diagnostic_set(diagnostic, IDL_NO_MEMORY, -1, -1,
                  "Out of memory building typed IDL contract");
 failed:
   annotation_destroy(contract_annotations, contract_annotation_count);
@@ -830,18 +832,18 @@ int idl_contract_parse(
   int ok;
   if (out_contract != NULL) *out_contract = NULL;
   if (text == NULL || out_contract == NULL) {
-    diagnostic_set(diagnostic, IDL_INVALID_ARGUMENT, -1, -1,
+    idl_contract_diagnostic_set(diagnostic, IDL_INVALID_ARGUMENT, -1, -1,
                    "Invalid IDL parse arguments");
     return 0;
   }
   root = create_node_map(NULL);
   if (root == NULL) {
-    diagnostic_set(diagnostic, IDL_NO_MEMORY, -1, -1,
+    idl_contract_diagnostic_set(diagnostic, IDL_NO_MEMORY, -1, -1,
                    "Out of memory creating IDL frontend tree");
     return 0;
   }
   if (idl_parse(text, length, root, &error) != 0) {
-    diagnostic_set(diagnostic, diagnostic_status_from_tbe(error.code),
+    idl_contract_diagnostic_set(diagnostic, diagnostic_status_from_tbe(error.code),
                    error.line, error.column, error.message);
     node_free(root);
     return 0;
