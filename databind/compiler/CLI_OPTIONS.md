@@ -76,6 +76,35 @@ CMeta descriptors emitted with the native C representation. DataBind does not
 generate schema-specific Lua metadata, ownership models, operation wrappers, or
 fallback adapters.
 
+### TypeScript: Contract-only Type Projection
+
+`salts-idlc contract.schema --lang ts --output contract.ts` renders immutable,
+validated `IdlContract` through a compiler-owned TypeScript presentation IR.
+No Binary/TBE layout overlay is evaluated unless a separate Binary projection
+is explicitly selected. Variable-data fields may precede fixed fields in a
+TypeScript-only contract.
+
+The built-in Mustache template and `--template` overrides consume source
+presentation fields (`enums`, `messages`, `composites`, `groups`,
+`name`, `ts_type`, `ts_optional`, enum `items`, and
+`schema.schema_name`). They no longer receive Binary wire offsets,
+sizes, cursor metadata or native lifecycle attributes.
+
+- `list<T>`, `set<T>`, `map<K,V>` lower recursively to `Array<T>`,
+  `Set<T>`, `Map<K, V>`; fixed arrays and `group<T>` lower to `Array<T>`.
+- `optional` becomes an optional property (`?`); `nullable` becomes
+  `| null`. The two properties remain independent.
+- Signed and unsigned 64-bit integers and logical `varint` use TypeScript
+  `bigint` instead of precision-losing JavaScript `number`. Numeric
+  64-bit enum declarations remain rejected, since TypeScript numeric enums
+  cannot preserve their complete value range.
+- Native-only/domain types without an admitted TypeScript mapping (for
+  example `datetime`) and union declarations fail before publishing output.
+  There is no fallback emitter, guessed type alias, or hidden Binary admission.
+
+This output is a **type declaration artifact**, not a serializer. Binary
+layout/encoding validation belongs to an explicitly selected format plan.
+
 ### DSL Integration (RulesForge)
 
 - `--dsl-output <file>` or `-d <file>`
