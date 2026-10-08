@@ -9,7 +9,7 @@ export enum {{enum_name}} {
 {{#composites}}
 export interface {{name}} {
 {{#fields}}
-  {{name}}: {{ts_type}};
+  {{name}}{{#ts_optional}}?{{/ts_optional}}: {{ts_type}};
 {{/fields}}
 }
 
@@ -17,7 +17,7 @@ export interface {{name}} {
 {{#groups}}
 export interface {{name}} {
 {{#fields}}
-  {{name}}: {{ts_type}};
+  {{name}}{{#ts_optional}}?{{/ts_optional}}: {{ts_type}};
 {{/fields}}
 }
 
@@ -25,7 +25,7 @@ export interface {{name}} {
 {{#messages}}
 export interface {{name}} {
 {{#fields}}
-  {{name}}: {{ts_type}};
+  {{name}}{{#ts_optional}}?{{/ts_optional}}: {{ts_type}};
 {{/fields}}
 }
 
