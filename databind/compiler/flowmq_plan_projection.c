@@ -665,6 +665,7 @@ databind_compiler_flowmq_plan_backend(void) {
        DATABIND_COMPILER_TRANSPORT_FLOWMQ},
       "flowmq",
       flowmq_generate,
-      NULL};
+      NULL,
+      DATABIND_COMPILER_OUTPUT_STAGED_SINGLE};
   return backend;
 }
