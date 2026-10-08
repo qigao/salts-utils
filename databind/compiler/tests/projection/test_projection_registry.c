@@ -294,6 +294,7 @@ describe("compiler integration") {
 
   it("commits main C header with all explicitly stage-safe single-output projections") {
     static const char header[] = "projection_txn_success.h";
+    static const char source[] = "projection_txn_success.c";
     static const char plugin_output[] = "projection_txn_success.plugin.c";
     static const char http_output[] = "projection_txn_success.http.h";
     staged_projection_probe plugin = {plugin_output, "published-plugin", 0u, 0};
@@ -313,6 +314,7 @@ describe("compiler integration") {
     tbe_compiler_options_t options = {
         .schema_path = SCHEMA_EXAMPLE_FILE,
         .output_path = header,
+        .source_output_path = source,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
         .projection_requests = requests,
@@ -321,9 +323,11 @@ describe("compiler integration") {
         .projection_backend_count = 2u,
     };
     (void)remove(header);
+    (void)remove(source);
     (void)remove(plugin_output);
     (void)remove(http_output);
     check_true(write_sentinel(header, "old-header"));
+    check_true(write_sentinel(source, "old-source"));
     check_true(write_sentinel(plugin_output, "old-plugin"));
     check_true(databind_compiler_projection_all_staged_single(
         requests, 2u, backends, 2u));
@@ -332,15 +336,30 @@ describe("compiler integration") {
     check_true(file_matches(http_output, "published-http"));
     check_true(file_exists(header));
     check_false(file_matches(header, "old-header"));
+    check_true(file_exists(source));
+    check_false(file_matches(source, "old-source"));
+    {
+      FILE *file = fopen(source, "rb");
+      char first_line[128] = {0};
+      check_not_null(file);
+      if (file != NULL) {
+        check_not_null(fgets(first_line, sizeof(first_line), file));
+        check_equal(fclose(file), 0);
+        check_not_null(strstr(
+            first_line, "#include \"projection_txn_success.h\""));
+      }
+    }
     check_equal(plugin.calls, (size_t)1u);
     check_equal(http.calls, (size_t)1u);
     (void)remove(header);
+    (void)remove(source);
     (void)remove(plugin_output);
     (void)remove(http_output);
   }
 
   it("rolls back all selected stage-safe outputs when a later generator fails") {
     static const char header[] = "projection_txn_failure.h";
+    static const char source[] = "projection_txn_failure.c";
     static const char plugin_output[] = "projection_txn_failure.plugin.c";
     static const char http_output[] = "projection_txn_failure.http.h";
     staged_projection_probe plugin = {plugin_output, "new-plugin", 0u, 0};
@@ -360,6 +379,7 @@ describe("compiler integration") {
     tbe_compiler_options_t options = {
         .schema_path = SCHEMA_EXAMPLE_FILE,
         .output_path = header,
+        .source_output_path = source,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
         .projection_requests = requests,
@@ -368,27 +388,33 @@ describe("compiler integration") {
         .projection_backend_count = 2u,
     };
     (void)remove(header);
+    (void)remove(source);
     (void)remove(plugin_output);
     (void)remove(http_output);
     check_true(write_sentinel(header, "old-header"));
+    check_true(write_sentinel(source, "old-source"));
     check_true(write_sentinel(plugin_output, "old-plugin"));
     check_true(write_sentinel(http_output, "old-http"));
     check_equal(tbe_compiler_run(&options), 1);
     check_equal(plugin.calls, (size_t)1u);
     check_equal(http.calls, (size_t)1u);
     check_true(file_matches(header, "old-header"));
+    check_true(file_matches(source, "old-source"));
     check_true(file_matches(plugin_output, "old-plugin"));
     check_true(file_matches(http_output, "old-http"));
 
     (void)remove(header);
+    (void)remove(source);
     (void)remove(plugin_output);
     (void)remove(http_output);
     /* Failed generators must also leave previously absent outputs absent. */
     check_equal(tbe_compiler_run(&options), 1);
     check_false(file_exists(header));
+    check_false(file_exists(source));
     check_false(file_exists(plugin_output));
     check_false(file_exists(http_output));
     (void)remove(header);
+    (void)remove(source);
     (void)remove(plugin_output);
     (void)remove(http_output);
   }
