@@ -1,6 +1,6 @@
 #include "schema_type_ref.h"
 
-#include "schema_cmeta.h"
+#include "idl_contract_internal.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -54,19 +54,7 @@ Node *schema_type_ref_node(Node *root, const char *name) {
 }
 
 int schema_type_ref_exists(Node *root, const char *name) {
-    static const char *const extended_scalars[] = {
-        "string", "bytes", "uuid", "datetime", "date", "time",
-        "duration", "decimal", "bigint", "money"
-    };
-    size_t i;
-
     if (name == NULL || name[0] == '\0') return 0;
-    if (schema_cmeta_builtin_data(name) != NULL) return 1;
-
-    for (i = 0u;
-         i < sizeof(extended_scalars) / sizeof(extended_scalars[0]);
-         ++i)
-        if (strcmp(name, extended_scalars[i]) == 0) return 1;
-
+    if (idl_logical_builtin_type(name, strlen(name))) return 1;
     return schema_type_ref_node(root, name) != NULL;
 }

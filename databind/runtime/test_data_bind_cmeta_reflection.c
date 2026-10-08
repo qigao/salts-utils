@@ -24,7 +24,7 @@ static DataBind *reflection_codec(void) {
         "union Choice { Point point; }"
         "message Shape { int32 id; optional int32 count default 7; Point point; "
         "State state; Permission permission; uuid identity; bool enabled; "
-        "Choice choice; datetime timestamp; MadeUp unknown; "
+        "Choice choice; datetime timestamp; "
         "string title; bytes payload; list<int32> items; set<int32> unique; map<string,int32> lookup; }";
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
@@ -104,19 +104,27 @@ suite("databind_cmeta_reflection") {
         reflection_field(codec, "items", &field);
         check_null(field.cmeta_data->storage_type);
         check_null(field.cmeta_data->shape);
-        reflection_field(codec, "unknown", &field);
-        check_equal(field.has_cmeta_kind, 0);
-        check_equal(field.kind, "unknown");
-        check_null(field.cmeta_data);
         data_bind_free(codec);
 #else
         check(0 && "missing canonical DataBind reflection facade");
 #endif
     }
 
+    it("rejects unknown logical types before DataBind reflection") {
+#ifdef DATA_BIND_SCHEMA_CMETA_REFLECTION
+        static const char schema[] = "message Shape { MadeUp unknown; }";
+        DataBind *codec = NULL;
+        DataBindError error = DATA_BIND_ERROR_INIT;
+        check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1u,
+                                               &codec, &error), DATA_BIND_ERR_SCHEMA);
+        check_null(codec);
+        check_not_null(strstr(error.message, "unknown logical type 'MadeUp'"));
+#endif
+    }
+
     it("fails storage descriptor queries atomically with Type.field diagnostics") {
 #ifdef DATA_BIND_SCHEMA_CMETA_REFLECTION
-        static const char *const unresolved[] = {"point", "state", "permission", "title", "payload", "items", "unique", "lookup", "choice", "timestamp", "unknown"};
+        static const char *const unresolved[] = {"point", "state", "permission", "title", "payload", "items", "unique", "lookup", "choice", "timestamp"};
         DataBind *codec = reflection_codec();
         const cmeta_data_desc *out = &cmeta_data_int32;
         DataBindSchemaField field;

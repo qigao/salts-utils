@@ -25,7 +25,12 @@ typedef struct ExpectedRuntimeCapability {
     ExpectedRuntimeRequirement requirement;
 } ExpectedRuntimeCapability;
 
+static void field_projection_complete_logical_collections(Node *root);
+
 static void annotate_language_types_from_tree(Node *root) {
+    /* Hand-built test trees must carry the same logical collection tags
+     * emitted by the IDL grammar before typed Contract admission. */
+    field_projection_complete_logical_collections(root);
     IdlContract *contract = NULL;
     IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
     if (root != NULL &&
@@ -87,6 +92,34 @@ static Node *field_projection_child(Node *node, const char *name) {
 static const char *field_projection_text(Node *node, const char *name) {
     Node *child = field_projection_child(node, name);
     return child && child->type == NODE_STRING ? child->data.string_val : NULL;
+}
+
+static void field_projection_complete_logical_collections(Node *root) {
+    static const char *const record_lists[] = {
+        "messages", "composites", "groups", "unions"
+    };
+    for (size_t i = 0u; i < sizeof(record_lists) / sizeof(record_lists[0]); ++i) {
+        Node *records = field_projection_child(root, record_lists[i]);
+        if (records == NULL || records->type != NODE_LIST) continue;
+        for (size_t j = 0u; j < records->data.list.count; ++j) {
+            Node *fields = field_projection_child(records->data.list.items[j], "fields");
+            if (fields == NULL || fields->type != NODE_LIST) continue;
+            for (size_t k = 0u; k < fields->data.list.count; ++k) {
+                Node *field = fields->data.list.items[k];
+                const char *kind =
+                    field_projection_child(field, "is_list") != NULL ? "list" :
+                    field_projection_child(field, "is_set") != NULL ? "set" :
+                    field_projection_child(field, "is_map") != NULL ? "map" : NULL;
+                if (kind == NULL) continue;
+                if (field_projection_child(field, "is_collection") == NULL &&
+                    map_add(field, create_node_string("is_collection", "1")) != 0)
+                    return;
+                if (field_projection_child(field, "collection_kind") == NULL &&
+                    map_add(field, create_node_string("collection_kind", kind)) != 0)
+                    return;
+            }
+        }
+    }
 }
 
 static Node *field_projection_record(Node *root, const char *list_name,
