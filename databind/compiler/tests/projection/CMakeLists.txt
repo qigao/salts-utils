@@ -30,6 +30,7 @@ cmake_add_test(test_databind_projection_registry
     "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/wasm_projection.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/plugin_projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/service_native.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c"
