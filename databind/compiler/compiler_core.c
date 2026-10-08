@@ -4706,8 +4706,24 @@ static int tbe_compiler_txn_commit(
   for (i = 0u; i < txn->count; ++i) {
     tbe_compiler_staged_output *item = &txn->items[i];
     struct stat info;
+    /* Reject missing or non-regular staged outputs before touching any
+     * caller-owned final path. Reservation alone is not proof of rendering;
+     * backend callbacks must populate their declared outputs. */
     if (item->staging_path == NULL ||
-        stat(item->final_path, &info) != 0) {
+        stat(item->staging_path, &info) != 0) {
+      fprintf(stderr, "Missing staged compiler output: %s\n", item->final_path);
+      goto rollback;
+    }
+#ifdef _WIN32
+    if ((info.st_mode & _S_IFMT) != _S_IFREG) {
+#else
+    if (!S_ISREG(info.st_mode)) {
+#endif
+      fprintf(stderr, "Staged compiler output is not a regular file: %s\\n",
+              item->final_path);
+      goto rollback;
+    }
+    if (stat(item->final_path, &info) != 0) {
       if (item->staging_path == NULL || errno != ENOENT) {
         fprintf(stderr, "Failed to inspect output: %s\n", item->final_path);
         goto rollback;
