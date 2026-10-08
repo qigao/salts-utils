@@ -246,11 +246,38 @@ spec("CFlow filesystem watch") {
                         CFLOW_FS_WATCH_RESCAN_REQUIRED), (size_t)2u);
         check_equal(cflow_fs_watch_acknowledge_rescan(&watch), SALTS_OK);
         check_true(cflow_fs_watch_get_stats(&watch, &stats));
-        check_false(stats.awaiting_rescan);
 
-        watch_close_destroy(&watch);
-        check_equal(tt_remove_tree(root), SALTS_OK);
-        free(root);
+        /* Native inotify events already queued when the second marker was
+         * delivered can still arrive before ACK. The contract must publish
+         * another marker for that new loss rather than silently clearing it.
+         * Drain those finite, already-triggered losses without assuming the
+         * second ACK is necessarily the final one. */
+        {
+            size_t retries = 0u;
+            bool settled = true;
+            while (stats.awaiting_rescan &&
+                   retries++ < WATCH_TEST_EVENT_CAPACITY - 2u) {
+                const size_t before = probe.count;
+                const size_t markers = probe_count_kind(
+                    &probe, CFLOW_FS_WATCH_RESCAN_REQUIRED);
+                const size_t required = stats.rescan_required;
+                if (before >= WATCH_TEST_EVENT_CAPACITY ||
+                    watch_drive_until(&watch, &probe, before + 1u) != SALTS_OK ||
+                    probe_count_kind(
+                        &probe, CFLOW_FS_WATCH_RESCAN_REQUIRED) != markers + 1u ||
+                    cflow_fs_watch_acknowledge_rescan(&watch) != SALTS_OK ||
+                    !cflow_fs_watch_get_stats(&watch, &stats) ||
+                    stats.rescan_required < required) {
+                    settled = false;
+                    break;
+                }
+            }
+            settled = settled && !stats.awaiting_rescan;
+            watch_close_destroy(&watch);
+            check_equal(tt_remove_tree(root), SALTS_OK);
+            free(root);
+            check_true(settled);
+        }
     }
 
     it("reports deletion of the watched root") {
