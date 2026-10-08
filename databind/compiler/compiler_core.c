@@ -5070,7 +5070,8 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   backend_transaction = databind_compiler_projection_all_staged_single(
       options->projection_requests, options->projection_count,
       options->projection_backends, options->projection_backend_count);
-  /* Native Service may join a transaction only with known stage-safe peers. */
+  /* Native Service participates only with stage-safe peers. Unsupported
+   * mixes fail before any caller-owned output is rendered. */
   if (options->projection_count != 0u &&
       options->projection_requests != NULL &&
       options->projection_backends != NULL) {
