@@ -95,6 +95,8 @@ spec("DataBind public typed generation frontend") {
                 (uint32_t)DATABIND_COMPILER_ARTIFACT_NATIVE);
     check_true(plan.requests[0].config == &plan.native_service);
     check_equal(plan.backends[0].name, "native");
+    check_equal(plan.backends[0].output_policy,
+                DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED);
     check_equal(path_base(plan.requests[0].output, base),
                 "calc.service_native.c");
     check_equal(path_base(plan.native_service_header, base),
@@ -141,6 +143,8 @@ spec("DataBind public typed generation frontend") {
     check_true(plan.requests[0].config == &plan.openapi);
     check_true(plan.openapi.http == &plan.http);
     check_equal(plan.backends[0].name, "openapi");
+    check_equal(plan.backends[0].output_policy,
+                DATABIND_COMPILER_OUTPUT_STAGED_SINGLE);
     check_equal(path_base(plan.requests[0].output, base),
                 "users.openapi.json");
 
@@ -152,6 +156,8 @@ spec("DataBind public typed generation frontend") {
     check_equal(plan.backends[1].name, "http");
     check_equal(path_base(plan.requests[1].output, base),
                 "users.http.h");
+    check_equal(plan.backends[1].output_policy,
+                DATABIND_COMPILER_OUTPUT_STAGED_SINGLE);
     check_equal(plan.output_count, (size_t)3u);
     check_equal(plan.outputs[0].path, input.output_path);
     check_equal(plan.outputs[1].path, plan.openapi_output);
