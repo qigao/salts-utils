@@ -13,6 +13,7 @@
 #include "binary_reader_codegen.h"
 #include "native_service_projection.h"
 #include "wasm_projection.h"
+#include "plugin_projection.h"
 #include "binary_layout_lowering.h"
 #include "schema_cmeta.h"
 #include <cmeta_cmeta_data.h>
@@ -4899,6 +4900,10 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   int backend_transaction = 0;
   int native_transaction = 0;
   int wasm_transaction = 0;
+  int plugin_transaction = 0;
+  int seen_plugin = 0;
+  const databind_compiler_plugin_config *plugin_config = NULL;
+  const char *plugin_stages[4] = {0};
   int seen_wasm = 0;
   const databind_compiler_wasm_config *wasm_config = NULL;
   const char *wasm_stages[4] = {0};
@@ -5124,6 +5129,17 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
           qualified = 0;
         }
         seen_native = 1;
+      } else if (backend->generate == databind_compiler_plugin_generate &&
+                 request->id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+                 request->id.kind == DATABIND_COMPILER_ARTIFACT_PLUGIN) {
+        plugin_config = (const databind_compiler_plugin_config *)request->config;
+        if (seen_plugin || plugin_config == NULL ||
+            plugin_config->service_header_output == NULL ||
+            plugin_config->client_header_output == NULL ||
+            plugin_config->client_source_output == NULL ||
+            request->output == NULL || request->output[0] == '\0')
+          qualified = 0;
+        seen_plugin = 1;
       } else if (backend->generate == databind_compiler_wasm_generate &&
                  request->id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
                  request->id.kind == DATABIND_COMPILER_ARTIFACT_WASM) {
@@ -5143,8 +5159,13 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     }
     native_transaction = seen_native && qualified && options->output_path != NULL;
     wasm_transaction = seen_wasm && qualified && options->output_path != NULL;
-    if ((seen_native || seen_wasm) && !qualified) {
+    plugin_transaction = seen_plugin && qualified && options->output_path != NULL;
+    if ((seen_native || seen_wasm || seen_plugin) && !qualified) {
       fprintf(stderr, "Multi-output projection requires all selected backends staged; no output published\n");
+      return 1;
+    }
+    if (seen_plugin && !plugin_transaction) {
+      fprintf(stderr, "Plugin requires a named shared output transaction; no output published\n");
       return 1;
     }
     if (seen_wasm && !wasm_transaction) {
@@ -5159,7 +5180,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     }
   }
   transactional_outputs = options->output_path != NULL &&
-      (backend_transaction || native_transaction || wasm_transaction ||
+      (backend_transaction || native_transaction || wasm_transaction || plugin_transaction ||
        (options->projection_count == 0u &&
         (options->source_output_path != NULL ||
          options->guest_output_path != NULL ||
@@ -5183,7 +5204,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
         goto builtin_stage_failure;
       dsl_output_path = builtins.items[builtins.count - 1u].staging_path;
     }
-    if (backend_transaction || native_transaction || wasm_transaction) {
+    if (backend_transaction || native_transaction || wasm_transaction || plugin_transaction) {
       size_t i;
       if (options->projection_count >
           SIZE_MAX / sizeof(*transaction_requests))
@@ -5202,12 +5223,30 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
             transaction_requests[i].id.kind == DATABIND_COMPILER_ARTIFACT_NATIVE) {
           native_source_stage = builtins.items[builtins.count - 1u].staging_path;
           /* Native rendering needs the original request output for include semantics. */
+        } else if (plugin_transaction &&
+                   transaction_requests[i].id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+                   transaction_requests[i].id.kind == DATABIND_COMPILER_ARTIFACT_PLUGIN) {
+          plugin_stages[1] = builtins.items[builtins.count - 1u].staging_path;
         } else if (wasm_transaction &&
                    transaction_requests[i].id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
                    transaction_requests[i].id.kind == DATABIND_COMPILER_ARTIFACT_WASM) {
           wasm_stages[0] = builtins.items[builtins.count - 1u].staging_path;
         } else {
           transaction_requests[i].output =
+              builtins.items[builtins.count - 1u].staging_path;
+        }
+      }
+      if (plugin_transaction) {
+        const char *secondary[] = {
+            plugin_config->service_header_output,
+            plugin_config->client_header_output,
+            plugin_config->client_source_output};
+        const size_t positions[] = {0u, 2u, 3u};
+        size_t k;
+        for (k = 0u; k < 3u; ++k) {
+          if (tbe_compiler_txn_add(&builtins, secondary[k]) != 0)
+            goto builtin_stage_failure;
+          plugin_stages[positions[k]] =
               builtins.items[builtins.count - 1u].staging_path;
         }
       }
@@ -5274,7 +5313,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     databind_compiler_projection_input projection_input = {
         .contract = task->contract,
         .binary_format = &task->binary_format};
-    if (native_transaction || wasm_transaction) {
+    if (native_transaction || wasm_transaction || plugin_transaction) {
       size_t i;
       for (i = 0u; i < options->projection_count; ++i) {
         const databind_compiler_projection_request *request = &transaction_requests[i];
@@ -5291,6 +5330,10 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
           if (databind_compiler_native_service_render_staged(
                   &projection_input, request, native_header_stage,
                   native_source_stage) != 0) { status = 1; break; }
+        } else if (backend->generate == databind_compiler_plugin_generate) {
+          if (databind_compiler_plugin_render_staged(&projection_input, request,
+                  plugin_stages[0], plugin_stages[1], plugin_stages[2],
+                  plugin_stages[3]) != 0) { status = 1; break; }
         } else if (backend->generate == databind_compiler_wasm_generate) {
           if (databind_compiler_wasm_render_staged(&projection_input, request,
                   wasm_stages[0], wasm_stages[1], wasm_stages[2],
