@@ -161,10 +161,16 @@ int databind_native_source_ir_write_header(
     const databind_native_source_record *record = &ir->records[i];
     if (fprintf(out, "typedef struct %s {\n", record->name) < 0)
       failed = 1;
-    for (j = 0u; j < record->field_count && !failed; ++j)
-      if (fprintf(out, "    %s %s;\n", record->fields[j].c_type,
-                  record->fields[j].name) < 0)
+    for (j = 0u; j < record->field_count && !failed; ++j) {
+      const databind_native_source_field *field = &record->fields[j];
+      if (field->optional && fprintf(out, "    bool has_%s;\n", field->name) < 0)
         failed = 1;
+      if (field->nullable && fprintf(out, "    bool is_null_%s;\n", field->name) < 0)
+        failed = 1;
+      if (!failed && fprintf(out, "    %s %s;\n", field->c_type,
+                             field->name) < 0)
+        failed = 1;
+    }
     if (!failed && fprintf(out, "} %s;\n\n", record->name) < 0)
       failed = 1;
   }
