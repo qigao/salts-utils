@@ -300,7 +300,7 @@ spec("CFlow filesystem watch Publisher") {
     check_not_null(root);
     check_equal(cmeta_fs_path_join(path, sizeof(path), root, "early.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
-    step = cflow_publisher_resume(&source, &resume, &value);
+    step = resume_until_wait(&source, &owner, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
     while (attempts++ < 5000u) {
@@ -352,7 +352,7 @@ spec("CFlow filesystem watch Publisher") {
     atomic_init(&wake.count, 0u);
     check_not_null(root);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
-    step = cflow_publisher_resume(&source, &resume, &value);
+    step = resume_until_wait(&source, &owner, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
     check_true(cflow_waitable_arm(&step.waitable, (cflow_waker){count_wake, &wake}));
 
@@ -451,7 +451,7 @@ spec("CFlow filesystem watch Publisher") {
     check_not_null(root);
     check_equal(cmeta_fs_path_join(path, sizeof(path), root, "reentrant.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
-    step = cflow_publisher_resume(&source, &resume, &value);
+    step = resume_until_wait(&source, &owner, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
     check_true(
         cflow_waitable_arm(&step.waitable, (cflow_waker){destroy_source_and_close_owner, &probe}));
@@ -666,7 +666,7 @@ spec("CFlow filesystem watch Publisher") {
     check_true(saw_rescan);
     check_true(cflow_fs_watch_publisher_owner_get_stats(&owner, &delivered_stats));
 
-    step = cflow_publisher_resume(&source, &resume, &value);
+    step = resume_until_wait(&source, &owner, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
     check_true(cflow_waitable_arm(&step.waitable, (cflow_waker){count_wake, &wake}));
     check_equal(tt_write_file(third, "3", 1u), SALTS_OK);
