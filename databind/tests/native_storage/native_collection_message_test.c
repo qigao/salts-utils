@@ -306,7 +306,7 @@ spec("DataBind native builtin lists and owning JSON keys") {
         "message Other { uint32 value; } "
         "message Order { uint32 id; %s values; optional string note; }";
     static const char *const types[] = {
-        "list<uint16>", "list<int32>", "list<float64>", "list<string>",
+        "list<uint16>", "list<int32>", "list<double>", "list<string>",
         "list<Other>", "set<uint32>", "map<string,uint32>"};
     for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); ++i) {
       char schema[LIST_OUTPUT_BYTES];
