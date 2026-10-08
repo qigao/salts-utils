@@ -2536,6 +2536,159 @@ spec("tbe_compiler") {
 #endif
     }
 
+    it("commits generated C header source guest and DSL as one named output set") {
+      static const char schema[] = "builtin_transaction_valid.schema";
+      static const char header[] = "builtin_transaction_valid.h";
+      static const char source[] = "builtin_transaction_valid.c";
+      static const char guest[] = "builtin_transaction_valid_guest.c";
+      static const char dsl[] = "builtin_transaction_valid.rfl";
+      static const char contract[] =
+          "schema Atomic; message Item { uint32 id; }";
+      static const char *const outputs[] = {header, source, guest, dsl};
+      tbe_compiler_options_t options = {
+          .schema_path = schema,
+          .output_path = header,
+          .source_output_path = source,
+          .guest_output_path = guest,
+          .dsl_output_path = dsl,
+          .lang_enum = TBE_COMPILER_LANG_C,
+          .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+      };
+      size_t i;
+      cleanup_test_file(schema);
+      check_equal(write_test_file(schema, contract), 0);
+      for (i = 0u; i < sizeof(outputs) / sizeof(outputs[0]); ++i) {
+        cleanup_test_file(outputs[i]);
+        check_equal(write_test_file(outputs[i], "old-build-output"), 0);
+      }
+#ifndef _WIN32
+      check_equal(chmod(header, 0600), 0);
+#endif
+      check_equal(tbe_compiler_run(&options), 0);
+      for (i = 0u; i < sizeof(outputs) / sizeof(outputs[0]); ++i) {
+        char *text = tt_read_file(outputs[i], NULL);
+        check_not_null(text);
+        if (text != NULL) {
+          check_true(text[0] != '\0');
+          check_true(strstr(text, "old-build-output") == NULL);
+        }
+        free(text);
+      }
+      {
+        char *header_text = tt_read_file(header, NULL);
+        char *source_text = tt_read_file(source, NULL);
+        char *guest_text = tt_read_file(guest, NULL);
+        char *dsl_text = tt_read_file(dsl, NULL);
+        if (header_text != NULL)
+          check_contains(header_text, "Item_t");
+        if (source_text != NULL)
+          check_contains(source_text, "Item_cmeta_data");
+        if (guest_text != NULL)
+          check_contains(guest_text, "TBE_GUEST_SCHEMA_ID");
+        if (dsl_text != NULL)
+          check_contains(dsl_text, "package Atomic");
+        free(header_text);
+        free(source_text);
+        free(guest_text);
+        free(dsl_text);
+      }
+#ifndef _WIN32
+      {
+        struct stat output_stat;
+        check_equal(stat(header, &output_stat), 0);
+        check_equal(output_stat.st_mode & 0777, 0600);
+      }
+#endif
+      cleanup_test_file(schema);
+      for (i = 0u; i < sizeof(outputs) / sizeof(outputs[0]); ++i)
+        cleanup_test_file(outputs[i]);
+    }
+
+    it("rolls back all staged C artifacts when the final DSL path is a directory") {
+      static const char schema[] = "builtin_transaction_reject.schema";
+      static const char header[] = "builtin_transaction_reject.h";
+      static const char source[] = "builtin_transaction_reject.c";
+      static const char guest[] = "builtin_transaction_reject_guest.c";
+      static const char dsl_directory[] = "builtin_transaction_reject_dsl_dir";
+      static const char contract[] =
+          "schema Atomic; message Item { uint32 id; }";
+      static const char *const outputs[] = {header, source, guest};
+      tbe_compiler_options_t options = {
+          .schema_path = schema,
+          .output_path = header,
+          .source_output_path = source,
+          .guest_output_path = guest,
+          .dsl_output_path = dsl_directory,
+          .lang_enum = TBE_COMPILER_LANG_C,
+          .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+      };
+      size_t i;
+      cleanup_test_file(schema);
+      check_equal(write_test_file(schema, contract), 0);
+      for (i = 0u; i < sizeof(outputs) / sizeof(outputs[0]); ++i) {
+        cleanup_test_file(outputs[i]);
+        check_equal(write_test_file(outputs[i], "previous-valid-artifact"), 0);
+      }
+#ifdef _WIN32
+      check_true(CreateDirectoryA(dsl_directory, NULL) != 0);
+#else
+      check_equal(mkdir(dsl_directory, 0700), 0);
+#endif
+      /* Every template is rendered to a stage before commit inspects the
+       * directory destination and refuses to back it up as a file. */
+      check_not_equal(tbe_compiler_run(&options), 0);
+      for (i = 0u; i < sizeof(outputs) / sizeof(outputs[0]); ++i) {
+        char *text = tt_read_file(outputs[i], NULL);
+        check_not_null(text);
+        if (text != NULL)
+          check_equal(text, "previous-valid-artifact");
+        free(text);
+      }
+#ifdef _WIN32
+      check_true(RemoveDirectoryA(dsl_directory) != 0);
+#else
+      check_equal(rmdir(dsl_directory), 0);
+#endif
+      cleanup_test_file(schema);
+      for (i = 0u; i < sizeof(outputs) / sizeof(outputs[0]); ++i)
+        cleanup_test_file(outputs[i]);
+    }
+
+    it("rejects colliding built-in output paths before modifying the header") {
+      static const char schema[] = "builtin_transaction_collision.schema";
+      static const char header[] = "builtin_transaction_collision.h";
+      static const char generated[] = "builtin_transaction_collision.c";
+      static const char contract[] =
+          "schema Atomic; message Item { uint32 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema,
+          .output_path = header,
+          .source_output_path = generated,
+          .dsl_output_path = generated,
+          .lang_enum = TBE_COMPILER_LANG_C,
+          .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+      };
+      char *text;
+      cleanup_test_file(schema);
+      cleanup_test_file(header);
+      cleanup_test_file(generated);
+      check_equal(write_test_file(schema, contract), 0);
+      check_equal(write_test_file(header, "old-header"), 0);
+      check_equal(write_test_file(generated, "old-source"), 0);
+      check_not_equal(tbe_compiler_run(&options), 0);
+      text = tt_read_file(header, NULL);
+      check_not_null(text);
+      if (text != NULL) check_equal(text, "old-header");
+      free(text);
+      text = tt_read_file(generated, NULL);
+      check_not_null(text);
+      if (text != NULL) check_equal(text, "old-source");
+      free(text);
+      cleanup_test_file(schema);
+      cleanup_test_file(header);
+      cleanup_test_file(generated);
+    }
+
     it("should generate RulesForge type declarations with the built-in DSL template") {
       const char *schema_path = "test_tbe_compiler_rfl.schema";
       const char *header_path = "test_tbe_compiler_rfl.h";
