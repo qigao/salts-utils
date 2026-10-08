@@ -241,3 +241,114 @@ spec("idl_contract_data_name_admission") {
     idl_contract_destroy(contract);
   }
 }
+
+
+spec("idl_contract_logical_type_admission") {
+  it("rejects unresolved scalar fields at the canonical IDL boundary") {
+    static const char idl[] =
+        "schema Contract; message Packet { Missing field; }";
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    check_false(idl_contract_parse(idl, sizeof(idl) - 1u, &contract, &diagnostic));
+    check_null(contract);
+    check_equal(diagnostic.status, IDL_SEMANTIC_ERROR);
+    check_true(strstr(diagnostic.message, "unknown logical type 'Missing'") != NULL);
+  }
+
+  it("rejects missing nested generic map value types") {
+    static const char idl[] =
+        "schema Contract; message Packet { list<map<string,Missing>> values; }";
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    check_false(idl_contract_parse(idl, sizeof(idl) - 1u, &contract, &diagnostic));
+    check_null(contract);
+    check_equal(diagnostic.status, IDL_SEMANTIC_ERROR);
+    check_true(strstr(diagnostic.message, "unknown logical type 'Missing'") != NULL);
+  }
+
+  it("rejects missing map key and array element declarations") {
+    static const char key_idl[] =
+        "message Packet { map<Missing,uint32> values; }";
+    static const char array_idl[] =
+        "message Packet { Missing[4] values; }";
+    const char *inputs[] = {key_idl, array_idl};
+    for (size_t i = 0u; i < sizeof(inputs) / sizeof(inputs[0]); ++i) {
+      IdlContract *contract = NULL;
+      IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+      check_false(idl_contract_parse(inputs[i], strlen(inputs[i]),
+                                     &contract, &diagnostic));
+      check_null(contract);
+      check_equal(diagnostic.status, IDL_SEMANTIC_ERROR);
+      check_true(strstr(diagnostic.message, "unknown logical type 'Missing'") != NULL);
+    }
+  }
+
+  it("requires group collections to reference group declarations") {
+    static const char idl[] =
+        "message Item { int32 code; } "
+        "message Packet { group<Item> entries; }";
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    check_false(idl_contract_parse(idl, sizeof(idl) - 1u, &contract, &diagnostic));
+    check_null(contract);
+    check_equal(diagnostic.status, IDL_SEMANTIC_ERROR);
+    check_true(strstr(diagnostic.message,
+                      "group element must name a declared group") != NULL);
+  }
+
+  it("accepts forward references and recursive nested generic contracts") {
+    static const char idl[] =
+        "schema Contract; "
+        "message Request { list<map<string,Response>> payloads; } "
+        "message Response { Request backlink; uint32 value; } "
+        "group Chunk { uint32 size; } "
+        "message Package { group<Chunk> parts; }";
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    check_true(idl_contract_parse(idl, sizeof(idl) - 1u, &contract, &diagnostic));
+    check_not_null(contract);
+    check_equal(diagnostic.status, IDL_OK);
+    idl_contract_destroy(contract);
+  }
+
+  it("accepts valid logical varint independently of Binary admission") {
+    static const char idl[] = "message Packet { varint value; }";
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    check_true(idl_contract_parse(idl, sizeof(idl) - 1u, &contract, &diagnostic));
+    check_not_null(contract);
+    check_equal(diagnostic.status, IDL_OK);
+    idl_contract_destroy(contract);
+  }
+
+  it("rejects user declarations shadowing scalar vocabulary") {
+    static const char idl[] =
+        "message int32 { uint32 field; }";
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    check_false(idl_contract_parse(idl, sizeof(idl) - 1u, &contract, &diagnostic));
+    check_null(contract);
+    check_equal(diagnostic.status, IDL_SEMANTIC_ERROR);
+    check_true(strstr(diagnostic.message, "shadows a logical builtin") != NULL);
+  }
+
+  it("prevents output publication on unresolved type errors") {
+    static const char schema_path[] = "test_idl_missing_type.schema";
+    static const char output_path[] = "test_idl_missing_type.h";
+    static const char idl[] =
+        "schema Contract; message Packet { Missing data; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+    };
+    remove(schema_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path, idl), 0);
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_false(file_exists(output_path));
+    remove(schema_path);
+    remove(output_path);
+  }
+}
