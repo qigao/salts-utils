@@ -619,3 +619,140 @@ spec("python_contract_render_ir") {
     remove(output_path);
   }
 }
+
+
+spec("go_contract_render_ir") {
+  it("admits Go source for a Binary-incompatible logical contract") {
+    static const char schema_path[] = "go_contract_no_binary.schema";
+    static const char go_path[] = "go_contract_no_binary.go";
+    static const char c_path[] = "go_contract_no_binary.h";
+    static const char source[] =
+        "schema Ledger; "
+        "enum Mode <uint8> { Inactive = 0; Active = 1; } "
+        "message Row { uint32 id; } "
+        "message Event { "
+        "string payload; uint32 sequence; "
+        "list<map<string,Row>> records; "
+        "map<string,uint64> totals; set<uint32> tags; "
+        "uint8[8] digest; bytes(16) token; "
+        "nullable string note; int64 signed_total; uint64 unsigned_total; "
+        "Mode mode; group<Parts> parts; } "
+        "group Parts { uint32 count; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = go_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_GO,
+    };
+    remove(schema_path);
+    remove(go_path);
+    remove(c_path);
+    check_equal(write_text_file(schema_path, source), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(go_path, "package ledger"));
+    check_true(test_render_file_contains(go_path, "type Mode uint8"));
+    check_true(test_render_file_contains(go_path, "Mode_Active Mode = 1"));
+    check_true(test_render_file_contains(go_path, "Payload string"));
+    check_true(test_render_file_contains(go_path, "Sequence uint32"));
+    check_true(test_render_file_contains(go_path, "Records []map[string]Row"));
+    check_true(test_render_file_contains(go_path, "Totals map[string]uint64"));
+    check_true(test_render_file_contains(go_path, "Tags map[uint32]struct{}"));
+    check_true(test_render_file_contains(go_path, "Digest [8]uint8"));
+    check_true(test_render_file_contains(go_path, "Token [16]byte"));
+    check_true(test_render_file_contains(go_path, "Note *string"));
+    check_true(test_render_file_contains(go_path, "SignedTotal int64"));
+    check_true(test_render_file_contains(go_path, "UnsignedTotal uint64"));
+    check_true(test_render_file_contains(go_path, "Mode Mode"));
+    check_true(test_render_file_contains(go_path, "Parts []Parts"));
+
+    options.lang_enum = TBE_COMPILER_LANG_C;
+    options.output_path = c_path;
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_false(file_exists(c_path));
+    remove(schema_path);
+    remove(go_path);
+    remove(c_path);
+  }
+
+  it("renders Go custom Mustache templates from typed presentation data") {
+    static const char schema_path[] = "go_contract_custom.schema";
+    static const char template_path[] = "go_contract_custom.mustache";
+    static const char output_path[] = "go_contract_custom.out";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .template_path = template_path,
+        .output_path = output_path,
+        .lang_enum = TBE_COMPILER_LANG_GO,
+    };
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path,
+        "schema Ledger; message Log { nullable uint64 value; }"), 0);
+    check_equal(write_text_file(template_path,
+        "{{schema.go_package_name}}:{{#messages}}{{name}}:{{#fields}}"
+        "{{go_name}}={{go_type}};{{/fields}}{{/messages}}"), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(output_path,
+                                         "ledger:Log:Value=*uint64;"));
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+  }
+
+  it("rejects unsupported map/set keys and ambiguous exported field names") {
+    static const char schema_path[] = "go_contract_bad_keys.schema";
+    static const char output_path[] = "go_contract_bad_keys.go";
+    static const char *const rejected[] = {
+        "message Bad { map<bytes,uint32> value; }",
+        "message Bad { set<list<uint32>> value; }",
+        "message Bad { list<map<bytes,uint32>> value; }",
+        "message Bad { uint32 foo_bar; uint64 fooBar; }",
+        "message Bad { varint value; }",
+        "message Bad { datetime observed; }",
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_GO,
+    };
+    for (size_t i = 0u; i < sizeof(rejected) / sizeof(rejected[0]); ++i) {
+      remove(schema_path);
+      remove(output_path);
+      check_equal(write_text_file(schema_path, rejected[i]), 0);
+      check_equal(write_text_file(output_path, "caller-output-sentinel"), 0);
+      check_not_equal(tbe_compiler_run(&options), 0);
+      check_true(test_render_file_contains(output_path, "caller-output-sentinel"));
+    }
+    remove(schema_path);
+    remove(output_path);
+  }
+
+  it("rejects unknown omission/default semantics and symbolic fixed widths") {
+    static const char schema_path[] = "go_contract_presence.schema";
+    static const char output_path[] = "go_contract_presence.go";
+    static const char *const rejected[] = {
+        "message Bad { optional uint32 value; }",
+        "message Bad { uint32 value default 3; }",
+        "message Bad { uint16 n; uint8[n] digest; }",
+        "message Bad { uint32 id; } union Choice { Bad value; }",
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_GO,
+    };
+    for (size_t i = 0u; i < sizeof(rejected) / sizeof(rejected[0]); ++i) {
+      remove(schema_path);
+      remove(output_path);
+      check_equal(write_text_file(schema_path, rejected[i]), 0);
+      check_equal(write_text_file(output_path, "caller-output-sentinel"), 0);
+      check_not_equal(tbe_compiler_run(&options), 0);
+      check_true(test_render_file_contains(output_path, "caller-output-sentinel"));
+    }
+    remove(schema_path);
+    remove(output_path);
+  }
+}

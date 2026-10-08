@@ -139,6 +139,41 @@ This is a **type-only** source artifact, not a serializer or a runtime
 schema compiler. Native lifecycle stays CMeta-owned and formats remain
 independent projection axes.
 
+### Go: Typed Contract Rendering
+
+`salts-idlc contract.schema --lang go --output contract.go` projects Go
+source-only records, enums and flags from the immutable `IdlContract`
+rather than requiring a Binary layout or materializing Binary field offsets.
+Custom `--template` files receive the same presentation-only keys
+(`schema.go_package_name`, `messages/composites/groups/enums`,
+`go_name`, `go_type`, `go_underlying_type`, `items`).
+
+- Scalars and fixed integer widths use canonical Go spellings: `uint64`
+  remains `uint64`, not a JavaScript-style number. `uuid` is
+  `[16]byte`; dynamically sized `bytes` is `[]byte`; `bytes(16)`
+  produces `[16]byte`.
+- `list<T>`, `group<T>`, `set<T>`, and `map<K,V>` lower to
+  `[]T`, `[]T`, `map[T]struct{}`, `map[K]V`; recursive nested
+  generics use the IDL parser's bounded type-expression semantics.
+- Go map keys and set values are admitted only when the resulting Go key
+  is provably comparable (integer, bool, string, UUID or enum); slices,
+  floats and records do not become guessed key providers.
+- Fixed arrays such as `uint8[8]` use `[8]uint8`, with decimal length
+  normalized at rendering. Symbolic/dynamic array bounds fail closed rather
+  than quietly becoming a slice.
+- `nullable T` maps to the **required** field type `*T`. As with the
+  Python dataclass source-only projection, omitted-field `optional` and
+  schema `default` have no exact plain-struct representation and are
+  rejected until explicit presence/default-aware Go storage exists.
+- Logical `varint` or `bigint` require a width/ownership policy not
+  supplied by a Go primitive type; they fail before publication. Unknown
+  domain storage and unions are likewise rejected. An explicit Binary
+  projection still performs Binary-specific admission on a distinct
+  projection view.
+
+The Go output is **type declarations only**, not a runtime serializer,
+validator, or ABI replacement. All failures retain atomic output semantics.
+
 ### DSL Integration (RulesForge)
 
 - `--dsl-output <file>` or `-d <file>`
