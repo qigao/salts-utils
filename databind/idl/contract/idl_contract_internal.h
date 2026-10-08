@@ -5,6 +5,14 @@
 #include "node_tree.h"
 #include "tbe_error.h"
 
+/* Shared internal diagnostic reporting and source-language semantic admission. */
+void idl_contract_diagnostic_set(
+    IdlDiagnostic *diagnostic, IdlStatus status,
+    int line, int column, const char *message);
+int idl_logical_builtin_type(const char *name, size_t length);
+int idl_contract_validate_types(
+    const IdlContract *contract, IdlDiagnostic *diagnostic);
+
 int idl_contract_build_from_tree(
     const Node *root, IdlContract **out_contract, IdlDiagnostic *diagnostic);
 
