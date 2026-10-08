@@ -18,7 +18,17 @@ extern "C" {
 #endif
 
 #define DATABIND_COMPILER_FRONTEND_MAX_SELECTIONS 11u
+#define DATABIND_COMPILER_FRONTEND_MAX_OUTPUTS 32u
 #define DATABIND_COMPILER_ARTIFACT_NAME_MAX 127u
+
+/* Compiler-private publication manifest. A zero owner ID denotes a primary
+ * compiler output; other entries belong to the selected typed projection.
+ * Paths borrow from the frontend input or this plan and remain valid for
+ * the plan's lifetime. No generator may introduce undisclosed file outputs. */
+typedef struct databind_compiler_planned_output {
+  const char *path;
+  databind_compiler_projection_id owner;
+} databind_compiler_planned_output;
 
 typedef struct databind_compiler_projection_frontend_input {
   const char *artifacts;
@@ -45,6 +55,12 @@ typedef struct databind_compiler_projection_frontend_plan {
       backends[DATABIND_COMPILER_FRONTEND_MAX_SELECTIONS];
   size_t request_count;
   size_t backend_count;
+
+  /* Complete set of generated file paths, including secondary plugin/wasm
+   * and native-service artifacts. Does not itself stage or commit files. */
+  databind_compiler_planned_output
+      outputs[DATABIND_COMPILER_FRONTEND_MAX_OUTPUTS];
+  size_t output_count;
 
   databind_compiler_plugin_config plugin;
   databind_compiler_wasm_config wasm;
