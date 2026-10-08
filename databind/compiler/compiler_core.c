@@ -4719,12 +4719,12 @@ static int tbe_compiler_txn_commit(
 #else
     if (!S_ISREG(info.st_mode)) {
 #endif
-      fprintf(stderr, "Staged compiler output is not a regular file: %s\\n",
+      fprintf(stderr, "Staged compiler output is not a regular file: %s\n",
               item->final_path);
       goto rollback;
     }
     if (stat(item->final_path, &info) != 0) {
-      if (item->staging_path == NULL || errno != ENOENT) {
+      if (errno != ENOENT) {
         fprintf(stderr, "Failed to inspect output: %s\n", item->final_path);
         goto rollback;
       }
