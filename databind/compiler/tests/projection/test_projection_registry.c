@@ -1151,6 +1151,77 @@ describe("compiler integration") {
     (void)remove(shared);
   }
 
+  it("rolls back mixed Native Plugin Wasm and HTTP on late failure") {
+    static const char primary[] = "projection_all_txn.h";
+    static const char native_c[] = "projection_all_txn.service.c";
+    static const char native_h[] = "projection_all_txn.service.h";
+    static const char plugin_c[] = "projection_all_txn.plugin.c";
+    static const char plugin_h[] = "projection_all_txn.plugin.h";
+    static const char client_h[] = "projection_all_txn.client.h";
+    static const char client_c[] = "projection_all_txn.client.c";
+    static const char wasm_component[] = "projection_all_txn.wasm";
+    static const char wasm_host_h[] = "projection_all_txn.host.h";
+    static const char wasm_host_c[] = "projection_all_txn.host.c";
+    static const char wasm_guest_h[] = "projection_all_txn.guest.h";
+    static const char http_h[] = "projection_all_txn.http.h";
+    databind_compiler_native_service_config native = {
+        .native_header = primary, .header_output = native_h};
+    databind_compiler_plugin_config plugin = {
+        .plugin_version_major = 1u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = plugin_h,
+        .client_header_output = client_h,
+        .client_source_output = client_c};
+    databind_compiler_wasm_config wasm = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = wasm_host_h,
+        .host_source_output = wasm_host_c,
+        .guest_header_output = wasm_guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe http = {http_h, "http-new", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), native_c, &native},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), plugin_c, &plugin},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), wasm_component, &wasm},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_h, NULL}};
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        DATABIND_COMPILER_PLUGIN_BACKEND,
+        DATABIND_COMPILER_WASM_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http, DATABIND_COMPILER_OUTPUT_STAGED_SINGLE}};
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests, .projection_count = 4u,
+        .projection_backends = backends, .projection_backend_count = 4u};
+    const char *outputs[] = {
+        primary, native_c, native_h, plugin_c, plugin_h, client_h, client_c,
+        wasm_component, wasm_host_h, wasm_host_c, wasm_guest_h, http_h};
+    size_t i;
+    for (i = 0u; i < 12u; ++i) {
+      (void)remove(outputs[i]);
+      check_true(write_sentinel(outputs[i], "old"));
+    }
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)1u);
+    for (i = 0u; i < 12u; ++i) check_true(file_matches(outputs[i], "old"));
+    for (i = 0u; i < 12u; ++i) (void)remove(outputs[i]);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)2u);
+    for (i = 0u; i < 12u; ++i) check_false(file_exists(outputs[i]));
+    http.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(http.calls, (size_t)3u);
+    for (i = 0u; i < 12u; ++i) check_true(file_exists(outputs[i]));
+    for (i = 0u; i < 12u; ++i) (void)remove(outputs[i]);
+  }
+
   it("rejects incomplete or dishonest selected staging capability sets") {
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "first.c", NULL},
