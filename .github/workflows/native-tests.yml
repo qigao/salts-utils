@@ -25,7 +25,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@9d541607e5b2ec5fcc7cc30a7a977004768b2e42
         with:
           mode: read
       - uses: ./.github/actions/restore-native-build

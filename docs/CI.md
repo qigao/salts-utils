@@ -42,8 +42,14 @@ macOS C/C++ 使用与 Salts 发布 SDK 一致的 GCC 15，保证 TinyTest 等库
 ## 构建产物与生命周期
 
 每个 build job 是其源码、编译产物和已解析依赖的唯一生产者。Salts/re2c 的 latest
-只在该 job 中解析，包存放于工作区 `stage/nuget`，随构建归档交给测试 job。
+只在该 job 中解析。SDK 通过 vcpkg 已管理的 NuGet CLI 直接 `install`，不生成临时
+`.csproj` 或 `project.assets.json`。不指定版本或 prerelease，使用 `-NoHttpCache -DirectDownload`
+从既有认证源解析最新稳定版；实际版本读取已安装包的 `.nuspec`。
+每次安装使用工作区 `stage/nuget/restore.*` 下的独立目录，避免 NuGet 因旧目录存在而
+跳过解析，也不覆盖仍被其他构建引用的 SDK。包随构建归档交给测试 job。
 测试 job 不再解析 latest；不同 profile 不共享可变构建树。
+Unix CI 直接使用 runner 内置 Mono；缺失即失败，不通过 apt 或 brew 安装、更新 Mono。
+Ubuntu 的 .NET SDK 由 `actions/setup-dotnet` 安装，打包与发布继续使用既有 .NET 流程。
 构建和测试 job 使用同一版本的共享 vcpkg setup action，以只读模式恢复临时目录中的
 工具链、triplet 和缓存凭据。现有包配置测试会启动嵌套 CMake，并继承生产构建的
 vcpkg 安装目录、triplet、编译器、配置与 sanitizer 链接参数；仅恢复 vcpkg 安装树

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
+: "${VCPKG_ROOT:?VCPKG_ROOT is required}"
 
 salts_rid="${1:?Salts target RID is required}"
 re2c_rid="${2:?re2c host RID is required}"
@@ -26,56 +27,44 @@ case "$mode" in
     ;;
   *) echo "restore mode must be ci or local" >&2; exit 1 ;;
 esac
-mkdir -p "$restore_root"
+mkdir -p "$restore_root" "$packages"
+packages="$(cd "$packages" && pwd -P)"
 config="$repository_root/cmake/vcpkg-cache.nuget.config"
-project="$restore_root/qigao-native-sdk-restore.csproj"
+command -v mono >/dev/null
+nuget="$("$VCPKG_ROOT/vcpkg" fetch nuget | tail -n 1)"
+test -f "$nuget"
+# NuGet skips existing install directories; each invocation must resolve latest.
+# Keep previous SDK trees alive for existing builds and local dependency links.
+install_root="$(mktemp -d "$packages/restore.XXXXXXXX")"
+install_package() {
+  mono "$nuget" install "$1" -ConfigFile "$config" \
+    -OutputDirectory "$install_root" -ExcludeVersion -PackageSaveMode nuspec \
+    -NoHttpCache -DirectDownload -NonInteractive >&2 || return $?
+  printf '%s/%s\n' "$install_root" "$1"
+}
 
-cat > "$project" <<'EOF'
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
-    <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
-    <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
-  </ItemGroup>
-</Project>
-EOF
-
-restore_args=()
-if [ "$with_turbowasm" = "1" ]; then
-  restore_args+=("-p:WithTurboWasm=true")
-fi
-if [ "${#restore_args[@]}" -gt 0 ]; then
-  dotnet restore "$project" --packages "$packages" --configfile "$config" \
-    --no-cache --force-evaluate "${restore_args[@]}"
-else
-  # macOS still ships Bash 3.2. Under `set -u`, expanding an empty array
-  # raises "unbound variable", so keep the zero-extra-argument path explicit.
-  dotnet restore "$project" --packages "$packages" --configfile "$config" \
-    --no-cache --force-evaluate
-fi
-
-restored_package_dir() {
-  python3 - "$restore_root/obj/project.assets.json" "$packages" "$1" <<'PY'
-import json, pathlib, sys
-assets = json.loads(pathlib.Path(sys.argv[1]).read_text())
-matches = [v['path'] for k, v in assets['libraries'].items()
-           if k.lower().startswith(sys.argv[3].lower() + '/')]
-if len(matches) != 1:
-    raise SystemExit('expected one resolved ' + sys.argv[3] + ' package')
-print((pathlib.Path(sys.argv[2]) / matches[0]).resolve())
+package_version() {
+  python3 - "$1" <<'PY'
+import pathlib, sys, xml.etree.ElementTree as ET
+package = pathlib.Path(sys.argv[1])
+manifests = list(package.glob('*.nuspec'))
+if len(manifests) != 1:
+    raise SystemExit(f'expected one package manifest under {package}')
+metadata = ET.parse(manifests[0]).getroot()
+name = metadata.findtext('{*}metadata/{*}id')
+version = metadata.findtext('{*}metadata/{*}version')
+if not name or name.lower() != package.name.lower() or not version:
+    raise SystemExit(f'invalid package identity under {package}')
+print(version)
 PY
 }
 
-salts_package="$(restored_package_dir Salts.Native)"
-salts_version="$(basename "$salts_package")"
-re2c_package="$(restored_package_dir Qigao.Re2c.Binary)"
+salts_package="$(install_package Salts.Native)"
+salts_version="$(package_version "$salts_package")"
+re2c_package="$(install_package Qigao.Re2c.Binary)"
 turbowasm_package=""
 if [ "$with_turbowasm" = "1" ]; then
-  turbowasm_package="$(restored_package_dir TurboWasm.Native)"
+  turbowasm_package="$(install_package TurboWasm.Native)"
 fi
 salts_root="$salts_package/sdk/$salts_rid"
 salts_host_root="$salts_package/sdk/$re2c_rid"
@@ -100,7 +89,7 @@ if [ "$with_turbowasm" = "1" ]; then
   [ -f "$turbowasm_root/include/turbowasm/component.h" ] || fail "missing released TurboWasm Component façade under $turbowasm_root"
   grep -q "TurboWasm::Component" "$turbowasm_root/lib/cmake/TurboWasm/TurboWasmTargets.cmake" ||
     fail "released TurboWasm package does not export TurboWasm::Component"
-  turbowasm_version="$(basename "$turbowasm_package")"
+  turbowasm_version="$(package_version "$turbowasm_package")"
   if [ "$mode" = ci ]; then
     printf "TURBOWASM_ROOT=%s\n" "$turbowasm_root" >> "$GITHUB_ENV"
     printf "TURBOWASM_VERSION=%s\n" "$turbowasm_version" >> "$GITHUB_ENV"
