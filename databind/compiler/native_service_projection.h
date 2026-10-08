@@ -14,6 +14,16 @@ typedef struct databind_compiler_native_service_config {
   const char *header_output;
 } databind_compiler_native_service_config;
 
+/* Render into coordinator-reserved, initially absent staging destinations.
+ * request->output and config->header_output identify final semantic paths;
+ * neither final file is published here. On failure, the coordinator must
+ * remove any partially written stages. Caller owns staging and commit. */
+int databind_compiler_native_service_render_staged(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    const char *header_stage,
+    const char *source_stage);
+
 int databind_compiler_native_service_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
