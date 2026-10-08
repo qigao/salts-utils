@@ -139,6 +139,11 @@ printf "SALTS_ROOT=%s\n" "$salts_root" >> "$GITHUB_ENV"
 printf "SALTS_HOST_ROOT=%s\n" "$salts_host_root" >> "$GITHUB_ENV"
 printf "SALTS_VERSION=%s\n" "$salts_version" >> "$GITHUB_ENV"
 printf 'restored Salts.Native %s for %s\n' "$salts_version" "$salts_rid"
+cat "$salts_root/salts-sdk-manifest.txt"
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  printf '\n### Resolved Salts SDK (%s)\n\n' "$salts_rid" >> "$GITHUB_STEP_SUMMARY"
+  cat "$salts_root/salts-sdk-manifest.txt" >> "$GITHUB_STEP_SUMMARY"
+fi
 printf "RE2C_ROOT=%s\n" "$re2c_root" >> "$GITHUB_ENV"
 printf "QIGAO_NUGET_PACKAGES=%s\n" "$packages" >> "$GITHUB_ENV"
 printf "%s\n" "$re2c_root/bin" >> "$GITHUB_PATH"

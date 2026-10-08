@@ -144,3 +144,9 @@ message CountedRecordWire {
 message UnavailableNested {
     TailOnly child;
 }
+
+// Ordinary fields use the same canonical Bool8 as generated Bool collections.
+message BooleanWire {
+    bool enabled;
+    optional bool flag;
+}

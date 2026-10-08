@@ -80,7 +80,7 @@ execution.
 
 ## CMake
 
-Build SaltsUtils against the latest published Salts SDK with a matching build profile through `SALTS_ROOT`. Generated fixed arrays use its canonical CMeta array provider and element lifecycle traits. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
+SaltsUtils 5.0 requires Salts 3.x. Build against the latest published Salts SDK with a matching build profile through `SALTS_ROOT`; both the source build and installed package reject Salts 2.x. Generated fixed arrays use its canonical CMeta array provider and element lifecycle traits. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED
@@ -137,7 +137,7 @@ Both restore paths request the **latest stable Salts.Native** from GitHub Packag
 
 ### Migrating from Salts 1.x
 
-Rebuild SaltsUtils and its consumers against the same Salts 2.x SDK, and regenerate IDL artifacts with the updated `salts-idlc`. Salts Core and Plugin symbols now use `cmeta_*` / `CMETA_PLUGIN_*`; coroutine symbols use `coro_*`. SaltsUtils-owned `salts_*` names and Lua/QuickJS method calls retain their names.
+Rebuild SaltsUtils and its consumers against the same complete Salts 3.x SDK, and regenerate IDL artifacts with the updated `salts-idlc`. Salts Core and Plugin symbols now use `cmeta_*` / `CMETA_PLUGIN_*`; coroutine symbols use `coro_*`. SaltsUtils-owned `salts_*` names and Lua/QuickJS method calls retain their names. SaltsUtils 5.0 changes the required SDK major; the DataBind ABI remains 10. Do not combine a SaltsUtils 4.x installation built against Salts 2.x with Salts 3.x. Rollback restores the complete previous Salts/SaltsUtils installation and regenerates consumers with its matching host tools.
 
 Native receiver metadata uses `cmeta_receiver_operation` and references the canonical `cmeta_function_abi_desc`; the function descriptor is obtained through `operation->abi->function`. Object providers use `cmeta_object_operation_provider`. Update consumer-authored metadata to this layout instead of retaining a separate function descriptor in each receiver entry. This migration changes the native API/ABI and requires recompilation; it does not change DataBind wire formats.
 

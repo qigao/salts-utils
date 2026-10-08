@@ -681,7 +681,9 @@ static int message_schema_field_matches_native(
         codec, type_name, field_index, &schema_data, &error);
 
   if (schema_data != NULL)
-    return cmeta_data_desc_equal(schema_data, native_data);
+    return cmeta_data_desc_equal(schema_data, native_data) ||
+           (schema_data->kind == CMETA_DATA_BOOL &&
+            cmeta_data_desc_equal(native_data, &cmeta_bool8_cmeta_data));
 
   return message_logical_buffer_matches_native(schema_field, native_data);
 }
