@@ -1369,6 +1369,30 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("publishes Contract-only Native C header transactionally") {
+    static const char schema_path[] = "native_source_publish.schema";
+    static const char output[] = "native_source_publish.h";
+    static const char valid[] = "message Packet { uint32 count; int16 delta; }";
+    static const char unsupported[] = "message Packet { string label; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, valid));
+    check_true(write_sentinel(output, "original-native-header"));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "uint32_t count;"));
+    check_false(file_contains(output, "binary_wire"));
+    check_true(write_sentinel(schema_path, unsupported));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), -1);
+    check_true(file_contains(output, "uint32_t count;"));
+    (void)remove(output);
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), -1);
+    check_false(file_exists(output));
+    (void)remove(schema_path);
+  }
+
   it("freezes a Binary-incompatible logical Contract without wire admission") {
     static const char schema_path[] = "projection_contract_only.schema";
     static const char schema[] =
