@@ -50,6 +50,17 @@ typedef struct databind_compiler_plugin_config {
  * - request->output / service_header_output: Plugin DSO publication side;
  * - client_source_output / client_header_output: host lease/admission side.
  */
+/* Coordinator-owned zero-byte stage reservations: provider header/source and
+ * client header/source. Final config paths remain semantic include names.
+ * Caller owns abort/commit, including any partially written stages. */
+int databind_compiler_plugin_render_staged(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    const char *provider_header_stage,
+    const char *provider_source_stage,
+    const char *client_header_stage,
+    const char *client_source_stage);
+
 int databind_compiler_plugin_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
