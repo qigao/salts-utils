@@ -1342,6 +1342,14 @@ describe("compiler integration") {
     check_equal(ir.records[0].fields[0].name, "count");
     check_equal(ir.records[0].fields[0].c_type, "uint32_t");
     check_equal(ir.records[0].fields[1].c_type, "int16_t");
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_source_scalar.h"), 0);
+    check_true(file_contains("native_source_scalar.h", "#include <stdint.h>"));
+    check_true(file_contains("native_source_scalar.h", "uint32_t count;"));
+    check_true(file_contains("native_source_scalar.h", "int16_t delta;"));
+    check_false(file_contains("native_source_scalar.h", "binary_wire"));
+    check_false(file_contains("native_source_scalar.h", "_OFFSET"));
+    (void)remove("native_source_scalar.h");
     databind_native_source_ir_destroy(&ir);
     idl_contract_destroy(contract);
     node_free(tree);
