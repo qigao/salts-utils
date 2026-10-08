@@ -1349,6 +1349,31 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("keeps legacy C Binary admission fail-closed before output publication") {
+    static const char schema_path[] = "projection_c_binary_boundary.schema";
+    static const char output[] = "projection_c_binary_boundary.h";
+    static const char schema[] =
+        "message Packet { string label; uint32 sequence; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+    };
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_true(write_sentinel(output, "existing-c-header"));
+    /* C still emits wire helpers. Do not silently admit a Contract whose
+     * Binary layout is invalid until NativeSourceIR replaces that template. */
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(output, "existing-c-header"));
+    (void)remove(output);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_false(file_exists(output));
+    (void)remove(schema_path);
+  }
+
   it("admits source-only artifact requests without Binary layout") {
     static const char schema_path[] = "databind_projection_independent.schema";
     static const char output[] = "databind_projection_independent.ts";
