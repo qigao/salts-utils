@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 static const char *plugin_schema_name(const IdlContract *contract) {
   return contract != NULL ? contract->name : NULL;
@@ -1098,10 +1099,11 @@ static int plugin_write_source(
   return 1;
 }
 
-int databind_compiler_plugin_generate(
+static int plugin_generate_impl(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
-    void *context) {
+    void *context,
+    const char *const stages[4]) {
   const IdlContract *contract = input != NULL ? input->contract : NULL;
   const databind_compiler_plugin_config *config =
       request != NULL
@@ -1164,20 +1166,46 @@ int databind_compiler_plugin_generate(
       selected_count != native_ir.operation_count)
     goto cleanup;
 
-  header_file = plugin_open_staging(
-      config->service_header_output, &header_staging);
+  if (stages != NULL) {
+    size_t i, j;
+    const char *finals[] = {
+        config->service_header_output, request->output,
+        config->client_header_output, config->client_source_output};
+    for (i = 0u; i < 4u; ++i) {
+      struct stat info;
+      if (stages[i] == NULL || stages[i][0] == '\0' ||
+          stat(stages[i], &info) != 0 || info.st_size != 0)
+        goto cleanup;
+#ifdef _WIN32
+      if ((info.st_mode & _S_IFMT) != _S_IFREG) goto cleanup;
+#else
+      if (!S_ISREG(info.st_mode)) goto cleanup;
+#endif
+      for (j = 0u; j < 4u; ++j)
+        if (strcmp(stages[i], finals[j]) == 0) goto cleanup;
+      for (j = 0u; j < i; ++j)
+        if (strcmp(stages[i], stages[j]) == 0) goto cleanup;
+    }
+  }
+
+  header_file = stages != NULL
+      ? fopen(stages[0], "wb")
+      : plugin_open_staging(config->service_header_output, &header_staging);
   if (header_file == NULL) goto cleanup;
 
-  source_file = plugin_open_staging(
-      request->output, &source_staging);
+  source_file = stages != NULL
+      ? fopen(stages[1], "wb")
+      : plugin_open_staging(request->output, &source_staging);
   if (source_file == NULL) goto cleanup;
 
-  client_header_file = plugin_open_staging(
-      config->client_header_output, &client_header_staging);
+  client_header_file = stages != NULL
+      ? fopen(stages[2], "wb")
+      : plugin_open_staging(config->client_header_output, &client_header_staging);
   if (client_header_file == NULL) goto cleanup;
 
-  client_source_file = plugin_open_staging(
-      config->client_source_output, &client_source_staging);
+  client_source_file = stages != NULL
+      ? fopen(stages[3], "wb")
+      : plugin_open_staging(config->client_source_output, &client_source_staging);
   if (client_source_file == NULL) goto cleanup;
 
   if (!plugin_write_header(
@@ -1199,6 +1227,11 @@ int databind_compiler_plugin_generate(
       !plugin_close_staging(&client_header_file) ||
       !plugin_close_staging(&client_source_file))
     goto cleanup;
+
+  if (stages != NULL) {
+    result = 0;
+    goto cleanup;
+  }
 
   outputs[0].final_path = config->service_header_output;
   outputs[0].staging_path = header_staging;
@@ -1245,6 +1278,26 @@ cleanup:
 
   databind_compiler_service_native_destroy(&native_ir);
   return result;
+}
+
+int databind_compiler_plugin_generate(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    void *context) {
+  return plugin_generate_impl(input, request, context, NULL);
+}
+
+int databind_compiler_plugin_render_staged(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    const char *provider_header_stage,
+    const char *provider_source_stage,
+    const char *client_header_stage,
+    const char *client_source_stage) {
+  const char *stages[] = {
+      provider_header_stage, provider_source_stage,
+      client_header_stage, client_source_stage};
+  return plugin_generate_impl(input, request, NULL, stages);
 }
 
 const databind_compiler_projection_backend
