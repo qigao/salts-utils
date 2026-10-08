@@ -10,6 +10,8 @@
 typedef struct databind_native_source_field {
   const char *name;
   const char *c_type;
+  int optional;
+  int nullable;
 } databind_native_source_field;
 
 typedef struct databind_native_source_record {
@@ -26,7 +28,8 @@ typedef struct databind_native_source_ir {
 int databind_native_source_ir_build(
     const IdlContract *contract, databind_native_source_ir *out);
 void databind_native_source_ir_destroy(databind_native_source_ir *ir);
-/* Render a self-contained scalar C header. Never publishes partial output. */
+/* Render a self-contained scalar C header. Presence/null-state flags are
+ * native representation only, not Binary wire layout. */
 int databind_native_source_ir_write_header(
     const databind_native_source_ir *ir, const char *path);
 
