@@ -4746,7 +4746,9 @@ static int tbe_compiler_txn_commit(
     tbe_compiler_output_transaction *txn) {
   size_t i;
   int cleanup_failed = 0;
-  if (txn == NULL || txn->count < 2u) return -1;
+  /* A single staged output needs the same backup/publish/rollback semantics
+   * as a multi-output transaction; reject only empty transactions. */
+  if (txn == NULL || txn->count == 0u) return -1;
 
   /* Prepare all backup slots before moving a single published file.
    * Every stage and backup is a unique O_EXCL sibling of the final path. */
