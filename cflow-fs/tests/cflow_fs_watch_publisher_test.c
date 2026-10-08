@@ -231,6 +231,7 @@ spec("CFlow filesystem watch Publisher") {
     check_equal(step.kind, CFLOW_STEP_WAIT);
     check_true(cflow_waitable_arm(&step.waitable, (cflow_waker){count_wake, &wake}));
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
+    attempts = 0u;
     while (atomic_load(&wake.count) == 0u && attempts++ < 5000u)
       cmeta_sleep_ms(1u);
     check_equal(atomic_load(&wake.count), (size_t)1u);
