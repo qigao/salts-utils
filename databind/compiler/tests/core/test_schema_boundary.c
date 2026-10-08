@@ -209,6 +209,26 @@ spec("idl_contract_data_name_admission") {
                       "Duplicate Data declaration 'Packet'") != NULL);
   }
 
+  it("does not publish a generated artifact with colliding field names") {
+    static const char schema_path[] = "test_idl_duplicate_fields.schema";
+    static const char output_path[] = "test_idl_duplicate_fields.h";
+    static const char idl[] =
+        "schema Sample; message Packet { int32 id; uint32 id; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+    };
+    remove(schema_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path, idl), 0);
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_false(file_exists(output_path));
+    remove(schema_path);
+    remove(output_path);
+  }
+
   it("allows the same field name in unrelated Data declarations") {
     static const char idl[] =
         "schema Sample; message Request { int32 id; } "
