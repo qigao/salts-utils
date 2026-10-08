@@ -692,6 +692,36 @@ describe("compiler integration") {
     (void)remove(primary);
   }
 
+#ifdef _WIN32
+  it("rejects case and slash aliases across coordinator output paths") {
+    static const char primary[] = "projection_windows_txn_alias.h";
+    static const char transport[] = "PROJECTION_WINDOWS_TXN_ALIAS.H";
+    staged_projection_probe http = {transport, "new-http", 0u, 0};
+    const databind_compiler_projection_request request = {
+        TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), transport, NULL};
+    const databind_compiler_projection_backend backend = {
+        TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+        staged_projection_generate, &http,
+        DATABIND_COMPILER_OUTPUT_STAGED_SINGLE};
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(primary);
+    check_true(write_sentinel(primary, "original"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "original"));
+    (void)remove(primary);
+  }
+#endif
+
   it("rejects incomplete or dishonest selected staging capability sets") {
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "first.c", NULL},
