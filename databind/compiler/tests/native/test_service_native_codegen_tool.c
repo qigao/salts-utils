@@ -153,6 +153,33 @@ int main(int argc, char **argv) {
       (void)remove(source_stage);
       goto cleanup;
     }
+    /* Stage-only output must not publish the final destinations. */
+    {
+      FILE *unexpected = fopen(argv[2], "rb");
+      if (unexpected != NULL) {
+        (void)fclose(unexpected);
+        fprintf(stderr, "service-native-codegen: staged renderer published final header\n");
+        (void)remove(header_stage);
+        (void)remove(source_stage);
+        goto cleanup;
+      }
+      unexpected = fopen(argv[3], "rb");
+      if (unexpected != NULL) {
+        (void)fclose(unexpected);
+        fprintf(stderr, "service-native-codegen: staged renderer published final source\n");
+        (void)remove(header_stage);
+        (void)remove(source_stage);
+        goto cleanup;
+      }
+    }
+    /* Existing coordinator-owned staging files must not be overwritten. */
+    if (databind_compiler_native_service_render_staged(
+            &input, &request, header_stage, source_stage) == 0) {
+      fprintf(stderr, "service-native-codegen: accepted occupied staging path\n");
+      (void)remove(header_stage);
+      (void)remove(source_stage);
+      goto cleanup;
+    }
     /* Staging must preserve the final header basename, not the stage name. */
     {
       FILE *staged = fopen(source_stage, "rb");
