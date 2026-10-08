@@ -1414,6 +1414,27 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("rejects empty records and lifecycle symbol collisions before publication") {
+    static const char output[] = "native_invalid_symbols.h";
+    databind_native_source_field field = {"value", "uint32_t", 0, 0};
+    databind_native_source_record records[2] = {
+        {"Packet", 1u, &field}, {"Packet_init", 1u, &field}
+    };
+    databind_native_source_ir ir = {2u, records};
+    (void)remove(output);
+    check_true(write_sentinel(output, "previous-header"));
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "previous-header"));
+    records[1].name = "Packet_clear";
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "previous-header"));
+    ir.record_count = 1u;
+    records[0].field_count = 0u;
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "previous-header"));
+    (void)remove(output);
+  }
+
   it("rejects reserved C record and field identifiers without publishing") {
     static const char output[] = "native_reserved_identifiers.h";
     databind_native_source_field field = {"value", "uint32_t", 0, 0};
