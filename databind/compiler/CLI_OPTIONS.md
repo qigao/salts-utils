@@ -174,6 +174,47 @@ Custom `--template` files receive the same presentation-only keys
 The Go output is **type declarations only**, not a runtime serializer,
 validator, or ABI replacement. All failures retain atomic output semantics.
 
+### Rust: Contract-only Type Declarations
+
+`salts-idlc contract.schema --lang rust --output contract.rs` generates
+Rust record/enum declarations directly from the validated immutable
+`IdlContract` via compiler-owned presentation IR. Rust source-only output
+does **not** run Binary offset/order/size admission, unless a separate Binary
+format or transport is explicitly selected.
+
+- Exact numeric storage maps via canonical CMeta scalar aliases:
+  `int64 -> i64`, `uint64 -> u64`, `uuid -> [u8; 16]`,
+  `bytes -> Vec<u8>`, and bounded `bytes(16) -> [u8; 16]`.
+  Fixed arrays such as `uint8[8]` become `[u8; 8]`.
+- `list<T>`, `group<T>`, `set<T>` and `map<K,V>` become
+  `Vec<T>`, `Vec<T>`, `HashSet<T>` and `HashMap<K,V>`, with
+  nested generic expressions resolved by the canonical bounded type parser.
+  Maps and sets admit only provably hashable keys; float/record/collection
+  keys are rejected rather than generating Rust that cannot compile.
+- `nullable T` becomes `Option<T>` on a **required** field.
+  Omitted `optional` fields and schema `default` values require their own
+  explicit presence/default representation and are rejected for now.
+- By-value record cycles are rejected: `struct Node { next: Node }` and
+  `Option<Node>` cannot have a finite size. `Vec<Node>` breaks the
+  recursive sizing edge and is permitted.
+- Enums use `#[repr(T)]` with exact integer widths and
+  `Debug + Clone + Copy + Eq + Hash` so they work as collection keys.
+  Decimal discriminants are canonicalized for Rust source syntax.
+  IDL `flags` require a dedicated Rust bitflag representation and are
+  rejected instead of being silently lowered into a semantically different
+  enum.
+- Reserved Rust identifiers, unknown domains, unions, logical `varint`
+  without a specified width/owner, and unsupported fixed array shapes
+  fail before publishing any output.
+- The built-in Rust template depends on the Rust standard library only;
+  it does not inject `serde` or promise serialization. Custom `--template`
+  files consume type presentation keys (`rust_type`, `rust_underlying_type`,
+  `name`, `items`, `messages/composites/groups/enums`), not Binary
+  offsets, ownership facts or runtime format metadata.
+
+This is source declaration generation, not a native ABI mapping, wire codec,
+validation engine, or serialization runtime.
+
 ### DSL Integration (RulesForge)
 
 - `--dsl-output <file>` or `-d <file>`
