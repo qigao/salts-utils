@@ -4641,6 +4641,25 @@ static int tbe_compiler_txn_reserve(
   return 0;
 }
 
+/* Match the frontend's lexical destination identity on Windows. */
+static int tbe_compiler_txn_same_path(const char *a, const char *b) {
+  if (a == NULL || b == NULL) return 0;
+#ifdef _WIN32
+  while (*a != '\\0' && *b != '\\0') {
+    unsigned char x = (unsigned char)*a++;
+    unsigned char y = (unsigned char)*b++;
+    if (x == '\\\\') x = '/';
+    if (y == '\\\\') y = '/';
+    if (x >= 'A' && x <= 'Z') x = (unsigned char)(x - 'A' + 'a');
+    if (y >= 'A' && y <= 'Z') y = (unsigned char)(y - 'A' + 'a');
+    if (x != y) return 0;
+  }
+  return *a == *b;
+#else
+  return strcmp(a, b) == 0;
+#endif
+}
+
 static int tbe_compiler_txn_add(
     tbe_compiler_output_transaction *txn, const char *final_path) {
   tbe_compiler_staged_output *output;
@@ -4649,7 +4668,7 @@ static int tbe_compiler_txn_add(
       txn->count >= TBE_COMPILER_TRANSACTION_OUTPUT_LIMIT)
     return -1;
   for (i = 0u; i < txn->count; ++i)
-    if (strcmp(txn->items[i].final_path, final_path) == 0) {
+    if (tbe_compiler_txn_same_path(txn->items[i].final_path, final_path)) {
       fprintf(stderr, "Duplicate generated transaction output: %s\n", final_path);
       return -1;
     }
