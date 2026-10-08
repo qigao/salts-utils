@@ -777,6 +777,44 @@ describe("compiler integration") {
     (void)remove(primary);
   }
 
+  it("rejects Wasm secondary destination colliding with main C header") {
+    static const char primary[] = "projection_wasm_duplicate.h";
+    static const char component[] = "projection_wasm_duplicate.wasm";
+    databind_compiler_wasm_config config = {
+        .component_id = "Fixture.Component",
+        .native_header = primary,
+        .core_module_path = "unused-before-path-admission.wasm",
+        .host_header_output = primary,
+        .host_source_output = "projection_wasm_duplicate.host.c",
+        .guest_header_output = "projection_wasm_duplicate.guest.h",
+        .symbol_prefix = "wasm_fixture"};
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_WASM_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(config.host_source_output);
+    (void)remove(config.guest_header_output);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "old-primary"));
+    check_false(file_exists(component));
+    check_false(file_exists(config.host_source_output));
+    check_false(file_exists(config.guest_header_output));
+    (void)remove(primary);
+  }
+
   it("rejects incomplete or dishonest selected staging capability sets") {
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "first.c", NULL},
