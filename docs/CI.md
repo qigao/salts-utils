@@ -24,6 +24,28 @@ vcpkg 优先读取共享二进制缓存；未命中时按 manifest 和 baseline 
 生成的缓存只写入本地目录。CI 不要求所有平台的新依赖事先发布到共享 feed；
 认证、下载与编译失败仍立即终止构建。
 
+项目的 C/C++ 编译通过 [sccache](https://github.com/mozilla/sccache) 复用本地编译结果，
+由 `actions/cache` 整批恢复、保存目录，避免每个对象文件分别请求远程缓存。
+每个 job 的目录上限为 512 MiB；缓存快照按 GitHub Actions 的额度和淘汰规则保留。
+`setup-build-host` 安装固定版本，CI user presets 统一设置
+compiler launcher；Linux x64/arm64、Windows、macOS、Android 和 iOS 都使用相同入口。
+缓存命名空间包含 runner、host RID 和矩阵配置，Release、sanitizer 与交叉构建相互隔离。
+CI preset 通过 `SCCACHE_C_CUSTOM_CACHE_BUSTER` 把当前 preset、SDK RID 和目标 triplet
+加入编译缓存键。同一 job 中的宿主工具与移动平台构建也保持隔离，避免 SDK 参数被
+编译缓存归入预处理参数后误用另一平台的对象文件。
+源码、头文件、编译器和编译参数由 sccache 纳入缓存键，代码更新后仍可命中未受影响的
+编译单元。目录快照使用每轮独立保存键，以平台/profile 和缓存配置摘要作为恢复前缀；
+恢复前缀不包含提交 SHA，避免每次提交都清空可复用结果。关闭 direct mode，每次编译
+重新执行预处理，让新增条件头文件等依赖变化参与缓存判断。
+
+每轮仍重新解析最新 SDK、运行 CMake configure、构建完整图并执行完整 CTest。
+不跨提交恢复 `CMakeCache.txt`、Ninja 状态、vcpkg 安装树或 SDK 安装树；测试 job
+继续消费本轮构建的精确产物。测试 job 也安装 sccache，供已有包配置测试中的嵌套
+CMake 使用。首次构建或缓存被服务淘汰时正常编译；实际编译、链接或工具错误仍使 CI
+失败。链接、代码生成、下载、artifact 上传及测试时间不会由编译缓存直接缩短。
+[安装 action](https://github.com/Mozilla-Actions/sccache-action) 在 job 结束时输出命中统计；
+加速幅度以命中率和构建步骤耗时为准，不预设固定比例。
+
 iOS preset 通过 `cmake/vcpkg-ports/quickjs-ng` 修正工具打包：保持共享 port 的
 QuickJS-ng 0.16.2 版本、源码摘要和库配置，但依照
 [上游 iOS 安装规则](https://github.com/quickjs-ng/quickjs/blob/v0.16.2/CMakeLists.txt#L517)
