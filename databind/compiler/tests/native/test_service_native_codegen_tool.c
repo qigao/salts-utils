@@ -145,6 +145,18 @@ int main(int argc, char **argv) {
       goto cleanup;
     (void)remove(header_stage);
     (void)remove(source_stage);
+    /* Mirror the compiler coordinator's zero-byte path reservations. */
+    {
+      FILE *reserved_header = fopen(header_stage, "wb");
+      FILE *reserved_source = fopen(source_stage, "wb");
+      if (reserved_header == NULL || reserved_source == NULL) {
+        if (reserved_header != NULL) (void)fclose(reserved_header);
+        if (reserved_source != NULL) (void)fclose(reserved_source);
+        goto cleanup;
+      }
+      if (fclose(reserved_header) != 0 || fclose(reserved_source) != 0)
+        goto cleanup;
+    }
     if (databind_compiler_native_service_render_staged(
             &input, &request, header_stage, source_stage) != 0 ||
         !generated_source_has_raii_cleanup(source_stage)) {
