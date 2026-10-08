@@ -990,14 +990,14 @@ spec("cpp_contract_render_ir") {
     check_false(test_render_file_contains(cpp_path, "size_bytes"));
     {
       FILE *file = fopen(cpp_path, "rb");
-      char content[8192];
+      char content[8192] = {0};
       size_t length = 0u;
+      check_not_null(file);
       if (file != NULL) {
         length = fread(content, 1u, sizeof(content) - 1u, file);
         content[length] = '\0';
         fclose(file);
       }
-      check_not_null(file);
       check_true(strstr(content, "struct Item {") != NULL);
       check_true(strstr(content, "struct Envelope {") != NULL);
       if (strstr(content, "struct Item {") != NULL &&
