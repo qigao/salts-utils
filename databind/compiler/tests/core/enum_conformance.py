@@ -182,6 +182,24 @@ class EnumConformance(unittest.TestCase):
                         'reflect.TypeOf(Alias_Last).Kind()!=reflect.Uint8 || Decimal_Nine!=9 '
                         '{ t.Fatal("alias width or value changed") }')
 
+    def test_cpp_contract_type_header_self_contained(self):
+        schema = (
+            'message Outer { Inner child; string payload; uint32 sequence; '
+            'map<string,Inner> lookup; list<Outer> children; '
+            'nullable uint64 maybe; uuid token; bytes(16) digest; } '
+            'message Inner { uint32 id; }'
+        )
+        self.generate(schema, 'cpp')
+        self.compile_c(
+            'Outer outer{}; '
+            'outer.child.id = 9; outer.lookup["one"] = outer.child; '
+            'outer.children.emplace_back(); outer.maybe = UINT64_MAX; '
+            'if (outer.child.id != 9 || outer.lookup["one"].id != 9 || '
+            'sizeof(outer.token) != 16 || sizeof(outer.digest) != 16 || '
+            'outer.children.size() != 1 || !outer.maybe.has_value() || '
+            'outer.maybe.value() != UINT64_MAX) return 1;',
+            cpp=True)
+
     def test_cpp_literal_portability(self):
         self.generate('enum Wide <uint64> { Max=18446744073709551615; } '
                       'enum Signed <int64> { Min=-9223372036854775808; }', 'cpp')
