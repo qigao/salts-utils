@@ -25,6 +25,7 @@ cmake_add_test(test_databind_projection_registry
     Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/core/example.schema"
+    SCHEMA_NATIVE_SERVICE_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/native/test_service_native_lowering.schema"
     TBE_COMPILER_RESOURCE_DIR="${DATABIND_COMPILER_SOURCE_DIR}"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/contract
