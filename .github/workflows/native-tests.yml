@@ -20,6 +20,8 @@ jobs:
       QIGAO_SDK_RID: ${{ matrix.rid }}
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_GHA_VERSION: salts-utils-compile-v1-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}
     steps:
       - uses: actions/checkout@v4
         with:
