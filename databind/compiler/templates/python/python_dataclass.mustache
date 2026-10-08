@@ -1,67 +1,47 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import List, Optional, Any
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 
-# =========================================================================
-# Enums
-# =========================================================================
-
+# These are logical Contract declarations, not Binary layouts or serializers.
 {{#enums}}
-class {{enum_name}}(IntEnum):
-    """
-    Wire storage: {{underlying_type}}; Python integers preserve exact values.
-    Attributes: {{#attributes}}[ {{name}}: {{value}} ] {{/attributes}}
-    """
+class {{enum_name}}({{#python_flags}}IntFlag{{/python_flags}}{{^python_flags}}IntEnum{{/python_flags}}):
+    """IDL integer storage: {{underlying_type}}."""
 {{#items}}
     {{name}} = {{value}}
 {{/items}}
 
 {{/enums}}
-
-# =========================================================================
-# Composites
-# =========================================================================
-
 {{#composites}}
 @dataclass
 class {{name}}:
-    """
-    Attributes: {{#attributes}}[ {{name}}: {{value}} ] {{/attributes}}
-    """
 {{#fields}}
-    {{name}}: {{python_type}} # size: {{size_bytes}} bytes
+    {{name}}: {{python_type}}
+{{/fields}}
+{{^fields}}
+    pass
 {{/fields}}
 
 {{/composites}}
-
-# =========================================================================
-# Groups
-# =========================================================================
-
 {{#groups}}
 @dataclass
 class {{name}}:
-    """
-    Attributes: {{#attributes}}[ {{name}}: {{value}} ] {{/attributes}}
-    """
 {{#fields}}
-    {{name}}: {{python_type}} # size: {{size_bytes}} bytes
+    {{name}}: {{python_type}}
+{{/fields}}
+{{^fields}}
+    pass
 {{/fields}}
 
 {{/groups}}
-
-# =========================================================================
-# Messages
-# =========================================================================
-
 {{#messages}}
 @dataclass
 class {{name}}:
-    """
-    Attributes: {{#attributes}}[ {{name}}: {{value}} ] {{/attributes}}
-    """
 {{#fields}}
-    {{name}}: {{python_type}} # size: {{size_bytes}} bytes
+    {{name}}: {{python_type}}
+{{/fields}}
+{{^fields}}
+    pass
 {{/fields}}
 
 {{/messages}}
