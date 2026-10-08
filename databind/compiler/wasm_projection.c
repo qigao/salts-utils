@@ -1058,4 +1058,5 @@ const databind_compiler_projection_backend
         .name = "wasm",
         .generate = databind_compiler_wasm_generate,
         .context = NULL,
+        .output_policy = DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED,
     };
