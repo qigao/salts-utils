@@ -1099,6 +1099,58 @@ describe("compiler integration") {
     (void)remove(primary);
   }
 
+  it("rejects Plugin and Wasm secondary output collision before publication") {
+    static const char primary[] = "projection_plugin_wasm_collision.h";
+    static const char shared[] = "projection_plugin_wasm_collision.shared.h";
+    static const char plugin_source[] = "projection_plugin_wasm_collision.plugin.c";
+    static const char wasm_component[] = "projection_plugin_wasm_collision.wasm";
+    databind_compiler_plugin_config plugin = {
+        .plugin_version_major = 1u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = shared,
+        .client_header_output = "projection_plugin_wasm_collision.client.h",
+        .client_source_output = "projection_plugin_wasm_collision.client.c"};
+    databind_compiler_wasm_config wasm = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = shared,
+        .host_source_output = "projection_plugin_wasm_collision.host.c",
+        .guest_header_output = "projection_plugin_wasm_collision.guest.h",
+        .symbol_prefix = "wasm_fixture"};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), plugin_source, &plugin},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), wasm_component, &wasm}};
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_PLUGIN_BACKEND, DATABIND_COMPILER_WASM_BACKEND};
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u};
+    const char *new_outputs[] = {
+        plugin_source, wasm_component, plugin.client_header_output,
+        plugin.client_source_output, wasm.host_source_output,
+        wasm.guest_header_output};
+    size_t i;
+    (void)remove(primary);
+    (void)remove(shared);
+    for (i = 0u; i < 6u; ++i) (void)remove(new_outputs[i]);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(shared, "old-secondary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(shared, "old-secondary"));
+    for (i = 0u; i < 6u; ++i) check_false(file_exists(new_outputs[i]));
+    (void)remove(primary);
+    (void)remove(shared);
+  }
+
   it("rejects incomplete or dishonest selected staging capability sets") {
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "first.c", NULL},
