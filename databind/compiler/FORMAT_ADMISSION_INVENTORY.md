@@ -49,6 +49,38 @@ Regression checks include:
 
 This is **not** a multi-output transaction. Once a valid backend begins executing, its generation callback may still fail *after* the main source was published. No claim of global atomicity should be made until the following slice adds transaction-scoped staging and commit.
 
+## Selected projection file manifest (follow-up after #601)
+
+The public projection frontend now publishes a **complete current output-path
+manifest** for built-in C outputs plus every selected artifact/transport
+generator. Each item records its pathname and the typed projection identity
+that owns it; compiler-owned header/source/guest/DSL paths use an empty owner.
+The manifest is bounded (`DATABIND_COMPILER_FRONTEND_MAX_OUTPUTS`), and
+missing paths, duplicate names, and collisions involving secondary
+Plugin/Native Service/Wasm output paths fail before generation.
+
+```text
+Compiler planned paths
+  built-in: header, source, guest, DSL
+  artifacts:
+    Native Service: .service_native.c + .service_native.h
+    Plugin: .plugin.c + .plugin.h + .plugin_client.h + .plugin_client.c
+    Wasm: .wasm + .wasm.h + .wasm.c + .wasm_guest.h
+    OpenAPI: .openapi.json
+  transports:
+    HTTP/RPC/Socket/FlowMQ: selected Method/Socket/FlowMQ output
+```
+
+For the moment it is a **read-only planning and collision-validation
+contract**. Output paths borrow memory from their frontend input or
+compiler-owned frontend plan; consumers must not retain them after that
+plan is disposed. This inventory does **not** change the legacy
+`databind_compiler_projection_generate_fn` callback contract, does not
+retroactively stage backend-generated files, and does not roll back a prior
+backend callback if a later one fails. Cross-backend transaction staging
+must consume this manifest through a separate explicit prepare/commit
+protocol, rather than guessing which filenames a generator touched.
+
 ## Remaining implementation slices
 
 - [ ] Isolate a compiler-private **NativeSourceIR** built from typed Contract + canonical CMeta/CSTL providers without wire byte offsets.
