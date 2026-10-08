@@ -1221,7 +1221,8 @@ databind_compiler_http_method_plan_backend(void) {
   databind_compiler_projection_backend backend = {
       {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
        DATABIND_COMPILER_TRANSPORT_HTTP},
-      "http", http_generate, NULL};
+      "http", http_generate, NULL,
+      DATABIND_COMPILER_OUTPUT_STAGED_SINGLE};
   return backend;
 }
 
@@ -1230,6 +1231,7 @@ databind_compiler_rpc_method_plan_backend(void) {
   databind_compiler_projection_backend backend = {
       {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
        DATABIND_COMPILER_TRANSPORT_RPC},
-      "rpc", rpc_generate, NULL};
+      "rpc", rpc_generate, NULL,
+      DATABIND_COMPILER_OUTPUT_STAGED_SINGLE};
   return backend;
 }
