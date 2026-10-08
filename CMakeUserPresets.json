@@ -49,7 +49,8 @@
             "environment": {
                 "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{VCPKG_CACHE_REPOSITORY_ROOT}",
                 "VCPKG_BINARY_SOURCES": "$penv{VCPKG_BINARY_SOURCES}",
-                "VCPKG_OVERLAY_PORTS": "$penv{VCPKG_OVERLAY_PORTS}"
+                "VCPKG_OVERLAY_PORTS": "$penv{VCPKG_OVERLAY_PORTS}",
+                "SCCACHE_C_CUSTOM_CACHE_BUSTER": "salts-utils-compile-v2-${presetName}-$env{QIGAO_SDK_RID}-$env{QIGAO_TARGET_TRIPLET}"
             }
         },
         {

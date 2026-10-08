@@ -25,8 +25,10 @@ jobs:
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
       QIGAO_IOS_SYSROOT: ${{ matrix.sysroot }}
       QIGAO_NUGET_PACKAGES: ${{ github.workspace }}/stage/nuget
-      SCCACHE_GHA_ENABLED: 'true'
-      SCCACHE_GHA_VERSION: salts-utils-compile-v1-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      SCCACHE_CACHE_SIZE: 512M
+      SCCACHE_DIRECT: 'false'
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-compile-v2-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}
     steps:
       - uses: actions/checkout@v4
         with:
