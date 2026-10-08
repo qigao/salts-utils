@@ -1020,6 +1020,7 @@ int databind_compiler_wasm_render_staged(
   staged_config.guest_header_output = guest_header_stage;
   staged_request = *request;
   staged_request.output = component_stage;
+  staged_request.config = &staged_config;
   /* The writer consumes output paths solely as destinations; semantic
    * identifiers and includes come from native_header and symbol_prefix. */
   result = databind_compiler_wasm_generate(input, &staged_request, NULL);
