@@ -15,7 +15,7 @@ add_executable(databind_method_plan_projection_fixture_gen
 target_link_libraries(databind_method_plan_projection_fixture_gen
   PRIVATE
     Salts::IDL
-    ${DATABIND_COMPILER_TOOLING_TARGET}
+    ${DATABIND_COMPILER_TOOLING_TARGET} databind_binding_compiler
     Salts::Core)
 target_include_directories(databind_method_plan_projection_fixture_gen
   PRIVATE
