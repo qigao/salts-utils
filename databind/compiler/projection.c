@@ -171,6 +171,23 @@ static const databind_compiler_projection_backend *find_backend(
   return NULL;
 }
 
+int databind_compiler_projection_selection_valid(
+    const databind_compiler_projection_request *requests,
+    size_t request_count,
+    const databind_compiler_projection_backend *backends,
+    size_t backend_count) {
+  size_t i;
+  if (!databind_compiler_projection_requests_valid(
+          requests, request_count) ||
+      !backends_valid(backends, backend_count))
+    return 0;
+
+  for (i = 0u; i < request_count; ++i)
+    if (find_backend(backends, backend_count, requests[i].id) == NULL)
+      return 0;
+  return 1;
+}
+
 int databind_compiler_projection_run(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *requests,
@@ -180,13 +197,9 @@ int databind_compiler_projection_run(
   size_t i;
 
   if (input == NULL || input->contract == NULL ||
-      !databind_compiler_projection_requests_valid(requests, request_count) ||
-      !backends_valid(backends, backend_count))
+      !databind_compiler_projection_selection_valid(
+          requests, request_count, backends, backend_count))
     return -1;
-
-  for (i = 0u; i < request_count; ++i)
-    if (find_backend(backends, backend_count, requests[i].id) == NULL)
-      return -1;
 
   for (i = 0u; i < request_count; ++i) {
     const databind_compiler_projection_backend *backend =

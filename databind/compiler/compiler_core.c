@@ -4650,6 +4650,17 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
                     options->lang_enum == TBE_COMPILER_LANG_RUST ||
                     options->lang_enum == TBE_COMPILER_LANG_CPP;
   if (!tbe_compiler_validate_options(options, lang_name)) return 1;
+  /* The existing projection dispatcher validates backend registration only
+   * after rendering --output. Admission must happen before touching any
+   * caller path, including C --source-output and guest artifacts. */
+  if (!databind_compiler_projection_selection_valid(
+          options->projection_requests, options->projection_count,
+          options->projection_backends, options->projection_backend_count)) {
+    fprintf(stderr,
+            "Invalid projection selection or missing typed backend; "
+            "no output published\n");
+    return 1;
+  }
   if (source_language && options->dsl_output_path != NULL) {
     fprintf(stderr, "--dsl-output requires native RulesForge lowering, not a source-only language\n");
     return 1;

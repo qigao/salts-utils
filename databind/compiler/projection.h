@@ -109,6 +109,22 @@ int databind_compiler_projection_requests_valid(
     size_t request_count);
 
 /*
+ * Preflight the complete selected projection/backend registry before any
+ * output is rendered or generated. This verifies identity, uniqueness,
+ * canonical backend names and callback presence but deliberately does not
+ * invoke a generator or admit its format-specific semantics.
+ *
+ * A failing generation callback still requires transactional staging of
+ * multi-output artifacts (#599); this check only closes the pre-render
+ * missing-backend/invalid-registration publication gap.
+ */
+int databind_compiler_projection_selection_valid(
+    const databind_compiler_projection_request *requests,
+    size_t request_count,
+    const databind_compiler_projection_backend *backends,
+    size_t backend_count);
+
+/*
  * Execute selected artifact/transport generators against one already-parsed
  * immutable canonical IR.
  *

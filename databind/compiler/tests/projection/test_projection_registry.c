@@ -38,6 +38,35 @@ static int file_exists(const char *path) {
   return 1;
 }
 
+static int file_matches(const char *path, const char *expected) {
+  char buffer[128];
+  size_t length;
+  FILE *file = fopen(path, "rb");
+  if (file == NULL || expected == NULL) {
+    if (file != NULL) fclose(file);
+    return 0;
+  }
+  length = fread(buffer, 1u, sizeof(buffer) - 1u, file);
+  if (ferror(file) || !feof(file)) {
+    fclose(file);
+    return 0;
+  }
+  buffer[length] = '\0';
+  fclose(file);
+  return strcmp(buffer, expected) == 0;
+}
+
+static int write_sentinel(const char *path, const char *sentinel) {
+  size_t size = strlen(sentinel);
+  FILE *file = fopen(path, "wb");
+  if (file == NULL) return 0;
+  if (fwrite(sentinel, 1u, size, file) != size) {
+    fclose(file);
+    return 0;
+  }
+  return fclose(file) == 0;
+}
+
 #define ARTIFACT_ID(kind_) \
   { DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT, (uint32_t)(kind_) }
 #define TRANSPORT_ID(kind_) \
@@ -91,6 +120,55 @@ describe("typed selection identity") {
         duplicate, sizeof(duplicate) / sizeof(duplicate[0])));
     check_true(databind_compiler_projection_requests_valid(
         cross_axis, sizeof(cross_axis) / sizeof(cross_axis[0])));
+  }
+}
+
+describe("pre-render selection admission") {
+  it("rejects missing, misspelled and duplicated generators without callbacks") {
+    projection_probe plugin = {0};
+    projection_probe http = {0};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), NULL, NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), NULL, NULL},
+    };
+    const databind_compiler_projection_request duplicate[] = {
+        requests[0], requests[0],
+    };
+    const databind_compiler_projection_backend missing[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
+         probe_generate, &plugin},
+    };
+    const databind_compiler_projection_backend misspelled[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
+         probe_generate, &plugin},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "HTTP",
+         probe_generate, &http},
+    };
+    const databind_compiler_projection_backend complete[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
+         probe_generate, &plugin},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         probe_generate, &http},
+    };
+    const databind_compiler_projection_backend duplicate_backends[] = {
+        complete[0], complete[0],
+    };
+    check_false(databind_compiler_projection_selection_valid(
+        requests, 2u, missing, 1u));
+    check_false(databind_compiler_projection_selection_valid(
+        requests, 2u, misspelled, 2u));
+    check_false(databind_compiler_projection_selection_valid(
+        requests, 2u, duplicate_backends, 2u));
+    check_false(databind_compiler_projection_selection_valid(
+        duplicate, 2u, complete, 2u));
+    check_false(databind_compiler_projection_selection_valid(
+        requests, 2u, complete, 0u));
+    check_true(databind_compiler_projection_selection_valid(
+        requests, 2u, complete, 2u));
+    check_true(databind_compiler_projection_selection_valid(
+        NULL, 0u, NULL, 0u));
+    check_equal(plugin.calls, (size_t)0u);
+    check_equal(http.calls, (size_t)0u);
   }
 }
 
@@ -183,8 +261,10 @@ describe("compiler integration") {
     (void)remove(output);
   }
 
-  it("rejects an incomplete typed set without backend callbacks") {
+  it("rejects an incomplete typed set before rendering caller outputs") {
     static const char output[] = "databind_projection_registry_rejected.h";
+    static const char source[] = "databind_projection_registry_rejected.c";
+    static const char sentinel[] = "existing-c-header-not-replaced";
     projection_probe plugin = {0};
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), NULL, NULL},
@@ -206,9 +286,122 @@ describe("compiler integration") {
     };
 
     (void)remove(output);
+    (void)remove(source);
+    /* A previously valid header must remain unchanged, while the companion
+     * source must not be created. No backend may be invoked. */
+    options.source_output_path = source;
+    check_true(write_sentinel(output, sentinel));
     check_equal(tbe_compiler_run(&options), 1);
     check_equal(plugin.calls, (size_t)0u);
+    check_true(file_matches(output, sentinel));
+    check_false(file_exists(source));
+    (void)remove(output);
+    /* Equally reject before creating a completely new output. */
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(plugin.calls, (size_t)0u);
+    check_false(file_exists(output));
+    check_false(file_exists(source));
+  }
+
+  it("admits source-only artifact requests without Binary layout") {
+    static const char schema_path[] = "databind_projection_independent.schema";
+    static const char output[] = "databind_projection_independent.ts";
+    static const char schema[] =
+        "message Packet { string label; uint32 sequence; }";
+    projection_probe plugin = {0};
+    databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN),
+        "packet.plugin", NULL
+    };
+    databind_compiler_projection_backend backend = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN),
+        "plugin", probe_generate, &plugin
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_TS,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(plugin.calls, (size_t)1u);
     check_true(file_exists(output));
+    (void)remove(schema_path);
+    (void)remove(output);
+  }
+
+  it("rejects an explicitly selected Binary transport before rendering source") {
+    static const char schema_path[] = "databind_projection_wire_reject.schema";
+    static const char output[] = "databind_projection_wire_reject.ts";
+    static const char schema[] =
+        "message Packet { string label; uint32 sequence; }";
+    static const char sentinel[] = "existing-ts-source";
+    projection_probe http = {0};
+    databind_compiler_projection_request request = {
+        TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP),
+        "packet.http", NULL
+    };
+    databind_compiler_projection_backend backend = {
+        TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP),
+        "http", probe_generate, &http
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_TS,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_true(write_sentinel(output, sentinel));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(output, sentinel));
+    (void)remove(output);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_false(file_exists(output));
+    check_equal(http.calls, (size_t)0u);
+    (void)remove(schema_path);
+  }
+
+  it("prevents malformed backend registry from replacing non-C source output") {
+    static const char output[] = "databind_projection_source_rejected.ts";
+    static const char sentinel[] = "previous-ts-declaration";
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), NULL, NULL},
+    };
+    projection_probe plugin = {0};
+    databind_compiler_projection_backend backends[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "Plugin",
+         probe_generate, &plugin},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = output,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_TS,
+        .projection_requests = requests,
+        .projection_count = 1u,
+        .projection_backends = backends,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(output);
+    check_true(write_sentinel(output, sentinel));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(plugin.calls, (size_t)0u);
+    check_true(file_matches(output, sentinel));
     (void)remove(output);
   }
 }
