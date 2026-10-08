@@ -216,7 +216,18 @@ spec("CFlow filesystem watch Publisher") {
     check_equal(cmeta_fs_path_join(path, sizeof(path), root, "one.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
 
-    step = cflow_publisher_resume(&source, &resume, &value);
+    /* Native backends may enqueue their initial snapshot before the first
+     * resume (notably macOS). Drain only pre-write events, then arm the
+     * waitable; the actual one.txt notification is tested below. */
+    for (attempts = 0u; attempts < 5000u; ++attempts) {
+      step = cflow_publisher_resume(&source, &resume, &value);
+      if (step.kind == CFLOW_STEP_WAIT) break;
+      if (step.kind != CFLOW_STEP_VALUE &&
+          step.kind != CFLOW_STEP_VALUE_AND_DONE) break;
+      if (value.kind == CFLOW_FS_WATCH_RESCAN_REQUIRED)
+        check_equal(cflow_fs_watch_publisher_owner_acknowledge_rescan(&owner),
+                    SALTS_OK);
+    }
     check_equal(step.kind, CFLOW_STEP_WAIT);
     check_true(cflow_waitable_arm(&step.waitable, (cflow_waker){count_wake, &wake}));
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
