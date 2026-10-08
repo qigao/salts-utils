@@ -3,6 +3,7 @@
 #include "compiler_core.h"
 #include "native_service_projection.h"
 #include "wasm_projection.h"
+#include "plugin_projection.h"
 #include "tinytest.h"
 
 #include <stdlib.h>
@@ -989,6 +990,65 @@ describe("compiler integration") {
       check_true(file_exists(finals[i]));
     check_true(file_matches(http_path, "partially-rendered"));
     for (i = 0u; i < 6u; ++i) (void)remove(finals[i]);
+  }
+
+  it("rolls back real Plugin provider and client outputs on late HTTP failure") {
+    static const char primary[] = "projection_plugin_txn.h";
+    static const char provider_c[] = "projection_plugin_txn.plugin.c";
+    static const char provider_h[] = "projection_plugin_txn.plugin.h";
+    static const char client_h[] = "projection_plugin_txn.client.h";
+    static const char client_c[] = "projection_plugin_txn.client.c";
+    static const char http_path[] = "projection_plugin_txn.http.h";
+    databind_compiler_plugin_config config = {
+        .plugin_version_major = 1u,
+        .plugin_version_minor = 0u,
+        .plugin_version_patch = 0u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = provider_h,
+        .client_header_output = client_h,
+        .client_source_output = client_c,
+    };
+    staged_projection_probe http = {http_path, "partial-http", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), provider_c, &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_path, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_PLUGIN_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http, DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    const char *paths[] = {primary, provider_c, provider_h, client_h, client_c, http_path};
+    const char *old[] = {"old-primary", "old-provider-c", "old-provider-h",
+                         "old-client-h", "old-client-c", "old-http"};
+    size_t i;
+    for (i = 0u; i < 6u; ++i) {
+      (void)remove(paths[i]);
+      check_true(write_sentinel(paths[i], old[i]));
+    }
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)1u);
+    for (i = 0u; i < 6u; ++i) check_true(file_matches(paths[i], old[i]));
+    for (i = 0u; i < 6u; ++i) (void)remove(paths[i]);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)2u);
+    for (i = 0u; i < 6u; ++i) check_false(file_exists(paths[i]));
+    http.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(http.calls, (size_t)3u);
+    for (i = 0u; i < 6u; ++i) check_true(file_exists(paths[i]));
+    for (i = 0u; i < 6u; ++i) (void)remove(paths[i]);
   }
 
   it("rejects incomplete or dishonest selected staging capability sets") {
