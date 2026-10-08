@@ -815,6 +815,59 @@ describe("compiler integration") {
     (void)remove(primary);
   }
 
+  it("rejects Wasm host source collision with selected HTTP output") {
+    static const char primary[] = "projection_wasm_http_collision.h";
+    static const char component[] = "projection_wasm_http_collision.wasm";
+    static const char shared[] = "projection_wasm_http_collision.http.h";
+    static const char host_header[] = "projection_wasm_http_collision.host.h";
+    static const char guest_header[] = "projection_wasm_http_collision.guest.h";
+    databind_compiler_wasm_config config = {
+        .component_id = "Fixture.Component",
+        .native_header = primary,
+        .core_module_path = "not-opened-before-admission.wasm",
+        .host_header_output = host_header,
+        .host_source_output = shared,
+        .guest_header_output = guest_header,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe http = {shared, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), shared, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_WASM_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(shared);
+    (void)remove(host_header);
+    (void)remove(guest_header);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(shared, "old-shared"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(shared, "old-shared"));
+    check_false(file_exists(component));
+    check_false(file_exists(host_header));
+    check_false(file_exists(guest_header));
+    (void)remove(primary);
+    (void)remove(shared);
+  }
+
   it("rejects incomplete or dishonest selected staging capability sets") {
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "first.c", NULL},
