@@ -22,6 +22,7 @@ cmake_add_test(test_databind_projection_registry
     Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
+    databind_binding_compiler
     Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/core/example.schema"
