@@ -3349,12 +3349,18 @@ static int tbe_compiler_validate_options(const tbe_compiler_options_t *options,
   return 1;
 }
 
-/* The caller selects whether this producer needs Binary wire lowering.
- * Source-language contract admission is independent of that choice. */
+/* Binary is a format admission, not part of typed Contract semantics.
+ * Legacy C still requires its Binary-backed presentation until NativeSourceIR
+ * and the C templates no longer consume wire offsets. */
+typedef enum databind_compiler_format_admission {
+  DATABIND_COMPILER_FORMAT_CONTRACT_ONLY = 0,
+  DATABIND_COMPILER_FORMAT_BINARY = 1
+} databind_compiler_format_admission;
+
 static int databind_compiler_parse_contract_file_mode(
     const char *schema_path, Node **out_legacy_tree,
     IdlContract **out_contract, char **out_schema_data,
-    int require_binary_format) {
+    databind_compiler_format_admission admission) {
   tbe_error_t parse_err;
   IdlDiagnostic contract_error = IDL_DIAGNOSTIC_INIT;
   IdlContract *contract = NULL;
@@ -3403,7 +3409,16 @@ static int databind_compiler_parse_contract_file_mode(
     return 1;
   }
 
-  if (require_binary_format) {
+  if (admission != DATABIND_COMPILER_FORMAT_CONTRACT_ONLY &&
+      admission != DATABIND_COMPILER_FORMAT_BINARY) {
+    fprintf(stderr, "Invalid compiler format admission\n");
+    idl_contract_destroy(contract);
+    free(schema_data);
+    node_free(root);
+    return 1;
+  }
+
+  if (admission == DATABIND_COMPILER_FORMAT_BINARY) {
     if (databind_binary_contract_apply(root, &parse_err) != 0) {
       fprintf(stderr, "Binary format error: %s\n", parse_err.message);
       idl_contract_destroy(contract);
@@ -3426,7 +3441,8 @@ int databind_compiler_parse_contract_file(
     const char *schema_path, Node **out_legacy_tree,
     IdlContract **out_contract, char **out_schema_data) {
   return databind_compiler_parse_contract_file_mode(
-      schema_path, out_legacy_tree, out_contract, out_schema_data, 1);
+      schema_path, out_legacy_tree, out_contract, out_schema_data,
+      DATABIND_COMPILER_FORMAT_BINARY);
 }
 
 int tbe_compiler_parse_schema_file(
@@ -4946,7 +4962,10 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   }
   int status = databind_compiler_parse_contract_file_mode(
       options->schema_path, &task->root, &task->contract,
-      &task->schema_data, !database_language && !source_language);
+      &task->schema_data,
+      (database_language || source_language)
+          ? DATABIND_COMPILER_FORMAT_CONTRACT_ONLY
+          : DATABIND_COMPILER_FORMAT_BINARY);
   if (status != 0) return status;
 
   /*
