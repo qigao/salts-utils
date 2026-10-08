@@ -95,3 +95,30 @@ set_target_properties(test_databind_projection_frontend PROPERTIES
 
 target_link_libraries(test_databind_projection_frontend
   PRIVATE databind_binding_compiler)
+
+
+# Compile an actual NativeSourceIR-emitted header with each platform's C11 compiler.
+add_executable(databind_native_header_fixture_generator
+  native_header_fixture_generator.c
+  "${DATABIND_COMPILER_SOURCE_DIR}/native_source_ir.c")
+target_include_directories(databind_native_header_fixture_generator PRIVATE
+  "${DATABIND_COMPILER_SOURCE_DIR}"
+  "${DATABIND_SOURCE_ROOT}/idl/include")
+set_target_properties(databind_native_header_fixture_generator PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+set(_native_fixture_header "${CMAKE_CURRENT_BINARY_DIR}/native_contract_fixture.h")
+add_custom_command(OUTPUT "${_native_fixture_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_fixture_header}"
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_header_c11
+  native_header_c11_consumer.c "${_native_fixture_header}")
+target_include_directories(test_databind_native_header_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+set_target_properties(test_databind_native_header_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_header_c11
+  COMMAND $<TARGET_FILE:test_databind_native_header_c11>)
+set_tests_properties(test_databind_native_header_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;c11")
