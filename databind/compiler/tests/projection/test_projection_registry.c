@@ -479,6 +479,19 @@ describe("compiler integration") {
     check_false(file_exists(service_source));
     check_false(file_exists(service_header));
     check_false(file_exists(transport_output));
+
+    /* The same manifest must commit all outputs when every backend succeeds. */
+    http.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(http.calls, (size_t)3u);
+    check_true(file_exists(primary));
+    check_true(file_exists(service_source));
+    check_true(file_exists(service_header));
+    check_true(file_matches(transport_output, "partial-http"));
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(service_header);
+    (void)remove(transport_output);
   }
 
   it("rejects incomplete or dishonest selected staging capability sets") {
