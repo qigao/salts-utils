@@ -4345,6 +4345,154 @@ failed:
   return 0;
 }
 
+/* C++17 permits vector<T> for an incomplete T, but direct/array and
+ * non-vector associative value types must be fully declared before use.
+ * Source ordering is computed from immutable Contract references, not from
+ * Binary layout or native CMeta lifecycle flags. */
+static int tbe_cpp_type_depends_on(
+    const char *text, const char *target) {
+  IdlTypeRef ref;
+  size_t i;
+  if (text == NULL || target == NULL ||
+      !idl_type_ref_parse(text, strlen(text), &ref))
+    return -1;
+  if (ref.collection_kind == IDL_COLLECTION_LIST)
+    return 0;
+  if (ref.collection_kind == IDL_COLLECTION_NONE)
+    return ref.name_length == strlen(target) &&
+           memcmp(ref.name, target, ref.name_length) == 0;
+  for (i = 0u; i < ref.argument_count; ++i) {
+    char nested[IDL_TYPE_REF_MAX_BYTES + 1u];
+    int depends;
+    if (ref.argument_lengths[i] >= sizeof(nested))
+      return -1;
+    memcpy(nested, ref.arguments[i], ref.argument_lengths[i]);
+    nested[ref.argument_lengths[i]] = '\0';
+    depends = tbe_cpp_type_depends_on(nested, target);
+    if (depends != 0)
+      return depends;
+  }
+  return 0;
+}
+
+static int tbe_cpp_field_depends_on(
+    const IdlField *field, const char *target) {
+  int depends;
+  if (field == NULL || target == NULL)
+    return -1;
+  switch (field->collection_kind) {
+  case IDL_COLLECTION_NONE:
+    return tbe_cpp_type_depends_on(field->type_name, target);
+  case IDL_COLLECTION_ARRAY:
+  case IDL_COLLECTION_SET:
+    return tbe_cpp_type_depends_on(field->inner_type, target);
+  case IDL_COLLECTION_MAP:
+    depends = tbe_cpp_type_depends_on(field->key_type, target);
+    return depends == 0 ?
+        tbe_cpp_type_depends_on(field->value_type, target) : depends;
+  case IDL_COLLECTION_LIST:
+  case IDL_COLLECTION_GROUP:
+    return 0; /* std::vector<T> may own incomplete T in C++17. */
+  default:
+    return -1;
+  }
+}
+
+/* The per-kind lists remain available to custom Mustache templates. Built-in
+ * C++ output uses cpp_records to guarantee complete definitions for direct
+ * member dependencies even when declarations cross message/group/composite
+ * sections. No clone is published until its Contract dependency is admitted. */
+static int tbe_cpp_build_ordered_records(
+    const IdlContract *contract, Node *root) {
+  Node *ordered = create_node_list("cpp_records");
+  Node *forwards = create_node_list("cpp_forward_declarations");
+  unsigned char *emitted = NULL;
+  size_t remaining = 0u;
+  size_t i;
+  if (ordered == NULL || forwards == NULL) {
+    node_free(ordered);
+    node_free(forwards);
+    return 0;
+  }
+  if (map_add(root, ordered) != 0) {
+    node_free(ordered);
+    node_free(forwards);
+    return 0;
+  }
+  if (map_add(root, forwards) != 0) {
+    node_free(forwards);
+    return 0;
+  }
+  if (contract->data_count != 0u) {
+    emitted = (unsigned char *)calloc(contract->data_count, sizeof(*emitted));
+    if (emitted == NULL)
+      return 0;
+  }
+  for (i = 0u; i < contract->data_count; ++i) {
+    const IdlDataDecl *decl = &contract->data[i];
+    Node *forward;
+    if (decl->kind == IDL_DATA_ENUM)
+      continue;
+    ++remaining;
+    forward = create_node_map(NULL);
+    if (forward == NULL ||
+        tbe_compiler_set_string(forward, "name", decl->name) != 0 ||
+        list_add(forwards, forward) != 0) {
+      node_free(forward);
+      free(emitted);
+      return 0;
+    }
+  }
+  while (remaining != 0u) {
+    int advanced = 0;
+    for (i = 0u; i < contract->data_count; ++i) {
+      const IdlDataDecl *decl = &contract->data[i];
+      int ready = 1;
+      size_t j;
+      if (decl->kind == IDL_DATA_ENUM || emitted[i])
+        continue;
+      for (j = 0u; j < decl->field_count && ready; ++j) {
+        size_t candidate;
+        for (candidate = 0u; candidate < contract->data_count; ++candidate) {
+          const IdlDataDecl *other = &contract->data[candidate];
+          int result;
+          if (other->kind == IDL_DATA_ENUM || emitted[candidate])
+            continue;
+          result = tbe_cpp_field_depends_on(
+              &decl->fields[j], other->name);
+          if (result < 0) {
+            free(emitted);
+            return 0;
+          }
+          if (result > 0) {
+            ready = 0;
+            break;
+          }
+        }
+      }
+      if (!ready)
+        continue;
+      if (!tbe_source_render_decl(
+              contract, decl, TBE_COMPILER_LANG_CPP, ordered)) {
+        free(emitted);
+        return 0;
+      }
+      emitted[i] = 1u;
+      --remaining;
+      advanced = 1;
+    }
+    if (!advanced) {
+      fprintf(stderr,
+              "C++ source cannot order by-value or associative record "
+              "dependencies without an incomplete type\n");
+      free(emitted);
+      return 0;
+    }
+  }
+  free(emitted);
+  return 1;
+}
+
 static Node *tbe_source_render_ir(
     const IdlContract *contract, int64_t language) {
   Node *root = NULL;
@@ -4357,7 +4505,8 @@ static Node *tbe_source_render_ir(
       (language != TBE_COMPILER_LANG_TS &&
        language != TBE_COMPILER_LANG_PYTHON &&
        language != TBE_COMPILER_LANG_GO &&
-       language != TBE_COMPILER_LANG_RUST))
+       language != TBE_COMPILER_LANG_RUST &&
+       language != TBE_COMPILER_LANG_CPP))
     return NULL;
   if (language == TBE_COMPILER_LANG_RUST &&
       !tbe_rust_validate_sized_records(contract))
@@ -4393,6 +4542,7 @@ static Node *tbe_source_render_ir(
     if (list == NULL) {
       fprintf(stderr,
               "%s projection does not implement Data kind for '%s'\n",
+              language == TBE_COMPILER_LANG_CPP ? "C++" :
               language == TBE_COMPILER_LANG_RUST ? "Rust" :
               language == TBE_COMPILER_LANG_GO ? "Go" :
               language == TBE_COMPILER_LANG_PYTHON ? "Python" : "TypeScript",
@@ -4402,6 +4552,9 @@ static Node *tbe_source_render_ir(
     if (!tbe_source_render_decl(contract, decl, language, list))
       goto failed;
   }
+  if (language == TBE_COMPILER_LANG_CPP &&
+      !tbe_cpp_build_ordered_records(contract, root))
+    goto failed;
   if (language == TBE_COMPILER_LANG_GO) {
     /* Go package naming is presentation-only, derived from Contract schema. */
     tbe_compiler_annotate_schema_types(root);
@@ -4480,7 +4633,8 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   source_language = options->lang_enum == TBE_COMPILER_LANG_TS ||
                     options->lang_enum == TBE_COMPILER_LANG_PYTHON ||
                     options->lang_enum == TBE_COMPILER_LANG_GO ||
-                    options->lang_enum == TBE_COMPILER_LANG_RUST;
+                    options->lang_enum == TBE_COMPILER_LANG_RUST ||
+                    options->lang_enum == TBE_COMPILER_LANG_CPP;
   if (!tbe_compiler_validate_options(options, lang_name)) return 1;
   if (source_language && options->dsl_output_path != NULL) {
     fprintf(stderr, "--dsl-output requires native RulesForge lowering, not a source-only language\n");
