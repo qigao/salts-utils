@@ -4843,6 +4843,12 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   char template_path[SALTS_FS_MAX_PATH];
   const char *resolved_template = NULL;
   const char *lang_name = tbe_compiler_language_name(options->lang_enum);
+  tbe_compiler_output_transaction builtins = {0};
+  const char *primary_output_path = options->output_path;
+  const char *source_output_path = options->source_output_path;
+  const char *guest_output_path = options->guest_output_path;
+  const char *dsl_output_path = options->dsl_output_path;
+  int transactional_outputs = 0;
   int database_language;
   int source_language;
   if (lang_name == NULL) {
@@ -4857,6 +4863,11 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
                     options->lang_enum == TBE_COMPILER_LANG_RUST ||
                     options->lang_enum == TBE_COMPILER_LANG_CPP;
   if (!tbe_compiler_validate_options(options, lang_name)) return 1;
+  if (!tbe_compiler_output_paths_distinct(options)) {
+    fprintf(stderr,
+            "Compiler output paths must be non-empty and distinct\n");
+    return 1;
+  }
   /* The existing projection dispatcher validates backend registration only
    * after rendering --output. Admission must happen before touching any
    * caller path, including C --source-output and guest artifacts. */
@@ -5020,25 +5031,53 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       return 1;
     }
   }
+  /* Only compiler-owned render paths are enrolled here. Projection backends
+   * have independent callback-owned output paths and cannot share a
+   * transaction until they expose an explicit stage/commit contract. */
+  transactional_outputs = options->projection_count == 0u &&
+      options->output_path != NULL &&
+      (options->source_output_path != NULL ||
+       options->guest_output_path != NULL ||
+       options->dsl_output_path != NULL);
+  if (transactional_outputs) {
+    if (tbe_compiler_txn_add(&builtins, options->output_path) != 0)
+      goto builtin_stage_failure;
+    primary_output_path = builtins.items[builtins.count - 1u].staging_path;
+    if (options->source_output_path != NULL) {
+      if (tbe_compiler_txn_add(&builtins, options->source_output_path) != 0)
+        goto builtin_stage_failure;
+      source_output_path = builtins.items[builtins.count - 1u].staging_path;
+    }
+    if (options->guest_output_path != NULL) {
+      if (tbe_compiler_txn_add(&builtins, options->guest_output_path) != 0)
+        goto builtin_stage_failure;
+      guest_output_path = builtins.items[builtins.count - 1u].staging_path;
+    }
+    if (options->dsl_output_path != NULL) {
+      if (tbe_compiler_txn_add(&builtins, options->dsl_output_path) != 0)
+        goto builtin_stage_failure;
+      dsl_output_path = builtins.items[builtins.count - 1u].staging_path;
+    }
+  }
   status = tbe_compiler_render_file(
       database_language ? task->database_ir :
       source_language ? task->language_ir : task->root,
-      resolved_template, options->output_path);
+      resolved_template, primary_output_path);
 
   if (status == 0 && options->source_output_path) {
     resolved_template = tbe_compiler_resolve_resource(
         options, "templates/c/c_typed_source.mustache", template_path, sizeof(template_path));
     status = resolved_template != NULL
-                 ? tbe_compiler_render_file(task->root, resolved_template, options->source_output_path)
+                 ? tbe_compiler_render_file(task->root, resolved_template, source_output_path)
                  : 1;
     if (status == 0 &&
-        tbe_compiler_append_member_lifecycles(options->source_output_path, task->root) != 0) {
+        tbe_compiler_append_member_lifecycles(source_output_path, task->root) != 0) {
       fprintf(stderr, "Failed to append generated member lifecycle functions\n");
       status = 1;
     }
     if (status == 0 &&
         tbe_compiler_append_binary_readers(
-            options->source_output_path, task->root, task->contract, task->projection_root) != 0) {
+            source_output_path, task->root, task->contract, task->projection_root) != 0) {
       fprintf(stderr, "Failed to append generated Binary reader providers\n");
       status = 1;
     }
@@ -5048,7 +5087,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     resolved_template = tbe_compiler_resolve_resource(
         options, "templates/c/c_guest_adapter.mustache", template_path, sizeof(template_path));
     status = resolved_template != NULL
-                 ? tbe_compiler_render_file(task->root, resolved_template, options->guest_output_path)
+                 ? tbe_compiler_render_file(task->root, resolved_template, guest_output_path)
                  : 1;
   }
 
@@ -5056,7 +5095,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     resolved_template = tbe_compiler_resolve_resource(
         options, "templates/reflection/rfl_types.mustache", template_path, sizeof(template_path));
     if (resolved_template == NULL ||
-        tbe_compiler_render_file(task->root, resolved_template, options->dsl_output_path) != 0) {
+        tbe_compiler_render_file(task->root, resolved_template, dsl_output_path) != 0) {
       status = 1;
     }
   }
@@ -5074,7 +5113,20 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       status = 1;
   }
 
+  if (transactional_outputs) {
+    if (status != 0) {
+      if (tbe_compiler_txn_abort(&builtins) != 0)
+        fprintf(stderr, "Failed cleaning abandoned compiler outputs\n");
+      return 1;
+    }
+    return tbe_compiler_txn_commit(&builtins) == 0 ? 0 : 1;
+  }
   return status;
+
+builtin_stage_failure:
+  if (tbe_compiler_txn_abort(&builtins) != 0)
+    fprintf(stderr, "Failed cleaning compiler staging output files\n");
+  return 1;
 }
 
 int tbe_compiler_run(const tbe_compiler_options_t *options) {
