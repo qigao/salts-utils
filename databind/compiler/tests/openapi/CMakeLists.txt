@@ -10,7 +10,7 @@ cmake_add_test(test_databind_openapi_projection
   LIBS
     Salts::IDL
     Salts::TinyTest
-    ${DATABIND_COMPILER_TOOLING_TARGET}
+    ${DATABIND_COMPILER_TOOLING_TARGET} databind_binding_compiler
     Salts::Core
   DEFS
     OPENAPI_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_openapi_projection.schema"
