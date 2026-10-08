@@ -67,6 +67,35 @@ static int write_sentinel(const char *path, const char *sentinel) {
   return fclose(file) == 0;
 }
 
+typedef struct staged_projection_probe {
+  const char *final_path;
+  const char *content;
+  size_t calls;
+  int fail_after_write;
+} staged_projection_probe;
+
+static int staged_projection_generate(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    void *context) {
+  staged_projection_probe *probe = (staged_projection_probe *)context;
+  FILE *file;
+  size_t length;
+  if (input == NULL || input->contract == NULL || request == NULL ||
+      request->output == NULL || probe == NULL ||
+      probe->content == NULL || probe->final_path == NULL ||
+      strcmp(probe->final_path, request->output) == 0)
+    return -1; /* Require an actual coordinator-owned staging pathname. */
+  ++probe->calls;
+  length = strlen(probe->content);
+  file = fopen(request->output, "wb");
+  if (file == NULL) return -1;
+  if (fwrite(probe->content, 1u, length, file) != length ||
+      fclose(file) != 0)
+    return -1;
+  return probe->fail_after_write ? -1 : 0;
+}
+
 #define ARTIFACT_ID(kind_) \
   { DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT, (uint32_t)(kind_) }
 #define TRANSPORT_ID(kind_) \
@@ -259,6 +288,134 @@ describe("compiler integration") {
     check_true(plugin.seen_contract == http.seen_contract);
     check_true(file_exists(output));
     (void)remove(output);
+  }
+
+  it("commits main C header with all explicitly stage-safe single-output projections") {
+    static const char header[] = "projection_txn_success.h";
+    static const char plugin_output[] = "projection_txn_success.plugin.c";
+    static const char http_output[] = "projection_txn_success.http.h";
+    staged_projection_probe plugin = {plugin_output, "published-plugin", 0u, 0};
+    staged_projection_probe http = {http_output, "published-http", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), plugin_output, NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_output, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
+         staged_projection_generate, &plugin,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = header,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(header);
+    (void)remove(plugin_output);
+    (void)remove(http_output);
+    check_true(write_sentinel(header, "old-header"));
+    check_true(write_sentinel(plugin_output, "old-plugin"));
+    check_true(databind_compiler_projection_all_staged_single(
+        requests, 2u, backends, 2u));
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(file_matches(plugin_output, "published-plugin"));
+    check_true(file_matches(http_output, "published-http"));
+    check_true(file_exists(header));
+    check_false(file_matches(header, "old-header"));
+    check_equal(plugin.calls, (size_t)1u);
+    check_equal(http.calls, (size_t)1u);
+    (void)remove(header);
+    (void)remove(plugin_output);
+    (void)remove(http_output);
+  }
+
+  it("rolls back all selected stage-safe outputs when a later generator fails") {
+    static const char header[] = "projection_txn_failure.h";
+    static const char plugin_output[] = "projection_txn_failure.plugin.c";
+    static const char http_output[] = "projection_txn_failure.http.h";
+    staged_projection_probe plugin = {plugin_output, "new-plugin", 0u, 0};
+    staged_projection_probe http = {http_output, "partial-http", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), plugin_output, NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_output, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
+         staged_projection_generate, &plugin,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = header,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(header);
+    (void)remove(plugin_output);
+    (void)remove(http_output);
+    check_true(write_sentinel(header, "old-header"));
+    check_true(write_sentinel(plugin_output, "old-plugin"));
+    check_true(write_sentinel(http_output, "old-http"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(plugin.calls, (size_t)1u);
+    check_equal(http.calls, (size_t)1u);
+    check_true(file_matches(header, "old-header"));
+    check_true(file_matches(plugin_output, "old-plugin"));
+    check_true(file_matches(http_output, "old-http"));
+
+    (void)remove(header);
+    (void)remove(plugin_output);
+    (void)remove(http_output);
+    /* Failed generators must also leave previously absent outputs absent. */
+    check_equal(tbe_compiler_run(&options), 1);
+    check_false(file_exists(header));
+    check_false(file_exists(plugin_output));
+    check_false(file_exists(http_output));
+    (void)remove(header);
+    (void)remove(plugin_output);
+    (void)remove(http_output);
+  }
+
+  it("rejects incomplete or dishonest selected staging capability sets") {
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "first.c", NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "second.h", NULL},
+    };
+    staged_projection_probe plugin = {"first.c", "data", 0u, 0};
+    staged_projection_probe http = {"second.h", "data", 0u, 0};
+    databind_compiler_projection_backend backends[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
+         staged_projection_generate, &plugin,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED},
+    };
+    check_false(databind_compiler_projection_all_staged_single(
+        requests, 2u, backends, 2u));
+    backends[1].output_policy = DATABIND_COMPILER_OUTPUT_STAGED_SINGLE;
+    check_true(databind_compiler_projection_all_staged_single(
+        requests, 2u, backends, 2u));
+    backends[1].output_policy = (databind_compiler_output_policy)13;
+    check_false(databind_compiler_projection_selection_valid(
+        requests, 2u, backends, 2u));
+    check_false(databind_compiler_projection_all_staged_single(
+        requests, 2u, backends, 2u));
   }
 
   it("rejects an incomplete typed set before rendering caller outputs") {
