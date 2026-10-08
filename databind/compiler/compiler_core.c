@@ -3346,9 +3346,12 @@ static int tbe_compiler_validate_options(const tbe_compiler_options_t *options,
   return 1;
 }
 
-int databind_compiler_parse_contract_file(
+/* The caller selects whether this producer needs Binary wire lowering.
+ * Source-language contract admission is independent of that choice. */
+static int databind_compiler_parse_contract_file_mode(
     const char *schema_path, Node **out_legacy_tree,
-    IdlContract **out_contract, char **out_schema_data) {
+    IdlContract **out_contract, char **out_schema_data,
+    int require_binary_format) {
   tbe_error_t parse_err;
   IdlDiagnostic contract_error = IDL_DIAGNOSTIC_INIT;
   IdlContract *contract = NULL;
@@ -3397,20 +3400,30 @@ int databind_compiler_parse_contract_file(
     return 1;
   }
 
-  if (databind_binary_contract_apply(root, &parse_err) != 0) {
-    fprintf(stderr, "TBE format error: %s\n", parse_err.message);
-    idl_contract_destroy(contract);
-    free(schema_data);
-    node_free(root);
-    return 1;
+  if (require_binary_format) {
+    if (databind_binary_contract_apply(root, &parse_err) != 0) {
+      fprintf(stderr, "Binary format error: %s\n", parse_err.message);
+      idl_contract_destroy(contract);
+      free(schema_data);
+      node_free(root);
+      return 1;
+    }
+    /* Ordinary C/legacy language output still consumes the Binary-derived
+     * presentation tree. SQL uses only the typed Contract -> database IR. */
+    tbe_compiler_annotate_language_types(contract, root);
   }
-
-  tbe_compiler_annotate_language_types(contract, root);
 
   *out_legacy_tree = root;
   *out_contract = contract;
   *out_schema_data = schema_data;
   return 0;
+}
+
+int databind_compiler_parse_contract_file(
+    const char *schema_path, Node **out_legacy_tree,
+    IdlContract **out_contract, char **out_schema_data) {
+  return databind_compiler_parse_contract_file_mode(
+      schema_path, out_legacy_tree, out_contract, out_schema_data, 1);
 }
 
 int tbe_compiler_parse_schema_file(
@@ -3771,8 +3784,9 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   }
   database_language = tbe_compiler_is_database_language(options->lang_enum);
   if (!tbe_compiler_validate_options(options, lang_name)) return 1;
-  int status = databind_compiler_parse_contract_file(
-      options->schema_path, &task->root, &task->contract, &task->schema_data);
+  int status = databind_compiler_parse_contract_file_mode(
+      options->schema_path, &task->root, &task->contract,
+      &task->schema_data, !database_language);
   if (status != 0) return status;
 
   /*
