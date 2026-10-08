@@ -4727,6 +4727,9 @@ static int tbe_compiler_txn_commit(
     item->had_original = 1;
     if (tbe_compiler_txn_reserve(
             item->final_path, &item->backup_path) != 0) {
+      /* reserve() may fail only after creating/closing a unique file.
+       * Retain its ownership so rollback can remove that failed reservation. */
+      item->backup_reserved = item->backup_path != NULL;
       fprintf(stderr, "Failed to reserve output backup: %s\n",
               item->final_path);
       goto rollback;
