@@ -566,6 +566,48 @@ describe("compiler integration") {
     (void)remove(shared_output);
   }
 
+  it("rejects Native Service source collision with transport output") {
+    static const char primary[] = "projection_native_source_collision.h";
+    static const char shared[] = "projection_native_source_collision.http.h";
+    static const char service_header[] = "projection_native_source_collision.service.h";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = service_header};
+    staged_projection_probe http = {shared, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), shared, &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), shared, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(shared);
+    (void)remove(service_header);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(shared, "old-shared"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(shared, "old-shared"));
+    check_false(file_exists(service_header));
+    (void)remove(primary);
+    (void)remove(shared);
+    (void)remove(service_header);
+  }
+
   it("rejects mixed self-publishing Native Service selections without touching output") {
     static const char primary[] = "projection_native_unsupported.h";
     static const char source[] = "projection_native_unsupported.service.c";
