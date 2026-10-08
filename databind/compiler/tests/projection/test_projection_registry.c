@@ -564,6 +564,48 @@ describe("compiler integration") {
     (void)remove(primary);
   }
 
+  it("rejects self-publishing backend before Native Service without invoking it") {
+    static const char primary[] = "projection_native_order.h";
+    static const char service_source[] = "projection_native_order.service.c";
+    static const char service_header[] = "projection_native_order.service.h";
+    static const char transport_output[] = "projection_native_order.http.h";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = service_header};
+    staged_projection_probe http = {transport_output, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), transport_output, NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), service_source, &config},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED},
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(service_header);
+    (void)remove(transport_output);
+    check_true(write_sentinel(primary, "original-primary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-primary"));
+    check_false(file_exists(service_source));
+    check_false(file_exists(service_header));
+    check_false(file_exists(transport_output));
+    check_equal(http.calls, (size_t)0u);
+    (void)remove(primary);
+  }
+
   it("rejects incomplete or dishonest selected staging capability sets") {
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "first.c", NULL},
