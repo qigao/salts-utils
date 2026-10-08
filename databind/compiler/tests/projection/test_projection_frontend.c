@@ -60,6 +60,17 @@ spec("DataBind public typed generation frontend") {
                plan.plugin_client_header);
     check_true(plan.plugin.client_source_output ==
                plan.plugin_client_source);
+    /* The manifest also includes all three secondary Plugin outputs. */
+    check_equal(plan.output_count, (size_t)5u);
+    check_equal(plan.outputs[0].path, input.output_path);
+    check_equal(plan.outputs[1].path, plan.plugin_source);
+    check_equal(plan.outputs[2].path, plan.plugin_service_header);
+    check_equal(plan.outputs[3].path, plan.plugin_client_header);
+    check_equal(plan.outputs[4].path, plan.plugin_client_source);
+    check_equal(plan.outputs[4].owner.axis,
+                DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT);
+    check_equal(plan.outputs[4].owner.kind,
+                (uint32_t)DATABIND_COMPILER_ARTIFACT_PLUGIN);
   }
 
   it("lowers one transport-neutral NATIVE Service artifact") {
@@ -91,6 +102,11 @@ spec("DataBind public typed generation frontend") {
     check_equal(plan.native_service.native_header, "calc_native.h");
     check_true(plan.native_service.header_output ==
                plan.native_service_header);
+    check_equal(plan.output_count, (size_t)4u);
+    check_equal(plan.outputs[0].path, input.output_path);
+    check_equal(plan.outputs[1].path, input.source_output_path);
+    check_equal(plan.outputs[2].path, plan.requests[0].output);
+    check_equal(plan.outputs[3].path, plan.native_service_header);
 
     databind_compiler_projection_frontend_dispose(&plan);
 
@@ -136,6 +152,10 @@ spec("DataBind public typed generation frontend") {
     check_equal(plan.backends[1].name, "http");
     check_equal(path_base(plan.requests[1].output, base),
                 "users.http.h");
+    check_equal(plan.output_count, (size_t)3u);
+    check_equal(plan.outputs[0].path, input.output_path);
+    check_equal(plan.outputs[1].path, plan.openapi_output);
+    check_equal(plan.outputs[2].path, plan.http_projection_header);
   }
 
   it("rejects OpenAPI without the HTTP transport authority") {
@@ -505,6 +525,99 @@ spec("DataBind public typed generation frontend") {
                     &input, &plan, error, sizeof(error)),
                 -1);
     check_not_null(strstr(error, "collide"));
+  }
+
+  it("enumerates all mixed primary and secondary output paths for transaction planning") {
+    databind_compiler_projection_frontend_input input = {
+        .artifacts = "native,plugin,wasm,openapi",
+        .transports = "http",
+        .component_id = "Image.ImageProcessor",
+        .artifact_name = "image",
+        .artifact_version = "1.2.3",
+        .wasm_core_module_path = __FILE__,
+        .output_path = "generated/image_native.h",
+        .source_output_path = "generated/image_native.c",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+    size_t i;
+    size_t j;
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), 0);
+    check_equal(plan.request_count, (size_t)5u);
+    check_equal(plan.output_count, (size_t)14u);
+
+    /* Built-in outputs and every request/secondary publication destination. */
+    check_equal(plan.outputs[0].path, input.output_path);
+    check_equal(plan.outputs[1].path, input.source_output_path);
+    check_equal(plan.outputs[2].path, plan.native_service_source);
+    check_equal(plan.outputs[3].path, plan.native_service_header);
+    check_equal(plan.outputs[4].path, plan.plugin_source);
+    check_equal(plan.outputs[5].path, plan.plugin_service_header);
+    check_equal(plan.outputs[6].path, plan.plugin_client_header);
+    check_equal(plan.outputs[7].path, plan.plugin_client_source);
+    check_equal(plan.outputs[8].path, plan.wasm_component_output);
+    check_equal(plan.outputs[9].path, plan.wasm_host_header);
+    check_equal(plan.outputs[10].path, plan.wasm_host_source);
+    check_equal(plan.outputs[11].path, plan.wasm_guest_header);
+    check_equal(plan.outputs[12].path, plan.openapi_output);
+    check_equal(plan.outputs[13].path, plan.http_projection_header);
+    check_equal(plan.outputs[0].owner.axis, 0);
+    check_equal(plan.outputs[1].owner.axis, 0);
+    check_equal(plan.outputs[11].owner.kind,
+                (uint32_t)DATABIND_COMPILER_ARTIFACT_WASM);
+    check_equal(plan.outputs[13].owner.axis,
+                DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT);
+    check_equal(plan.outputs[13].owner.kind,
+                (uint32_t)DATABIND_COMPILER_TRANSPORT_HTTP);
+
+    for (i = 0u; i < plan.output_count; ++i) {
+      check_not_null(plan.outputs[i].path);
+      for (j = 0u; j < i; ++j)
+        check_true(strcmp(plan.outputs[i].path, plan.outputs[j].path) != 0);
+    }
+    databind_compiler_projection_frontend_dispose(&plan);
+  }
+
+  it("rejects secondary artifact collisions without leaving a partial manifest") {
+    databind_compiler_projection_frontend_input input = {
+        .artifacts = "plugin",
+        .component_id = "Image.ImageProcessor",
+        .artifact_name = "image",
+        .artifact_version = "1.2.3",
+        .output_path = "generated/image_native.h",
+        .guest_output_path = "generated/image.plugin_client.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+    check_not_null(strstr(error, "collide"));
+    check_equal(plan.output_count, (size_t)0u);
+
+#ifdef _WIN32
+    /* Windows cmeta_fs_path_join uses backslash while the caller may use
+     * forward slash; both must name the same output and be rejected.
+     * Filename comparisons on Windows are ordinarily case-insensitive. */
+    input.guest_output_path = "generated\\image.plugin_client.h";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+    check_not_null(strstr(error, "collide"));
+    check_equal(plan.output_count, (size_t)0u);
+
+    input.guest_output_path = "GENERATED/IMAGE.PLUGIN_CLIENT.H";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+    check_not_null(strstr(error, "collide"));
+    check_equal(plan.output_count, (size_t)0u);
+#else
+    /* POSIX considers backslash part of a filename, not a separator. */
+    input.guest_output_path = "generated\\image.plugin_client.h";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), 0);
+    check_equal(plan.output_count, (size_t)6u);
+    databind_compiler_projection_frontend_dispose(&plan);
+#endif
   }
 
   it("keeps an empty projection set inert") {
