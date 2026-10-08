@@ -77,6 +77,33 @@ static int parse_version(
   return *cursor == '\0';
 }
 
+/* Compare *output pathnames* using the target platform's lexical rules.
+ * cmeta_fs_path_join() inserts '\\' on Windows, while the CLI and configs
+ * can supply the same destination with '/'. Plain strcmp misses the collision.
+ * Windows paths are also normally case-insensitive. Retain exact byte-wise
+ * comparison on POSIX, where backslash and case can identify distinct paths.
+ *
+ * This is an output collision preflight, not a file-system canonicalizer.
+ * Other aliasing through symlinks or 8.3 paths must not be assumed resolved. */
+static int frontend_output_path_equal(const char *left, const char *right) {
+  if (left == NULL || right == NULL)
+    return 0;
+#ifdef _WIN32
+  while (*left != '\0' && *right != '\0') {
+    unsigned char a = (unsigned char)*left++;
+    unsigned char b = (unsigned char)*right++;
+    if (a == '\\') a = '/';
+    if (b == '\\') b = '/';
+    if (a >= 'A' && a <= 'Z') a = (unsigned char)(a - 'A' + 'a');
+    if (b >= 'A' && b <= 'Z') b = (unsigned char)(b - 'A' + 'a');
+    if (a != b) return 0;
+  }
+  return *left == *right;
+#else
+  return strcmp(left, right) == 0;
+#endif
+}
+
 static int path_reserved(
     const databind_compiler_projection_frontend_input *input,
     const char *path) {
@@ -90,7 +117,7 @@ static int path_reserved(
   };
   size_t i;
   for (i = 0u; i < sizeof(reserved) / sizeof(reserved[0]); ++i)
-    if (reserved[i] != NULL && strcmp(reserved[i], path) == 0)
+    if (frontend_output_path_equal(reserved[i], path))
       return 1;
   return 0;
 }
@@ -145,8 +172,7 @@ static int projection_output_in_use(
   size_t i;
   if (out == NULL || path == NULL) return 0;
   for (i = 0u; i < out->request_count; ++i)
-    if (out->requests[i].output != NULL &&
-        strcmp(out->requests[i].output, path) == 0)
+    if (frontend_output_path_equal(out->requests[i].output, path))
       return 1;
   return 0;
 }
@@ -202,7 +228,8 @@ static int add_native_service(
         error, error_size,
         "Derived native Service artifact output path is too long");
 
-  if (strcmp(out->native_service_header, out->native_service_source) == 0 ||
+  if (frontend_output_path_equal(
+          out->native_service_header, out->native_service_source) ||
       path_reserved(input, out->native_service_header) ||
       path_reserved(input, out->native_service_source) ||
       projection_output_in_use(out, out->native_service_header) ||
@@ -524,12 +551,12 @@ static int add_plugin(
         error, error_size,
         "Derived projection output path is too long");
 
-  if (strcmp(out->plugin_source, out->plugin_service_header) == 0 ||
-      strcmp(out->plugin_source, out->plugin_client_header) == 0 ||
-      strcmp(out->plugin_source, out->plugin_client_source) == 0 ||
-      strcmp(out->plugin_service_header, out->plugin_client_header) == 0 ||
-      strcmp(out->plugin_service_header, out->plugin_client_source) == 0 ||
-      strcmp(out->plugin_client_header, out->plugin_client_source) == 0 ||
+  if (frontend_output_path_equal(out->plugin_source, out->plugin_service_header) ||
+      frontend_output_path_equal(out->plugin_source, out->plugin_client_header) ||
+      frontend_output_path_equal(out->plugin_source, out->plugin_client_source) ||
+      frontend_output_path_equal(out->plugin_service_header, out->plugin_client_header) ||
+      frontend_output_path_equal(out->plugin_service_header, out->plugin_client_source) ||
+      frontend_output_path_equal(out->plugin_client_header, out->plugin_client_source) ||
       path_reserved(input, out->plugin_source) ||
       path_reserved(input, out->plugin_service_header) ||
       path_reserved(input, out->plugin_client_header) ||
@@ -665,7 +692,7 @@ static int frontend_manifest_add(
     return frontend_error(error, error_size,
                           "Too many generated output paths");
   for (i = 0u; i < plan->output_count; ++i)
-    if (strcmp(plan->outputs[i].path, path) == 0)
+    if (frontend_output_path_equal(plan->outputs[i].path, path))
       return frontend_errorf(
           error, error_size,
           "Generated output path collides with another selected output: %s",
