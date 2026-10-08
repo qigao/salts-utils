@@ -1377,6 +1377,29 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("preserves IDL optional and nullable flags through Native header publication") {
+    static const char schema_path[] = "native_source_presence.schema";
+    static const char output[] = "native_source_presence.h";
+    static const char schema[] =
+        "message Packet { optional uint32 count; "
+        "nullable int16 delta; optional nullable bool active; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "bool has_count;"));
+    check_true(file_contains(output, "uint32_t count;"));
+    check_true(file_contains(output, "bool is_null_delta;"));
+    check_true(file_contains(output, "int16_t delta;"));
+    check_true(file_contains(output, "bool has_active;"));
+    check_true(file_contains(output, "bool is_null_active;"));
+    check_true(file_contains(output, "bool active;"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
   it("publishes Contract-only Native C header transactionally") {
     static const char schema_path[] = "native_source_publish.schema";
     static const char output[] = "native_source_publish.h";
