@@ -275,6 +275,66 @@ static int native_service_write_source(
   return 1;
 }
 
+/* Coordinator-only render step: stage destinations are provided by the caller.
+ * Final names remain in request/config for generated source includes.
+ * Ownership of staged files and their publication stays with the coordinator.
+ */
+int databind_compiler_native_service_render_staged(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    const char *header_stage,
+    const char *source_stage) {
+  const IdlContract *contract = input != NULL ? input->contract : NULL;
+  const databind_compiler_native_service_config *config =
+      request != NULL ? (const databind_compiler_native_service_config *)request->config : NULL;
+  databind_compiler_service_native_ir ir = {0};
+  FILE *header_file = NULL;
+  FILE *source_file = NULL;
+  int result = -1;
+
+  if (contract == NULL || request == NULL ||
+      request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT ||
+      request->id.kind != DATABIND_COMPILER_ARTIFACT_NATIVE ||
+      config == NULL || !native_service_text_valid(config->native_header) ||
+      !native_service_text_valid(config->header_output) ||
+      !native_service_text_valid(request->output) ||
+      !native_service_text_valid(header_stage) ||
+      !native_service_text_valid(source_stage) ||
+      strcmp(header_stage, source_stage) == 0 ||
+      strcmp(header_stage, config->header_output) == 0 ||
+      strcmp(source_stage, request->output) == 0 ||
+      strcmp(header_stage, request->output) == 0 ||
+      strcmp(source_stage, config->header_output) == 0 ||
+      strcmp(config->header_output, request->output) == 0)
+    return -1;
+
+  if (databind_compiler_service_native_build(contract, &ir) != 0 ||
+      ir.operations == NULL || ir.operation_count == 0u)
+    goto cleanup;
+
+  /* The transaction coordinator exclusively owns staging path cleanup.
+   * Never unlink an existing stage here: that would hide a collision. */
+  if (cmeta_fs_access(header_stage, SALTS_FS_ACCESS_EXISTS) == 0 ||
+      cmeta_fs_access(source_stage, SALTS_FS_ACCESS_EXISTS) == 0)
+    goto cleanup;
+  header_file = fopen(header_stage, "wb");
+  if (header_file == NULL) goto cleanup;
+  source_file = fopen(source_stage, "wb");
+  if (source_file == NULL) goto cleanup;
+  if (!native_service_write_header(header_file, contract, config, &ir) ||
+      !native_service_write_source(source_file, config, &ir))
+    goto cleanup;
+  if (!native_service_close(&header_file) ||
+      !native_service_close(&source_file))
+    goto cleanup;
+  result = 0;
+cleanup:
+  if (header_file != NULL) (void)fclose(header_file);
+  if (source_file != NULL) (void)fclose(source_file);
+  databind_compiler_service_native_destroy(&ir);
+  return result;
+}
+
 int databind_compiler_native_service_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
