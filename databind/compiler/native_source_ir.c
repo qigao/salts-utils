@@ -171,7 +171,17 @@ int databind_native_source_ir_write_header(
                              field->name) < 0)
         failed = 1;
     }
-    if (!failed && fprintf(out, "} %s;\n\n", record->name) < 0)
+    if (!failed && fprintf(out, "} %s;\\n", record->name) < 0)
+      failed = 1;
+    if (!failed && fprintf(out,
+        "static inline void %s_init(%s *value) {\\n"
+        "    if (value) *value = (%s){0};\\n"
+        "}\\n"
+        "static inline void %s_clear(%s *value) {\\n"
+        "    if (value) *value = (%s){0};\\n"
+        "}\\n\\n",
+        record->name, record->name, record->name,
+        record->name, record->name, record->name) < 0)
       failed = 1;
   }
   if (ferror(out)) failed = 1;
