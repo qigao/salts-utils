@@ -8,6 +8,21 @@ add_test(NAME test_databind_projection_config_stale_rejected
 set_tests_properties(test_databind_projection_config_stale_rejected
   PROPERTIES LABELS "databind;compiler;projection-config")
 
+# Reuse the canonical executable Wasm Core fixture for real artifact
+# transaction tests instead of constructing synthetic bytes in C.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(DATABIND_PROJECTION_WASM_CORE
+    "${CMAKE_CURRENT_BINARY_DIR}/projection_wasm_execution_core.wasm")
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}"
+    "${DATABIND_COMPILER_SOURCE_DIR}/package_config/wasm_execution/write_core.py"
+    "${DATABIND_PROJECTION_WASM_CORE}"
+  RESULT_VARIABLE _projection_wasm_core_status)
+if(NOT _projection_wasm_core_status EQUAL 0 OR
+   NOT EXISTS "${DATABIND_PROJECTION_WASM_CORE}")
+  message(FATAL_ERROR "Could not prepare canonical Wasm Core transaction fixture")
+endif()
+
 cmake_add_test(test_databind_projection_registry
   SOURCES
     test_projection_registry.c
@@ -29,7 +44,7 @@ cmake_add_test(test_databind_projection_registry
     SCHEMA_EXAMPLE_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/core/example.schema"
     SCHEMA_NATIVE_SERVICE_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/native/test_service_native_lowering.schema"
     SCHEMA_WASM_EXECUTION_FILE="${DATABIND_COMPILER_SOURCE_DIR}/package_config/wasm_execution/wasm_execution.schema"
-    WASM_CORE_FIXTURE_SCRIPT="${DATABIND_COMPILER_SOURCE_DIR}/package_config/wasm_execution/write_core.py"
+    WASM_CORE_FIXTURE_FILE="${DATABIND_PROJECTION_WASM_CORE}"
     TBE_COMPILER_RESOURCE_DIR="${DATABIND_COMPILER_SOURCE_DIR}"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/contract
