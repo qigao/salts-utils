@@ -594,6 +594,30 @@ spec("DataBind public typed generation frontend") {
                     &input, &plan, error, sizeof(error)), -1);
     check_not_null(strstr(error, "collide"));
     check_equal(plan.output_count, (size_t)0u);
+
+#ifdef _WIN32
+    /* Windows cmeta_fs_path_join uses backslash while the caller may use
+     * forward slash; both must name the same output and be rejected.
+     * Filename comparisons on Windows are ordinarily case-insensitive. */
+    input.guest_output_path = "generated\\image.plugin_client.h";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+    check_not_null(strstr(error, "collide"));
+    check_equal(plan.output_count, (size_t)0u);
+
+    input.guest_output_path = "GENERATED/IMAGE.PLUGIN_CLIENT.H";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+    check_not_null(strstr(error, "collide"));
+    check_equal(plan.output_count, (size_t)0u);
+#else
+    /* POSIX considers backslash part of a filename, not a separator. */
+    input.guest_output_path = "generated\\image.plugin_client.h";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), 0);
+    check_equal(plan.output_count, (size_t)6u);
+    databind_compiler_projection_frontend_dispose(&plan);
+#endif
   }
 
   it("keeps an empty projection set inert") {
