@@ -92,13 +92,26 @@ This is a *multi-file rollback protocol*, **not** a filesystem-wide atomic
 snapshot: independent path renames are not simultaneously visible to other
 processes, and external concurrent writers are outside this contract.
 
-**Scope limit:** `--artifacts` / `--transports` backend callbacks still
-own their own output paths and their transaction boundaries. They are
-registered and admitted before the primary render, but their generation
-callbacks are not yet part of a shared stage/commit protocol. Mixed
-source + selected projection cannot claim cross-backend atomicity. The
-ordinary stdout output path also cannot be rolled back once written.
-See #599 for the remaining cross-backend and C/Native format work.
+**Selected single-output projection transaction:** With a named
+`--output`, the same stage/commit/rollback session now also covers
+selected backends that explicitly declare one stage-remappable
+`request.output`. HTTP, RPC, SocketPlan, FlowMQPlan and OpenAPI each
+implement this single-file contract. Generated C headers, optional native
+source/guest/DSL and these selected backend outputs are rendered and
+completed before any of them is published. A later backend failure,
+including one after partially writing its staged file, preserves all
+previous caller files and removes otherwise-new files.
+
+**Scope limit:** Plugin, Wasm and Native Service currently publish multiple
+files through backend-specific configuration paths. They remain explicitly
+self-publishing until all their secondary outputs participate in a shared
+transaction. A mixed selection containing even one such backend **does not**
+claim shared atomicity, including the primary header. Generic callbacks must
+explicitly opt in to staged single-output behavior; the compiler does not
+infer a capability from the typed backend ID. Rollback-aware multi-file
+renames are not a simultaneous cross-process filesystem snapshot.
+Ordinary stdout cannot be rolled back. See #599 for the remaining
+multi-output backend and C/Native format work.
 
 Lua adapters are not a DataBind compiler output. Runtime Lua interoperability
 uses Salts `Salts::Lua` and `<salts/bindings/lua/cmeta.h>` against the canonical

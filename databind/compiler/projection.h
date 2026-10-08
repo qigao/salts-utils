@@ -72,11 +72,21 @@ typedef int (*databind_compiler_projection_generate_fn)(
     const databind_compiler_projection_request *request,
     void *context);
 
+/* Compiler-private publication contract. STAGED_SINGLE means generate()
+ * writes exactly request->output, can accept a unique sibling stage pathname,
+ * and does not publish any unlisted secondary files or depend on the basename
+ * of request->output in generated contents. Other backends must not opt in. */
+typedef enum databind_compiler_output_policy {
+  DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED = 0,
+  DATABIND_COMPILER_OUTPUT_STAGED_SINGLE = 1
+} databind_compiler_output_policy;
+
 typedef struct databind_compiler_projection_backend {
   databind_compiler_projection_id id;
   const char *name;
   databind_compiler_projection_generate_fn generate;
   void *context;
+  databind_compiler_output_policy output_policy;
 } databind_compiler_projection_backend;
 
 const char *databind_compiler_artifact_name(
@@ -119,6 +129,15 @@ int databind_compiler_projection_requests_valid(
  * missing-backend/invalid-registration publication gap.
  */
 int databind_compiler_projection_selection_valid(
+    const databind_compiler_projection_request *requests,
+    size_t request_count,
+    const databind_compiler_projection_backend *backends,
+    size_t backend_count);
+
+/* True only if every selected generator explicitly guarantees exactly one
+ * stage-remappable output. The compiler uses this to enable shared output
+ * staging for eligible backend sets, never by guessing from typed IDs. */
+int databind_compiler_projection_all_staged_single(
     const databind_compiler_projection_request *requests,
     size_t request_count,
     const databind_compiler_projection_backend *backends,

@@ -4599,7 +4599,7 @@ failed:
  * those callbacks may publish multiple files through backend-owned configs
  * and need a separate transaction API before cross-backend atomicity is real.
  */
-enum { TBE_COMPILER_BUILTIN_OUTPUT_LIMIT = 4u };
+enum { TBE_COMPILER_TRANSACTION_OUTPUT_LIMIT = 32u };
 
 typedef struct tbe_compiler_staged_output {
   const char *final_path;
@@ -4612,7 +4612,7 @@ typedef struct tbe_compiler_staged_output {
 } tbe_compiler_staged_output;
 
 typedef struct tbe_compiler_output_transaction {
-  tbe_compiler_staged_output items[TBE_COMPILER_BUILTIN_OUTPUT_LIMIT];
+  tbe_compiler_staged_output items[TBE_COMPILER_TRANSACTION_OUTPUT_LIMIT];
   size_t count;
 } tbe_compiler_output_transaction;
 
@@ -4643,9 +4643,15 @@ static int tbe_compiler_txn_reserve(
 static int tbe_compiler_txn_add(
     tbe_compiler_output_transaction *txn, const char *final_path) {
   tbe_compiler_staged_output *output;
+  size_t i;
   if (txn == NULL || final_path == NULL || final_path[0] == '\0' ||
-      txn->count >= TBE_COMPILER_BUILTIN_OUTPUT_LIMIT)
+      txn->count >= TBE_COMPILER_TRANSACTION_OUTPUT_LIMIT)
     return -1;
+  for (i = 0u; i < txn->count; ++i)
+    if (strcmp(txn->items[i].final_path, final_path) == 0) {
+      fprintf(stderr, "Duplicate generated transaction output: %s\n", final_path);
+      return -1;
+    }
   output = &txn->items[txn->count++];
   output->final_path = final_path;
   if (tbe_compiler_txn_reserve(final_path, &output->staging_path) != 0) {
@@ -4847,11 +4853,13 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   const char *resolved_template = NULL;
   const char *lang_name = tbe_compiler_language_name(options->lang_enum);
   tbe_compiler_output_transaction builtins = {0};
+  databind_compiler_projection_request *transaction_requests = NULL;
   const char *primary_output_path = options->output_path;
   const char *source_output_path = options->source_output_path;
   const char *guest_output_path = options->guest_output_path;
   const char *dsl_output_path = options->dsl_output_path;
   int transactional_outputs = 0;
+  int backend_transaction = 0;
   int database_language;
   int source_language;
   if (lang_name == NULL) {
@@ -5034,14 +5042,19 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       return 1;
     }
   }
-  /* Only compiler-owned render paths are enrolled here. Projection backends
-   * have independent callback-owned output paths and cannot share a
-   * transaction until they expose an explicit stage/commit contract. */
-  transactional_outputs = options->projection_count == 0u &&
-      options->output_path != NULL &&
-      (options->source_output_path != NULL ||
-       options->guest_output_path != NULL ||
-       options->dsl_output_path != NULL);
+  /* A backend can participate only after explicitly declaring that its
+   * *single* named output can be redirected to a sibling stage pathname.
+   * Plugin/Wasm/Native Service are multi-output and remain self-publishing;
+   * never guess their secondary outputs from a request->output suffix. */
+  backend_transaction = databind_compiler_projection_all_staged_single(
+      options->projection_requests, options->projection_count,
+      options->projection_backends, options->projection_backend_count);
+  transactional_outputs = options->output_path != NULL &&
+      (backend_transaction ||
+       (options->projection_count == 0u &&
+        (options->source_output_path != NULL ||
+         options->guest_output_path != NULL ||
+         options->dsl_output_path != NULL)));
   if (transactional_outputs) {
     if (tbe_compiler_txn_add(&builtins, options->output_path) != 0)
       goto builtin_stage_failure;
@@ -5060,6 +5073,24 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       if (tbe_compiler_txn_add(&builtins, options->dsl_output_path) != 0)
         goto builtin_stage_failure;
       dsl_output_path = builtins.items[builtins.count - 1u].staging_path;
+    }
+    if (backend_transaction) {
+      size_t i;
+      if (options->projection_count >
+          SIZE_MAX / sizeof(*transaction_requests))
+        goto builtin_stage_failure;
+      transaction_requests = (databind_compiler_projection_request *)calloc(
+          options->projection_count, sizeof(*transaction_requests));
+      if (transaction_requests == NULL)
+        goto builtin_stage_failure;
+      for (i = 0u; i < options->projection_count; ++i) {
+        transaction_requests[i] = options->projection_requests[i];
+        if (tbe_compiler_txn_add(
+                &builtins, transaction_requests[i].output) != 0)
+          goto builtin_stage_failure;
+        transaction_requests[i].output =
+            builtins.items[builtins.count - 1u].staging_path;
+      }
     }
   }
   status = tbe_compiler_render_file(
@@ -5109,7 +5140,8 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
         .binary_format = &task->binary_format};
     if (databind_compiler_projection_run(
             &projection_input,
-            options->projection_requests,
+            transaction_requests != NULL
+                ? transaction_requests : options->projection_requests,
             options->projection_count,
             options->projection_backends,
             options->projection_backend_count) != 0)
@@ -5120,15 +5152,19 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     if (status != 0) {
       if (tbe_compiler_txn_abort(&builtins) != 0)
         fprintf(stderr, "Failed cleaning abandoned compiler outputs\n");
+      free(transaction_requests);
       return 1;
     }
-    return tbe_compiler_txn_commit(&builtins) == 0 ? 0 : 1;
+    status = tbe_compiler_txn_commit(&builtins);
+    free(transaction_requests);
+    return status == 0 ? 0 : 1;
   }
   return status;
 
 builtin_stage_failure:
   if (tbe_compiler_txn_abort(&builtins) != 0)
     fprintf(stderr, "Failed cleaning compiler staging output files\n");
+  free(transaction_requests);
   return 1;
 }
 

@@ -144,7 +144,9 @@ static int backends_valid(
     if (!projection_id_known(backends[i].id) ||
         backends[i].name == NULL ||
         backends[i].name[0] == '\0' ||
-        backends[i].generate == NULL)
+        backends[i].generate == NULL ||
+        (backends[i].output_policy != DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED &&
+         backends[i].output_policy != DATABIND_COMPILER_OUTPUT_STAGED_SINGLE))
       return 0;
 
     canonical_name = databind_compiler_projection_id_name(backends[i].id);
@@ -185,6 +187,27 @@ int databind_compiler_projection_selection_valid(
   for (i = 0u; i < request_count; ++i)
     if (find_backend(backends, backend_count, requests[i].id) == NULL)
       return 0;
+  return 1;
+}
+
+int databind_compiler_projection_all_staged_single(
+    const databind_compiler_projection_request *requests,
+    size_t request_count,
+    const databind_compiler_projection_backend *backends,
+    size_t backend_count) {
+  size_t i;
+  if (request_count == 0u ||
+      !databind_compiler_projection_selection_valid(
+          requests, request_count, backends, backend_count))
+    return 0;
+  for (i = 0u; i < request_count; ++i) {
+    const databind_compiler_projection_backend *backend =
+        find_backend(backends, backend_count, requests[i].id);
+    if (backend == NULL ||
+        backend->output_policy != DATABIND_COMPILER_OUTPUT_STAGED_SINGLE ||
+        requests[i].output == NULL || requests[i].output[0] == '\0')
+      return 0;
+  }
   return 1;
 }
 

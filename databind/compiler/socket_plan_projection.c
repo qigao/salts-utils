@@ -325,6 +325,7 @@ databind_compiler_socket_plan_backend(void) {
        DATABIND_COMPILER_TRANSPORT_SOCKET},
       "socket",
       socket_generate,
-      NULL};
+      NULL,
+      DATABIND_COMPILER_OUTPUT_STAGED_SINGLE};
   return backend;
 }
