@@ -20,6 +20,24 @@ static int write_text_file(const char *path, const char *text) {
   return fclose(file);
 }
 
+static int test_render_file_contains(const char *path, const char *fragment) {
+  FILE *file = fopen(path, "rb");
+  char content[8192];
+  size_t length;
+  if (file == NULL || fragment == NULL) {
+    if (file != NULL) fclose(file);
+    return 0;
+  }
+  length = fread(content, 1u, sizeof(content) - 1u, file);
+  if (ferror(file) || !feof(file)) {
+    fclose(file);
+    return 0;
+  }
+  content[length] = '\0';
+  fclose(file);
+  return strstr(content, fragment) != NULL;
+}
+
 static int file_exists(const char *path) {
   FILE *file = fopen(path, "rb");
   if (!file) return 0;
@@ -28,14 +46,13 @@ static int file_exists(const char *path) {
 }
 
 spec("tbe_compiler_schema_boundary") {
-  it("rejects varint before every language target can publish output") {
+  it("rejects varint in format/native backends lacking a projection") {
     static const int64_t languages[] = {
         TBE_COMPILER_LANG_C,
         TBE_COMPILER_LANG_PYTHON,
         TBE_COMPILER_LANG_RUST,
         TBE_COMPILER_LANG_CPP,
         TBE_COMPILER_LANG_GO,
-        TBE_COMPILER_LANG_TS,
         TBE_COMPILER_LANG_SQLITE,
         TBE_COMPILER_LANG_POSTGRESQL,
     };
@@ -45,7 +62,6 @@ spec("tbe_compiler_schema_boundary") {
         "test_varint_boundary_rust.out",
         "test_varint_boundary_cpp.out",
         "test_varint_boundary_go.out",
-        "test_varint_boundary_ts.out",
         "test_varint_boundary_sqlite.out",
         "test_varint_boundary_postgresql.out",
     };
@@ -346,6 +362,118 @@ spec("idl_contract_logical_type_admission") {
     remove(schema_path);
     remove(output_path);
     check_equal(write_text_file(schema_path, idl), 0);
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_false(file_exists(output_path));
+    remove(schema_path);
+    remove(output_path);
+  }
+}
+
+spec("typescript_contract_render_ir") {
+  it("generates exact logical types when Binary field ordering is invalid") {
+    static const char schema_path[] = "ts_contract_no_binary.schema";
+    static const char output_path[] = "ts_contract_no_binary.ts";
+    static const char binary_path[] = "ts_contract_no_binary.h";
+    static const char schema[] =
+        "schema Render; "
+        "enum Status <uint8> { Idle = 0; Ready = 1; } "
+        "message Record { uint32 id; } "
+        "message Envelope { "
+        "string description; uint32 count; "
+        "optional nullable list<map<string,Record>> nested; "
+        "varint counter; int64 long_total; uint64 big_total; "
+        "bytes(16) digest; Status status; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_TS,
+    };
+    remove(schema_path);
+    remove(output_path);
+    remove(binary_path);
+    check_equal(write_text_file(schema_path, schema), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(output_path, "export enum Status"));
+    check_true(test_render_file_contains(output_path, "description: string;"));
+    check_true(test_render_file_contains(output_path, "count: number;"));
+    check_true(test_render_file_contains(output_path,
+                "nested?: Array<Map<string, Record>> | null;"));
+    check_true(test_render_file_contains(output_path, "counter: bigint;"));
+    check_true(test_render_file_contains(output_path, "long_total: bigint;"));
+    check_true(test_render_file_contains(output_path, "big_total: bigint;"));
+    check_true(test_render_file_contains(output_path, "digest: Uint8Array;"));
+    check_true(test_render_file_contains(output_path, "status: Status;"));
+
+    options.lang_enum = TBE_COMPILER_LANG_C;
+    options.output_path = binary_path;
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_false(file_exists(binary_path));
+    remove(schema_path);
+    remove(output_path);
+    remove(binary_path);
+  }
+
+  it("honors an explicit Mustache template using only typed presentation data") {
+    static const char schema_path[] = "ts_contract_custom.schema";
+    static const char template_path[] = "ts_contract_custom.mustache";
+    static const char output_path[] = "ts_contract_custom.ts";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .template_path = template_path,
+        .output_path = output_path,
+        .lang_enum = TBE_COMPILER_LANG_TS,
+    };
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path,
+        "schema Custom; message Event { varint id; optional bool enabled; }"), 0);
+    check_equal(write_text_file(template_path,
+        "{{schema.schema_name}}:{{#messages}}{{name}}:{{#fields}}"
+        "{{name}}={{ts_type}};{{/fields}}{{/messages}}"), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(
+        output_path, "Custom:Event:id=bigint;enabled=boolean;"));
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+  }
+
+  it("fails closed when a logical builtin has no TS representation") {
+    static const char schema_path[] = "ts_contract_domain.schema";
+    static const char output_path[] = "ts_contract_domain.ts";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_TS,
+    };
+    remove(schema_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path,
+        "message Event { datetime observed; }"), 0);
+    check_equal(write_text_file(output_path, "unchanged-output"), 0);
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(output_path, "unchanged-output"));
+    remove(schema_path);
+    remove(output_path);
+  }
+
+  it("rejects unsupported union declarations without silently omitting them") {
+    static const char schema_path[] = "ts_contract_union.schema";
+    static const char output_path[] = "ts_contract_union.ts";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_TS,
+    };
+    remove(schema_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path,
+        "message Event { uint32 id; } "
+        "union Message { Event payload; }"), 0);
     check_not_equal(tbe_compiler_run(&options), 0);
     check_false(file_exists(output_path));
     remove(schema_path);
