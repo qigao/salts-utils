@@ -148,6 +148,26 @@ static bool run_value(void *user, const cmeta_type_desc *type, const void *value
   return true;
 }
 
+/* Initial native snapshot events can precede the first resume on macOS.
+ * Consume them before testing arm/cancel concurrency, but never hide a
+ * terminal/error state or wait indefinitely on a broken event producer. */
+static cflow_step resume_until_wait(cflow_publisher *source,
+                                    cflow_fs_watch_publisher_owner *owner,
+                                    cflow_publish_context *context,
+                                    watch_value *value) {
+  cflow_step step = {0};
+  size_t attempt;
+  for (attempt = 0u; attempt < 5000u; ++attempt) {
+    step = cflow_publisher_resume(source, context, value);
+    if (step.kind != CFLOW_STEP_VALUE &&
+        step.kind != CFLOW_STEP_VALUE_AND_DONE) return step;
+    if (value->kind == CFLOW_FS_WATCH_RESCAN_REQUIRED &&
+        cflow_fs_watch_publisher_owner_acknowledge_rescan(owner) != SALTS_OK)
+      return (cflow_step){CFLOW_STEP_ERROR, {0}, "initial rescan acknowledgement failed"};
+  }
+  return (cflow_step){CFLOW_STEP_ERROR, {0}, "initial native watch event drain exceeded limit"};
+}
+
 static void run_error(void *user, const char *message) {
   run_probe *probe = (run_probe *)user;
   if (probe != NULL) probe->error = message;
@@ -375,7 +395,7 @@ spec("CFlow filesystem watch Publisher") {
     check_not_null(root);
     check_equal(cmeta_fs_path_join(path, sizeof(path), root, "blocked.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
-    step = cflow_publisher_resume(&source, &resume, &value);
+    step = resume_until_wait(&source, &owner, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
     check_true(cflow_waitable_arm(&step.waitable, (cflow_waker){blocking_wake, &wake}));
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
