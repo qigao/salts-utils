@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 typedef struct wasm_buffer {
   unsigned char *data;
@@ -958,6 +959,18 @@ static int wasm_write_host_header_adapter(
   return wasm_write_host_header(file, config, views, view_count);
 }
 
+/* Stages are exclusive zero-byte reservations owned by the compiler.
+ * Never overwrite a pre-populated file or a non-regular path. */
+static int wasm_stage_reserved_empty(const char *path) {
+  struct stat info;
+  if (path == NULL || stat(path, &info) != 0) return 0;
+#ifdef _WIN32
+  return (info.st_mode & _S_IFMT) == _S_IFREG && info.st_size == 0;
+#else
+  return S_ISREG(info.st_mode) && info.st_size == 0;
+#endif
+}
+
 /* Render the complete Wasm artifact set into coordinator-owned stage paths.
  * The config retains final names for semantic identifiers and includes.
  * On failure the coordinator owns removal of any partially written stages.
@@ -999,6 +1012,8 @@ int databind_compiler_wasm_render_staged(
       if (strcmp(paths[i], paths[j]) == 0)
         return -1;
   }
+  for (i = 0u; i < 4u; ++i)
+    if (!wasm_stage_reserved_empty(paths[i])) return -1;
   staged_config = *config;
   staged_config.host_header_output = host_header_stage;
   staged_config.host_source_output = host_source_stage;
