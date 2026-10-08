@@ -158,7 +158,7 @@ int main(int argc, char **argv) {
       FILE *staged = fopen(source_stage, "rb");
       char include_line[4096] = {0};
       const char *final_name = strrchr(argv[2], '/');
-      const char *windows_name = strrchr(argv[2], '\\\\');
+      const char *windows_name = strrchr(argv[2], '\\');
       if (windows_name != NULL &&
           (final_name == NULL || windows_name > final_name))
         final_name = windows_name;
@@ -167,7 +167,7 @@ int main(int argc, char **argv) {
           fgets(include_line, sizeof(include_line), staged) == NULL ||
           strstr(include_line, final_name) == NULL ||
           strstr(include_line, ".stage-smoke") != NULL) {
-        fprintf(stderr, "service-native-codegen: staging path leaked into include\\n");
+        fprintf(stderr, "service-native-codegen: staging path leaked into include\n");
         if (staged != NULL) (void)fclose(staged);
         (void)remove(header_stage);
         (void)remove(source_stage);
