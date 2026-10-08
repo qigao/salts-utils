@@ -1414,6 +1414,25 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("rejects reserved C record and field identifiers without publishing") {
+    static const char output[] = "native_reserved_identifiers.h";
+    databind_native_source_field field = {"value", "uint32_t", 0, 0};
+    databind_native_source_record record = {"struct", 1u, &field};
+    databind_native_source_ir ir = {1u, &record};
+    (void)remove(output);
+    check_true(write_sentinel(output, "original-c-header"));
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "original-c-header"));
+    record.name = "Packet";
+    field.name = "while";
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "original-c-header"));
+    field.name = "_reserved";
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "original-c-header"));
+    (void)remove(output);
+  }
+
   it("publishes Contract-only Native C header transactionally") {
     static const char schema_path[] = "native_source_publish.schema";
     static const char output[] = "native_source_publish.h";
