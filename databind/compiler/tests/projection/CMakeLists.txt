@@ -28,6 +28,7 @@ cmake_add_test(test_databind_projection_registry
     test_projection_registry.c
     "${DATABIND_COMPILER_SOURCE_DIR}/projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/native_source_ir.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/wasm_projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/plugin_projection.c"
