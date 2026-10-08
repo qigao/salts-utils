@@ -356,4 +356,5 @@ const databind_compiler_projection_backend
         "native",
         databind_compiler_native_service_generate,
         NULL,
+        DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED,
 };
