@@ -182,3 +182,42 @@ spec("tbe_compiler_default_type_identity") {
     check_equal(definitions, (size_t)1u);
   }
 }
+
+spec("idl_contract_data_name_admission") {
+  it("rejects duplicate fields before publishing an immutable contract") {
+    static const char idl[] =
+        "schema Sample; message Packet { int32 id; uint32 id; }";
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    check_false(idl_contract_parse(idl, sizeof(idl) - 1u, &contract, &diagnostic));
+    check_null(contract);
+    check_equal(diagnostic.status, IDL_SEMANTIC_ERROR);
+    check_true(strstr(diagnostic.message,
+                      "Duplicate field 'id' in Data declaration 'Packet'") != NULL);
+  }
+
+  it("rejects colliding Data names across declaration kinds") {
+    static const char idl[] =
+        "schema Sample; message Packet { int32 id; } "
+        "composite Packet { uint32 id; }";
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    check_false(idl_contract_parse(idl, sizeof(idl) - 1u, &contract, &diagnostic));
+    check_null(contract);
+    check_equal(diagnostic.status, IDL_SEMANTIC_ERROR);
+    check_true(strstr(diagnostic.message,
+                      "Duplicate Data declaration 'Packet'") != NULL);
+  }
+
+  it("allows the same field name in unrelated Data declarations") {
+    static const char idl[] =
+        "schema Sample; message Request { int32 id; } "
+        "composite Response { uint32 id; }";
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    check_true(idl_contract_parse(idl, sizeof(idl) - 1u, &contract, &diagnostic));
+    check_not_null(contract);
+    check_equal(diagnostic.status, IDL_OK);
+    idl_contract_destroy(contract);
+  }
+}
