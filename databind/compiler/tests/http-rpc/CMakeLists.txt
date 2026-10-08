@@ -8,7 +8,7 @@ add_executable(databind_method_plan_projection_fixture_gen
   "${DATABIND_COMPILER_SOURCE_DIR}/projection.c"
   "${DATABIND_COMPILER_SOURCE_DIR}/method_plan_projection.c"
   "${DATABIND_COMPILER_SOURCE_DIR}/opaque_plan_codegen.c"
-  "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c"
+  "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c" "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/service_native.c"
   "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c"
   "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c"
   "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c")
