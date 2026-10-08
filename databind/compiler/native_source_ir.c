@@ -147,6 +147,10 @@ int databind_native_source_ir_write_header(
     if (!native_identifier(record->name) ||
         (record->field_count != 0u && record->fields == NULL))
       return -1;
+    /* Type declarations and their init/clear functions share one C namespace. */
+    for (j = 0u; j < i; ++j)
+      if (strcmp(ir->records[j].name, record->name) == 0)
+        return -1;
     for (j = 0u; j < record->field_count; ++j)
       if (!native_identifier(record->fields[j].name) ||
           !native_c_type(record->fields[j].c_type) ||
