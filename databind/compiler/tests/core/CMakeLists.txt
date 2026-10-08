@@ -35,3 +35,8 @@ target_include_directories(test_tbe_compiler_schema_boundary
 target_sources(test_tbe_compiler_schema_boundary PRIVATE test_scalar_projection.c)
 set_source_files_properties(test_scalar_projection.c
   PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
+ 
+target_sources(test_tbe_compiler_schema_boundary
+  PRIVATE test_sql_projection_independence.c)
+set_source_files_properties(test_sql_projection_independence.c
+  PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
