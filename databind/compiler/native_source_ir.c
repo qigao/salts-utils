@@ -70,12 +70,13 @@ int databind_native_source_ir_build(
       const IdlField *field = &decl->fields[j];
       const char *type = native_scalar(field->type_name);
       if (field->name == NULL || field->name[0] == '\0' ||
-          field->optional || field->nullable ||
           field->collection_kind != IDL_COLLECTION_NONE ||
           field->default_value != NULL || type == NULL)
         goto fail;
       record->fields[j].name = field->name;
       record->fields[j].c_type = type;
+      record->fields[j].optional = field->optional != 0;
+      record->fields[j].nullable = field->nullable != 0;
     }
   }
   *out = plan;
@@ -93,6 +94,31 @@ static int native_c_type(const char *name) {
   if (name == NULL) return 0;
   for (i = 0u; i < sizeof(NATIVE_SCALARS)/sizeof(NATIVE_SCALARS[0]); ++i)
     if (strcmp(name, NATIVE_SCALARS[i].c) == 0) return 1;
+  return 0;
+}
+
+static int native_field_collides(const databind_native_source_record *record,
+                                 size_t index) {
+  size_t i;
+  const databind_native_source_field *field = &record->fields[index];
+  for (i = 0u; i < record->field_count; ++i) {
+    if (i != index && strcmp(field->name, record->fields[i].name) == 0)
+      return 1;
+    if (record->fields[i].optional || record->fields[i].nullable) {
+      const char *prefixes[] = {"has_", "is_null_"};
+      size_t k;
+      for (k = 0u; k < 2u; ++k) {
+        const int active = k == 0u ? record->fields[i].optional :
+                                     record->fields[i].nullable;
+        const size_t prefix_len = strlen(prefixes[k]);
+        if (active && strlen(field->name) == prefix_len +
+                      strlen(record->fields[i].name) &&
+            strncmp(field->name, prefixes[k], prefix_len) == 0 &&
+            strcmp(field->name + prefix_len, record->fields[i].name) == 0)
+          return 1;
+      }
+    }
+  }
   return 0;
 }
 
@@ -123,7 +149,8 @@ int databind_native_source_ir_write_header(
       return -1;
     for (j = 0u; j < record->field_count; ++j)
       if (!native_identifier(record->fields[j].name) ||
-          !native_c_type(record->fields[j].c_type))
+          !native_c_type(record->fields[j].c_type) ||
+          native_field_collides(record, j))
         return -1; /* Renderer only accepts canonical lowered C types. */
   }
   out = fopen(path, "wb");
