@@ -1350,6 +1350,14 @@ describe("compiler integration") {
     check_false(file_contains("native_source_scalar.h", "binary_wire"));
     check_false(file_contains("native_source_scalar.h", "_OFFSET"));
     (void)remove("native_source_scalar.h");
+    ir.records[0].fields[0].optional = 1;
+    ir.records[0].fields[1].nullable = 1;
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_source_scalar.h"), 0);
+    check_true(file_contains("native_source_scalar.h", "bool has_count;"));
+    check_true(file_contains("native_source_scalar.h", "bool is_null_delta;"));
+    check_false(file_contains("native_source_scalar.h", "binary_wire"));
+    (void)remove("native_source_scalar.h");
     databind_native_source_ir_destroy(&ir);
     idl_contract_destroy(contract);
     node_free(tree);
