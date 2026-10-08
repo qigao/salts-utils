@@ -8,6 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef WASM_CORE_FIXTURE_FILE
+#error "WASM_CORE_FIXTURE_FILE is required"
+#endif
+
 #ifndef SCHEMA_WASM_EXECUTION_FILE
 #error "SCHEMA_WASM_EXECUTION_FILE is required"
 #endif
@@ -922,6 +926,69 @@ describe("compiler integration") {
     (void)remove(host_h);
     (void)remove(host_c);
     (void)remove(guest_h);
+  }
+
+  it("rolls back real Wasm outputs after later transport generator fails") {
+    static const char primary[] = "projection_wasm_real_txn.h";
+    static const char component[] = "projection_wasm_real_txn.wasm";
+    static const char host_h[] = "projection_wasm_real_txn.host.h";
+    static const char host_c[] = "projection_wasm_real_txn.host.c";
+    static const char guest_h[] = "projection_wasm_real_txn.guest.h";
+    static const char http_path[] = "projection_wasm_real_txn.http.h";
+    databind_compiler_wasm_config config = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = host_h,
+        .host_source_output = host_c,
+        .guest_header_output = guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe http = {http_path, "partially-rendered", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_path, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_WASM_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    const char *finals[] = {primary, component, host_h, host_c, guest_h,
+                            http_path};
+    const char *sentinels[] = {"old-primary", "old-component", "old-host-h",
+                               "old-host-c", "old-guest-h", "old-http"};
+    size_t i;
+    for (i = 0u; i < 6u; ++i) {
+      (void)remove(finals[i]);
+      check_true(write_sentinel(finals[i], sentinels[i]));
+    }
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)1u);
+    for (i = 0u; i < 6u; ++i)
+      check_true(file_matches(finals[i], sentinels[i]));
+    for (i = 0u; i < 6u; ++i) (void)remove(finals[i]);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)2u);
+    for (i = 0u; i < 6u; ++i)
+      check_false(file_exists(finals[i]));
+    http.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(http.calls, (size_t)3u);
+    for (i = 0u; i < 6u; ++i)
+      check_true(file_exists(finals[i]));
+    check_true(file_matches(http_path, "partially-rendered"));
+    for (i = 0u; i < 6u; ++i) (void)remove(finals[i]);
   }
 
   it("rejects incomplete or dishonest selected staging capability sets") {
