@@ -494,6 +494,34 @@ describe("compiler integration") {
     (void)remove(transport_output);
   }
 
+  it("rejects native secondary collision with primary before generation") {
+    static const char primary[] = "projection_native_collision.h";
+    static const char source[] = "projection_native_collision.service.c";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = primary};
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), source, &config};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(primary);
+    (void)remove(source);
+    check_true(write_sentinel(primary, "original-primary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-primary"));
+    check_false(file_exists(source));
+    (void)remove(primary);
+  }
+
   it("rejects mixed self-publishing Native Service selections without touching output") {
     static const char primary[] = "projection_native_unsupported.h";
     static const char source[] = "projection_native_unsupported.service.c";
