@@ -26,5 +26,8 @@ typedef struct databind_native_source_ir {
 int databind_native_source_ir_build(
     const IdlContract *contract, databind_native_source_ir *out);
 void databind_native_source_ir_destroy(databind_native_source_ir *ir);
+/* Render a self-contained scalar C header. Never publishes partial output. */
+int databind_native_source_ir_write_header(
+    const databind_native_source_ir *ir, const char *path);
 
 #endif
