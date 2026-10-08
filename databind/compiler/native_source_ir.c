@@ -122,6 +122,24 @@ static int native_field_collides(const databind_native_source_record *record,
   return 0;
 }
 
+static int native_reserved_identifier(const char *s) {
+  static const char *const keywords[] = {
+      "auto", "break", "case", "char", "const", "continue", "default",
+      "do", "double", "else", "enum", "extern", "float", "for",
+      "goto", "if", "inline", "int", "long", "register", "restrict",
+      "return", "short", "signed", "sizeof", "static", "struct",
+      "switch", "typedef", "union", "unsigned", "void", "volatile",
+      "while", "_Alignas", "_Alignof", "_Atomic", "_Bool", "_Complex",
+      "_Generic", "_Imaginary", "_Noreturn", "_Static_assert",
+      "_Thread_local", "bool", "true", "false"
+  };
+  size_t i;
+  if (s == NULL || s[0] == '_') return 1;
+  for (i = 0u; i < sizeof(keywords)/sizeof(keywords[0]); ++i)
+    if (strcmp(s, keywords[i]) == 0) return 1;
+  return 0;
+}
+
 static int native_identifier(const char *s) {
   const unsigned char *p = (const unsigned char *)s;
   if (p == NULL || !((*p >= 'A' && *p <= 'Z') ||
@@ -131,7 +149,7 @@ static int native_identifier(const char *s) {
     if (!((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
           (*p >= '0' && *p <= '9') || *p == '_'))
       return 0;
-  return 1;
+  return !native_reserved_identifier(s);
 }
 
 int databind_native_source_ir_write_header(
