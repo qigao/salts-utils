@@ -1,10 +1,15 @@
 #include "projection.h"
 
 #include "compiler_core.h"
+#include "native_service_projection.h"
 #include "tinytest.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef SCHEMA_NATIVE_SERVICE_FILE
+#error "SCHEMA_NATIVE_SERVICE_FILE is required"
+#endif
 
 #ifndef SCHEMA_EXAMPLE_FILE
 #error "SCHEMA_EXAMPLE_FILE is required"
@@ -417,6 +422,63 @@ describe("compiler integration") {
     (void)remove(source);
     (void)remove(plugin_output);
     (void)remove(http_output);
+  }
+
+  it("rolls back native service header/source when a later staged backend fails") {
+    static const char primary[] = "projection_native_txn.h";
+    static const char service_source[] = "projection_native_txn.service.c";
+    static const char service_header[] = "projection_native_txn.service.h";
+    static const char transport_output[] = "projection_native_txn.http.h";
+    databind_compiler_native_service_config native_config = {
+        .native_header = primary, .header_output = service_header};
+    staged_projection_probe http = {transport_output, "partial-http", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), service_source,
+         &native_config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), transport_output,
+         NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(service_header);
+    (void)remove(transport_output);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(service_source, "old-native-source"));
+    check_true(write_sentinel(service_header, "old-native-header"));
+    check_true(write_sentinel(transport_output, "old-http"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)1u);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(service_source, "old-native-source"));
+    check_true(file_matches(service_header, "old-native-header"));
+    check_true(file_matches(transport_output, "old-http"));
+
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(service_header);
+    (void)remove(transport_output);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)2u);
+    check_false(file_exists(primary));
+    check_false(file_exists(service_source));
+    check_false(file_exists(service_header));
+    check_false(file_exists(transport_output));
   }
 
   it("rejects incomplete or dishonest selected staging capability sets") {
