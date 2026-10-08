@@ -166,21 +166,25 @@ int databind_native_source_ir_write_header(
     if (!native_identifier(record->name) || record->field_count == 0u ||
         record->fields == NULL)
       return -1;
-    /* typedef names and generated _init/_clear functions share a namespace. */
+    /* A record typedef must not collide with another record's generated
+     * lifecycle functions. _init and _clear have different suffix sizes. */
     for (j = 0u; j < i; ++j) {
       const char *previous = ir->records[j].name;
       const size_t previous_len = strlen(previous);
       const size_t current_len = strlen(record->name);
-      if (strcmp(previous, record->name) == 0 ||
-          (current_len == previous_len + 5u &&
-           strncmp(record->name, previous, previous_len) == 0 &&
-           (strcmp(record->name + previous_len, "_init") == 0 ||
-            strcmp(record->name + previous_len, "_clear") == 0)) ||
-          (previous_len == current_len + 5u &&
-           strncmp(previous, record->name, current_len) == 0 &&
-           (strcmp(previous + current_len, "_init") == 0 ||
-            strcmp(previous + current_len, "_clear") == 0)))
-        return -1;
+      static const char *const suffixes[] = {"_init", "_clear"};
+      size_t k;
+      if (strcmp(previous, record->name) == 0) return -1;
+      for (k = 0u; k < sizeof(suffixes)/sizeof(suffixes[0]); ++k) {
+        const size_t suffix_len = strlen(suffixes[k]);
+        if ((current_len == previous_len + suffix_len &&
+             strncmp(record->name, previous, previous_len) == 0 &&
+             strcmp(record->name + previous_len, suffixes[k]) == 0) ||
+            (previous_len == current_len + suffix_len &&
+             strncmp(previous, record->name, current_len) == 0 &&
+             strcmp(previous + current_len, suffixes[k]) == 0))
+          return -1;
+      }
     }
     for (j = 0u; j < record->field_count; ++j)
       if (!native_identifier(record->fields[j].name) ||
