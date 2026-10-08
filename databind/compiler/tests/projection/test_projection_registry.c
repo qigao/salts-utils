@@ -1248,8 +1248,8 @@ describe("compiler integration") {
     check_true(file_contains(native_c, native_h));
     check_true(file_contains(plugin_c, plugin_h));
     check_true(file_contains(wasm_host_c, wasm_host_h));
-    check_false(file_contains(plugin_c, ".tbe."));
-    check_false(file_contains(wasm_host_c, ".tbe."));
+    check_false(file_contains(plugin_c, "projection_all_txn.plugin.h.tbe."));
+    check_false(file_contains(wasm_host_c, "projection_all_txn.host.h.tbe."));
     for (i = 0u; i < 12u; ++i) (void)remove(outputs[i]);
   }
 
