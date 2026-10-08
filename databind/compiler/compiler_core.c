@@ -3879,6 +3879,22 @@ static int tbe_source_field_type(
   if (go && field->nullable &&
       !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "*"))
     return 0;
+  if (go && field->collection_kind == IDL_COLLECTION_NONE &&
+      field->length != NULL && field->length[0] != '\0') {
+    size_t fixed_length;
+    char fixed_text[32];
+    int printed;
+    if (field->type_name == NULL ||
+        strcmp(field->type_name, "bytes") != 0 ||
+        !tbe_compiler_parse_size(field->length, &fixed_length) ||
+        fixed_length == 0u || fixed_length > 2147483647u)
+      return 0;
+    printed = snprintf(fixed_text, sizeof(fixed_text), "[%zu]byte",
+                       fixed_length);
+    return printed > 0 && (size_t)printed < sizeof(fixed_text) &&
+           tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY,
+                                  &used, fixed_text);
+  }
   switch (field->collection_kind) {
   case IDL_COLLECTION_NONE:
     if (field->type_name == NULL ||
@@ -3958,20 +3974,42 @@ static int tbe_source_field_type(
                              python ? " | None" : " | null");
 }
 
+static int tbe_go_export_name(const IdlField *field, Node *fields,
+                               char output[256]) {
+  size_t i;
+  if (field == NULL || field->name == NULL || fields == NULL ||
+      fields->type != NODE_LIST || strlen(field->name) >= 256u)
+    return 0;
+  tbe_compiler_pascal_identifier(field->name, output, 256u);
+  if (output[0] == '\0')
+    return 0;
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const char *previous = tbe_compiler_string_value(
+        fields->data.list.items[i], "go_name");
+    if (previous == NULL || strcmp(previous, output) == 0)
+      return 0;
+  }
+  return 1;
+}
+
 static int tbe_source_render_field(
     const IdlContract *contract, const IdlField *field,
     int64_t language, Node *fields) {
   const int python = language == TBE_COMPILER_LANG_PYTHON;
+  const int go = language == TBE_COMPILER_LANG_GO;
   Node *node = create_node_map(NULL);
   char mapped[TBE_SOURCE_TYPE_CAPACITY];
+  char go_name[256];
   if (node == NULL)
     return 0;
   if (field->name == NULL ||
+      (go && !tbe_go_export_name(field, fields, go_name)) ||
       !tbe_source_field_type(contract, field, language, mapped) ||
       tbe_compiler_set_string(node, "name", field->name) != 0 ||
       tbe_compiler_set_string(
-          node, python ? "python_type" : "ts_type", mapped) != 0 ||
-      (!python && field->optional &&
+          node, go ? "go_type" : python ? "python_type" : "ts_type", mapped) != 0 ||
+      (go && tbe_compiler_set_string(node, "go_name", go_name) != 0) ||
+      (!python && !go && field->optional &&
        tbe_compiler_set_string(node, "ts_optional", "1") != 0) ||
       list_add(fields, node) != 0) {
     node_free(node);
@@ -4003,6 +4041,16 @@ static int tbe_source_render_decl(
     if (language == TBE_COMPILER_LANG_PYTHON && decl->flags &&
         tbe_compiler_set_string(node, "python_flags", "1") != 0)
       goto failed;
+    if (language == TBE_COMPILER_LANG_GO) {
+      const char *storage = decl->underlying_type != NULL
+          ? decl->underlying_type : (decl->flags ? "uint32" : "int32");
+      const tbe_compiler_scalar_projection_t *integer =
+          tbe_compiler_integer_type(storage);
+      if (integer == NULL ||
+          tbe_compiler_set_string(
+              node, "go_underlying_type", integer->go_type) != 0)
+        goto failed;
+    }
     if (map_add(node, members) != 0)
       goto failed;
     members = tbe_compiler_find_child(node, "items");
@@ -4029,8 +4077,9 @@ static int tbe_source_render_decl(
               contract, &decl->fields[i], language, members)) {
         fprintf(stderr,
                 "%s cannot represent IDL field %s.%s; no artifact published\n",
+                language == TBE_COMPILER_LANG_GO ? "Go" :
                 language == TBE_COMPILER_LANG_PYTHON ? "Python dataclass"
-                                                       : "TypeScript",
+                                                     : "TypeScript",
                 decl->name, decl->fields[i].name);
         goto failed;
       }
@@ -4056,7 +4105,8 @@ static Node *tbe_source_render_ir(
   size_t i;
   if (contract == NULL ||
       (language != TBE_COMPILER_LANG_TS &&
-       language != TBE_COMPILER_LANG_PYTHON))
+       language != TBE_COMPILER_LANG_PYTHON &&
+       language != TBE_COMPILER_LANG_GO))
     return NULL;
   root = create_node_map(NULL);
   schema = create_node_map("schema");
@@ -4089,6 +4139,7 @@ static Node *tbe_source_render_ir(
     if (list == NULL) {
       fprintf(stderr,
               "%s projection does not implement Data kind for '%s'\n",
+              language == TBE_COMPILER_LANG_GO ? "Go" :
               language == TBE_COMPILER_LANG_PYTHON ? "Python" : "TypeScript",
               decl->name != NULL ? decl->name : "<unnamed>");
       goto failed;
@@ -4096,8 +4147,20 @@ static Node *tbe_source_render_ir(
     if (!tbe_source_render_decl(contract, decl, language, list))
       goto failed;
   }
+  if (language == TBE_COMPILER_LANG_GO) {
+    /* Go package naming is presentation-only, derived from Contract schema. */
+    tbe_compiler_annotate_schema_types(root);
+    schema = tbe_compiler_find_child(root, "schema");
+    if (schema == NULL ||
+        tbe_compiler_string_value(schema, "go_package_name") == NULL)
+      goto failed;
+    schema = NULL; /* still owned by root */
+  }
   return root;
 failed:
+  if (schema != NULL &&
+      tbe_compiler_find_child(root, "schema") == schema)
+    schema = NULL;
   node_free(schema);
   node_free(root);
   return NULL;
@@ -4160,7 +4223,8 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   }
   database_language = tbe_compiler_is_database_language(options->lang_enum);
   source_language = options->lang_enum == TBE_COMPILER_LANG_TS ||
-                    options->lang_enum == TBE_COMPILER_LANG_PYTHON;
+                    options->lang_enum == TBE_COMPILER_LANG_PYTHON ||
+                    options->lang_enum == TBE_COMPILER_LANG_GO;
   if (!tbe_compiler_validate_options(options, lang_name)) return 1;
   if (source_language && options->dsl_output_path != NULL) {
     fprintf(stderr, "--dsl-output requires native RulesForge lowering, not a source-only language\n");
