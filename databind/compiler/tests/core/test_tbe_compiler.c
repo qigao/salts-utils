@@ -242,6 +242,30 @@ cleanup:
   return output;
 }
 
+static char *render_cpp_compiler_from_schema(
+    const char *schema, const char *schema_path, const char *output_path) {
+  size_t output_size = 0u;
+  char *output = NULL;
+  tbe_compiler_options_t options = {
+      .schema_path = schema_path,
+      .output_path = output_path,
+      .lang_enum = TBE_COMPILER_LANG_CPP,
+      .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+  };
+  cleanup_test_file(schema_path);
+  cleanup_test_file(output_path);
+  if (write_test_file(schema_path, schema) == 0 &&
+      tbe_compiler_run(&options) == 0)
+    output = tt_read_file(output_path, &output_size);
+  if (output_size == 0u) {
+    free(output);
+    output = NULL;
+  }
+  cleanup_test_file(schema_path);
+  cleanup_test_file(output_path);
+  return output;
+}
+
 static void cleanup_test_file(const char *path) {
   if (path) {
     remove(path);
@@ -3019,8 +3043,11 @@ spec("tbe_compiler") {
           "group Level { uint64 price; uint32 qty; }"
           "message Book { Header header; bytes(16) digest; uuid request_id; group<Level> bids; "
           "string symbol; }";
-      char *cpp_output = render_compiler_template_from_schema(
-          schema, "test_tbe_compiler_lang.schema", CPP_TYPES_TEMPLATE_FILE,
+      /* Built-in C++ renderer consumes typed Contract presentation only.
+       * The helper exercises the production CLI path, not legacy Binary
+       * tree->Mustache annotations. */
+      char *cpp_output = render_cpp_compiler_from_schema(
+          schema, "test_tbe_compiler_lang.schema",
           "test_tbe_compiler_lang.cpp.out");
       char *go_output = render_compiler_template_from_schema(
           schema, "test_tbe_compiler_lang.schema", GO_TYPES_TEMPLATE_FILE,
@@ -3044,9 +3071,10 @@ spec("tbe_compiler") {
       check_contains(cpp_output, "enum class Side : std::uint8_t");
       check_contains(cpp_output, "std::vector<Level> bids;");
       check_contains(cpp_output, "std::string symbol;");
-      check_contains(cpp_output, "std::vector<std::uint8_t> digest;");
-      check_contains(cpp_output, "cmeta_uuid_t request_id;");
-      check_contains(cpp_output, "#include \"cmeta_uuid.h\"");
+      check_contains(cpp_output, "std::array<std::uint8_t, 16> digest;");
+      check_contains(cpp_output, "std::array<std::uint8_t, 16> request_id;");
+      check_contains(cpp_output, "#include <array>");
+      check_false(strstr(cpp_output, "#include \"cmeta_uuid.h\"") != NULL);
 
       check_contains(go_output, "package market");
       check_contains(go_output, "Bids []Level");

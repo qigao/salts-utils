@@ -1,12 +1,15 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "cmeta_uuid.h"
+// Source type declarations only. This header does not implement Binary
+// serialization or bind CMeta native storage/lifecycle.
 
 {{#enums}}
 enum class {{enum_name}} : {{cpp_underlying_type}} {
@@ -16,27 +19,15 @@ enum class {{enum_name}} : {{cpp_underlying_type}} {
 };
 
 {{/enums}}
-{{#composites}}
+{{#cpp_forward_declarations}}
+struct {{name}};
+{{/cpp_forward_declarations}}
+
+{{#cpp_records}}
 struct {{name}} {
 {{#fields}}
-    {{cpp_type}} {{name}};
+    {{{cpp_type}}} {{name}};
 {{/fields}}
 };
 
-{{/composites}}
-{{#groups}}
-struct {{name}} {
-{{#fields}}
-    {{cpp_type}} {{name}};
-{{/fields}}
-};
-
-{{/groups}}
-{{#messages}}
-struct {{name}} {
-{{#fields}}
-    {{cpp_type}} {{name}};
-{{/fields}}
-};
-
-{{/messages}}
+{{/cpp_records}}

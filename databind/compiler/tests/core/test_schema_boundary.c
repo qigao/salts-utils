@@ -928,3 +928,226 @@ spec("rust_contract_render_ir") {
     remove(output_path);
   }
 }
+
+
+spec("cpp_contract_render_ir") {
+  it("projects forward-dependent C++17 records without Binary field ordering") {
+    static const char schema_path[] = "cpp_contract_no_binary.schema";
+    static const char cpp_path[] = "cpp_contract_no_binary.hpp";
+    static const char binary_path[] = "cpp_contract_no_binary.h";
+    static const char schema[] =
+        "schema Ledger; "
+        "enum State <uint16> { Idle = 008; Ready = 65535; } "
+        "message Envelope { "
+        "string payload; uint32 sequence; "
+        "Item current; map<string,Item> by_name; "
+        "list<map<string,Item>> nested; set<State> states; "
+        "uint8[8] digest; bytes(16) token; uuid id; "
+        "nullable string title; int64 debit; uint64 credit; "
+        "State state; group<Level> levels; } "
+        "message Item { uint32 value; } "
+        "group Level { uint64 price; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = cpp_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_CPP,
+    };
+    remove(schema_path);
+    remove(cpp_path);
+    remove(binary_path);
+    check_equal(write_text_file(schema_path, schema), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(cpp_path, "#include <array>"));
+    check_true(test_render_file_contains(cpp_path, "#include <optional>"));
+    check_true(test_render_file_contains(cpp_path, "enum class State : std::uint16_t"));
+    check_true(test_render_file_contains(cpp_path, "Idle = 8,"));
+    check_true(test_render_file_contains(cpp_path, "Ready = 65535,"));
+    check_true(test_render_file_contains(cpp_path, "struct Envelope;"));
+    check_true(test_render_file_contains(cpp_path, "struct Item;"));
+    check_true(test_render_file_contains(cpp_path, "std::string payload;"));
+    check_true(test_render_file_contains(cpp_path, "std::uint32_t sequence;"));
+    check_true(test_render_file_contains(cpp_path, "Item current;"));
+    check_true(test_render_file_contains(
+        cpp_path, "std::map<std::string, Item> by_name;"));
+    check_true(test_render_file_contains(
+        cpp_path, "std::vector<std::map<std::string, Item>> nested;"));
+    check_true(test_render_file_contains(cpp_path, "std::set<State> states;"));
+    check_true(test_render_file_contains(
+        cpp_path, "std::array<std::uint8_t, 8> digest;"));
+    check_true(test_render_file_contains(
+        cpp_path, "std::array<std::uint8_t, 16> token;"));
+    check_true(test_render_file_contains(
+        cpp_path, "std::array<std::uint8_t, 16> id;"));
+    check_true(test_render_file_contains(
+        cpp_path, "std::optional<std::string> title;"));
+    check_true(test_render_file_contains(cpp_path, "std::int64_t debit;"));
+    check_true(test_render_file_contains(cpp_path, "std::uint64_t credit;"));
+    check_true(test_render_file_contains(cpp_path, "State state;"));
+    check_true(test_render_file_contains(
+        cpp_path, "std::vector<Level> levels;"));
+    check_false(test_render_file_contains(cpp_path, "cmeta_uuid.h"));
+    check_false(test_render_file_contains(cpp_path, "size_bytes"));
+    {
+      FILE *file = fopen(cpp_path, "rb");
+      char content[8192] = {0};
+      size_t length = 0u;
+      check_not_null(file);
+      if (file != NULL) {
+        length = fread(content, 1u, sizeof(content) - 1u, file);
+        content[length] = '\0';
+        fclose(file);
+      }
+      check_true(strstr(content, "struct Item {") != NULL);
+      check_true(strstr(content, "struct Envelope {") != NULL);
+      if (strstr(content, "struct Item {") != NULL &&
+          strstr(content, "struct Envelope {") != NULL)
+        check_true(strstr(content, "struct Item {") <
+                   strstr(content, "struct Envelope {"));
+    }
+
+    options.lang_enum = TBE_COMPILER_LANG_C;
+    options.output_path = binary_path;
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_false(file_exists(binary_path));
+    remove(schema_path);
+    remove(cpp_path);
+    remove(binary_path);
+  }
+
+  it("preserves uint64 and int64 enum boundaries in C++ source literals") {
+    static const char schema_path[] = "cpp_contract_enum.schema";
+    static const char output_path[] = "cpp_contract_enum.hpp";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_CPP,
+    };
+    remove(schema_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path,
+        "enum Wide <uint64> { Max=18446744073709551615; } "
+        "enum Signed <int64> { Min=-9223372036854775808; }"), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(
+        output_path, "Max = 18446744073709551615ULL,"));
+    check_true(test_render_file_contains(
+        output_path, "Min = (-9223372036854775807LL - 1LL),"));
+    remove(schema_path);
+    remove(output_path);
+  }
+
+  it("renders custom C++ Mustache templates from Contract-only fields") {
+    static const char schema_path[] = "cpp_contract_custom.schema";
+    static const char template_path[] = "cpp_contract_custom.mustache";
+    static const char output_path[] = "cpp_contract_custom.out";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .template_path = template_path,
+        .output_path = output_path,
+        .lang_enum = TBE_COMPILER_LANG_CPP,
+    };
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path,
+        "schema Custom; message Outer { Inner child; } "
+        "message Inner { nullable uint64 count; }"), 0);
+    check_equal(write_text_file(template_path,
+        "{{schema.schema_name}}:{{#cpp_records}}{{name}}:{{#fields}}"
+        "{{name}}={{{cpp_type}}};{{/fields}}{{/cpp_records}}"), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(
+        output_path, "Custom:Inner:count=std::optional<std::uint64_t>;"));
+    check_true(test_render_file_contains(
+        output_path, "Outer:child=Inner;"));
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+  }
+
+  it("rejects C++ keywords, unorderable keys, flags and domain types") {
+    static const char schema_path[] = "cpp_contract_invalid.schema";
+    static const char output_path[] = "cpp_contract_invalid.hpp";
+    static const char *const bad_schemas[] = {
+        "message Bad { uint32 class; }",
+        "message Bad { uint32 namespace; }",
+        "message _Reserved { uint32 id; }",
+        "message std { uint32 id; }",
+        "message Bad { uint32 Bad; }",
+        "message Bad { map<bytes,uint32> keys; }",
+        "message Bad { set<list<uint32>> values; }",
+        "message Bad { list<map<bytes,uint32>> values; }",
+        "message Bad { varint value; }",
+        "message Bad { datetime timestamp; }",
+        "flags Permission <uint8> { Read=1; Write=2; }",
+        "message Bad { uint32 id; } union Choice { Bad item; }",
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_CPP,
+    };
+    for (size_t i = 0u; i < sizeof(bad_schemas) / sizeof(bad_schemas[0]); ++i) {
+      remove(schema_path);
+      remove(output_path);
+      check_equal(write_text_file(schema_path, bad_schemas[i]), 0);
+      check_equal(write_text_file(output_path, "existing-output"), 0);
+      check_not_equal(tbe_compiler_run(&options), 0);
+      check_true(test_render_file_contains(output_path, "existing-output"));
+    }
+    remove(schema_path);
+    remove(output_path);
+  }
+
+  it("rejects missing/default semantics and inline C++ record cycles") {
+    static const char schema_path[] = "cpp_contract_cycles.schema";
+    static const char output_path[] = "cpp_contract_cycles.hpp";
+    static const char *const bad_schemas[] = {
+        "message Bad { optional uint32 id; }",
+        "message Bad { uint32 id default 7; }",
+        "message Node { Node child; }",
+        "message Node { nullable Node child; }",
+        "message A { B child; } message B { A parent; }",
+        "message A { B[2] child; } message B { A[2] child; }",
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_CPP,
+    };
+    for (size_t i = 0u; i < sizeof(bad_schemas) / sizeof(bad_schemas[0]); ++i) {
+      remove(schema_path);
+      remove(output_path);
+      check_equal(write_text_file(schema_path, bad_schemas[i]), 0);
+      check_equal(write_text_file(output_path, "existing-output"), 0);
+      check_not_equal(tbe_compiler_run(&options), 0);
+      check_true(test_render_file_contains(output_path, "existing-output"));
+    }
+    remove(schema_path);
+    remove(output_path);
+  }
+
+  it("admits recursive std::vector-owned C++ value graphs") {
+    static const char schema_path[] = "cpp_contract_vector_recursive.schema";
+    static const char output_path[] = "cpp_contract_vector_recursive.hpp";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_CPP,
+    };
+    remove(schema_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path,
+        "message Node { uint32 id; list<Node> children; }"), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(
+        output_path, "std::vector<Node> children;"));
+    remove(schema_path);
+    remove(output_path);
+  }
+}

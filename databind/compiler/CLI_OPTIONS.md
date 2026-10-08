@@ -215,6 +215,53 @@ format or transport is explicitly selected.
 This is source declaration generation, not a native ABI mapping, wire codec,
 validation engine, or serialization runtime.
 
+### C++17: Contract-only Type Declarations
+
+`salts-idlc contract.schema --lang cpp --output contract.hpp` projects
+standard C++17 declarations directly from validated immutable
+`IdlContract`. It does **not** use Binary field layout, wire offsets,
+CMeta native storage or RAII lifecycle annotations. A requested separate
+Binary transport/format still has explicit Binary admission.
+
+The built-in C++ Mustache renderer consumes the presentation-only
+`cpp_records` (topologically ordered), `cpp_forward_declarations`
+and `enums` views, plus `cpp_type`, `cpp_underlying_type`,
+`c_literal`, `name` and enum `items`. Per-kind
+`messages/composites/groups` presentation views remain available to custom
+Mustache templates, but are not an alternative semantic authority.
+
+- Exact scalar types use standard integer spellings, e.g.
+  `uint64 -> std::uint64_t`. Logical `string -> std::string`,
+  `bytes -> std::vector<std::uint8_t>`, and
+  `uuid -> std::array<std::uint8_t, 16>`. This type-only UUID value
+  representation does not expose a CMeta or Binary wire ABI.
+- `bytes(16) -> std::array<std::uint8_t, 16>`,
+  `uint8[8] -> std::array<std::uint8_t, 8>`,
+  `list<T>/group<T> -> std::vector<T>`,
+  `set<T> -> std::set<T>`, and
+  `map<K,V> -> std::map<K,V>` with bounded nested generic admission.
+- Map keys and set elements must be a provably comparable scalar
+  (bool/integer/string/UUID/enum), not floating point, mutable bytes,
+  composite records or containers. Source output never guesses
+  `operator<` for unknown classes.
+- `nullable T -> std::optional<T>` denotes explicit nullability on a
+  required field. IDL `optional` means omitted/present and `default`
+  is a schema initializer; neither can be silently represented by a bare
+  C++ member. Both fail closed until the canonical presence/default
+  representation is defined.
+- Forward declarations plus Contract dependency ordering ensure inline
+  records are complete when needed, including cross-kind
+  message/composite/group references. Direct and indirect by-value record
+  cycles are rejected; recursion through `std::vector<T>` is admitted.
+- Enum underlying widths remain exact. The full uint64 range uses
+  `ULL` integer constants, and `INT64_MIN` is emitted as a safe
+  subtraction expression. Unsupported `flags`, unions, reserved C++
+  identifiers, unknown domain types and width-unresolved
+  `varint/bigint` fail before any artifact is published.
+- The built-in header depends only on the C++17 standard library, not a
+  transitive CMeta/native library. It is **not** a Binary serializer,
+  codec, or drop-in C ABI counterpart.
+
 ### DSL Integration (RulesForge)
 
 - `--dsl-output <file>` or `-d <file>`
