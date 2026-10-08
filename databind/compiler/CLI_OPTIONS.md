@@ -105,6 +105,40 @@ sizes, cursor metadata or native lifecycle attributes.
 This output is a **type declaration artifact**, not a serializer. Binary
 layout/encoding validation belongs to an explicitly selected format plan.
 
+### Python: Contract-only Dataclasses
+
+`salts-idlc contract.schema --lang python --output contract.py` renders
+validated, logical `IdlContract` through the same compiler-owned source
+presentation IR used by TypeScript. Neither the built-in Python template nor
+a custom `--template` consumes Binary wire layout/offset/size metadata.
+Only an explicitly selected Binary projection performs Binary admission.
+
+The current output contract is deliberately narrow and fail-fast:
+
+- `list<T>`, `set<T>`, `map<K,V>` become `list[T]`, `set[T]`,
+  `dict[K,V]`, with recursively resolved argument types; fixed arrays and
+  `group<T>` become `list[T]`.
+- `int64`, `uint64`, `varint` and other integer aliases map to exact Python
+  `int`; `bool`, `float/double`, `string/uuid`, `bytes` map to
+  `bool`, `float`, `str`, `bytes` respectively.
+- `nullable` maps to `T | None` on a **required** dataclass field.
+  `optional` represents omission, not explicit `None`, and is therefore
+  **rejected** until a canonical presence-aware Python representation is
+  introduced. Fields with IDL `default` are also rejected rather than
+  silently dropping default semantics.
+- IDL enum and flags declarations become `IntEnum` and `IntFlag`. Future
+  annotations are enabled so a declaration may reference a later record.
+- Unknown domain storage and unions fail before output publication rather
+  than emitting guessed imports or silently omitting members.
+- Python presentation templates consume `schema.schema_name`,
+  `messages/composites/groups/enums`, `name`, `python_type`,
+  `enum_name`, `python_flags`, and `items`; legacy
+  Binary-derived `size_bytes` and cursor attributes are unavailable.
+
+This is a **type-only** source artifact, not a serializer or a runtime
+schema compiler. Native lifecycle stays CMeta-owned and formats remain
+independent projection axes.
+
 ### DSL Integration (RulesForge)
 
 - `--dsl-output <file>` or `-d <file>`

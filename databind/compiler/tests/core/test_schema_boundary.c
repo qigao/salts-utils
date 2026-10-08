@@ -49,7 +49,6 @@ spec("tbe_compiler_schema_boundary") {
   it("rejects varint in format/native backends lacking a projection") {
     static const int64_t languages[] = {
         TBE_COMPILER_LANG_C,
-        TBE_COMPILER_LANG_PYTHON,
         TBE_COMPILER_LANG_RUST,
         TBE_COMPILER_LANG_CPP,
         TBE_COMPILER_LANG_GO,
@@ -58,7 +57,6 @@ spec("tbe_compiler_schema_boundary") {
     };
     static const char *const output_paths[] = {
         "test_varint_boundary_c.out",
-        "test_varint_boundary_python.out",
         "test_varint_boundary_rust.out",
         "test_varint_boundary_cpp.out",
         "test_varint_boundary_go.out",
@@ -505,6 +503,118 @@ spec("typescript_contract_render_ir") {
         "union Message { Event payload; }"), 0);
     check_not_equal(tbe_compiler_run(&options), 0);
     check_false(file_exists(output_path));
+    remove(schema_path);
+    remove(output_path);
+  }
+}
+
+
+spec("python_contract_render_ir") {
+  it("emits Binary-independent dataclasses with exact nested logical types") {
+    static const char schema_path[] = "python_contract_no_binary.schema";
+    static const char output_path[] = "python_contract_no_binary.py";
+    static const char binary_path[] = "python_contract_no_binary.h";
+    static const char schema[] =
+        "schema Python; "
+        "enum Status <uint16> { Idle = 0; Ready = 1; } "
+        "flags Permission <uint8> { Read = 1; Write = 2; } "
+        "message Envelope { "
+        "string description; uint32 count; "
+        "list<map<string,Item>> nested; "
+        "set<uint32> ids; "
+        "nullable string maybe_title; "
+        "varint clicks; int64 signed_total; uint64 unsigned_total; "
+        "bytes(16) digest; Status state; Permission rights; } "
+        "message Item { uint32 code; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_PYTHON,
+    };
+
+    remove(schema_path);
+    remove(output_path);
+    remove(binary_path);
+    check_equal(write_text_file(schema_path, schema), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(
+        output_path, "from __future__ import annotations"));
+    check_true(test_render_file_contains(output_path, "class Status(IntEnum):"));
+    check_true(test_render_file_contains(output_path, "class Permission(IntFlag):"));
+    check_true(test_render_file_contains(output_path, "description: str"));
+    check_true(test_render_file_contains(output_path, "count: int"));
+    check_true(test_render_file_contains(
+        output_path, "nested: list[dict[str, Item]]"));
+    check_true(test_render_file_contains(output_path, "ids: set[int]"));
+    check_true(test_render_file_contains(
+        output_path, "maybe_title: str | None"));
+    check_true(test_render_file_contains(output_path, "clicks: int"));
+    check_true(test_render_file_contains(output_path, "signed_total: int"));
+    check_true(test_render_file_contains(output_path, "unsigned_total: int"));
+    check_true(test_render_file_contains(output_path, "digest: bytes"));
+    check_true(test_render_file_contains(output_path, "state: Status"));
+    check_true(test_render_file_contains(output_path, "rights: Permission"));
+    check_false(test_render_file_contains(output_path, "# size:"));
+
+    options.lang_enum = TBE_COMPILER_LANG_C;
+    options.output_path = binary_path;
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_false(file_exists(binary_path));
+    remove(schema_path);
+    remove(output_path);
+    remove(binary_path);
+  }
+
+  it("supports custom Python templates over typed presentation facts") {
+    static const char schema_path[] = "python_contract_custom.schema";
+    static const char template_path[] = "python_contract_custom.mustache";
+    static const char output_path[] = "python_contract_custom.out";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .template_path = template_path,
+        .output_path = output_path,
+        .lang_enum = TBE_COMPILER_LANG_PYTHON,
+    };
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path,
+        "schema Customer; message Event { varint id; nullable string note; }"), 0);
+    check_equal(write_text_file(template_path,
+        "{{schema.schema_name}}:{{#messages}}{{name}}:{{#fields}}"
+        "{{name}}={{python_type}};{{/fields}}{{/messages}}"), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(
+        output_path, "Customer:Event:id=int;note=str | None;"));
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+  }
+
+  it("rejects omitted-presence and unimplemented default semantics atomically") {
+    static const char schema_path[] = "python_contract_presence.schema";
+    static const char output_path[] = "python_contract_presence.py";
+    static const char *const bad_schemas[] = {
+        "message Event { optional uint32 value; }",
+        "message Event { uint32 value default 7; }",
+        "message Event { datetime stamp; }",
+        "message Event { uint32 id; } union Choice { Event value; }",
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_PYTHON,
+    };
+    for (size_t i = 0u; i < sizeof(bad_schemas) / sizeof(bad_schemas[0]); ++i) {
+      remove(schema_path);
+      remove(output_path);
+      check_equal(write_text_file(schema_path, bad_schemas[i]), 0);
+      check_equal(write_text_file(output_path, "unchanged-output"), 0);
+      check_not_equal(tbe_compiler_run(&options), 0);
+      check_true(test_render_file_contains(output_path, "unchanged-output"));
+    }
     remove(schema_path);
     remove(output_path);
   }
