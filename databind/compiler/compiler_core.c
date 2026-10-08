@@ -11,6 +11,7 @@
 #include "idl_contract_internal.h"
 #include "binary_contract_overlay.h"
 #include "binary_reader_codegen.h"
+#include "native_service_projection.h"
 #include "binary_layout_lowering.h"
 #include "schema_cmeta.h"
 #include <cmeta_cmeta_data.h>
@@ -4876,6 +4877,10 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   const char *dsl_output_path = options->dsl_output_path;
   int transactional_outputs = 0;
   int backend_transaction = 0;
+  int native_transaction = 0;
+  const databind_compiler_native_service_config *native_config = NULL;
+  const char *native_header_stage = NULL;
+  const char *native_source_stage = NULL;
   int database_language;
   int source_language;
   if (lang_name == NULL) {
@@ -5065,8 +5070,46 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   backend_transaction = databind_compiler_projection_all_staged_single(
       options->projection_requests, options->projection_count,
       options->projection_backends, options->projection_backend_count);
+  /* Native Service may join a transaction only with known stage-safe peers. */
+  if (options->projection_count != 0u &&
+      options->projection_requests != NULL &&
+      options->projection_backends != NULL) {
+    size_t i;
+    int seen_native = 0;
+    int qualified = 1;
+    for (i = 0u; i < options->projection_count; ++i) {
+      size_t j;
+      const databind_compiler_projection_request *request =
+          &options->projection_requests[i];
+      const databind_compiler_projection_backend *backend = NULL;
+      for (j = 0u; j < options->projection_backend_count; ++j)
+        if (databind_compiler_projection_id_equal(
+                request->id, options->projection_backends[j].id)) {
+          backend = &options->projection_backends[j];
+          break;
+        }
+      if (backend == NULL) { qualified = 0; break; }
+      if (backend->generate == databind_compiler_native_service_generate &&
+          request->id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+          request->id.kind == DATABIND_COMPILER_ARTIFACT_NATIVE) {
+        native_config = (const databind_compiler_native_service_config *)request->config;
+        if (seen_native || native_config == NULL ||
+            native_config->header_output == NULL ||
+            native_config->header_output[0] == '\\0') {
+          qualified = 0;
+          break;
+        }
+        seen_native = 1;
+      } else if (backend->output_policy != DATABIND_COMPILER_OUTPUT_STAGED_SINGLE ||
+                 request->output == NULL || request->output[0] == '\\0') {
+        qualified = 0;
+        break;
+      }
+    }
+    native_transaction = seen_native && qualified && options->output_path != NULL;
+  }
   transactional_outputs = options->output_path != NULL &&
-      (backend_transaction ||
+      (backend_transaction || native_transaction ||
        (options->projection_count == 0u &&
         (options->source_output_path != NULL ||
          options->guest_output_path != NULL ||
@@ -5090,7 +5133,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
         goto builtin_stage_failure;
       dsl_output_path = builtins.items[builtins.count - 1u].staging_path;
     }
-    if (backend_transaction) {
+    if (backend_transaction || native_transaction) {
       size_t i;
       if (options->projection_count >
           SIZE_MAX / sizeof(*transaction_requests))
@@ -5104,8 +5147,20 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
         if (tbe_compiler_txn_add(
                 &builtins, transaction_requests[i].output) != 0)
           goto builtin_stage_failure;
-        transaction_requests[i].output =
-            builtins.items[builtins.count - 1u].staging_path;
+        if (native_transaction &&
+            transaction_requests[i].id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+            transaction_requests[i].id.kind == DATABIND_COMPILER_ARTIFACT_NATIVE) {
+          native_source_stage = builtins.items[builtins.count - 1u].staging_path;
+          /* Native rendering needs the original request output for include semantics. */
+        } else {
+          transaction_requests[i].output =
+              builtins.items[builtins.count - 1u].staging_path;
+        }
+      }
+      if (native_transaction) {
+        if (tbe_compiler_txn_add(&builtins, native_config->header_output) != 0)
+          goto builtin_stage_failure;
+        native_header_stage = builtins.items[builtins.count - 1u].staging_path;
       }
     }
   }
@@ -5154,7 +5209,30 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     databind_compiler_projection_input projection_input = {
         .contract = task->contract,
         .binary_format = &task->binary_format};
-    if (databind_compiler_projection_run(
+    if (native_transaction) {
+      size_t i;
+      for (i = 0u; i < options->projection_count; ++i) {
+        const databind_compiler_projection_request *request = &transaction_requests[i];
+        size_t j;
+        const databind_compiler_projection_backend *backend = NULL;
+        for (j = 0u; j < options->projection_backend_count; ++j)
+          if (databind_compiler_projection_id_equal(
+                  request->id, options->projection_backends[j].id)) {
+            backend = &options->projection_backends[j];
+            break;
+          }
+        if (backend == NULL) { status = 1; break; }
+        if (backend->generate == databind_compiler_native_service_generate) {
+          if (databind_compiler_native_service_render_staged(
+                  &projection_input, request, native_header_stage,
+                  native_source_stage) != 0) { status = 1; break; }
+        } else if (backend->generate(&projection_input, request,
+                                      backend->context) != 0) {
+          status = 1;
+          break;
+        }
+      }
+    } else if (databind_compiler_projection_run(
             &projection_input,
             transaction_requests != NULL
                 ? transaction_requests : options->projection_requests,
