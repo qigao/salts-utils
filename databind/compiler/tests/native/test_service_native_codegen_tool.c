@@ -1,5 +1,6 @@
 #include "compiler_core.h"
 #include "service_native.h"
+#include "native_service_projection.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -124,6 +125,36 @@ int main(int argc, char **argv) {
           argv[1], &root, &contract, &schema_data) != 0) {
     fprintf(stderr, "service-native-codegen: failed to parse main schema\n");
     goto cleanup;
+  }
+  /* Stage-only generation must leave coordinator-owned final paths alone and
+   * retain final header names in generated source. */
+  {
+    char header_stage[4096];
+    char source_stage[4096];
+    databind_compiler_native_service_config config = {
+        .native_header = argv[4], .header_output = argv[2]};
+    databind_compiler_projection_input input = {.contract = contract};
+    databind_compiler_projection_request request = {
+        .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+               DATABIND_COMPILER_ARTIFACT_NATIVE},
+        .output = argv[3], .config = &config};
+    if (snprintf(header_stage, sizeof(header_stage), "%s.stage-smoke", argv[2]) < 0 ||
+        strlen(argv[2]) + sizeof(".stage-smoke") > sizeof(header_stage) ||
+        snprintf(source_stage, sizeof(source_stage), "%s.stage-smoke", argv[3]) < 0 ||
+        strlen(argv[3]) + sizeof(".stage-smoke") > sizeof(source_stage))
+      goto cleanup;
+    (void)remove(header_stage);
+    (void)remove(source_stage);
+    if (databind_compiler_native_service_render_staged(
+            &input, &request, header_stage, source_stage) != 0 ||
+        !generated_source_has_raii_cleanup(source_stage)) {
+      fprintf(stderr, "service-native-codegen: staged render failed\n");
+      (void)remove(header_stage);
+      (void)remove(source_stage);
+      goto cleanup;
+    }
+    (void)remove(header_stage);
+    (void)remove(source_stage);
   }
   if (databind_compiler_service_native_build(contract, &ir) != 0) {
     fprintf(stderr, "service-native-codegen: failed to build main native IR\n");
