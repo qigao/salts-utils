@@ -1358,6 +1358,17 @@ describe("compiler integration") {
     check_true(file_contains("native_source_scalar.h", "bool is_null_delta;"));
     check_false(file_contains("native_source_scalar.h", "binary_wire"));
     (void)remove("native_source_scalar.h");
+    {
+      databind_native_source_record duplicate[2] = {
+          ir.records[0], ir.records[0]
+      };
+      databind_native_source_ir invalid = {2u, duplicate};
+      check_true(write_sentinel("native_source_scalar.h", "existing-header"));
+      check_equal(databind_native_source_ir_write_header(
+                      &invalid, "native_source_scalar.h"), -1);
+      check_true(file_matches("native_source_scalar.h", "existing-header"));
+      (void)remove("native_source_scalar.h");
+    }
     databind_native_source_ir_destroy(&ir);
     idl_contract_destroy(contract);
     node_free(tree);
