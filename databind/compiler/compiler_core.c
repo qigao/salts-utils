@@ -3751,7 +3751,7 @@ static int tbe_source_append_cstr(char *buffer, size_t capacity,
       tbe_source_append(buffer, capacity, used, text, strlen(text));
 }
 
-static int tbe_go_comparable_type(
+static int tbe_source_hashable_type(
     const IdlContract *contract, const char *expression, size_t length);
 
 static int tbe_source_type_expression(
@@ -3759,6 +3759,7 @@ static int tbe_source_type_expression(
     int64_t language, char *buffer, size_t capacity, size_t *used) {
   const int python = language == TBE_COMPILER_LANG_PYTHON;
   const int go = language == TBE_COMPILER_LANG_GO;
+  const int rust = language == TBE_COMPILER_LANG_RUST;
   IdlTypeRef type;
   char name[IDL_TYPE_REF_MAX_BYTES + 1u];
   const char *mapped = NULL;
@@ -3770,18 +3771,20 @@ static int tbe_source_type_expression(
       !idl_type_ref_parse(expression, length, &type))
     return 0;
   if (type.collection_kind != IDL_COLLECTION_NONE) {
-    if (go &&
+    if ((go || rust) &&
         (type.collection_kind == IDL_COLLECTION_SET ||
          type.collection_kind == IDL_COLLECTION_MAP) &&
-        !tbe_go_comparable_type(
+        !tbe_source_hashable_type(
             contract, type.arguments[0], type.argument_lengths[0]))
       return 0;
     const char *prefix = type.collection_kind == IDL_COLLECTION_LIST
-        ? (go ? "[]" : python ? "list[" : "Array<")
+        ? (go ? "[]" : rust ? "Vec<" : python ? "list[" : "Array<")
         : type.collection_kind == IDL_COLLECTION_SET
-        ? (go ? "map[" : python ? "set[" : "Set<")
+        ? (go ? "map[" : rust ? "std::collections::HashSet<" :
+           python ? "set[" : "Set<")
         : type.collection_kind == IDL_COLLECTION_MAP
-        ? (go ? "map[" : python ? "dict[" : "Map<") : NULL;
+        ? (go ? "map[" : rust ? "std::collections::HashMap<" :
+           python ? "dict[" : "Map<") : NULL;
     if (!tbe_source_append_cstr(buffer, capacity, used, prefix))
       return 0;
     for (i = 0u; i < type.argument_count; ++i) {
@@ -3805,25 +3808,28 @@ static int tbe_source_type_expression(
 
   scalar = tbe_compiler_scalar_projection(name);
   if (scalar != NULL) {
-    if (!python && !go &&
+    if (!python && !go && !rust &&
         (scalar->data->kind == CMETA_DATA_SINT ||
          scalar->data->kind == CMETA_DATA_UINT) &&
         ((const cmeta_data_integer_shape *)scalar->data->shape)->bits == 64u)
       mapped = "bigint";
     else
-      mapped = go ? scalar->go_type :
+      mapped = rust ? scalar->rust_type :
+               go ? scalar->go_type :
                python ? scalar->python_type : scalar->ts_type;
   } else if (strcmp(name, "varint") == 0 ||
              strcmp(name, "bigint") == 0) {
-    /* No implicit Go varint width/range or arbitrary integer owner. */
-    if (go) return 0;
+    /* Go and Rust require an explicit width/owned BigInt contract. */
+    if (go || rust) return 0;
     mapped = python ? "int" : "bigint";
   } else if (strcmp(name, "string") == 0 ||
              strcmp(name, "uuid") == 0) {
-    mapped = go ? (strcmp(name, "uuid") == 0 ? "[16]byte" : "string")
-                : python ? "str" : "string";
+    mapped = rust ? (strcmp(name, "uuid") == 0 ? "[u8; 16]" : "String")
+           : go ? (strcmp(name, "uuid") == 0 ? "[16]byte" : "string")
+           : python ? "str" : "string";
   } else if (strcmp(name, "bytes") == 0) {
-    mapped = go ? "[]byte" : python ? "bytes" : "Uint8Array";
+    mapped = rust ? "Vec<u8>"
+           : go ? "[]byte" : python ? "bytes" : "Uint8Array";
   } else {
     decl = idl_contract_find_data(contract, name);
     if (decl == NULL || decl->kind == IDL_DATA_UNION)
@@ -3833,9 +3839,10 @@ static int tbe_source_type_expression(
   return tbe_source_append_cstr(buffer, capacity, used, mapped);
 }
 
-/* Go map keys and set elements must have comparable value representations.
- * Reject slice/float/record keys instead of emitting Go code that cannot typecheck. */
-static int tbe_go_comparable_type(const IdlContract *contract,
+/* Hash-based Go/Rust collections need key types with value equality/hash.
+ * Restrict admission to scalar integer/bool/string/UUID and enum domains;
+ * float, composite records and mutable nested collections are not admitted. */
+static int tbe_source_hashable_type(const IdlContract *contract,
                                   const char *expression, size_t length) {
   IdlTypeRef ref;
   char name[IDL_TYPE_REF_MAX_BYTES + 1u];
@@ -3864,36 +3871,42 @@ static int tbe_source_field_type(
     int64_t language, char output[TBE_SOURCE_TYPE_CAPACITY]) {
   const int python = language == TBE_COMPILER_LANG_PYTHON;
   const int go = language == TBE_COMPILER_LANG_GO;
+  const int rust = language == TBE_COMPILER_LANG_RUST;
   size_t used = 0u;
   const char *inner;
   const char *prefix = NULL;
   if (contract == NULL || field == NULL)
     return 0;
-  /* Python dataclass cannot express omitted vs explicit null with a plain
-   * field and may not silently discard IDL default values. Both require a
-   * separately designed presence/default representation. */
-  if ((python || go) &&
+  /* Omission and defaults need a dedicated presence/default representation.
+   * Do not silently translate missing vs explicit null into Option<T>. */
+  if ((python || go || rust) &&
       (field->optional || field->default_value != NULL))
     return 0;
   output[0] = '\0';
   if (go && field->nullable &&
       !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "*"))
     return 0;
-  if (go && field->collection_kind == IDL_COLLECTION_NONE &&
+  if (rust && field->nullable &&
+      !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "Option<"))
+    return 0;
+  if ((go || rust) && field->collection_kind == IDL_COLLECTION_NONE &&
       field->length != NULL && field->length[0] != '\0') {
     size_t fixed_length;
-    char fixed_text[32];
+    char fixed_text[48];
     int printed;
     if (field->type_name == NULL ||
         strcmp(field->type_name, "bytes") != 0 ||
         !tbe_compiler_parse_size(field->length, &fixed_length) ||
         fixed_length == 0u || fixed_length > 2147483647u)
       return 0;
-    printed = snprintf(fixed_text, sizeof(fixed_text), "[%zu]byte",
-                       fixed_length);
+    printed = snprintf(fixed_text, sizeof(fixed_text),
+                       rust ? "[u8; %zu]" : "[%zu]byte", fixed_length);
     return printed > 0 && (size_t)printed < sizeof(fixed_text) &&
            tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY,
-                                  &used, fixed_text);
+                                  &used, fixed_text) &&
+           (!rust || !field->nullable ||
+            tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY,
+                                   &used, ">"));
   }
   switch (field->collection_kind) {
   case IDL_COLLECTION_NONE:
@@ -3908,13 +3921,15 @@ static int tbe_source_field_type(
   case IDL_COLLECTION_GROUP:
   case IDL_COLLECTION_SET:
     prefix = field->collection_kind == IDL_COLLECTION_SET
-        ? (go ? "map[" : python ? "set[" : "Set<")
-        : (go ? "[]" : python ? "list[" : "Array<");
+        ? (go ? "map[" : rust ? "std::collections::HashSet<" :
+           python ? "set[" : "Set<")
+        : (go ? "[]" : rust ? "Vec<" : python ? "list[" : "Array<");
     inner = field->inner_type;
-    if (go && field->collection_kind == IDL_COLLECTION_SET &&
-        !tbe_go_comparable_type(contract, inner, inner != NULL ? strlen(inner) : 0u))
+    if ((go || rust) && field->collection_kind == IDL_COLLECTION_SET &&
+        !tbe_source_hashable_type(
+            contract, inner, inner != NULL ? strlen(inner) : 0u))
       return 0;
-    if (go && field->collection_kind == IDL_COLLECTION_ARRAY) {
+    if ((go || rust) && field->collection_kind == IDL_COLLECTION_ARRAY) {
       size_t fixed_length;
       char fixed_text[32];
       int printed;
@@ -3926,11 +3941,12 @@ static int tbe_source_field_type(
       printed = snprintf(fixed_text, sizeof(fixed_text), "%zu", fixed_length);
       if (printed < 0 || (size_t)printed >= sizeof(fixed_text))
         return 0;
-      prefix = NULL;
-      if (!tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "[") ||
-          !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used,
-                                  fixed_text) ||
-          !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "]"))
+      prefix = rust ? "[" : NULL;
+      if (go &&
+          (!tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "[") ||
+           !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used,
+                                   fixed_text) ||
+           !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "]")))
         return 0;
     }
     if (inner == NULL ||
@@ -3940,19 +3956,34 @@ static int tbe_source_field_type(
       return 0;
     if (!tbe_source_type_expression(
             contract, inner, strlen(inner),
-            language, output, TBE_SOURCE_TYPE_CAPACITY, &used) ||
-        !tbe_source_append_cstr(
-            output, TBE_SOURCE_TYPE_CAPACITY, &used,
-            go ? (field->collection_kind == IDL_COLLECTION_SET ? "]struct{}" : "")
-               : python ? "]" : ">"))
+            language, output, TBE_SOURCE_TYPE_CAPACITY, &used))
+      return 0;
+    if (rust && field->collection_kind == IDL_COLLECTION_ARRAY) {
+      char count_text[40];
+      size_t fixed_length;
+      int printed;
+      if (!tbe_compiler_parse_size(field->length, &fixed_length) ||
+          fixed_length == 0u || fixed_length > 2147483647u)
+        return 0;
+      printed = snprintf(count_text, sizeof(count_text), "; %zu]", fixed_length);
+      if (printed < 0 || (size_t)printed >= sizeof(count_text) ||
+          !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used,
+                                   count_text))
+        return 0;
+    } else if (!tbe_source_append_cstr(
+        output, TBE_SOURCE_TYPE_CAPACITY, &used,
+        go ? (field->collection_kind == IDL_COLLECTION_SET ? "]struct{}" : "")
+           : python ? "]" : ">"))
       return 0;
     break;
   case IDL_COLLECTION_MAP:
     if (field->key_type == NULL || field->value_type == NULL ||
-        (go && !tbe_go_comparable_type(contract, field->key_type,
-                                               strlen(field->key_type))) ||
+        ((go || rust) && !tbe_source_hashable_type(
+            contract, field->key_type, strlen(field->key_type))) ||
         !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY,
-                                &used, go ? "map[" : python ? "dict[" : "Map<") ||
+                                &used, go ? "map[" :
+                                rust ? "std::collections::HashMap<" :
+                                python ? "dict[" : "Map<") ||
         !tbe_source_type_expression(
             contract, field->key_type, strlen(field->key_type),
             language, output, TBE_SOURCE_TYPE_CAPACITY, &used) ||
@@ -3971,7 +4002,7 @@ static int tbe_source_field_type(
   }
   return !field->nullable || go ||
       tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used,
-                             python ? " | None" : " | null");
+                             rust ? ">" : python ? " | None" : " | null");
 }
 
 static int tbe_go_export_name(const IdlField *field, Node *fields,
@@ -3992,24 +4023,137 @@ static int tbe_go_export_name(const IdlField *field, Node *fields,
   return 1;
 }
 
+/* Rust source names are emitted verbatim; never emit a keyword or
+ * malformed identifier and hope the consumer compiler repairs it. */
+static int tbe_rust_identifier_valid(const char *name) {
+  static const char *const reserved[] = {
+      "as", "async", "await", "break", "const", "continue", "crate",
+      "dyn", "else", "enum", "extern", "false", "fn", "for", "if",
+      "impl", "in", "let", "loop", "match", "mod", "move", "mut",
+      "pub", "ref", "return", "self", "Self", "static", "struct",
+      "super", "trait", "true", "type", "unsafe", "use", "where",
+      "while", "abstract", "become", "box", "do", "final", "macro",
+      "override", "priv", "try", "typeof", "unsized", "virtual",
+      "yield", "_"
+  };
+  size_t i;
+  if (name == NULL || name[0] == '\0' ||
+      !((name[0] >= 'A' && name[0] <= 'Z') ||
+        (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
+    return 0;
+  for (i = 1u; name[i] != '\0'; ++i)
+    if (!((name[i] >= 'A' && name[i] <= 'Z') ||
+          (name[i] >= 'a' && name[i] <= 'z') ||
+          (name[i] >= '0' && name[i] <= '9') || name[i] == '_'))
+      return 0;
+  for (i = 0u; i < sizeof(reserved) / sizeof(reserved[0]); ++i)
+    if (strcmp(name, reserved[i]) == 0)
+      return 0;
+  return 1;
+}
+
+/* A by-value Rust record cycle has no finite size. Vec/HashMap/HashSet
+ * break recursive sizing; Option<T> alone does not. */
+static int tbe_rust_record_visit(const IdlContract *contract, size_t index,
+                                 unsigned char *states) {
+  const IdlDataDecl *decl = &contract->data[index];
+  size_t i;
+  states[index] = 1u;
+  for (i = 0u; i < decl->field_count; ++i) {
+    const IdlField *field = &decl->fields[i];
+    const IdlDataDecl *target;
+    const char *name;
+    size_t next;
+    if (field->collection_kind != IDL_COLLECTION_NONE &&
+        field->collection_kind != IDL_COLLECTION_ARRAY)
+      continue;
+    name = field->collection_kind == IDL_COLLECTION_ARRAY
+        ? field->inner_type : field->type_name;
+    if (name == NULL)
+      continue;
+    target = idl_contract_find_data(contract, name);
+    if (target == NULL || target->kind == IDL_DATA_ENUM)
+      continue;
+    next = (size_t)(target - contract->data);
+    if (next >= contract->data_count || states[next] == 1u ||
+        (states[next] == 0u &&
+         !tbe_rust_record_visit(contract, next, states))) {
+      fprintf(stderr, "Rust by-value record cycle through %s.%s\n",
+              decl->name, field->name);
+      return 0;
+    }
+  }
+  states[index] = 2u;
+  return 1;
+}
+
+static int tbe_rust_validate_sized_records(const IdlContract *contract) {
+  unsigned char *states;
+  size_t i;
+  if (contract == NULL)
+    return 0;
+  if (contract->data_count == 0u)
+    return 1;
+  states = (unsigned char *)calloc(contract->data_count, 1u);
+  if (states == NULL)
+    return 0;
+  for (i = 0u; i < contract->data_count; ++i) {
+    if (contract->data[i].kind != IDL_DATA_ENUM &&
+        states[i] == 0u &&
+        !tbe_rust_record_visit(contract, i, states))
+      break;
+  }
+  free(states);
+  return i == contract->data_count;
+}
+
+/* IdlContract validates integer values, but a leading-zero decimal
+ * spelling like 008 is invalid as a Rust source integer literal. */
+static int tbe_rust_enum_literal(const char *value,
+                                 char *out, size_t capacity) {
+  const char *digits;
+  const char *p;
+  size_t used = 0u;
+  int negative;
+  if (value == NULL || out == NULL || capacity == 0u)
+    return 0;
+  negative = value[0] == '-';
+  digits = value + negative;
+  if (digits[0] == '\0')
+    return 0;
+  for (p = digits; *p != '\0'; ++p)
+    if (*p < '0' || *p > '9')
+      return tbe_source_append_cstr(out, capacity, &used, value);
+  while (digits[0] == '0' && digits[1] != '\0')
+    ++digits;
+  if (negative && strcmp(digits, "0") != 0 &&
+      !tbe_source_append_cstr(out, capacity, &used, "-"))
+    return 0;
+  return tbe_source_append_cstr(out, capacity, &used, digits);
+}
+
 static int tbe_source_render_field(
     const IdlContract *contract, const IdlField *field,
     int64_t language, Node *fields) {
   const int python = language == TBE_COMPILER_LANG_PYTHON;
   const int go = language == TBE_COMPILER_LANG_GO;
+  const int rust = language == TBE_COMPILER_LANG_RUST;
   Node *node = create_node_map(NULL);
   char mapped[TBE_SOURCE_TYPE_CAPACITY];
   char go_name[256];
   if (node == NULL)
     return 0;
   if (field->name == NULL ||
+      (rust && !tbe_rust_identifier_valid(field->name)) ||
       (go && !tbe_go_export_name(field, fields, go_name)) ||
       !tbe_source_field_type(contract, field, language, mapped) ||
       tbe_compiler_set_string(node, "name", field->name) != 0 ||
       tbe_compiler_set_string(
-          node, go ? "go_type" : python ? "python_type" : "ts_type", mapped) != 0 ||
+          node, rust ? "rust_type" :
+                go ? "go_type" : python ? "python_type" : "ts_type",
+          mapped) != 0 ||
       (go && tbe_compiler_set_string(node, "go_name", go_name) != 0) ||
-      (!python && !go && field->optional &&
+      (!python && !go && !rust && field->optional &&
        tbe_compiler_set_string(node, "ts_optional", "1") != 0) ||
       list_add(fields, node) != 0) {
     node_free(node);
@@ -4027,6 +4171,8 @@ static int tbe_source_render_decl(
   if (node == NULL)
     return 0;
   if (decl->name == NULL ||
+      (language == TBE_COMPILER_LANG_RUST &&
+       (!tbe_rust_identifier_valid(decl->name) || decl->flags)) ||
       tbe_compiler_set_string(node, "name", decl->name) != 0)
     goto failed;
   if (decl->kind == IDL_DATA_ENUM) {
@@ -4041,14 +4187,18 @@ static int tbe_source_render_decl(
     if (language == TBE_COMPILER_LANG_PYTHON && decl->flags &&
         tbe_compiler_set_string(node, "python_flags", "1") != 0)
       goto failed;
-    if (language == TBE_COMPILER_LANG_GO) {
+    if (language == TBE_COMPILER_LANG_GO ||
+        language == TBE_COMPILER_LANG_RUST) {
       const char *storage = decl->underlying_type != NULL
           ? decl->underlying_type : (decl->flags ? "uint32" : "int32");
       const tbe_compiler_scalar_projection_t *integer =
           tbe_compiler_integer_type(storage);
       if (integer == NULL ||
           tbe_compiler_set_string(
-              node, "go_underlying_type", integer->go_type) != 0)
+              node, language == TBE_COMPILER_LANG_RUST
+                  ? "rust_underlying_type" : "go_underlying_type",
+              language == TBE_COMPILER_LANG_RUST
+                  ? integer->rust_type : integer->go_type) != 0)
         goto failed;
     }
     if (map_add(node, members) != 0)
@@ -4058,10 +4208,16 @@ static int tbe_source_render_decl(
       Node *entry = create_node_map(NULL);
       if (entry == NULL)
         goto failed;
-      if (tbe_compiler_set_string(entry, "name",
+      char literal[256];
+      const int rust = language == TBE_COMPILER_LANG_RUST;
+      if ((rust &&
+           (!tbe_rust_identifier_valid(decl->enum_items[i].name) ||
+            !tbe_rust_enum_literal(decl->enum_items[i].value,
+                                   literal, sizeof(literal)))) ||
+          tbe_compiler_set_string(entry, "name",
                                   decl->enum_items[i].name) != 0 ||
           tbe_compiler_set_string(entry, "value",
-                                  decl->enum_items[i].value) != 0 ||
+                                  rust ? literal : decl->enum_items[i].value) != 0 ||
           list_add(members, entry) != 0) {
         node_free(entry);
         goto failed;
@@ -4077,6 +4233,7 @@ static int tbe_source_render_decl(
               contract, &decl->fields[i], language, members)) {
         fprintf(stderr,
                 "%s cannot represent IDL field %s.%s; no artifact published\n",
+                language == TBE_COMPILER_LANG_RUST ? "Rust" :
                 language == TBE_COMPILER_LANG_GO ? "Go" :
                 language == TBE_COMPILER_LANG_PYTHON ? "Python dataclass"
                                                      : "TypeScript",
@@ -4106,7 +4263,11 @@ static Node *tbe_source_render_ir(
   if (contract == NULL ||
       (language != TBE_COMPILER_LANG_TS &&
        language != TBE_COMPILER_LANG_PYTHON &&
-       language != TBE_COMPILER_LANG_GO))
+       language != TBE_COMPILER_LANG_GO &&
+       language != TBE_COMPILER_LANG_RUST))
+    return NULL;
+  if (language == TBE_COMPILER_LANG_RUST &&
+      !tbe_rust_validate_sized_records(contract))
     return NULL;
   root = create_node_map(NULL);
   schema = create_node_map("schema");
@@ -4139,6 +4300,7 @@ static Node *tbe_source_render_ir(
     if (list == NULL) {
       fprintf(stderr,
               "%s projection does not implement Data kind for '%s'\n",
+              language == TBE_COMPILER_LANG_RUST ? "Rust" :
               language == TBE_COMPILER_LANG_GO ? "Go" :
               language == TBE_COMPILER_LANG_PYTHON ? "Python" : "TypeScript",
               decl->name != NULL ? decl->name : "<unnamed>");
@@ -4224,7 +4386,8 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   database_language = tbe_compiler_is_database_language(options->lang_enum);
   source_language = options->lang_enum == TBE_COMPILER_LANG_TS ||
                     options->lang_enum == TBE_COMPILER_LANG_PYTHON ||
-                    options->lang_enum == TBE_COMPILER_LANG_GO;
+                    options->lang_enum == TBE_COMPILER_LANG_GO ||
+                    options->lang_enum == TBE_COMPILER_LANG_RUST;
   if (!tbe_compiler_validate_options(options, lang_name)) return 1;
   if (source_language && options->dsl_output_path != NULL) {
     fprintf(stderr, "--dsl-output requires native RulesForge lowering, not a source-only language\n");

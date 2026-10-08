@@ -49,7 +49,6 @@ spec("tbe_compiler_schema_boundary") {
   it("rejects varint in format/native backends lacking a projection") {
     static const int64_t languages[] = {
         TBE_COMPILER_LANG_C,
-        TBE_COMPILER_LANG_RUST,
         TBE_COMPILER_LANG_CPP,
         TBE_COMPILER_LANG_GO,
         TBE_COMPILER_LANG_SQLITE,
@@ -57,7 +56,6 @@ spec("tbe_compiler_schema_boundary") {
     };
     static const char *const output_paths[] = {
         "test_varint_boundary_c.out",
-        "test_varint_boundary_rust.out",
         "test_varint_boundary_cpp.out",
         "test_varint_boundary_go.out",
         "test_varint_boundary_sqlite.out",
@@ -752,6 +750,180 @@ spec("go_contract_render_ir") {
       check_not_equal(tbe_compiler_run(&options), 0);
       check_true(test_render_file_contains(output_path, "caller-output-sentinel"));
     }
+    remove(schema_path);
+    remove(output_path);
+  }
+}
+
+
+spec("rust_contract_render_ir") {
+  it("renders bounded logical Rust types without Binary field-order admission") {
+    static const char schema_path[] = "rust_contract_no_binary.schema";
+    static const char output_path[] = "rust_contract_no_binary.rs";
+    static const char binary_path[] = "rust_contract_no_binary.h";
+    static const char schema[] =
+        "schema Ledger; "
+        "enum State <uint16> { Idle = 008; Ready = 65535; } "
+        "message Event { "
+        "string payload; uint32 sequence; "
+        "list<map<string,Item>> records; "
+        "map<string,uint64> totals; set<State> states; "
+        "uint8[8] digest; bytes(16) token; "
+        "nullable string title; int64 debit; uint64 credit; "
+        "State state; group<Level> levels; } "
+        "message Item { uint32 id; } "
+        "group Level { uint64 price; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_RUST,
+    };
+    remove(schema_path);
+    remove(output_path);
+    remove(binary_path);
+    check_equal(write_text_file(schema_path, schema), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(output_path, "#[repr(u16)]"));
+    check_true(test_render_file_contains(
+        output_path, "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]"));
+    check_true(test_render_file_contains(output_path, "Idle = 8,"));
+    check_true(test_render_file_contains(output_path, "Ready = 65535,"));
+    check_true(test_render_file_contains(output_path, "pub payload: String,"));
+    check_true(test_render_file_contains(output_path, "pub sequence: u32,"));
+    check_true(test_render_file_contains(
+        output_path,
+        "pub records: Vec<std::collections::HashMap<String, Item>>,"));
+    check_true(test_render_file_contains(
+        output_path,
+        "pub totals: std::collections::HashMap<String, u64>,"));
+    check_true(test_render_file_contains(
+        output_path,
+        "pub states: std::collections::HashSet<State>,"));
+    check_true(test_render_file_contains(output_path, "pub digest: [u8; 8],"));
+    check_true(test_render_file_contains(output_path, "pub token: [u8; 16],"));
+    check_true(test_render_file_contains(output_path,
+                                         "pub title: Option<String>,"));
+    check_true(test_render_file_contains(output_path, "pub debit: i64,"));
+    check_true(test_render_file_contains(output_path, "pub credit: u64,"));
+    check_true(test_render_file_contains(output_path, "pub state: State,"));
+    check_true(test_render_file_contains(output_path,
+                                         "pub levels: Vec<Level>,"));
+    check_false(test_render_file_contains(output_path, "use serde::"));
+    check_false(test_render_file_contains(output_path, "size_bytes"));
+
+    options.lang_enum = TBE_COMPILER_LANG_C;
+    options.output_path = binary_path;
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_false(file_exists(binary_path));
+    remove(schema_path);
+    remove(output_path);
+    remove(binary_path);
+  }
+
+  it("renders custom Rust Mustache templates from logical Contract fields") {
+    static const char schema_path[] = "rust_contract_custom.schema";
+    static const char template_path[] = "rust_contract_custom.mustache";
+    static const char output_path[] = "rust_contract_custom.out";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .template_path = template_path,
+        .output_path = output_path,
+        .lang_enum = TBE_COMPILER_LANG_RUST,
+    };
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+    check_equal(write_text_file(
+        schema_path,
+        "schema Types; message State { nullable uint64 count; }"), 0);
+    check_equal(write_text_file(template_path,
+        "{{schema.schema_name}}:{{#messages}}{{name}}:{{#fields}}"
+        "{{name}}={{rust_type}};{{/fields}}{{/messages}}"), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(output_path,
+                                         "Types:State:count=Option<u64>;"));
+    remove(schema_path);
+    remove(template_path);
+    remove(output_path);
+  }
+
+  it("rejects unrepresentable key types and Rust-language identifiers") {
+    static const char schema_path[] = "rust_contract_reject.schema";
+    static const char output_path[] = "rust_contract_reject.rs";
+    static const char *const rejected[] = {
+        "message Bad { map<bytes,uint32> values; }",
+        "message Bad { set<double> values; }",
+        "message Bad { list<map<bytes,uint32>> values; }",
+        "message Bad { uint32 type; }",
+        "message Bad { uint32 id; } union Variant { Bad record; }",
+        "flags Permission <uint8> { Read = 1; Write = 2; }",
+        "message Bad { varint count; }",
+        "message Bad { datetime recorded; }",
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_RUST,
+    };
+    for (size_t i = 0u; i < sizeof(rejected) / sizeof(rejected[0]); ++i) {
+      remove(schema_path);
+      remove(output_path);
+      check_equal(write_text_file(schema_path, rejected[i]), 0);
+      check_equal(write_text_file(output_path, "previous-valid-artifact"), 0);
+      check_not_equal(tbe_compiler_run(&options), 0);
+      check_true(test_render_file_contains(
+          output_path, "previous-valid-artifact"));
+    }
+    remove(schema_path);
+    remove(output_path);
+  }
+
+  it("rejects absent-field defaults and unbounded inline record cycles") {
+    static const char schema_path[] = "rust_contract_presence.schema";
+    static const char output_path[] = "rust_contract_presence.rs";
+    static const char *const rejected[] = {
+        "message Bad { optional uint32 value; }",
+        "message Bad { uint32 value default 3; }",
+        "message Node { Node next; }",
+        "message A { B next; } message B { A back; }",
+        "message Node { nullable Node next; }",
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_RUST,
+    };
+    for (size_t i = 0u; i < sizeof(rejected) / sizeof(rejected[0]); ++i) {
+      remove(schema_path);
+      remove(output_path);
+      check_equal(write_text_file(schema_path, rejected[i]), 0);
+      check_equal(write_text_file(output_path, "unchanged-output"), 0);
+      check_not_equal(tbe_compiler_run(&options), 0);
+      check_true(test_render_file_contains(output_path, "unchanged-output"));
+    }
+    remove(schema_path);
+    remove(output_path);
+  }
+
+  it("admits recursive models when a Vec owns the recursive edge") {
+    static const char schema_path[] = "rust_contract_vec_recursion.schema";
+    static const char output_path[] = "rust_contract_vec_recursion.rs";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_RUST,
+    };
+    remove(schema_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path,
+        "message Node { uint32 id; list<Node> children; }"), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(
+        output_path, "pub children: Vec<Node>,"));
     remove(schema_path);
     remove(output_path);
   }

@@ -1,11 +1,8 @@
-use serde::{Serialize, Deserialize};
-
-/* ========================================================================= */
-/* Enums                                                                     */
-/* ========================================================================= */
+// Type declarations projected from immutable IDL Contract.
+// This artifact does not implement Binary encoding or a serde runtime.
 
 {{#enums}}
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr({{rust_underlying_type}})]
 pub enum {{enum_name}} {
 {{#items}}
@@ -14,44 +11,29 @@ pub enum {{enum_name}} {
 }
 
 {{/enums}}
-
-/* ========================================================================= */
-/* Composites                                                                */
-/* ========================================================================= */
-
 {{#composites}}
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct {{name}} {
 {{#fields}}
-    pub {{name}}: {{rust_type}}, // {{size_bytes}} bytes
+    pub {{name}}: {{rust_type}},
 {{/fields}}
 }
 
 {{/composites}}
-
-/* ========================================================================= */
-/* Groups                                                                    */
-/* ========================================================================= */
-
 {{#groups}}
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct {{name}} {
 {{#fields}}
-    pub {{name}}: {{rust_type}}, // {{size_bytes}} bytes
+    pub {{name}}: {{rust_type}},
 {{/fields}}
 }
 
 {{/groups}}
-
-/* ========================================================================= */
-/* Messages                                                                  */
-/* ========================================================================= */
-
 {{#messages}}
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct {{name}} {
 {{#fields}}
-    pub {{name}}: {{rust_type}}, // {{size_bytes}} bytes
+    pub {{name}}: {{rust_type}},
 {{/fields}}
 }
 
