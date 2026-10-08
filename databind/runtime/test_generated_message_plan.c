@@ -129,6 +129,47 @@ spec("Generated codec-owned MessagePlan preparation") {
   }
   after_each() { data_bind_free(codec); codec = NULL; }
 
+
+  it("round-trips generated Bool8 fields including present false") {
+    static const char input[] = "{\"enabled\":true,\"flag\":false}";
+    BooleanWire_t value, roundtrip;
+    char *text = NULL;
+    size_t text_size = 0u;
+    BooleanWire_init(&value);
+    BooleanWire_init(&roundtrip);
+    check_equal(BooleanWire_from_json(codec, &value, input, sizeof(input) - 1u,
+        &error), DATA_BIND_OK);
+    check_equal(value.enabled, 1u);
+    check_equal(value.flag, 0u);
+    check_equal(value._presence[0] & 1u, 1u);
+    check_equal(BooleanWire_to_json(codec, &value, &text, &text_size,
+        &error), DATA_BIND_OK);
+    check_equal(BooleanWire_from_json(codec, &roundtrip, text, text_size,
+        &error), DATA_BIND_OK);
+    check_equal(roundtrip.enabled, value.enabled);
+    check_equal(roundtrip.flag, value.flag);
+    check_equal(roundtrip._presence[0], value._presence[0]);
+    data_bind_serialized_free(text);
+    BooleanWire_clear(&roundtrip);
+    BooleanWire_clear(&value);
+  }
+
+  it("preserves absent optional Bool8 and rejects integer Boolean input") {
+    static const char absent[] = "{\"enabled\":false}";
+    static const char wrong[] = "{\"enabled\":1,\"flag\":false}";
+    BooleanWire_t value;
+    BooleanWire_init(&value);
+    check_equal(BooleanWire_from_json(codec, &value, absent, sizeof(absent) - 1u,
+        &error), DATA_BIND_OK);
+    check_equal(value.enabled, 0u);
+    check_equal(value._presence[0], 0u);
+    check_equal(BooleanWire_from_json(codec, &value, wrong, sizeof(wrong) - 1u,
+        &error), DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(value.enabled, 0u);
+    check_equal(value._presence[0], 0u);
+    BooleanWire_clear(&value);
+  }
+
   it("publishes one complete native plan to concurrent cold callers") {
     PrepareWorker workers[PREPARED_TEST_THREADS] = {0};
     cmeta_thread_t threads[PREPARED_TEST_THREADS] = {0};

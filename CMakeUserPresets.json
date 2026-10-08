@@ -5,6 +5,17 @@
     ],
     "configurePresets": [
         {
+            "name": "ci-component-release-user",
+            "inherits": "ci-sdk-release-user",
+            "description": "Build and qualify DataBind against an explicitly selected Salts Component candidate.",
+            "cacheVariables": {
+                "BUILD_TESTS": true,
+                "BUILD_TESTING": true,
+                "BUILD_BENCHMARKS": false,
+                "BUILD_EXAMPLES": false
+            }
+        },
+        {
             "name": "vcpkg-cache",
             "hidden": true,
             "toolchainFile": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/cmake/QigaoVcpkgToolchain.cmake",
@@ -612,6 +623,15 @@
     ],
     "buildPresets": [
         {
+            "name": "ci-component-release-user",
+            "configurePreset": "ci-component-release-user"
+        },
+        {
+            "name": "install-ci-component-release-user",
+            "configurePreset": "ci-component-release-user",
+            "targets": ["install"]
+        },
+        {
             "name": "ci-win-dev-user",
             "configurePreset": "ci-win-dev-user"
         },
@@ -947,6 +967,11 @@
         }
     ],
     "testPresets": [
+        {
+            "name": "ci-component-release-user",
+            "configurePreset": "ci-component-release-user",
+            "output": {"outputOnFailure": true}
+        },
         {
             "name": "ci-win-dev-user",
             "inherits": "ci-native-release-user",
