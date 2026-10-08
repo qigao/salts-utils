@@ -3751,6 +3751,9 @@ static int tbe_source_append_cstr(char *buffer, size_t capacity,
       tbe_source_append(buffer, capacity, used, text, strlen(text));
 }
 
+static int tbe_go_comparable_type(
+    const IdlContract *contract, const char *expression, size_t length);
+
 static int tbe_source_type_expression(
     const IdlContract *contract, const char *expression, size_t length,
     int64_t language, char *buffer, size_t capacity, size_t *used) {
@@ -3767,6 +3770,12 @@ static int tbe_source_type_expression(
       !idl_type_ref_parse(expression, length, &type))
     return 0;
   if (type.collection_kind != IDL_COLLECTION_NONE) {
+    if (go &&
+        (type.collection_kind == IDL_COLLECTION_SET ||
+         type.collection_kind == IDL_COLLECTION_MAP) &&
+        !tbe_go_comparable_type(
+            contract, type.arguments[0], type.argument_lengths[0]))
+      return 0;
     const char *prefix = type.collection_kind == IDL_COLLECTION_LIST
         ? (go ? "[]" : python ? "list[" : "Array<")
         : type.collection_kind == IDL_COLLECTION_SET
@@ -3827,13 +3836,13 @@ static int tbe_source_type_expression(
 /* Go map keys and set elements must have comparable value representations.
  * Reject slice/float/record keys instead of emitting Go code that cannot typecheck. */
 static int tbe_go_comparable_type(const IdlContract *contract,
-                                  const char *expression) {
+                                  const char *expression, size_t length) {
   IdlTypeRef ref;
   char name[IDL_TYPE_REF_MAX_BYTES + 1u];
   const tbe_compiler_scalar_projection_t *scalar;
   const IdlDataDecl *decl;
   if (expression == NULL ||
-      !idl_type_ref_parse(expression, strlen(expression), &ref) ||
+      !idl_type_ref_parse(expression, length, &ref) ||
       ref.collection_kind != IDL_COLLECTION_NONE ||
       ref.name_length >= sizeof(name))
     return 0;
@@ -3887,26 +3896,31 @@ static int tbe_source_field_type(
         : (go ? "[]" : python ? "list[" : "Array<");
     inner = field->inner_type;
     if (go && field->collection_kind == IDL_COLLECTION_SET &&
-        !tbe_go_comparable_type(contract, inner))
+        !tbe_go_comparable_type(contract, inner, inner != NULL ? strlen(inner) : 0u))
       return 0;
     if (go && field->collection_kind == IDL_COLLECTION_ARRAY) {
       size_t fixed_length;
+      char fixed_text[32];
+      int printed;
       if (!tbe_compiler_parse_size(field->length, &fixed_length) ||
-          fixed_length == 0u)
+          fixed_length == 0u || fixed_length > 2147483647u)
         return 0;
-      /* A fixed array is a value of exactly N elements, not a slice.
-       * Symbolic length references require a separate array representation. */
+      /* Normalize literal decimal; a spelling like 008 is invalid in Go.
+       * Symbolic lengths cannot be represented as fixed Go type lengths. */
+      printed = snprintf(fixed_text, sizeof(fixed_text), "%zu", fixed_length);
+      if (printed < 0 || (size_t)printed >= sizeof(fixed_text))
+        return 0;
       prefix = NULL;
       if (!tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "[") ||
           !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used,
-                                  field->length) ||
+                                  fixed_text) ||
           !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used, "]"))
         return 0;
     }
     if (inner == NULL ||
-        (!go || field->collection_kind != IDL_COLLECTION_ARRAY) &&
-        !tbe_source_append_cstr(
-            output, TBE_SOURCE_TYPE_CAPACITY, &used, prefix))
+        ((!go || field->collection_kind != IDL_COLLECTION_ARRAY) &&
+         !tbe_source_append_cstr(
+             output, TBE_SOURCE_TYPE_CAPACITY, &used, prefix)))
       return 0;
     if (!tbe_source_type_expression(
             contract, inner, strlen(inner),
@@ -3919,7 +3933,8 @@ static int tbe_source_field_type(
     break;
   case IDL_COLLECTION_MAP:
     if (field->key_type == NULL || field->value_type == NULL ||
-        (go && !tbe_go_comparable_type(contract, field->key_type)) ||
+        (go && !tbe_go_comparable_type(contract, field->key_type,
+                                               strlen(field->key_type))) ||
         !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY,
                                 &used, go ? "map[" : python ? "dict[" : "Map<") ||
         !tbe_source_type_expression(
