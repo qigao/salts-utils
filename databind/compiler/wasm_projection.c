@@ -975,6 +975,12 @@ static int wasm_stage_reserved_empty(const char *path) {
  * The config retains final names for semantic identifiers and includes.
  * On failure the coordinator owns removal of any partially written stages.
  */
+static int wasm_generate_impl(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    void *context,
+    const char *const stages[4]);
+
 int databind_compiler_wasm_render_staged(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
@@ -991,10 +997,6 @@ int databind_compiler_wasm_render_staged(
   const char *finals[4];
   size_t i;
   size_t j;
-  databind_compiler_wasm_config staged_config;
-  databind_compiler_projection_request staged_request;
-  int result;
-
   if (config == NULL || request == NULL || request->output == NULL)
     return -1;
   finals[0] = request->output;
@@ -1014,23 +1016,14 @@ int databind_compiler_wasm_render_staged(
   }
   for (i = 0u; i < 4u; ++i)
     if (!wasm_stage_reserved_empty(paths[i])) return -1;
-  staged_config = *config;
-  staged_config.host_header_output = host_header_stage;
-  staged_config.host_source_output = host_source_stage;
-  staged_config.guest_header_output = guest_header_stage;
-  staged_request = *request;
-  staged_request.output = component_stage;
-  staged_request.config = &staged_config;
-  /* The writer consumes output paths solely as destinations; semantic
-   * identifiers and includes come from native_header and symbol_prefix. */
-  result = databind_compiler_wasm_generate(input, &staged_request, NULL);
-  return result;
+  return wasm_generate_impl(input, request, NULL, paths);
 }
 
-int databind_compiler_wasm_generate(
+static int wasm_generate_impl(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
-    void *context) {
+    void *context,
+    const char *const stages[4]) {
   const databind_compiler_wasm_config *config =
       request != NULL
           ? (const databind_compiler_wasm_config *)request->config
@@ -1082,18 +1075,18 @@ int databind_compiler_wasm_generate(
     goto cleanup;
 
   if (!wasm_write_file(
-          request->output,
+          stages != NULL ? stages[0] : request->output,
           component_binary.data, component_binary.size) ||
       !wasm_write_text_output(
-          config->host_header_output,
+          stages != NULL ? stages[1] : config->host_header_output,
           wasm_write_host_header_adapter,
           input->contract, config, views, view_count) ||
       !wasm_write_text_output(
-          config->host_source_output,
+          stages != NULL ? stages[2] : config->host_source_output,
           wasm_write_host_source,
           input->contract, config, views, view_count) ||
       !wasm_write_text_output(
-          config->guest_header_output,
+          stages != NULL ? stages[3] : config->guest_header_output,
           wasm_write_guest_header,
           input->contract, config, views, view_count))
     goto cleanup;
@@ -1102,9 +1095,13 @@ int databind_compiler_wasm_generate(
 
 cleanup:
   if (!ok) {
-    if (request != NULL && request->output != NULL)
+    if (stages != NULL) {
+      size_t k;
+      for (k = 0u; k < 4u; ++k)
+        if (stages[k] != NULL) (void)cmeta_fs_unlink(stages[k]);
+    } else if (request != NULL && request->output != NULL)
       (void)cmeta_fs_unlink(request->output);
-    if (config != NULL) {
+    if (stages == NULL && config != NULL) {
       if (config->host_header_output != NULL)
         (void)cmeta_fs_unlink(config->host_header_output);
       if (config->host_source_output != NULL)
@@ -1118,6 +1115,13 @@ cleanup:
   free(views);
   databind_compiler_service_native_destroy(&ir);
   return ok ? 0 : -1;
+}
+
+int databind_compiler_wasm_generate(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    void *context) {
+  return wasm_generate_impl(input, request, context, NULL);
 }
 
 const databind_compiler_projection_backend
