@@ -14,6 +14,7 @@
 #include "native_service_projection.h"
 #include "wasm_projection.h"
 #include "plugin_projection.h"
+#include "native_source_ir.h"
 #include "binary_layout_lowering.h"
 #include "schema_cmeta.h"
 #include <cmeta_cmeta_data.h>
@@ -4844,6 +4845,39 @@ rollback:
   if (tbe_compiler_txn_abort(txn) != 0)
     fprintf(stderr, "Compiler transaction rollback was incomplete\n");
   return -1;
+}
+
+/* Contract-only Native headers share the existing staged-output coordinator.
+ * The legacy C/Wire entry remains separately Binary-admitted. */
+int databind_compiler_generate_contract_native_header(
+    const char *schema_path, const char *output_path) {
+  tbe_compiler_output_transaction txn = {0};
+  databind_native_source_ir ir = {0};
+  Node *tree = NULL;
+  IdlContract *contract = NULL;
+  char *source = NULL;
+  int status = -1;
+  if (schema_path == NULL || output_path == NULL ||
+      output_path[0] == '\0') return -1;
+  if (databind_compiler_parse_contract_only_file(
+          schema_path, &tree, &contract, &source) != 0)
+    goto done;
+  if (databind_native_source_ir_build(contract, &ir) != 0)
+    goto done;
+  if (tbe_compiler_txn_add(&txn, output_path) != 0)
+    goto done;
+  if (databind_native_source_ir_write_header(
+          &ir, txn.items[0].staging_path) != 0)
+    goto done;
+  status = tbe_compiler_txn_commit(&txn);
+done:
+  if (txn.count != 0u && tbe_compiler_txn_abort(&txn) != 0)
+    status = -1;
+  databind_native_source_ir_destroy(&ir);
+  idl_contract_destroy(contract);
+  node_free(tree);
+  free(source);
+  return status;
 }
 
 static int tbe_compiler_output_paths_distinct(
