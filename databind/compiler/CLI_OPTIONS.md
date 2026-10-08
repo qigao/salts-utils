@@ -70,6 +70,36 @@ salts-idlc <schema_file> [options]
     schema registration, sandbox policy, quotas, and provider errors
   - Example: `--output order.h --guest-output order_guest.c`
 
+### Built-in C multi-output publication
+
+When the built-in compiler receives a **named** `--output` together with
+`--source-output`, `--guest-output` and/or `--dsl-output`, and no
+independent artifact/transport projection callback is selected, the C
+header and its companion outputs are processed as one **rollback-aware
+output set**.
+
+Every file is rendered and finalized in a unique exclusive staging sibling
+before touching any caller output. Member-lifecycle and Binary reader code
+are appended to the staged `.c`, not to a published file. Before replacing
+anything the compiler checks every destination, preserves existing POSIX
+permissions, and reserves distinct backups of existing outputs. A failed
+publish restores prior files in reverse order and removes new outputs;
+cleanup and restore errors are reported, and an un-restorable original
+backup is preserved for recovery. Duplicate output paths and directory
+destinations fail closed.
+
+This is a *multi-file rollback protocol*, **not** a filesystem-wide atomic
+snapshot: independent path renames are not simultaneously visible to other
+processes, and external concurrent writers are outside this contract.
+
+**Scope limit:** `--artifacts` / `--transports` backend callbacks still
+own their own output paths and their transaction boundaries. They are
+registered and admitted before the primary render, but their generation
+callbacks are not yet part of a shared stage/commit protocol. Mixed
+source + selected projection cannot claim cross-backend atomicity. The
+ordinary stdout output path also cannot be rolled back once written.
+See #599 for the remaining cross-backend and C/Native format work.
+
 Lua adapters are not a DataBind compiler output. Runtime Lua interoperability
 uses Salts `Salts::Lua` and `<salts/bindings/lua/cmeta.h>` against the canonical
 CMeta descriptors emitted with the native C representation. DataBind does not
