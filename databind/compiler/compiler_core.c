@@ -3437,6 +3437,14 @@ static int databind_compiler_parse_contract_file_mode(
   return 0;
 }
 
+int databind_compiler_parse_contract_only_file(
+    const char *schema_path, Node **out_legacy_tree,
+    IdlContract **out_contract, char **out_schema_data) {
+  return databind_compiler_parse_contract_file_mode(
+      schema_path, out_legacy_tree, out_contract, out_schema_data,
+      DATABIND_COMPILER_FORMAT_CONTRACT_ONLY);
+}
+
 int databind_compiler_parse_contract_file(
     const char *schema_path, Node **out_legacy_tree,
     IdlContract **out_contract, char **out_schema_data) {
