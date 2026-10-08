@@ -1051,6 +1051,54 @@ describe("compiler integration") {
     for (i = 0u; i < 6u; ++i) (void)remove(paths[i]);
   }
 
+  it("rejects unsupported backend preceding Plugin without publishing output") {
+    static const char primary[] = "projection_plugin_mixed.h";
+    static const char provider_c[] = "projection_plugin_mixed.plugin.c";
+    static const char provider_h[] = "projection_plugin_mixed.plugin.h";
+    static const char client_h[] = "projection_plugin_mixed.client.h";
+    static const char client_c[] = "projection_plugin_mixed.client.c";
+    static const char http_path[] = "projection_plugin_mixed.http.h";
+    databind_compiler_plugin_config config = {
+        .plugin_version_major = 1u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = provider_h,
+        .client_header_output = client_h,
+        .client_source_output = client_c,
+    };
+    staged_projection_probe http = {http_path, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_path, NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), provider_c, &config},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED},
+        DATABIND_COMPILER_PLUGIN_BACKEND,
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    const char *outputs[] = {primary, provider_c, provider_h,
+                             client_h, client_c, http_path};
+    size_t i;
+    for (i = 0u; i < 6u; ++i) (void)remove(outputs[i]);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "old-primary"));
+    for (i = 1u; i < 6u; ++i) check_false(file_exists(outputs[i]));
+    (void)remove(primary);
+  }
+
   it("rejects incomplete or dishonest selected staging capability sets") {
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "first.c", NULL},
