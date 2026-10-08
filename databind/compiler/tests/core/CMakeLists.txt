@@ -6,7 +6,7 @@ set_tests_properties(test_databind_compiler_tooling_boundary
   PROPERTIES LABELS "databind;package;compiler")
 
 cmake_add_test(test_tbe_compiler
-  SOURCES test_tbe_compiler.c "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c" "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c" "${DATABIND_COMPILER_SOURCE_DIR}/projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c" "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c"
+  SOURCES test_tbe_compiler.c "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c" "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/service_native.c" "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c" "${DATABIND_COMPILER_SOURCE_DIR}/projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c" "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c"
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
@@ -25,7 +25,7 @@ target_include_directories(test_tbe_compiler
           ${DATABIND_SOURCE_ROOT}/formats/binary/include)
 
 cmake_add_test(test_tbe_compiler_schema_boundary
-  SOURCES test_schema_boundary.c "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c" "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c" "${DATABIND_COMPILER_SOURCE_DIR}/projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c" "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c"
+  SOURCES test_schema_boundary.c "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c" "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/service_native.c" "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c" "${DATABIND_COMPILER_SOURCE_DIR}/projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c" "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c"
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS TBE_COMPILER_RESOURCE_DIR="${DATABIND_COMPILER_SOURCE_DIR}"
   FOLDER "databind/compiler/tests/core")
