@@ -2,6 +2,7 @@
 
 #include "compiler_core.h"
 #include "native_service_projection.h"
+#include "wasm_projection.h"
 #include "tinytest.h"
 
 #include <stdlib.h>
@@ -721,6 +722,60 @@ describe("compiler integration") {
     (void)remove(primary);
   }
 #endif
+
+  it("rejects mixed self-publishing transport before Wasm without publication") {
+    static const char primary[] = "projection_wasm_mixed.h";
+    static const char component[] = "projection_wasm_mixed.wasm";
+    static const char host_h[] = "projection_wasm_mixed.host.h";
+    static const char host_c[] = "projection_wasm_mixed.host.c";
+    static const char guest_h[] = "projection_wasm_mixed.guest.h";
+    static const char http_path[] = "projection_wasm_mixed.http.h";
+    databind_compiler_wasm_config config = {
+        .component_id = "Fixture.Component",
+        .native_header = primary,
+        .core_module_path = "not-read-before-admission.wasm",
+        .host_header_output = host_h,
+        .host_source_output = host_c,
+        .guest_header_output = guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe http = {http_path, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_path, NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED},
+        DATABIND_COMPILER_WASM_BACKEND,
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(host_h);
+    (void)remove(host_c);
+    (void)remove(guest_h);
+    (void)remove(http_path);
+    check_true(write_sentinel(primary, "original-header"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "original-header"));
+    check_false(file_exists(component));
+    check_false(file_exists(host_h));
+    check_false(file_exists(host_c));
+    check_false(file_exists(guest_h));
+    check_false(file_exists(http_path));
+    (void)remove(primary);
+  }
 
   it("rejects incomplete or dishonest selected staging capability sets") {
     const databind_compiler_projection_request requests[] = {
