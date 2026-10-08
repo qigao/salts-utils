@@ -649,6 +649,103 @@ static int add_wasm(
 }
 
 
+/* Register every published pathname exactly once. This remains
+ * compiler-private until each backend supports staged generation, but it
+ * already prevents one selected backend from clobbering another backend's
+ * secondary output or a compiler-owned header/source. */
+static int frontend_manifest_add(
+    databind_compiler_projection_frontend_plan *plan,
+    const char *path, databind_compiler_projection_id owner,
+    char *error, size_t error_size) {
+  size_t i;
+  if (plan == NULL || path == NULL || path[0] == '\0')
+    return frontend_error(error, error_size,
+                          "Projection output manifest contains an empty path");
+  if (plan->output_count >= DATABIND_COMPILER_FRONTEND_MAX_OUTPUTS)
+    return frontend_error(error, error_size,
+                          "Too many generated output paths");
+  for (i = 0u; i < plan->output_count; ++i)
+    if (strcmp(plan->outputs[i].path, path) == 0)
+      return frontend_errorf(
+          error, error_size,
+          "Generated output path collides with another selected output: %s",
+          path);
+  plan->outputs[plan->output_count++] =
+      (databind_compiler_planned_output){path, owner};
+  return 0;
+}
+
+static int frontend_manifest_collect(
+    const databind_compiler_projection_frontend_input *input,
+    databind_compiler_projection_frontend_plan *plan,
+    char *error, size_t error_size) {
+  const databind_compiler_projection_id native_owner = {0};
+  const char *builtins[] = {
+      input->output_path,
+      input->source_output_path,
+      input->guest_output_path,
+      input->dsl_output_path,
+  };
+  size_t i;
+  plan->output_count = 0u;
+
+  for (i = 0u; i < sizeof(builtins) / sizeof(builtins[0]); ++i)
+    if (builtins[i] != NULL &&
+        frontend_manifest_add(
+            plan, builtins[i], native_owner, error, error_size) != 0)
+      return -1;
+
+  for (i = 0u; i < plan->request_count; ++i) {
+    const databind_compiler_projection_request *request = &plan->requests[i];
+    const databind_compiler_projection_id owner = request->id;
+    if (frontend_manifest_add(
+            plan, request->output, owner, error, error_size) != 0)
+      return -1;
+
+    if (owner.axis != DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT)
+      continue;
+    switch (owner.kind) {
+    case DATABIND_COMPILER_ARTIFACT_NATIVE:
+      if (frontend_manifest_add(
+              plan, plan->native_service_header,
+              owner, error, error_size) != 0)
+        return -1;
+      break;
+    case DATABIND_COMPILER_ARTIFACT_PLUGIN: {
+      const char *related[] = {
+          plan->plugin_service_header, plan->plugin_client_header,
+          plan->plugin_client_source,
+      };
+      size_t j;
+      for (j = 0u; j < sizeof(related) / sizeof(related[0]); ++j)
+        if (frontend_manifest_add(
+                plan, related[j], owner, error, error_size) != 0)
+          return -1;
+      break;
+    }
+    case DATABIND_COMPILER_ARTIFACT_WASM: {
+      const char *related[] = {
+          plan->wasm_host_header, plan->wasm_host_source,
+          plan->wasm_guest_header,
+      };
+      size_t j;
+      for (j = 0u; j < sizeof(related) / sizeof(related[0]); ++j)
+        if (frontend_manifest_add(
+                plan, related[j], owner, error, error_size) != 0)
+          return -1;
+      break;
+    }
+    case DATABIND_COMPILER_ARTIFACT_OPENAPI:
+      break; /* Only the primary OpenAPI output is emitted. */
+    default:
+      return frontend_error(
+          error, error_size,
+          "Selected artifact has no declared output manifest");
+    }
+  }
+  return 0;
+}
+
 int databind_compiler_projection_frontend_build(
     const databind_compiler_projection_frontend_input *input,
     databind_compiler_projection_frontend_plan *out,
@@ -861,9 +958,14 @@ int databind_compiler_projection_frontend_build(
     frontend_error(error, error_size, "Invalid typed generation selection");
     goto fail;
   }
+  /* Recheck all multi-output files as one set, not only request->output.
+   * This manifest is the future transaction coordinator's path contract. */
+  if (frontend_manifest_collect(input, out, error, error_size) != 0)
+    goto fail;
   return 0;
 
 fail:
+  out->output_count = 0u;
   databind_compiler_projection_frontend_dispose(out);
   return -1;
 }
