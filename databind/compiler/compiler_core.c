@@ -4150,28 +4150,89 @@ static int tbe_rust_enum_literal(const char *value,
   return tbe_source_append_cstr(out, capacity, &used, digits);
 }
 
+/* C++ declarations cannot use language keywords or implementation-reserved
+ * identifiers. This admission is source-only; the Contract's logical identity
+ * remains unchanged. */
+static int tbe_cpp_identifier_valid(const char *name) {
+  static const char *const cpp_keywords[] = {
+      "alignas", "alignof", "and", "and_eq", "asm", "bitand", "bitor",
+      "bool", "catch", "char8_t", "char16_t", "char32_t", "class",
+      "compl", "concept", "const_cast", "constexpr", "consteval",
+      "constinit", "decltype", "delete", "dynamic_cast", "explicit",
+      "export", "false", "friend", "mutable", "namespace", "new",
+      "noexcept", "not", "not_eq", "nullptr", "operator", "or",
+      "or_eq", "private", "protected", "public", "reinterpret_cast",
+      "requires", "static_assert", "static_cast", "template", "this",
+      "thread_local", "throw", "true", "try", "typeid", "typename",
+      "using", "virtual", "wchar_t", "xor", "xor_eq"
+  };
+  size_t i;
+  if (!tbe_compiler_c_identifier_valid(name) ||
+      (name[0] == '_' && (name[1] == '_' ||
+                          (name[1] >= 'A' && name[1] <= 'Z'))))
+    return 0;
+  for (i = 0u; i < sizeof(cpp_keywords) / sizeof(cpp_keywords[0]); ++i)
+    if (strcmp(name, cpp_keywords[i]) == 0)
+      return 0;
+  return 1;
+}
+
+/* C++11+ integer literal suffixes preserve the complete uint64 domain;
+ * INT64_MIN must be spelled as a subtraction to avoid out-of-range positive
+ * literal parsing. Enum values are already validated in IdlContract. */
+static int tbe_cpp_enum_literal(
+    const char *value, const char *storage,
+    char *out, size_t capacity) {
+  const tbe_compiler_scalar_projection_t *integer =
+      tbe_compiler_integer_type(storage);
+  char decimal[96];
+  unsigned bits;
+  int printed;
+  size_t i;
+  if (integer == NULL || value == NULL ||
+      !tbe_rust_enum_literal(value, decimal, sizeof(decimal)))
+    return 0;
+  for (i = (decimal[0] == '-'); decimal[i] != '\0'; ++i)
+    if (decimal[i] < '0' || decimal[i] > '9')
+      return 0;
+  if (i == (size_t)(decimal[0] == '-') ||
+      (decimal[0] == '-' && integer->data->kind != CMETA_DATA_SINT))
+    return 0;
+  bits = ((const cmeta_data_integer_shape *)integer->data->shape)->bits;
+  if (strcmp(decimal, "-9223372036854775808") == 0)
+    printed = snprintf(out, capacity, "(-9223372036854775807LL - 1LL)");
+  else
+    printed = snprintf(out, capacity, "%s%s", decimal,
+        bits == 64u ? (integer->data->kind == CMETA_DATA_UINT ?
+            "ULL" : "LL") : "");
+  return printed > 0 && (size_t)printed < capacity;
+}
+
 static int tbe_source_render_field(
     const IdlContract *contract, const IdlField *field,
     int64_t language, Node *fields) {
   const int python = language == TBE_COMPILER_LANG_PYTHON;
   const int go = language == TBE_COMPILER_LANG_GO;
   const int rust = language == TBE_COMPILER_LANG_RUST;
+  const int cpp = language == TBE_COMPILER_LANG_CPP;
   Node *node = create_node_map(NULL);
   char mapped[TBE_SOURCE_TYPE_CAPACITY];
   char go_name[256];
   if (node == NULL)
     return 0;
   if (field->name == NULL ||
+      (cpp && (!tbe_cpp_identifier_valid(field->name) ||
+               idl_contract_find_data(contract, field->name) != NULL)) ||
       (rust && !tbe_rust_identifier_valid(field->name)) ||
       (go && !tbe_go_export_name(field, fields, go_name)) ||
       !tbe_source_field_type(contract, field, language, mapped) ||
       tbe_compiler_set_string(node, "name", field->name) != 0 ||
       tbe_compiler_set_string(
-          node, rust ? "rust_type" :
+          node, cpp ? "cpp_type" : rust ? "rust_type" :
                 go ? "go_type" : python ? "python_type" : "ts_type",
           mapped) != 0 ||
       (go && tbe_compiler_set_string(node, "go_name", go_name) != 0) ||
-      (!python && !go && !rust && field->optional &&
+      (!python && !go && !rust && !cpp && field->optional &&
        tbe_compiler_set_string(node, "ts_optional", "1") != 0) ||
       list_add(fields, node) != 0) {
     node_free(node);
@@ -4191,6 +4252,8 @@ static int tbe_source_render_decl(
   if (decl->name == NULL ||
       (language == TBE_COMPILER_LANG_RUST &&
        (!tbe_rust_identifier_valid(decl->name) || decl->flags)) ||
+      (language == TBE_COMPILER_LANG_CPP &&
+       (!tbe_cpp_identifier_valid(decl->name) || decl->flags)) ||
       tbe_compiler_set_string(node, "name", decl->name) != 0)
     goto failed;
   if (decl->kind == IDL_DATA_ENUM) {
@@ -4206,15 +4269,19 @@ static int tbe_source_render_decl(
         tbe_compiler_set_string(node, "python_flags", "1") != 0)
       goto failed;
     if (language == TBE_COMPILER_LANG_GO ||
-        language == TBE_COMPILER_LANG_RUST) {
+        language == TBE_COMPILER_LANG_RUST ||
+        language == TBE_COMPILER_LANG_CPP) {
       const char *storage = decl->underlying_type != NULL
           ? decl->underlying_type : (decl->flags ? "uint32" : "int32");
       const tbe_compiler_scalar_projection_t *integer =
           tbe_compiler_integer_type(storage);
       if (integer == NULL ||
           tbe_compiler_set_string(
-              node, language == TBE_COMPILER_LANG_RUST
+              node, language == TBE_COMPILER_LANG_CPP
+                  ? "cpp_underlying_type" :
+                  language == TBE_COMPILER_LANG_RUST
                   ? "rust_underlying_type" : "go_underlying_type",
+              language == TBE_COMPILER_LANG_CPP ? integer->cpp_type :
               language == TBE_COMPILER_LANG_RUST
                   ? integer->rust_type : integer->go_type) != 0)
         goto failed;
@@ -4228,14 +4295,21 @@ static int tbe_source_render_decl(
         goto failed;
       char literal[256];
       const int rust = language == TBE_COMPILER_LANG_RUST;
+      const int cpp = language == TBE_COMPILER_LANG_CPP;
       if ((rust &&
            (!tbe_rust_identifier_valid(decl->enum_items[i].name) ||
             !tbe_rust_enum_literal(decl->enum_items[i].value,
                                    literal, sizeof(literal)))) ||
+          (cpp &&
+           (!tbe_cpp_identifier_valid(decl->enum_items[i].name) ||
+            !tbe_cpp_enum_literal(decl->enum_items[i].value,
+                decl->underlying_type, literal, sizeof(literal)))) ||
           tbe_compiler_set_string(entry, "name",
                                   decl->enum_items[i].name) != 0 ||
           tbe_compiler_set_string(entry, "value",
-                                  rust ? literal : decl->enum_items[i].value) != 0 ||
+                                  (rust || cpp) ? literal :
+                                  decl->enum_items[i].value) != 0 ||
+          (cpp && tbe_compiler_set_string(entry, "c_literal", literal) != 0) ||
           list_add(members, entry) != 0) {
         node_free(entry);
         goto failed;
@@ -4251,6 +4325,7 @@ static int tbe_source_render_decl(
               contract, &decl->fields[i], language, members)) {
         fprintf(stderr,
                 "%s cannot represent IDL field %s.%s; no artifact published\n",
+                language == TBE_COMPILER_LANG_CPP ? "C++" :
                 language == TBE_COMPILER_LANG_RUST ? "Rust" :
                 language == TBE_COMPILER_LANG_GO ? "Go" :
                 language == TBE_COMPILER_LANG_PYTHON ? "Python dataclass"
