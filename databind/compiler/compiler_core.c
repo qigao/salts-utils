@@ -4164,12 +4164,12 @@ static int tbe_cpp_identifier_valid(const char *name) {
       "or_eq", "private", "protected", "public", "reinterpret_cast",
       "requires", "static_assert", "static_cast", "template", "this",
       "thread_local", "throw", "true", "try", "typeid", "typename",
-      "using", "virtual", "wchar_t", "xor", "xor_eq"
+      "using", "virtual", "wchar_t", "xor", "xor_eq", "std"
   };
   size_t i;
-  if (!tbe_compiler_c_identifier_valid(name) ||
-      (name[0] == '_' && (name[1] == '_' ||
-                          (name[1] >= 'A' && name[1] <= 'Z'))))
+  /* Types are emitted in the global namespace, where every leading
+   * underscore identifier is reserved; std is already a namespace. */
+  if (!tbe_compiler_c_identifier_valid(name) || name[0] == '_')
     return 0;
   for (i = 0u; i < sizeof(cpp_keywords) / sizeof(cpp_keywords[0]); ++i)
     if (strcmp(name, cpp_keywords[i]) == 0)
