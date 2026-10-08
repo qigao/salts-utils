@@ -1322,6 +1322,33 @@ describe("compiler integration") {
     check_false(file_exists(source));
   }
 
+  it("freezes a Binary-incompatible logical Contract without wire admission") {
+    static const char schema_path[] = "projection_contract_only.schema";
+    static const char schema[] =
+        "message Packet { string label; uint32 sequence; }";
+    Node *tree = NULL;
+    IdlContract *contract = NULL;
+    char *source = NULL;
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_not_null(tree);
+    check_not_null(contract);
+    check_not_null(source);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    tree = NULL;
+    contract = NULL;
+    source = NULL;
+    check_equal(databind_compiler_parse_contract_file(
+                    schema_path, &tree, &contract, &source), 1);
+    check_true(tree == NULL);
+    check_true(contract == NULL);
+    check_true(source == NULL);
+    (void)remove(schema_path);
+  }
+
   it("admits source-only artifact requests without Binary layout") {
     static const char schema_path[] = "databind_projection_independent.schema";
     static const char output[] = "databind_projection_independent.ts";
