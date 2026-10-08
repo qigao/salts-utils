@@ -3730,13 +3730,12 @@ static int tbe_compiler_projection_requires_binary(
   return 0;
 }
 
-/* TypeScript consumes a compiler-owned *presentation* IR projected from
- * the already-validated logical Contract, never Binary wire metadata. The
- * Node below is a Mustache rendering adapter, not a second semantic AST. */
-enum { TBE_TS_TYPE_CAPACITY = 4u * IDL_TYPE_REF_MAX_BYTES + 1u };
+/* Source-language presentation is projected solely from validated IdlContract.
+ * Node is the Mustache adapter, never a second semantic type authority. */
+enum { TBE_SOURCE_TYPE_CAPACITY = 4u * IDL_TYPE_REF_MAX_BYTES + 1u };
 
-static int tbe_ts_append(char *buffer, size_t capacity, size_t *used,
-                         const char *text, size_t length) {
+static int tbe_source_append(char *buffer, size_t capacity, size_t *used,
+                             const char *text, size_t length) {
   if (buffer == NULL || used == NULL || text == NULL ||
       *used >= capacity || length >= capacity - *used)
     return 0;
@@ -3746,15 +3745,16 @@ static int tbe_ts_append(char *buffer, size_t capacity, size_t *used,
   return 1;
 }
 
-static int tbe_ts_append_cstr(char *buffer, size_t capacity, size_t *used,
-                              const char *text) {
+static int tbe_source_append_cstr(char *buffer, size_t capacity,
+                                  size_t *used, const char *text) {
   return text != NULL &&
-      tbe_ts_append(buffer, capacity, used, text, strlen(text));
+      tbe_source_append(buffer, capacity, used, text, strlen(text));
 }
 
-static int tbe_ts_type_expression(
+static int tbe_source_type_expression(
     const IdlContract *contract, const char *expression, size_t length,
-    char *buffer, size_t capacity, size_t *used) {
+    int64_t language, char *buffer, size_t capacity, size_t *used) {
+  const int python = language == TBE_COMPILER_LANG_PYTHON;
   IdlTypeRef type;
   char name[IDL_TYPE_REF_MAX_BYTES + 1u];
   const char *mapped = NULL;
@@ -3766,21 +3766,25 @@ static int tbe_ts_type_expression(
       !idl_type_ref_parse(expression, length, &type))
     return 0;
   if (type.collection_kind != IDL_COLLECTION_NONE) {
-    const char *prefix =
-        type.collection_kind == IDL_COLLECTION_LIST ? "Array<" :
-        type.collection_kind == IDL_COLLECTION_SET ? "Set<" :
-        type.collection_kind == IDL_COLLECTION_MAP ? "Map<" : NULL;
-    if (!tbe_ts_append_cstr(buffer, capacity, used, prefix))
+    const char *prefix = type.collection_kind == IDL_COLLECTION_LIST
+        ? (python ? "list[" : "Array<")
+        : type.collection_kind == IDL_COLLECTION_SET
+        ? (python ? "set[" : "Set<")
+        : type.collection_kind == IDL_COLLECTION_MAP
+        ? (python ? "dict[" : "Map<") : NULL;
+    if (!tbe_source_append_cstr(buffer, capacity, used, prefix))
       return 0;
     for (i = 0u; i < type.argument_count; ++i) {
-      if (i != 0u && !tbe_ts_append_cstr(buffer, capacity, used, ", "))
+      if (i != 0u && !tbe_source_append_cstr(
+                           buffer, capacity, used, ", "))
         return 0;
-      if (!tbe_ts_type_expression(
+      if (!tbe_source_type_expression(
               contract, type.arguments[i], type.argument_lengths[i],
-              buffer, capacity, used))
+              language, buffer, capacity, used))
         return 0;
     }
-    return tbe_ts_append_cstr(buffer, capacity, used, ">");
+    return tbe_source_append_cstr(
+        buffer, capacity, used, python ? "]" : ">");
   }
 
   if (type.name_length == 0u || type.name_length >= sizeof(name))
@@ -3790,90 +3794,109 @@ static int tbe_ts_type_expression(
 
   scalar = tbe_compiler_scalar_projection(name);
   if (scalar != NULL) {
-    /* JS number cannot preserve the complete signed/unsigned 64-bit range. */
-    if ((scalar->data->kind == CMETA_DATA_SINT ||
+    if (!python &&
+        (scalar->data->kind == CMETA_DATA_SINT ||
          scalar->data->kind == CMETA_DATA_UINT) &&
         ((const cmeta_data_integer_shape *)scalar->data->shape)->bits == 64u)
       mapped = "bigint";
     else
-      mapped = scalar->ts_type;
+      mapped = python ? scalar->python_type : scalar->ts_type;
   } else if (strcmp(name, "varint") == 0 ||
              strcmp(name, "bigint") == 0) {
-    mapped = "bigint";
+    mapped = python ? "int" : "bigint";
   } else if (strcmp(name, "string") == 0 ||
              strcmp(name, "uuid") == 0) {
-    mapped = "string";
+    mapped = python ? "str" : "string";
   } else if (strcmp(name, "bytes") == 0) {
-    mapped = "Uint8Array";
+    mapped = python ? "bytes" : "Uint8Array";
   } else {
     decl = idl_contract_find_data(contract, name);
     if (decl == NULL || decl->kind == IDL_DATA_UNION)
-      return 0; /* No invented TypeScript representation for a domain/union. */
+      return 0; /* Never guess a domain or union representation. */
     mapped = name;
   }
-  return tbe_ts_append_cstr(buffer, capacity, used, mapped);
+  return tbe_source_append_cstr(buffer, capacity, used, mapped);
 }
 
-static int tbe_ts_field_type(
+static int tbe_source_field_type(
     const IdlContract *contract, const IdlField *field,
-    char output[TBE_TS_TYPE_CAPACITY]) {
+    int64_t language, char output[TBE_SOURCE_TYPE_CAPACITY]) {
+  const int python = language == TBE_COMPILER_LANG_PYTHON;
   size_t used = 0u;
   const char *inner;
   const char *prefix = NULL;
+  if (contract == NULL || field == NULL)
+    return 0;
+  /* Python dataclass cannot express omitted vs explicit null with a plain
+   * field and may not silently discard IDL default values. Both require a
+   * separately designed presence/default representation. */
+  if (python && (field->optional || field->default_value != NULL))
+    return 0;
   output[0] = '\0';
   switch (field->collection_kind) {
   case IDL_COLLECTION_NONE:
     if (field->type_name == NULL ||
-        !tbe_ts_type_expression(contract, field->type_name,
-                               strlen(field->type_name),
-                               output, TBE_TS_TYPE_CAPACITY, &used))
+        !tbe_source_type_expression(
+            contract, field->type_name, strlen(field->type_name),
+            language, output, TBE_SOURCE_TYPE_CAPACITY, &used))
       return 0;
     break;
   case IDL_COLLECTION_ARRAY:
   case IDL_COLLECTION_LIST:
   case IDL_COLLECTION_GROUP:
   case IDL_COLLECTION_SET:
-    prefix = field->collection_kind == IDL_COLLECTION_SET ? "Set<" : "Array<";
+    prefix = field->collection_kind == IDL_COLLECTION_SET
+        ? (python ? "set[" : "Set<")
+        : (python ? "list[" : "Array<");
     inner = field->inner_type;
     if (inner == NULL ||
-        !tbe_ts_append_cstr(output, TBE_TS_TYPE_CAPACITY, &used, prefix) ||
-        !tbe_ts_type_expression(
+        !tbe_source_append_cstr(
+            output, TBE_SOURCE_TYPE_CAPACITY, &used, prefix) ||
+        !tbe_source_type_expression(
             contract, inner, strlen(inner),
-            output, TBE_TS_TYPE_CAPACITY, &used) ||
-        !tbe_ts_append_cstr(output, TBE_TS_TYPE_CAPACITY, &used, ">"))
+            language, output, TBE_SOURCE_TYPE_CAPACITY, &used) ||
+        !tbe_source_append_cstr(
+            output, TBE_SOURCE_TYPE_CAPACITY, &used, python ? "]" : ">"))
       return 0;
     break;
   case IDL_COLLECTION_MAP:
     if (field->key_type == NULL || field->value_type == NULL ||
-        !tbe_ts_append_cstr(output, TBE_TS_TYPE_CAPACITY, &used, "Map<") ||
-        !tbe_ts_type_expression(
+        !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY,
+                                &used, python ? "dict[" : "Map<") ||
+        !tbe_source_type_expression(
             contract, field->key_type, strlen(field->key_type),
-            output, TBE_TS_TYPE_CAPACITY, &used) ||
-        !tbe_ts_append_cstr(output, TBE_TS_TYPE_CAPACITY, &used, ", ") ||
-        !tbe_ts_type_expression(
+            language, output, TBE_SOURCE_TYPE_CAPACITY, &used) ||
+        !tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY,
+                                &used, ", ") ||
+        !tbe_source_type_expression(
             contract, field->value_type, strlen(field->value_type),
-            output, TBE_TS_TYPE_CAPACITY, &used) ||
-        !tbe_ts_append_cstr(output, TBE_TS_TYPE_CAPACITY, &used, ">"))
+            language, output, TBE_SOURCE_TYPE_CAPACITY, &used) ||
+        !tbe_source_append_cstr(
+            output, TBE_SOURCE_TYPE_CAPACITY, &used, python ? "]" : ">"))
       return 0;
     break;
   default:
     return 0;
   }
   return !field->nullable ||
-      tbe_ts_append_cstr(output, TBE_TS_TYPE_CAPACITY, &used, " | null");
+      tbe_source_append_cstr(output, TBE_SOURCE_TYPE_CAPACITY, &used,
+                             python ? " | None" : " | null");
 }
 
-static int tbe_ts_render_field(
-    const IdlContract *contract, const IdlField *field, Node *fields) {
+static int tbe_source_render_field(
+    const IdlContract *contract, const IdlField *field,
+    int64_t language, Node *fields) {
+  const int python = language == TBE_COMPILER_LANG_PYTHON;
   Node *node = create_node_map(NULL);
-  char mapped[TBE_TS_TYPE_CAPACITY];
+  char mapped[TBE_SOURCE_TYPE_CAPACITY];
   if (node == NULL)
     return 0;
   if (field->name == NULL ||
-      !tbe_ts_field_type(contract, field, mapped) ||
+      !tbe_source_field_type(contract, field, language, mapped) ||
       tbe_compiler_set_string(node, "name", field->name) != 0 ||
-      tbe_compiler_set_string(node, "ts_type", mapped) != 0 ||
-      (field->optional &&
+      tbe_compiler_set_string(
+          node, python ? "python_type" : "ts_type", mapped) != 0 ||
+      (!python && field->optional &&
        tbe_compiler_set_string(node, "ts_optional", "1") != 0) ||
       list_add(fields, node) != 0) {
     node_free(node);
@@ -3882,8 +3905,9 @@ static int tbe_ts_render_field(
   return 1;
 }
 
-static int tbe_ts_render_decl(
-    const IdlContract *contract, const IdlDataDecl *decl, Node *list) {
+static int tbe_source_render_decl(
+    const IdlContract *contract, const IdlDataDecl *decl,
+    int64_t language, Node *list) {
   Node *node = create_node_map(NULL);
   Node *members = NULL;
   size_t i;
@@ -3901,9 +3925,11 @@ static int tbe_ts_render_decl(
         tbe_compiler_set_string(node, "underlying_type",
                                 decl->underlying_type) != 0)
       goto failed;
+    if (language == TBE_COMPILER_LANG_PYTHON && decl->flags &&
+        tbe_compiler_set_string(node, "python_flags", "1") != 0)
+      goto failed;
     if (map_add(node, members) != 0)
       goto failed;
-    members = NULL; /* node now owns items */
     members = tbe_compiler_find_child(node, "items");
     for (i = 0u; i < decl->enum_item_count; ++i) {
       Node *entry = create_node_map(NULL);
@@ -3920,15 +3946,16 @@ static int tbe_ts_render_decl(
     }
   } else {
     members = create_node_list("fields");
-    if (members == NULL)
-      goto failed;
-    if (map_add(node, members) != 0)
+    if (members == NULL || map_add(node, members) != 0)
       goto failed;
     members = tbe_compiler_find_child(node, "fields");
     for (i = 0u; i < decl->field_count; ++i) {
-      if (!tbe_ts_render_field(contract, &decl->fields[i], members)) {
+      if (!tbe_source_render_field(
+              contract, &decl->fields[i], language, members)) {
         fprintf(stderr,
-                "TypeScript cannot represent logical field %s.%s; no artifact published\n",
+                "%s cannot represent IDL field %s.%s; no artifact published\n",
+                language == TBE_COMPILER_LANG_PYTHON ? "Python dataclass"
+                                                       : "TypeScript",
                 decl->name, decl->fields[i].name);
         goto failed;
       }
@@ -3938,21 +3965,23 @@ static int tbe_ts_render_decl(
     goto failed;
   return 1;
 failed:
-  /* If attaching members fails, they are still independently owned. */
   if (members != NULL && tbe_compiler_find_child(node, members->name) != members)
     node_free(members);
   node_free(node);
   return 0;
 }
 
-static Node *tbe_ts_render_ir(const IdlContract *contract) {
+static Node *tbe_source_render_ir(
+    const IdlContract *contract, int64_t language) {
   Node *root = NULL;
   Node *schema = NULL;
   static const char *const lists[] = {
       "messages", "composites", "groups", "enums"
   };
   size_t i;
-  if (contract == NULL)
+  if (contract == NULL ||
+      (language != TBE_COMPILER_LANG_TS &&
+       language != TBE_COMPILER_LANG_PYTHON))
     return NULL;
   root = create_node_map(NULL);
   schema = create_node_map("schema");
@@ -3984,11 +4013,12 @@ static Node *tbe_ts_render_ir(const IdlContract *contract) {
         ? tbe_compiler_find_child(root, list_name) : NULL;
     if (list == NULL) {
       fprintf(stderr,
-              "TypeScript projection does not implement Data kind for '%s'\n",
+              "%s projection does not implement Data kind for '%s'\n",
+              language == TBE_COMPILER_LANG_PYTHON ? "Python" : "TypeScript",
               decl->name != NULL ? decl->name : "<unnamed>");
       goto failed;
     }
-    if (!tbe_ts_render_decl(contract, decl, list))
+    if (!tbe_source_render_decl(contract, decl, language, list))
       goto failed;
   }
   return root;
@@ -4047,22 +4077,23 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   const char *resolved_template = NULL;
   const char *lang_name = tbe_compiler_language_name(options->lang_enum);
   int database_language;
-  int typescript_language;
+  int source_language;
   if (lang_name == NULL) {
     fprintf(stderr, "Unsupported compiler language enum: %lld\n",
             (long long)options->lang_enum);
     return 1;
   }
   database_language = tbe_compiler_is_database_language(options->lang_enum);
-  typescript_language = options->lang_enum == TBE_COMPILER_LANG_TS;
+  source_language = options->lang_enum == TBE_COMPILER_LANG_TS ||
+                    options->lang_enum == TBE_COMPILER_LANG_PYTHON;
   if (!tbe_compiler_validate_options(options, lang_name)) return 1;
-  if (typescript_language && options->dsl_output_path != NULL) {
-    fprintf(stderr, "--dsl-output requires native RulesForge lowering, not TypeScript\n");
+  if (source_language && options->dsl_output_path != NULL) {
+    fprintf(stderr, "--dsl-output requires native RulesForge lowering, not a source-only language\n");
     return 1;
   }
   int status = databind_compiler_parse_contract_file_mode(
       options->schema_path, &task->root, &task->contract,
-      &task->schema_data, !database_language && !typescript_language);
+      &task->schema_data, !database_language && !source_language);
   if (status != 0) return status;
 
   /*
@@ -4085,7 +4116,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     if (tbe_compiler_projection_requires_binary(options)) {
       /* A selected Binary transport compiles wire annotations in its private
        * projection view. TypeScript and SQL never admit Binary implicitly. */
-      if ((database_language || typescript_language) &&
+      if ((database_language || source_language) &&
           databind_binary_contract_apply(task->projection_root, &format_error) != 0) {
         fprintf(stderr, "Selected Binary projection rejected: %s\n",
                 format_error.message);
@@ -4105,10 +4136,11 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     return 1;
   }
 
-  if (typescript_language) {
-    task->language_ir = tbe_ts_render_ir(task->contract);
+  if (source_language) {
+    task->language_ir = tbe_source_render_ir(
+        task->contract, options->lang_enum);
     if (task->language_ir == NULL) {
-      fprintf(stderr, "Failed to construct TypeScript Contract rendering IR\n");
+      fprintf(stderr, "Failed to construct source-language Contract rendering IR\n");
       return 1;
     }
   }
@@ -4127,7 +4159,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
               lang_name, diagnostic.message_name, diagnostic.field_name, diagnostic.context);
       return 1;
     }
-  } else if (!typescript_language) {
+  } else if (!source_language) {
     if (tbe_compiler_set_string(task->root, "generated_header",
                                 tbe_compiler_path_basename(options->output_path)) != 0) {
       return 1;
@@ -4209,7 +4241,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   }
   status = tbe_compiler_render_file(
       database_language ? task->database_ir :
-      typescript_language ? task->language_ir : task->root,
+      source_language ? task->language_ir : task->root,
       resolved_template, options->output_path);
 
   if (status == 0 && options->source_output_path) {
