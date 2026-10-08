@@ -4588,6 +4588,216 @@ failed:
   return NULL;
 }
 
+/* The built-in compiler's named outputs form one replacement unit.
+ *
+ * A render to each staging path can independently use render_file()'s secure
+ * temporary-file + rename sequence. Only after all renders, generated source
+ * appends and optional DSL/guest rendering have succeeded do we move any
+ * caller-owned output.
+ *
+ * This is intentionally narrower than the selected projection backend set:
+ * those callbacks may publish multiple files through backend-owned configs
+ * and need a separate transaction API before cross-backend atomicity is real.
+ */
+enum { TBE_COMPILER_BUILTIN_OUTPUT_LIMIT = 4u };
+
+typedef struct tbe_compiler_staged_output {
+  const char *final_path;
+  char *staging_path;
+  char *backup_path;
+  int backup_reserved;
+  int had_original;
+  int original_moved;
+  int published;
+} tbe_compiler_staged_output;
+
+typedef struct tbe_compiler_output_transaction {
+  tbe_compiler_staged_output items[TBE_COMPILER_BUILTIN_OUTPUT_LIMIT];
+  size_t count;
+} tbe_compiler_output_transaction;
+
+static int tbe_compiler_txn_unlink(const char *path) {
+  if (path == NULL) return 0;
+  if (cmeta_fs_access(path, SALTS_FS_ACCESS_EXISTS) != 0) return 0;
+  if (cmeta_fs_unlink(path) == SALTS_OK) return 0;
+  fprintf(stderr, "Failed to remove compiler transaction file: %s\n", path);
+  return -1;
+}
+
+static int tbe_compiler_txn_reserve(
+    const char *final_path, char **out_path) {
+  FILE *file = NULL;
+  if (final_path == NULL || final_path[0] == '\0' ||
+      out_path == NULL ||
+      tbe_compiler_create_temporary_output(
+          final_path, out_path, &file) != 0)
+    return -1;
+  if (fclose(file) != 0) {
+    fprintf(stderr, "Failed to close reserved transaction file: %s\n",
+            *out_path);
+    return -1; /* The caller owns cleanup of the reserved path. */
+  }
+  return 0;
+}
+
+static int tbe_compiler_txn_add(
+    tbe_compiler_output_transaction *txn, const char *final_path) {
+  tbe_compiler_staged_output *output;
+  if (txn == NULL || final_path == NULL || final_path[0] == '\0' ||
+      txn->count >= TBE_COMPILER_BUILTIN_OUTPUT_LIMIT)
+    return -1;
+  output = &txn->items[txn->count++];
+  output->final_path = final_path;
+  if (tbe_compiler_txn_reserve(final_path, &output->staging_path) != 0) {
+    fprintf(stderr, "Failed to stage compiler output: %s\n", final_path);
+    return -1;
+  }
+  return 0;
+}
+
+/* IO rollback is fallible. Never hide it inside a nofail CMeta destructor.
+ * An un-restorable original remains in its unique backup for recovery. */
+static int tbe_compiler_txn_abort(
+    tbe_compiler_output_transaction *txn) {
+  size_t i;
+  int failed = 0;
+  if (txn == NULL) return -1;
+  for (i = txn->count; i > 0u; --i) {
+    tbe_compiler_staged_output *item = &txn->items[i - 1u];
+    if (item->published &&
+        tbe_compiler_txn_unlink(item->final_path) != 0)
+      failed = 1;
+    if (item->original_moved) {
+      if (cmeta_fs_rename(item->backup_path, item->final_path) != SALTS_OK) {
+        fprintf(stderr,
+                "Failed restoring original %s; recover from %s\n",
+                item->final_path, item->backup_path);
+        failed = 1;
+      } else {
+        item->original_moved = 0;
+      }
+    }
+    if (tbe_compiler_txn_unlink(item->staging_path) != 0)
+      failed = 1;
+    if (item->backup_reserved && !item->original_moved &&
+        tbe_compiler_txn_unlink(item->backup_path) != 0)
+      failed = 1;
+    free(item->staging_path);
+    free(item->backup_path);
+  }
+  *txn = (tbe_compiler_output_transaction){0};
+  return failed ? -1 : 0;
+}
+
+static int tbe_compiler_txn_commit(
+    tbe_compiler_output_transaction *txn) {
+  size_t i;
+  int cleanup_failed = 0;
+  if (txn == NULL || txn->count < 2u) return -1;
+
+  /* Prepare all backup slots before moving a single published file.
+   * Every stage and backup is a unique O_EXCL sibling of the final path. */
+  for (i = 0u; i < txn->count; ++i) {
+    tbe_compiler_staged_output *item = &txn->items[i];
+    struct stat info;
+    if (item->staging_path == NULL ||
+        stat(item->final_path, &info) != 0) {
+      if (item->staging_path == NULL || errno != ENOENT) {
+        fprintf(stderr, "Failed to inspect output: %s\n", item->final_path);
+        goto rollback;
+      }
+      continue;
+    }
+#ifdef _WIN32
+    if ((info.st_mode & _S_IFMT) != _S_IFREG) {
+#else
+    if (!S_ISREG(info.st_mode)) {
+#endif
+      fprintf(stderr, "Compiler output is not a regular file: %s\n",
+              item->final_path);
+      goto rollback;
+    }
+#ifndef _WIN32
+    if (chmod(item->staging_path, (mode_t)(info.st_mode & 0777)) != 0) {
+      fprintf(stderr, "Failed to preserve output permissions: %s\n",
+              item->final_path);
+      goto rollback;
+    }
+#endif
+    item->had_original = 1;
+    if (tbe_compiler_txn_reserve(
+            item->final_path, &item->backup_path) != 0) {
+      /* reserve() may fail only after creating/closing a unique file.
+       * Retain its ownership so rollback can remove that failed reservation. */
+      item->backup_reserved = item->backup_path != NULL;
+      fprintf(stderr, "Failed to reserve output backup: %s\n",
+              item->final_path);
+      goto rollback;
+    }
+    item->backup_reserved = 1;
+  }
+
+  for (i = 0u; i < txn->count; ++i) {
+    tbe_compiler_staged_output *item = &txn->items[i];
+    if (item->had_original) {
+      if (cmeta_fs_rename(item->final_path,
+                          item->backup_path) != SALTS_OK) {
+        fprintf(stderr, "Failed to back up output: %s\n", item->final_path);
+        goto rollback;
+      }
+      item->original_moved = 1;
+    }
+  }
+
+  for (i = 0u; i < txn->count; ++i) {
+    tbe_compiler_staged_output *item = &txn->items[i];
+    if (cmeta_fs_rename(item->staging_path,
+                        item->final_path) != SALTS_OK) {
+      fprintf(stderr, "Failed to publish output: %s\n", item->final_path);
+      goto rollback;
+    }
+    item->published = 1;
+  }
+
+  /* Cleanup failures must be visible even though all files were committed.
+   * Preserve their new data rather than rolling back after publication. */
+  for (i = 0u; i < txn->count; ++i) {
+    tbe_compiler_staged_output *item = &txn->items[i];
+    if (item->backup_reserved &&
+        tbe_compiler_txn_unlink(item->backup_path) != 0)
+      cleanup_failed = 1;
+    free(item->staging_path);
+    free(item->backup_path);
+  }
+  *txn = (tbe_compiler_output_transaction){0};
+  return cleanup_failed ? -1 : 0;
+
+rollback:
+  if (tbe_compiler_txn_abort(txn) != 0)
+    fprintf(stderr, "Compiler transaction rollback was incomplete\n");
+  return -1;
+}
+
+static int tbe_compiler_output_paths_distinct(
+    const tbe_compiler_options_t *options) {
+  const char *paths[4];
+  size_t i;
+  size_t j;
+  if (options == NULL) return 0;
+  paths[0] = options->output_path;
+  paths[1] = options->source_output_path;
+  paths[2] = options->guest_output_path;
+  paths[3] = options->dsl_output_path;
+  for (i = 0u; i < 4u; ++i) {
+    if (paths[i] == NULL) continue;
+    if (paths[i][0] == '\0') return 0;
+    for (j = 0u; j < i; ++j)
+      if (paths[j] != NULL && strcmp(paths[i], paths[j]) == 0)
+        return 0;
+  }
+  return 1;
+}
+
 /* Single-threaded task ownership. Projection views borrow semantic facts;
  * none of these resources escape a compiler invocation. */
 typedef struct tbe_compiler_task_t {
@@ -4636,6 +4846,12 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   char template_path[SALTS_FS_MAX_PATH];
   const char *resolved_template = NULL;
   const char *lang_name = tbe_compiler_language_name(options->lang_enum);
+  tbe_compiler_output_transaction builtins = {0};
+  const char *primary_output_path = options->output_path;
+  const char *source_output_path = options->source_output_path;
+  const char *guest_output_path = options->guest_output_path;
+  const char *dsl_output_path = options->dsl_output_path;
+  int transactional_outputs = 0;
   int database_language;
   int source_language;
   if (lang_name == NULL) {
@@ -4650,6 +4866,11 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
                     options->lang_enum == TBE_COMPILER_LANG_RUST ||
                     options->lang_enum == TBE_COMPILER_LANG_CPP;
   if (!tbe_compiler_validate_options(options, lang_name)) return 1;
+  if (!tbe_compiler_output_paths_distinct(options)) {
+    fprintf(stderr,
+            "Compiler output paths must be non-empty and distinct\n");
+    return 1;
+  }
   /* The existing projection dispatcher validates backend registration only
    * after rendering --output. Admission must happen before touching any
    * caller path, including C --source-output and guest artifacts. */
@@ -4813,25 +5034,53 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       return 1;
     }
   }
+  /* Only compiler-owned render paths are enrolled here. Projection backends
+   * have independent callback-owned output paths and cannot share a
+   * transaction until they expose an explicit stage/commit contract. */
+  transactional_outputs = options->projection_count == 0u &&
+      options->output_path != NULL &&
+      (options->source_output_path != NULL ||
+       options->guest_output_path != NULL ||
+       options->dsl_output_path != NULL);
+  if (transactional_outputs) {
+    if (tbe_compiler_txn_add(&builtins, options->output_path) != 0)
+      goto builtin_stage_failure;
+    primary_output_path = builtins.items[builtins.count - 1u].staging_path;
+    if (options->source_output_path != NULL) {
+      if (tbe_compiler_txn_add(&builtins, options->source_output_path) != 0)
+        goto builtin_stage_failure;
+      source_output_path = builtins.items[builtins.count - 1u].staging_path;
+    }
+    if (options->guest_output_path != NULL) {
+      if (tbe_compiler_txn_add(&builtins, options->guest_output_path) != 0)
+        goto builtin_stage_failure;
+      guest_output_path = builtins.items[builtins.count - 1u].staging_path;
+    }
+    if (options->dsl_output_path != NULL) {
+      if (tbe_compiler_txn_add(&builtins, options->dsl_output_path) != 0)
+        goto builtin_stage_failure;
+      dsl_output_path = builtins.items[builtins.count - 1u].staging_path;
+    }
+  }
   status = tbe_compiler_render_file(
       database_language ? task->database_ir :
       source_language ? task->language_ir : task->root,
-      resolved_template, options->output_path);
+      resolved_template, primary_output_path);
 
   if (status == 0 && options->source_output_path) {
     resolved_template = tbe_compiler_resolve_resource(
         options, "templates/c/c_typed_source.mustache", template_path, sizeof(template_path));
     status = resolved_template != NULL
-                 ? tbe_compiler_render_file(task->root, resolved_template, options->source_output_path)
+                 ? tbe_compiler_render_file(task->root, resolved_template, source_output_path)
                  : 1;
     if (status == 0 &&
-        tbe_compiler_append_member_lifecycles(options->source_output_path, task->root) != 0) {
+        tbe_compiler_append_member_lifecycles(source_output_path, task->root) != 0) {
       fprintf(stderr, "Failed to append generated member lifecycle functions\n");
       status = 1;
     }
     if (status == 0 &&
         tbe_compiler_append_binary_readers(
-            options->source_output_path, task->root, task->contract, task->projection_root) != 0) {
+            source_output_path, task->root, task->contract, task->projection_root) != 0) {
       fprintf(stderr, "Failed to append generated Binary reader providers\n");
       status = 1;
     }
@@ -4841,7 +5090,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     resolved_template = tbe_compiler_resolve_resource(
         options, "templates/c/c_guest_adapter.mustache", template_path, sizeof(template_path));
     status = resolved_template != NULL
-                 ? tbe_compiler_render_file(task->root, resolved_template, options->guest_output_path)
+                 ? tbe_compiler_render_file(task->root, resolved_template, guest_output_path)
                  : 1;
   }
 
@@ -4849,7 +5098,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     resolved_template = tbe_compiler_resolve_resource(
         options, "templates/reflection/rfl_types.mustache", template_path, sizeof(template_path));
     if (resolved_template == NULL ||
-        tbe_compiler_render_file(task->root, resolved_template, options->dsl_output_path) != 0) {
+        tbe_compiler_render_file(task->root, resolved_template, dsl_output_path) != 0) {
       status = 1;
     }
   }
@@ -4867,7 +5116,20 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       status = 1;
   }
 
+  if (transactional_outputs) {
+    if (status != 0) {
+      if (tbe_compiler_txn_abort(&builtins) != 0)
+        fprintf(stderr, "Failed cleaning abandoned compiler outputs\n");
+      return 1;
+    }
+    return tbe_compiler_txn_commit(&builtins) == 0 ? 0 : 1;
+  }
   return status;
+
+builtin_stage_failure:
+  if (tbe_compiler_txn_abort(&builtins) != 0)
+    fprintf(stderr, "Failed cleaning compiler staging output files\n");
+  return 1;
 }
 
 int tbe_compiler_run(const tbe_compiler_options_t *options) {
