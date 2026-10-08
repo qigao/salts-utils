@@ -153,6 +153,28 @@ int main(int argc, char **argv) {
       (void)remove(source_stage);
       goto cleanup;
     }
+    /* Staging must preserve the final header basename, not the stage name. */
+    {
+      FILE *staged = fopen(source_stage, "rb");
+      char include_line[4096] = {0};
+      const char *final_name = strrchr(argv[2], '/');
+      const char *windows_name = strrchr(argv[2], '\\\\');
+      if (windows_name != NULL &&
+          (final_name == NULL || windows_name > final_name))
+        final_name = windows_name;
+      final_name = final_name != NULL ? final_name + 1 : argv[2];
+      if (staged == NULL ||
+          fgets(include_line, sizeof(include_line), staged) == NULL ||
+          strstr(include_line, final_name) == NULL ||
+          strstr(include_line, ".stage-smoke") != NULL) {
+        fprintf(stderr, "service-native-codegen: staging path leaked into include\\n");
+        if (staged != NULL) (void)fclose(staged);
+        (void)remove(header_stage);
+        (void)remove(source_stage);
+        goto cleanup;
+      }
+      if (fclose(staged) != 0) goto cleanup;
+    }
     (void)remove(header_stage);
     (void)remove(source_stage);
   }
