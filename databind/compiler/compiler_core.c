@@ -5107,6 +5107,11 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       }
     }
     native_transaction = seen_native && qualified && options->output_path != NULL;
+    if (seen_native && !native_transaction) {
+      fprintf(stderr,
+              "Native Service requires a named output and fully staged selected backends; no output published\n");
+      return 1;
+    }
   }
   transactional_outputs = options->output_path != NULL &&
       (backend_transaction || native_transaction ||
