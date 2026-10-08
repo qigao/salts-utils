@@ -1,6 +1,7 @@
 #include "idl_contract_internal.h"
 #include "idl.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -414,6 +415,49 @@ static int data_build(
   return 1;
 }
 
+/* Logical Data and field names must be unambiguous before any projection
+ * consumes the typed Contract. SourceSpan diagnostics follow in #586. */
+static int idl_contract_validate_data_names(
+    const IdlDataDecl *data, size_t count, IdlDiagnostic *diagnostic) {
+  size_t i, j, k;
+  char message[256];
+  for (i = 0u; i < count; ++i) {
+    const IdlDataDecl *decl = &data[i];
+    if (decl->name == NULL || decl->name[0] == '\0') {
+      diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1,
+                     "Data declaration must have a name");
+      return 0;
+    }
+    for (j = 0u; j < i; ++j) {
+      if (strcmp(data[j].name, decl->name) == 0) {
+        snprintf(message, sizeof(message), "Duplicate Data declaration '%s'",
+                 decl->name);
+        diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1, message);
+        return 0;
+      }
+    }
+    for (j = 0u; j < decl->field_count; ++j) {
+      const char *field_name = decl->fields[j].name;
+      if (field_name == NULL || field_name[0] == '\0') {
+        snprintf(message, sizeof(message),
+                 "Data declaration '%s' has an unnamed field", decl->name);
+        diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1, message);
+        return 0;
+      }
+      for (k = 0u; k < j; ++k) {
+        if (strcmp(decl->fields[k].name, field_name) == 0) {
+          snprintf(message, sizeof(message),
+                   "Duplicate field '%s' in Data declaration '%s'",
+                   field_name, decl->name);
+          diagnostic_set(diagnostic, IDL_SEMANTIC_ERROR, -1, -1, message);
+          return 0;
+        }
+      }
+    }
+  }
+  return 1;
+}
+
 static void operation_destroy(IdlOperation *items, size_t count) {
   size_t i, j;
   for (i = 0u; i < count; ++i) {
@@ -744,6 +788,9 @@ int idl_contract_build_from_tree(
       !component_build(root, &components, &component_count))
     goto oom;
 
+  if (!idl_contract_validate_data_names(data, data_count, diagnostic))
+    goto failed;
+
   contract->annotations = contract_annotations;
   contract->annotation_count = contract_annotation_count;
   contract->data = data;
@@ -759,6 +806,9 @@ int idl_contract_build_from_tree(
   return 1;
 
 oom:
+  diagnostic_set(diagnostic, IDL_NO_MEMORY, -1, -1,
+                 "Out of memory building typed IDL contract");
+failed:
   annotation_destroy(contract_annotations, contract_annotation_count);
   data_destroy(data, data_count);
   service_destroy(services, service_count);
@@ -769,8 +819,6 @@ oom:
     free((void *)contract->version);
     free(contract);
   }
-  diagnostic_set(diagnostic, IDL_NO_MEMORY, -1, -1,
-                 "Out of memory building typed IDL contract");
   return 0;
 }
 
