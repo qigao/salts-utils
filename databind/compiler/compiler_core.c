@@ -4391,6 +4391,20 @@ static int tbe_cpp_field_depends_on(
     return depends == 0 ?
         tbe_cpp_type_depends_on(field->value_type, target) : depends;
   case IDL_COLLECTION_LIST:
+    /* An incomplete T is permitted in std::vector<T> (C++17), but a
+     * vector whose element is an associative template may instantiate a
+     * pair/tree node requiring completed record values. Order those
+     * declarations conservatively rather than publishing invalid C++. */
+    if (field->inner_type != NULL) {
+      IdlTypeRef element;
+      if (!idl_type_ref_parse(field->inner_type,
+                              strlen(field->inner_type), &element))
+        return -1;
+      if (element.collection_kind == IDL_COLLECTION_MAP ||
+          element.collection_kind == IDL_COLLECTION_SET)
+        return tbe_cpp_type_depends_on(field->inner_type, target);
+    }
+    return 0;
   case IDL_COLLECTION_GROUP:
     return 0; /* std::vector<T> may own incomplete T in C++17. */
   default:
