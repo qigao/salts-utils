@@ -958,6 +958,59 @@ static int wasm_write_host_header_adapter(
   return wasm_write_host_header(file, config, views, view_count);
 }
 
+/* Render the complete Wasm artifact set into coordinator-owned stage paths.
+ * The config retains final names for semantic identifiers and includes.
+ * On failure the coordinator owns removal of any partially written stages.
+ */
+int databind_compiler_wasm_render_staged(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    const char *component_stage,
+    const char *host_header_stage,
+    const char *host_source_stage,
+    const char *guest_header_stage) {
+  const databind_compiler_wasm_config *config =
+      request != NULL
+          ? (const databind_compiler_wasm_config *)request->config
+          : NULL;
+  const char *paths[] = {
+      component_stage, host_header_stage, host_source_stage, guest_header_stage};
+  const char *finals[4];
+  size_t i;
+  size_t j;
+  databind_compiler_wasm_config staged_config;
+  databind_compiler_projection_request staged_request;
+  int result;
+
+  if (config == NULL || request == NULL || request->output == NULL)
+    return -1;
+  finals[0] = request->output;
+  finals[1] = config->host_header_output;
+  finals[2] = config->host_source_output;
+  finals[3] = config->guest_header_output;
+  for (i = 0u; i < 4u; ++i) {
+    if (paths[i] == NULL || paths[i][0] == '\0' ||
+        finals[i] == NULL || finals[i][0] == '\0')
+      return -1;
+    for (j = 0u; j < 4u; ++j)
+      if (strcmp(paths[i], finals[j]) == 0)
+        return -1;
+    for (j = 0u; j < i; ++j)
+      if (strcmp(paths[i], paths[j]) == 0)
+        return -1;
+  }
+  staged_config = *config;
+  staged_config.host_header_output = host_header_stage;
+  staged_config.host_source_output = host_source_stage;
+  staged_config.guest_header_output = guest_header_stage;
+  staged_request = *request;
+  staged_request.output = component_stage;
+  /* The writer consumes output paths solely as destinations; semantic
+   * identifiers and includes come from native_header and symbol_prefix. */
+  result = databind_compiler_wasm_generate(input, &staged_request, NULL);
+  return result;
+}
+
 int databind_compiler_wasm_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
