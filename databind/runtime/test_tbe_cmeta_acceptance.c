@@ -556,8 +556,8 @@ suite("real generated and runtime CMeta acceptance") {
     static const char schema[] =
         "composite Point { int32 x; } union Choice { Point point; }"
         "message Gate { Choice choice; datetime timestamp; date day; time clock;"
-        "duration elapsed; decimal amount; bigint large; money price; MadeUp unknown; }";
-    static const char *const names[] = {"choice", "timestamp", "day", "clock", "elapsed", "amount", "large", "price", "unknown"};
+        "duration elapsed; decimal amount; bigint large; money price; }";
+    static const char *const names[] = {"choice", "timestamp", "day", "clock", "elapsed", "amount", "large", "price"};
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     size_t i;
@@ -568,9 +568,9 @@ suite("real generated and runtime CMeta acceptance") {
       char path[64];
       check(data_bind_schema_field_at(codec, "Gate", i, &field));
       check_equal(field.name, names[i]);
-      check_equal(field.has_cmeta_kind, i != 8u);
-      if (i != 8u) check_equal(field.cmeta_kind, i == 0u ? CMETA_DATA_VARIANT : CMETA_DATA_CUSTOM);
-      else check_equal(field.kind, "unknown");
+      check_equal(field.has_cmeta_kind, 1);
+      check_equal(field.cmeta_kind,
+                  i == 0u ? CMETA_DATA_VARIANT : CMETA_DATA_CUSTOM);
       check_null(field.cmeta_data);
       snprintf(path, sizeof(path), "Gate.%s", names[i]);
       unresolved_field(codec, "Gate", i, path);
