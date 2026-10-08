@@ -275,6 +275,23 @@ static int native_service_write_source(
   return 1;
 }
 
+/* The compiler coordinator reserves unique zero-byte stage siblings before
+ * rendering. Accept its empty reservation, never clobber populated stages. */
+static int native_service_stage_ready(const char *path) {
+  FILE *file;
+  long size;
+  if (!native_service_text_valid(path)) return 0;
+  file = fopen(path, "rb");
+  if (file == NULL) return cmeta_fs_access(path, SALTS_FS_ACCESS_EXISTS) != 0;
+  if (fseek(file, 0, SEEK_END) != 0) {
+    (void)fclose(file);
+    return 0;
+  }
+  size = ftell(file);
+  if (fclose(file) != 0) return 0;
+  return size == 0;
+}
+
 /* Coordinator-only render step: stage destinations are provided by the caller.
  * Final names remain in request/config for generated source includes.
  * Ownership of staged files and their publication stays with the coordinator.
@@ -312,10 +329,9 @@ int databind_compiler_native_service_render_staged(
       ir.operations == NULL || ir.operation_count == 0u)
     goto cleanup;
 
-  /* The transaction coordinator exclusively owns staging path cleanup.
-   * Never unlink an existing stage here: that would hide a collision. */
-  if (cmeta_fs_access(header_stage, SALTS_FS_ACCESS_EXISTS) == 0 ||
-      cmeta_fs_access(source_stage, SALTS_FS_ACCESS_EXISTS) == 0)
+  /* Empty, unique coordinator reservations are valid; populated files are not. */
+  if (!native_service_stage_ready(header_stage) ||
+      !native_service_stage_ready(source_stage))
     goto cleanup;
   header_file = fopen(header_stage, "wb");
   if (header_file == NULL) goto cleanup;
