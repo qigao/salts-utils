@@ -71,6 +71,32 @@ static int file_matches(const char *path, const char *expected) {
   return strcmp(buffer, expected) == 0;
 }
 
+static int file_contains(const char *path, const char *needle) {
+  FILE *file;
+  char *data;
+  long length;
+  int found = 0;
+  if (path == NULL || needle == NULL) return 0;
+  file = fopen(path, "rb");
+  if (file == NULL) return 0;
+  if (fseek(file, 0, SEEK_END) != 0 ||
+      (length = ftell(file)) < 0 ||
+      fseek(file, 0, SEEK_SET) != 0) {
+    (void)fclose(file);
+    return 0;
+  }
+  data = (char *)malloc((size_t)length + 1u);
+  if (data != NULL) {
+    if (fread(data, 1u, (size_t)length, file) == (size_t)length) {
+      data[length] = '\0';
+      found = strstr(data, needle) != NULL;
+    }
+    free(data);
+  }
+  (void)fclose(file);
+  return found;
+}
+
 static int write_sentinel(const char *path, const char *sentinel) {
   size_t size = strlen(sentinel);
   FILE *file = fopen(path, "wb");
@@ -1219,6 +1245,11 @@ describe("compiler integration") {
     check_equal(tbe_compiler_run(&options), 0);
     check_equal(http.calls, (size_t)3u);
     for (i = 0u; i < 12u; ++i) check_true(file_exists(outputs[i]));
+    check_true(file_contains(native_c, native_h));
+    check_true(file_contains(plugin_c, plugin_h));
+    check_true(file_contains(wasm_host_c, wasm_host_h));
+    check_false(file_contains(plugin_c, ".tbe."));
+    check_false(file_contains(wasm_host_c, ".tbe."));
     for (i = 0u; i < 12u; ++i) (void)remove(outputs[i]);
   }
 
