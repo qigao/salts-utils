@@ -414,6 +414,35 @@ spec("typescript_contract_render_ir") {
     remove(binary_path);
   }
 
+  it("separates pure Binary field-order rules from source-language admission") {
+    static const char schema_path[] = "ts_binary_field_order.schema";
+    static const char ts_path[] = "ts_binary_field_order.ts";
+    static const char c_path[] = "ts_binary_field_order.h";
+    static const char schema[] =
+        "message Event { string payload; uint32 sequence; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = ts_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_TS,
+    };
+    remove(schema_path);
+    remove(ts_path);
+    remove(c_path);
+    check_equal(write_text_file(schema_path, schema), 0);
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(test_render_file_contains(ts_path, "payload: string;"));
+    check_true(test_render_file_contains(ts_path, "sequence: number;"));
+
+    options.lang_enum = TBE_COMPILER_LANG_C;
+    options.output_path = c_path;
+    check_not_equal(tbe_compiler_run(&options), 0);
+    check_false(file_exists(c_path));
+    remove(schema_path);
+    remove(ts_path);
+    remove(c_path);
+  }
+
   it("honors an explicit Mustache template using only typed presentation data") {
     static const char schema_path[] = "ts_contract_custom.schema";
     static const char template_path[] = "ts_contract_custom.mustache";
