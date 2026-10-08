@@ -1073,6 +1073,8 @@ spec("cpp_contract_render_ir") {
     static const char *const bad_schemas[] = {
         "message Bad { uint32 class; }",
         "message Bad { uint32 namespace; }",
+        "message _Reserved { uint32 id; }",
+        "message std { uint32 id; }",
         "message Bad { uint32 Bad; }",
         "message Bad { map<bytes,uint32> keys; }",
         "message Bad { set<list<uint32>> values; }",
