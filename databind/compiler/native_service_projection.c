@@ -213,7 +213,7 @@ static int native_service_contract_record_admitted(
   return 0;
 }
 
-static int native_service_contract_admitted(
+int databind_compiler_native_contract_admitted(
     const IdlContract *contract,
     const databind_compiler_service_native_ir *services) {
   databind_native_source_ir types = {0};
@@ -243,6 +243,32 @@ static int native_service_contract_admitted(
   return ok;
 }
 
+int databind_compiler_native_contract_emit_header_op(
+    FILE *file, const databind_compiler_service_native_operation *op) {
+  if (!file || !op || !op->symbol || !op->request_type || !op->response_type) return 0;
+  if (fprintf(file,
+      "int %s(const %s *request, %s *response);\n"
+      "typedef struct %s__native_owner {\n"
+      "    %s_native_cmeta_binding request_metadata;\n"
+      "    %s_native_cmeta_binding response_metadata;\n"
+      "    DataBindNativeTypeBinding request_binding;\n"
+      "    DataBindNativeTypeBinding response_binding;\n"
+      "} %s__native_owner;\n"
+      "const cmeta_function_desc *%s__databind_function(void);\n"
+      "const cmeta_function_abi_desc *%s__databind_function_abi(void);\n"
+      "const DataBindNativeExecution *%s__databind_execution(void);\n"
+      "DataBindStatus %s__databind_native_binding(\n"
+      "    %s__native_owner *owner,\n"
+      "    DataBindServiceNativeBinding *service_out,\n"
+      "    DataBindError *error);\n\n",
+      op->symbol, op->request_type, op->response_type,
+      op->symbol, op->request_type, op->response_type,
+      op->symbol, op->symbol, op->symbol, op->symbol,
+      op->symbol, op->symbol) < 0)
+    return 0;
+  return 1;
+}
+
 static int native_service_write_contract_header(
     FILE *file, const IdlContract *contract,
     const databind_compiler_native_service_config *config,
@@ -264,32 +290,116 @@ static int native_service_write_contract_header(
             "#include <cmeta/function.h>\n"
             "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n", file) == EOF)
     return 0;
-  for (i = 0u; i < services->operation_count; ++i) {
-    const databind_compiler_service_native_operation *op =
-        &services->operations[i];
-    if (fprintf(file,
-        "int %s(const %s *request, %s *response);\n"
-        "typedef struct %s__native_owner {\n"
-        "    %s_native_cmeta_binding request_metadata;\n"
-        "    %s_native_cmeta_binding response_metadata;\n"
-        "    DataBindNativeTypeBinding request_binding;\n"
-        "    DataBindNativeTypeBinding response_binding;\n"
-        "} %s__native_owner;\n"
-        "const cmeta_function_desc *%s__databind_function(void);\n"
-        "const cmeta_function_abi_desc *%s__databind_function_abi(void);\n"
-        "const DataBindNativeExecution *%s__databind_execution(void);\n"
-        "DataBindStatus %s__databind_native_binding(\n"
-        "    %s__native_owner *owner,\n"
-        "    DataBindServiceNativeBinding *service_out,\n"
-        "    DataBindError *error);\n\n",
-        op->symbol, op->request_type, op->response_type,
-        op->symbol, op->request_type, op->response_type,
-        op->symbol, op->symbol, op->symbol, op->symbol,
-        op->symbol, op->symbol) < 0)
-      return 0;
-  }
+  for (i = 0u; i < services->operation_count; ++i)
+    if (!databind_compiler_native_contract_emit_header_op(file, &services->operations[i])) return 0;
   return fprintf(file, "#ifdef __cplusplus\n}\n#endif\n\n"
                        "#endif /* %s */\n", guard) >= 0;
+}
+
+int databind_compiler_native_contract_emit_reflection(
+    FILE *file, const databind_compiler_service_native_operation *op) {
+  if (!file || !op || !op->symbol || !op->request_type || !op->response_type) return 0;
+  /* Pointer reflection reuses the exact NativeSourceIR storage TypeDesc.
+   * Its Schema/version identity comes from the generated Contract header,
+   * never from the legacy Record_t Binary ABI. */
+  if (fprintf(file,
+    "static const cmeta_type_desc %s__request_ptr_type = {\n"
+    "    .name = \"const %s *\", .size = sizeof(const %s *),\n"
+    "    .align = _Alignof(const %s *), .kind = CMETA_T_POINTER,\n"
+    "    .pointee = &%s_native_cmeta_type\n"
+    "};\n"
+    "static const cmeta_type_desc %s__response_ptr_type = {\n"
+    "    .name = \"%s *\", .size = sizeof(%s *),\n"
+    "    .align = _Alignof(%s *), .kind = CMETA_T_POINTER,\n"
+    "    .pointee = &%s_native_cmeta_type\n"
+    "};\n"
+    "CMETA_FUNCTION_METADATA_AS_ABI_RESULT(\n"
+    "    %s, \"%s\", unknown, &cmeta_type_int, CMETA_ABI_SCALAR,\n"
+    "    CMETA_RESULT_VALUE,\n"
+    "    (const %s *, request,\n"
+    "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
+    "     &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
+    "    (%s *, response,\n"
+    "     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,\n"
+    "     &%s__response_ptr_type, CMETA_ABI_OBJECT_POINTER));\n",
+    op->symbol, op->request_type, op->request_type, op->request_type,
+    op->request_type,
+    op->symbol, op->response_type, op->response_type, op->response_type,
+    op->response_type,
+    op->symbol, op->qualified_operation,
+    op->request_type, op->symbol,
+    op->response_type, op->symbol) < 0)
+    return 0;
+
+  return 1;
+}
+
+int databind_compiler_native_contract_emit_invoke(
+    FILE *file, const databind_compiler_service_native_operation *op) {
+  if (!file || !op || !op->symbol || !op->request_type || !op->response_type) return 0;
+  if (fprintf(file,
+    "static bool DATA_BIND_NATIVE_CALL %s__databind_invoke(\n"
+    "    void *context, void *return_storage, void *const *params,\n"
+    "    size_t param_count) {\n"
+    "    int status;\n"
+    "    (void)context;\n"
+    "    if (!return_storage || !params || param_count != 2u ||\n"
+    "        !params[0] || !params[1]) return false;\n"
+    "    status = %s((const %s *)params[0], (%s *)params[1]);\n"
+    "    *(int *)return_storage = status;\n"
+    "    return true;\n"
+    "}\n"
+    "static const DataBindNativeExecution %s__execution_meta = {\n"
+    "    sizeof(DataBindNativeExecution), DATA_BIND_NATIVE_EXECUTION_ABI_VERSION,\n"
+    "    &%s__function_meta, &%s__function_abi_meta, NULL,\n"
+    "    %s__databind_invoke\n"
+    "};\n"
+    "const cmeta_function_desc *%s__databind_function(void) {\n"
+    "    return &%s__function_meta;\n"
+    "}\n"
+    "const cmeta_function_abi_desc *%s__databind_function_abi(void) {\n"
+    "    return &%s__function_abi_meta;\n"
+    "}\n"
+    "const DataBindNativeExecution *%s__databind_execution(void) {\n"
+    "    return &%s__execution_meta;\n"
+    "}\n",
+    op->symbol, op->symbol, op->request_type, op->response_type,
+    op->symbol, op->symbol, op->symbol, op->symbol,
+    op->symbol, op->symbol, op->symbol, op->symbol,
+    op->symbol, op->symbol) < 0)
+    return 0;
+
+  return 1;
+}
+
+int databind_compiler_native_contract_emit_binding(
+    FILE *file, const databind_compiler_service_native_operation *op) {
+  if (!file || !op || !op->symbol || !op->request_type || !op->response_type) return 0;
+  if (fprintf(file,
+    "DataBindStatus %s__databind_native_binding(\n"
+    "    %s__native_owner *owner,\n"
+    "    DataBindServiceNativeBinding *service_out,\n"
+    "    DataBindError *error) {\n"
+    "    (void)error;\n"
+    "    if (!owner || !service_out) return DATA_BIND_ERR_INVALID_ARG;\n"
+    "    if (%s_native_type_binding(&owner->request_metadata,\n"
+    "            &owner->request_binding) != 0 ||\n"
+    "        %s_native_type_binding(&owner->response_metadata,\n"
+    "            &owner->response_binding) != 0)\n"
+    "        return DATA_BIND_ERR_SCHEMA;\n"
+    "    *service_out = (DataBindServiceNativeBinding){\n"
+    "        sizeof(DataBindServiceNativeBinding),\n"
+    "        DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
+    "        &%s__function_meta,\n"
+    "        &owner->request_binding, &owner->response_binding,\n"
+    "        NULL, 0u, SIZE_MAX, 0u, 0u, 0u\n"
+    "    };\n"
+    "    return DATA_BIND_OK;\n"
+    "}\n\n",
+    op->symbol, op->symbol, op->request_type, op->response_type,
+    op->symbol) < 0)
+    return 0;
+  return 1;
 }
 
 static int native_service_write_contract_source(
@@ -304,93 +414,10 @@ static int native_service_write_contract_source(
       fputs("\n#include <string.h>\n\n", file) == EOF)
     return 0;
   for (i = 0u; i < services->operation_count; ++i) {
-    const databind_compiler_service_native_operation *op =
-        &services->operations[i];
-    /* Pointer reflection reuses the exact NativeSourceIR storage TypeDesc.
-     * Its Schema/version identity comes from the generated Contract header,
-     * never from the legacy Record_t Binary ABI. */
-    if (fprintf(file,
-      "static const cmeta_type_desc %s__request_ptr_type = {\n"
-      "    .name = \"const %s *\", .size = sizeof(const %s *),\n"
-      "    .align = _Alignof(const %s *), .kind = CMETA_T_POINTER,\n"
-      "    .pointee = &%s_native_cmeta_type\n"
-      "};\n"
-      "static const cmeta_type_desc %s__response_ptr_type = {\n"
-      "    .name = \"%s *\", .size = sizeof(%s *),\n"
-      "    .align = _Alignof(%s *), .kind = CMETA_T_POINTER,\n"
-      "    .pointee = &%s_native_cmeta_type\n"
-      "};\n"
-      "CMETA_FUNCTION_METADATA_AS_ABI_RESULT(\n"
-      "    %s, \"%s\", unknown, &cmeta_type_int, CMETA_ABI_SCALAR,\n"
-      "    CMETA_RESULT_VALUE,\n"
-      "    (const %s *, request,\n"
-      "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
-      "     &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
-      "    (%s *, response,\n"
-      "     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,\n"
-      "     &%s__response_ptr_type, CMETA_ABI_OBJECT_POINTER));\n",
-      op->symbol, op->request_type, op->request_type, op->request_type,
-      op->request_type,
-      op->symbol, op->response_type, op->response_type, op->response_type,
-      op->response_type,
-      op->symbol, op->qualified_operation,
-      op->request_type, op->symbol,
-      op->response_type, op->symbol) < 0)
-      return 0;
-    if (fprintf(file,
-      "static bool DATA_BIND_NATIVE_CALL %s__databind_invoke(\n"
-      "    void *context, void *return_storage, void *const *params,\n"
-      "    size_t param_count) {\n"
-      "    int status;\n"
-      "    (void)context;\n"
-      "    if (!return_storage || !params || param_count != 2u ||\n"
-      "        !params[0] || !params[1]) return false;\n"
-      "    status = %s((const %s *)params[0], (%s *)params[1]);\n"
-      "    *(int *)return_storage = status;\n"
-      "    return true;\n"
-      "}\n"
-      "static const DataBindNativeExecution %s__execution_meta = {\n"
-      "    sizeof(DataBindNativeExecution), DATA_BIND_NATIVE_EXECUTION_ABI_VERSION,\n"
-      "    &%s__function_meta, &%s__function_abi_meta, NULL,\n"
-      "    %s__databind_invoke\n"
-      "};\n"
-      "const cmeta_function_desc *%s__databind_function(void) {\n"
-      "    return &%s__function_meta;\n"
-      "}\n"
-      "const cmeta_function_abi_desc *%s__databind_function_abi(void) {\n"
-      "    return &%s__function_abi_meta;\n"
-      "}\n"
-      "const DataBindNativeExecution *%s__databind_execution(void) {\n"
-      "    return &%s__execution_meta;\n"
-      "}\n",
-      op->symbol, op->symbol, op->request_type, op->response_type,
-      op->symbol, op->symbol, op->symbol, op->symbol,
-      op->symbol, op->symbol, op->symbol, op->symbol,
-      op->symbol, op->symbol) < 0)
-      return 0;
-    if (fprintf(file,
-      "DataBindStatus %s__databind_native_binding(\n"
-      "    %s__native_owner *owner,\n"
-      "    DataBindServiceNativeBinding *service_out,\n"
-      "    DataBindError *error) {\n"
-      "    (void)error;\n"
-      "    if (!owner || !service_out) return DATA_BIND_ERR_INVALID_ARG;\n"
-      "    if (%s_native_type_binding(&owner->request_metadata,\n"
-      "            &owner->request_binding) != 0 ||\n"
-      "        %s_native_type_binding(&owner->response_metadata,\n"
-      "            &owner->response_binding) != 0)\n"
-      "        return DATA_BIND_ERR_SCHEMA;\n"
-      "    *service_out = (DataBindServiceNativeBinding){\n"
-      "        sizeof(DataBindServiceNativeBinding),\n"
-      "        DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
-      "        &%s__function_meta,\n"
-      "        &owner->request_binding, &owner->response_binding,\n"
-      "        NULL, 0u, SIZE_MAX, 0u, 0u, 0u\n"
-      "    };\n"
-      "    return DATA_BIND_OK;\n"
-      "}\n\n",
-      op->symbol, op->symbol, op->request_type, op->response_type,
-      op->symbol) < 0)
+    const databind_compiler_service_native_operation *op = &services->operations[i];
+    if (!databind_compiler_native_contract_emit_reflection(file, op) ||
+        !databind_compiler_native_contract_emit_invoke(file, op) ||
+        !databind_compiler_native_contract_emit_binding(file, op))
       return 0;
   }
   return 1;
@@ -537,7 +564,7 @@ int databind_compiler_native_service_render_staged(
       ir.operations == NULL || ir.operation_count == 0u)
     goto cleanup;
   if (input->binary_format == NULL && !config->binary_presentation &&
-      !native_service_contract_admitted(contract, &ir))
+      !databind_compiler_native_contract_admitted(contract, &ir))
     goto cleanup;
 
   /* Empty, unique coordinator reservations are valid; populated files are not. */
