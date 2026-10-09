@@ -5,3 +5,12 @@ message Packet {
   nullable int16 delta;
   optional nullable bool active;
 }
+
+/* Each half of a state overlay may independently be absent. */
+message PresenceOnly {
+  optional uint32 code;
+}
+
+message NullOnly {
+  nullable int16 reading;
+}

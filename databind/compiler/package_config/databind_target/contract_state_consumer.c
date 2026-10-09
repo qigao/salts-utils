@@ -14,6 +14,8 @@ int main(void) {
       {sizeof(DataBindNativeStateBinding), "unchanged", 777u, 6u},
       {sizeof(DataBindNativeStateBinding), "unchanged", 777u, 6u}};
   Packet source, clone, moved;
+  PresenceOnly_native_state_view only_present = {0};
+  NullOnly_native_state_view only_null = {0};
   Packet_native_state_view owner = {0};
   DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
   DataBindNativeDiagnostic diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
@@ -76,6 +78,28 @@ int main(void) {
           &options, owner.binding.data, &native_plan,
           &diagnostic) == DATA_BIND_OK || native_plan != NULL)
     return 8;
+
+  /* Absent state dimension must produce an exact zero count and NULL
+   * public pointer, even though C11 reserves one private array slot. */
+  if (PresenceOnly_native_state_view_bind(&only_present) != 0 ||
+      NullOnly_native_state_view_bind(&only_null) != 0 ||
+      only_present.binding.presence_count != 1u ||
+      only_present.binding.null_count != 0u ||
+      only_present.binding.presence != only_present.presence ||
+      only_present.binding.nulls != NULL ||
+      only_null.binding.presence_count != 0u ||
+      only_null.binding.null_count != 1u ||
+      only_null.binding.presence != NULL ||
+      only_null.binding.nulls != only_null.nulls ||
+      only_present.presence[0].byte_offset != offsetof(PresenceOnly, has_code) ||
+      only_present.presence[0].bit != 0u ||
+      only_null.nulls[0].byte_offset != offsetof(NullOnly, is_null_reading) ||
+      only_null.nulls[0].bit != 0u ||
+      only_present.metadata.reflection.mode != CMETA_DATA_REFLECTION_VIEW ||
+      only_null.metadata.reflection.mode != CMETA_DATA_REFLECTION_VIEW ||
+      cmeta_data_value_traits_supported(only_present.binding.data) ||
+      cmeta_data_value_traits_supported(only_null.binding.data))
+    return 9;
 
   Packet_init(&source);
   Packet_init(&clone);
