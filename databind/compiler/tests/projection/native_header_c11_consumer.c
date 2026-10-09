@@ -88,6 +88,27 @@ int main(void) {
     return 1;
   packet.has_count = true;
   packet.count = 42u;
+  Packet copy, moved;
+  Packet_init(&copy);
+  Packet_init(&moved);
+  if (Packet_clone(NULL, &packet) == 0 ||
+      Packet_clone(&copy, NULL) == 0 ||
+      Packet_clone(&copy, &packet) != 0 ||
+      !copy.has_count || copy.count != 42u ||
+      Packet_move(NULL, &copy) == 0 ||
+      Packet_move(&moved, NULL) == 0 ||
+      Packet_move(&moved, &copy) != 0 ||
+      !moved.has_count || moved.count != 42u ||
+      copy.has_count || copy.count != 0u)
+    return 7;
+  if (Packet_clone(&moved, &moved) != 0 ||
+      Packet_move(&moved, &moved) != 0 ||
+      moved.count != 42u)
+    return 8;
   Packet_clear(&packet);
-  return packet.has_count || packet.count != 0u;
+  Packet_clear(&copy);
+  Packet_clear(&moved);
+  Packet_clear(&moved);
+  return packet.has_count || packet.count != 0u ||
+         moved.has_count || moved.count != 0u;
 }
