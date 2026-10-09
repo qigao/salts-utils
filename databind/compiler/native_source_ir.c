@@ -231,6 +231,20 @@ int databind_native_source_ir_write_header(
     failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
+    if (fprintf(out, "static const cmeta_field_desc %s_native_cmeta_fields[] = {\n",
+                record->name) < 0)
+      failed = 1;
+    for (j = 0u; j < record->field_count && !failed; ++j) {
+      const databind_native_source_field *field = &record->fields[j];
+      if (fprintf(out,
+          "    {\\\"%s\\\", \\\"%s\\\", offsetof(%s, %s), "
+          "sizeof(((%s *)0)->%s), _Alignof(%s), NULL, NULL},\n",
+          field->name, field->name, record->name, field->name,
+          record->name, field->name, field->c_type) < 0)
+        failed = 1;
+    }
+    if (!failed && fprintf(out, "};\n") < 0)
+      failed = 1;
     if (fprintf(out,
         "static const cmeta_type_desc %s_native_cmeta_type = {\n"
         "    .name = \"%s\",\n"
