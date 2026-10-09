@@ -1399,6 +1399,47 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("orders nested Native records and rejects recursive value cycles") {
+    static const char schema_path[] = "native_nested_order.schema";
+    static const char forward[] =
+        "schema NativeGraph; message Parent { Child child; } "
+        "message Child { uint32 count; }";
+    static const char cyclic[] =
+        "schema NativeGraph; message Parent { Child child; } "
+        "message Child { Parent parent; }";
+    Node *tree = NULL;
+    IdlContract *contract = NULL;
+    char *source = NULL;
+    databind_native_source_ir ir = {0};
+    (void)remove(schema_path);
+    check_true(write_sentinel(schema_path, forward));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), 0);
+    check_equal(ir.record_count, (size_t)2u);
+    check_equal(ir.records[0].name, "Child");
+    check_equal(ir.records[1].name, "Parent");
+    check_equal(ir.records[1].fields[0].ownership,
+                DATABIND_NATIVE_OWNED_RECORD);
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    tree = NULL;
+    contract = NULL;
+    source = NULL;
+    check_true(write_sentinel(schema_path, cyclic));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), -1);
+    check_true(ir.records == NULL);
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    (void)remove(schema_path);
+  }
+
   it("preserves IDL optional and nullable flags through Native header publication") {
     static const char schema_path[] = "native_source_presence.schema";
     static const char output[] = "native_source_presence.h";
