@@ -446,6 +446,7 @@ int databind_native_source_ir_write_header(
       if (field->ownership == DATABIND_NATIVE_OWNED_SEQUENCE) {
         if (fprintf(out,
             "    if (src->%s.initialized) {\n"
+            "      if (!cmeta_type_equal(src->%s.element_type, &%s)) goto native_clone_fail;\n"
             "      if (vec_raw_init(&tmp.%s, &%s, src->%s.element_limit) != STL_OK) goto native_clone_fail;\n"
             "      for (size_t k = 0; k < vec_size(&src->%s); ++k) {\n"
             "        const void *element = vec_at_const(&src->%s, k);\n"
@@ -453,8 +454,8 @@ int databind_native_source_ir_write_header(
             "      }\n"
             "    } else if (src->%s.data || src->%s.size) goto native_clone_fail;\n",
             field->name, field->name, field->element_cmeta_symbol,
-            field->name, field->name, field->name, field->name,
-            field->name, field->name) < 0) failed = 1;
+            field->name, field->element_cmeta_symbol, field->name,
+            field->name, field->name, field->name, field->name) < 0) failed = 1;
         continue;
       }
       if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
