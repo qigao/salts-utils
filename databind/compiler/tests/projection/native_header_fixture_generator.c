@@ -8,6 +8,15 @@ int main(int argc, char **argv) {
   };
   databind_native_source_record record = {"Packet", 3u, fields};
   databind_native_source_ir ir = {1u, &record, "NativeFixture", "1"};
+  if (argc == 3 && argv[2][0] == 's') {
+    databind_native_source_field scalar_sequence[] = {
+        {"numbers", "vec_t", 0, 0, DATABIND_NATIVE_OWNED_SEQUENCE,
+         "uint32", 1, "cmeta_type_uint32"}
+    };
+    databind_native_source_record item = {"SequencePacket", 1u, scalar_sequence};
+    databind_native_source_ir source_ir = {1u, &item, "SequenceFixture", "1"};
+    return databind_native_source_ir_write_header(&source_ir, argv[1]) == 0 ? 0 : 1;
+  }
   if (argc == 3 && argv[2][0] == 'n') {
     databind_native_source_field leaf_fields[] = {
         {"text", "databind_native_text", 0, 0, DATABIND_NATIVE_OWNED_TEXT, NULL, 0, NULL},
