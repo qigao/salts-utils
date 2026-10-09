@@ -237,7 +237,7 @@ int databind_native_source_ir_write_header(
     for (j = 0u; j < record->field_count && !failed; ++j) {
       const databind_native_source_field *field = &record->fields[j];
       if (fprintf(out,
-          "    {\\\"%s\\\", \\\"%s\\\", offsetof(%s, %s), "
+          "    {\"%s\", \"%s\", offsetof(%s, %s), "
           "sizeof(((%s *)0)->%s), _Alignof(%s), NULL, NULL},\n",
           field->name, field->name, record->name, field->name,
           record->name, field->name, field->c_type) < 0)
