@@ -1482,6 +1482,25 @@ describe("compiler integration") {
     (void)remove(path);
   }
 
+  it("admits canonical uint32 CSTL sequence without Binary format") {
+    static const char schema_path[] = "native_cstl_scalar.schema";
+    static const char output[] = "native_cstl_scalar.h";
+    static const char schema[] =
+        "schema NativeSequence; message Item { list<uint32> numbers; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "#include <cstl/vec.h>"));
+    check_true(file_contains(output, "vec_t numbers;"));
+    check_true(file_contains(output, "vec_raw_init(&tmp.numbers, &cmeta_type_uint32"));
+    check_true(file_contains(output, "vec_destroy(&value->numbers)"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
   it("preserves IDL optional and nullable flags through Native header publication") {
     static const char schema_path[] = "native_source_presence.schema";
     static const char output[] = "native_source_presence.h";
