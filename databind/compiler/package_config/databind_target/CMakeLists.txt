@@ -105,6 +105,46 @@ add_dependencies(installed_contract_service_consumer
 add_test(NAME installed_contract_service_consumer
   COMMAND installed_contract_service_consumer)
 
+# Relocated installed-SDK Contract-only Plugin: the DSO provider and typed
+# lease Client compile against the same NativeSourceIR VALUE records. No
+# Binary *_native.c source or generated codec/catalog is permitted.
+salts_idl_target(
+  TARGET installed_contract_plugin
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/native_contract_service.schema"
+  COMPONENT "WasmRuntime.Calculator"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "contract_plugin"
+  ARTIFACTS PLUGIN
+  SOURCES contract_plugin_business.c)
+
+if(NOT TARGET installed_contract_plugin_plugin OR
+   NOT TARGET installed_contract_plugin_plugin_client OR
+   TARGET installed_contract_plugin_native)
+  message(FATAL_ERROR "Contract-only Plugin provider/client targets are invalid")
+endif()
+foreach(_plugin_target IN ITEMS installed_contract_plugin_plugin
+                                installed_contract_plugin_plugin_client)
+  get_target_property(_contract_plugin_sources "${_plugin_target}" SOURCES)
+  foreach(_source IN LISTS _contract_plugin_sources)
+    get_filename_component(_source_name "${_source}" NAME)
+    if(_source_name STREQUAL "contract_plugin_native.c")
+      message(FATAL_ERROR
+        "Contract-only Plugin must not compile a Binary native companion")
+    endif()
+  endforeach()
+endforeach()
+
+add_executable(installed_contract_plugin_consumer contract_plugin_consumer.c)
+target_compile_features(installed_contract_plugin_consumer PRIVATE c_std_11)
+target_link_libraries(installed_contract_plugin_consumer PRIVATE
+  installed_contract_plugin_plugin
+  installed_contract_plugin_plugin_client
+  Salts::DataBind Salts::PluginABI)
+add_dependencies(installed_contract_plugin_consumer
+  installed_contract_plugin_idl_codegen)
+add_test(NAME installed_contract_plugin_consumer
+  COMMAND installed_contract_plugin_consumer)
+
 salts_idl_target(
   TARGET installed_image
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
@@ -165,7 +205,8 @@ set_target_properties(installed_image_plugin_client_cpp PROPERTIES
   CXX_EXTENSIONS NO)
 add_dependencies(installed_image installed_image_plugin_client_cpp)
 add_dependencies(installed_image installed_contract_types_consumer
-  installed_contract_value_consumer installed_contract_service_consumer)
+  installed_contract_value_consumer installed_contract_service_consumer
+  installed_contract_plugin_consumer)
 
 
 salts_idl_target(
