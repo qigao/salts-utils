@@ -1513,8 +1513,8 @@ describe("compiler integration") {
   it("rejects native presence flag collisions before changing a header") {
     static const char output[] = "native_presence_collision.h";
     databind_native_source_field fields[2] = {
-        {"count", "uint32_t", 1, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0},
-        {"has_count", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0}
+        {"count", "uint32_t", 1, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL},
+        {"has_count", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL}
     };
     databind_native_source_record record = {"Packet", 2u, fields};
     databind_native_source_ir ir = {1u, &record, "ManualFixture", NULL};
@@ -1532,7 +1532,7 @@ describe("compiler integration") {
 
   it("rejects empty records and lifecycle symbol collisions before publication") {
     static const char output[] = "native_invalid_symbols.h";
-    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0};
+    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL};
     databind_native_source_record records[2] = {
         {"Packet", 1u, &field}, {"Packet_init", 1u, &field}
     };
@@ -1553,7 +1553,7 @@ describe("compiler integration") {
 
   it("rejects reserved C record and field identifiers without publishing") {
     static const char output[] = "native_reserved_identifiers.h";
-    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0};
+    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL};
     databind_native_source_record record = {"struct", 1u, &field};
     databind_native_source_ir ir = {1u, &record, "ManualFixture", NULL};
     (void)remove(output);
