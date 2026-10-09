@@ -107,7 +107,7 @@ writer不得保留它。原样区间仍借用原始存储；repr不额外复制�
 经用户确认新增 `salts_unicode_name_lookup(vstr name, uint32_t *out_scalar)`，无既有结构体布局变更。
 官方 Unicode 17 DerivedName/NameAliases 是唯一名称事实源；离线生成只读排序表及派生范围，
 与 re2c 属性 DFA 并存。名称生成头随源码分发，属性 DFA 仍生成到 build tree。
-数据许可、版本、hash、再生成及完整验证命令见 [数据说明](../../unicode/data/README.md)。
+数据许可、版本、hash、再生成及完整验证命令见 [数据说明](https://github.com/qigao/salts/blob/master/unicode/data/README.md)。
 
 输入是显式长度借用 ASCII 名称，最长 88 字节；不保留输入，不分配内存，不修改全局状态。
 普通名称二分查询，派生名称检查固定范围；时间 O(L log N + R L)、栈空间 O(89)，N/R 为固定表规模。
