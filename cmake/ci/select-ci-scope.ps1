@@ -2,13 +2,17 @@ param(
   [Parameter(Mandatory)][ValidateSet('pull_request', 'push', 'workflow_dispatch')][string]$EventName,
   [string]$BaseRef,
   [Parameter(Mandatory)][string]$HeadRef,
+  [AllowEmptyString()][string]$HeadBranch = '',
   [bool]$PrepareRelease = $false
 )
 $ErrorActionPreference = 'Stop'
 if ($PrepareRelease -and $EventName -ne 'workflow_dispatch') {
   throw 'Release preparation requires a manual CI run'
 }
-$full = $EventName -eq 'workflow_dispatch' -or $BaseRef -match '^0+$'
+# Exact-SHA RC packaging is independent from #606 (still WIP).
+$rcPush = $EventName -eq 'push' -and $HeadBranch -eq 'release/salts-utils-4.3-idlc-606'
+$releaseQualification = $PrepareRelease -or $rcPush
+$full = $EventName -eq 'workflow_dispatch' -or $BaseRef -match '^0+$' -or $rcPush
 $changed = @()
 if (-not $full) {
   if ([string]::IsNullOrWhiteSpace($BaseRef)) { throw 'A change base is required' }
@@ -27,7 +31,7 @@ $profiles = @(
   @{ id='android-release'; runner='ubuntu-24.04'; family='android'; rid='android-arm64-v8a'; host='linux-x64'; triplet='arm64-android'; host_triplet='x64-linux'; preset='ci-android-sdk-release-user' },
   @{ id='ios-release'; runner='macos-15'; family='ios'; rid='ios-arm64'; host='macos-arm64'; triplet='arm64-ios'; host_triplet='arm64-osx'; sysroot='iphoneos'; preset='ci-ios-sdk-release-user' }
 )
-if ($PrepareRelease) {
+if ($releaseQualification) {
   $profiles += @{ id='linux-arm64-release'; runner='ubuntu-24.04-arm'; family='linux'; rid='linux-arm64'; host='linux-arm64'; triplet='arm64-linux'; host_triplet='arm64-linux'; preset='ci-native-minimal-release-user' }
 }
 $builds = @()
@@ -35,14 +39,15 @@ $tests = @()
 if ($native) {
   foreach ($profile in $profiles) {
     $profile.cross = $profile.family -in @('android', 'ios')
-    $profile.package = $PrepareRelease
+    $profile.package = $releaseQualification
     $profile.build_dir = switch ($profile.id) {
       'windows-release' { 'build/ci-win-release' }
       default { "build/ci-sdk/$($profile.rid)" }
     }
     if (-not $profile.ContainsKey('sysroot')) { $profile.sysroot = '' }
     $builds += $profile
-    if (-not $profile.cross) { $tests += $profile }
+    # Native CTests remain Linux x64, Windows x64 and macOS; Linux arm64 is an installed SDK gate.
+    if (-not $profile.cross -and $profile.id -ne 'linux-arm64-release') { $tests += $profile }
   }
 }
 $outputs = [ordered]@{
