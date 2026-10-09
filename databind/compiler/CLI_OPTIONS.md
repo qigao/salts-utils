@@ -110,6 +110,17 @@ previous caller files and removes otherwise-new files.
 
 For Contract-only Wasm, the currently admitted Core Component ABI is a bounded ordered-u32 little-endian list<u8> envelope; no Binary record builder/view or implicit `--source-output` is used. Other Wasm scalar and complex shapes fail before artifact publication. The historical Binary Wasm path remains available only when explicitly selected.
 
+**NativeSourceIR optional/nullable VIEW owner:** For records with native
+`has_*/is_null_*` flags, the generated `Record_native_state_view_bind()`
+constructs a caller-owned object containing the CMeta VIEW descriptor,
+per-field offset/bit-0 DataBind state arrays, and the
+`DataBindNativeTypeBinding` that borrows them. Its address and contents must
+remain stable while any reader borrows this metadata; copying or moving an
+initialized owner invalidates its internal pointers. This is **VIEW only**:
+it does not make the Record an executable native VALUE, and
+`DataBindNativePlan` must continue to reject it until exact optional/null
+lifecycle semantics are implemented.
+
 **Native/Plugin/Wasm multi-output transaction:** Typed artifact selection
 with bare `--lang c --output <header>` uses Contract-only NativeSourceIR.
 Native Service, Plugin and Wasm backends each declare

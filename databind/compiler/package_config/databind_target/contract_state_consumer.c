@@ -1,4 +1,5 @@
 #include "contract_state_native.h"
+#include "data_bind_native.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -13,6 +14,11 @@ int main(void) {
       {sizeof(DataBindNativeStateBinding), "unchanged", 777u, 6u},
       {sizeof(DataBindNativeStateBinding), "unchanged", 777u, 6u}};
   Packet source, clone, moved;
+  Packet_native_state_view owner = {0};
+  DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+  DataBindNativeDiagnostic diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindNativePlan *native_plan = NULL;
+  unsigned char workspace[16384] = {0};
 
   if (Packet_native_cmeta_bind(&view) != 0 ||
       view.reflection.mode != CMETA_DATA_REFLECTION_VIEW ||
@@ -39,6 +45,37 @@ int main(void) {
       presence[0].bit || presence[1].bit ||
       nulls[0].bit || nulls[1].bit)
     return 3;
+
+  /* Validate a *single* caller-owned view graph: its DataBind arrays, CMeta
+   * field pointers, and root descriptor all stay in this stable storage.
+   * A VIEW is expressly not a substitute for an executable VALUE graph. */
+  if (Packet_native_state_view_bind(NULL) == 0 ||
+      Packet_native_state_view_bind(&owner) != 0 ||
+      owner.binding.data != &owner.metadata.data ||
+      owner.binding.presence != owner.presence ||
+      owner.binding.nulls != owner.nulls ||
+      owner.binding.presence_count != 2u ||
+      owner.binding.null_count != 2u ||
+      owner.metadata.data.shape != &owner.metadata.reflection ||
+      owner.metadata.reflection.structure.fields != owner.metadata.data_fields ||
+      owner.metadata.reflection.structure.layout != &owner.metadata.layout ||
+      owner.metadata.layout.fields != owner.metadata.layout_fields ||
+      owner.metadata.reflection.mode != CMETA_DATA_REFLECTION_VIEW ||
+      cmeta_data_value_traits_supported(owner.binding.data) ||
+      strcmp(owner.binding.idl_type_name, "Packet") != 0 ||
+      owner.binding.presence[0].byte_offset != offsetof(Packet, has_count) ||
+      owner.binding.nulls[1].byte_offset != offsetof(Packet, is_null_active))
+    return 7;
+
+  options.workspace = workspace;
+  options.workspace_bytes = sizeof(workspace);
+  options.max_depth = 16u;
+  options.max_items = 128u;
+  options.max_owned_bytes = sizeof(workspace);
+  if (data_bind_native_plan_compile(
+          &options, owner.binding.data, &native_plan,
+          &diagnostic) == DATA_BIND_OK || native_plan != NULL)
+    return 8;
 
   Packet_init(&source);
   Packet_init(&clone);

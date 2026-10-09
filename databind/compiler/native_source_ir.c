@@ -1247,9 +1247,39 @@ static int native_source_ir_render(
                 n++, field->name, record->name, field->name) < 0)
             failed = 1;
         }
-        if (!failed &&
-            fprintf(out, "    return 0;\n}\n"
-                         "#endif /* DATABIND_NATIVE_ENABLE_DATABIND */\n") < 0)
+        if (!failed && fprintf(out,
+          "    return 0;\n}\n"
+          "/* VIEW metadata borrows storage owned by this exact object.\n"
+          " * Never move or copy after binding: all pointers refer inside it.\n"
+          " * It is not a CMeta VALUE or an executable native plan. */\n"
+          "typedef struct %s_native_state_view {\n"
+          "    %s_native_cmeta_binding metadata;\n"
+          "    DataBindNativeStateBinding presence[%zuu];\n"
+          "    DataBindNativeStateBinding nulls[%zuu];\n"
+          "    DataBindNativeTypeBinding binding;\n"
+          "} %s_native_state_view;\n"
+          "static inline int %s_native_state_view_bind(\n"
+          "    %s_native_state_view *owner) {\n"
+          "    if (!owner ||\n"
+          "        %s_native_cmeta_bind(&owner->metadata) != 0 ||\n"
+          "        %s_native_state_bind(owner->presence, %zuu,\n"
+          "                             owner->nulls, %zuu) != 0) return -1;\n"
+          "    owner->binding = (DataBindNativeTypeBinding)\n"
+          "        DATA_BIND_NATIVE_TYPE_BINDING_INIT(\"%s\", &owner->metadata.data);\n"
+          "    owner->binding.presence = %zuu ? owner->presence : NULL;\n"
+          "    owner->binding.presence_count = %zuu;\n"
+          "    owner->binding.nulls = %zuu ? owner->nulls : NULL;\n"
+          "    owner->binding.null_count = %zuu;\n"
+          "    return 0;\n"
+          "}\n"
+          "#endif /* DATABIND_NATIVE_ENABLE_DATABIND */\n",
+          record->name, record->name,
+          present ? present : 1u, nulls ? nulls : 1u,
+          record->name,
+          record->name, record->name,
+          record->name, record->name, present, nulls,
+          record->name, present, present,
+          nulls, nulls) < 0)
           failed = 1;
       }
     }
