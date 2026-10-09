@@ -177,7 +177,7 @@ target_include_directories(test_databind_native_cmeta_value_c11 PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(test_databind_native_cmeta_value_c11 PRIVATE
   DATABIND_NATIVE_ENABLE_CMETA)
-target_link_libraries(test_databind_native_cmeta_value_c11 PRIVATE Salts::Core)
+target_link_libraries(test_databind_native_cmeta_value_c11 PRIVATE Salts::DataBind)
 set_target_properties(test_databind_native_cmeta_value_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME test_databind_native_cmeta_value_c11

@@ -1,4 +1,5 @@
 #include "native_value_fixture.h"
+#include "data_bind_native.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -9,6 +10,11 @@ int main(void) {
   ValuePacket_native_cmeta_binding owner = {0};
   ValuePacket source = {0}, copy = {0}, moved = {0};
   bool is_zero = false;
+  DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+  DataBindNativeDiagnostic diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindNativePlan *plan = NULL;
+  ValuePacket executable = {0};
+  unsigned char workspace[16384] = {0};
 
   if (ValuePacket_native_cmeta_bind(&view) != 0 ||
       view.reflection.mode != CMETA_DATA_REFLECTION_VIEW ||
@@ -51,5 +57,38 @@ int main(void) {
       owner.layout.fields != owner.layout_fields ||
       strcmp(owner.data.stable_id, "tbe.native.NativeValue.v1.ValuePacket.data") != 0)
     return 7;
+  /* Prove the generated VALUE descriptor admits the real native DataBind
+   * execution plan, not only CMeta's standalone copy/move facade. Neither
+   * BinaryFormatPlan nor the old generated *_native.c participates here. */
+  options.workspace = workspace;
+  options.workspace_bytes = sizeof(workspace);
+  options.max_depth = 16u;
+  options.max_items = 128u;
+  options.max_owned_bytes = sizeof(workspace);
+  if (data_bind_native_plan_compile(
+          &options, &owner.data, &plan, &diagnostic) != DATA_BIND_OK ||
+      plan == NULL ||
+      data_bind_native_plan_data(plan) != &owner.data) {
+    data_bind_native_plan_free(plan);
+    return 8;
+  }
+  if (data_bind_native_plan_init(
+          plan, &options, &executable, sizeof(executable),
+          &diagnostic) != DATA_BIND_OK) {
+    data_bind_native_plan_free(plan);
+    return 9;
+  }
+  executable.count = 37u;
+  executable.delta = -5;
+  executable.active = true;
+  if (data_bind_native_plan_clear(
+          plan, &options, &executable, sizeof(executable),
+          &diagnostic) != DATA_BIND_OK ||
+      executable.count != 0u || executable.delta != 0 ||
+      executable.active) {
+    data_bind_native_plan_free(plan);
+    return 10;
+  }
+  data_bind_native_plan_free(plan);
   return 0;
 }
