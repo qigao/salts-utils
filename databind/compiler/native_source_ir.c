@@ -512,7 +512,7 @@ int databind_native_source_ir_write_header(
       if (field->ownership == DATABIND_NATIVE_OWNED_SET) {
         if (fprintf(out,
             "    if (src->%s.map.impl) {\n"
-            "      if (!cmeta_type_equal(src->%s.map.key_type, &%s)) goto native_clone_fail;\n"
+            "      if (!cmeta_type_equal(src->%s.element_type, &%s)) goto native_clone_fail;\n"
             "      tmp.%s.element_type = &%s;\n"
             "      if (set_init(&tmp.%s, set_element_limit(&src->%s)) != STL_OK) goto native_clone_fail;\n"
             "      cmeta_range_cursor cursor_%s = {0};\n"
