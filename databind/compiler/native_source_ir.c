@@ -29,7 +29,7 @@ static const char *native_scalar(const char *type) {
 
 /* Build an ownership plan even for types the current renderer cannot emit.
  * Never confuse non-trivial fields with a trivially copied scalar. */
-static databind_native_source_ownership native_field_ownership(
+static int native_field_ownership(
     const IdlContract *contract, const IdlField *field) {
   size_t i;
   if (field->collection_kind != IDL_COLLECTION_NONE) {
@@ -101,17 +101,16 @@ int databind_native_source_ir_build(
     if (record->fields == NULL) goto fail;
     for (j = 0u; j < decl->field_count; ++j) {
       const IdlField *field = &decl->fields[j];
-      const databind_native_source_ownership ownership =
-          native_field_ownership(contract, field);
+      const int ownership = native_field_ownership(contract, field);
       const char *type = native_scalar(field->type_name);
       if (field->name == NULL || field->name[0] == '\0' ||
-          field->default_value != NULL || (int)ownership < 0)
+          field->default_value != NULL || ownership < 0)
         goto fail;
       record->fields[j].name = field->name;
       record->fields[j].c_type = type;
       record->fields[j].optional = field->optional != 0;
       record->fields[j].nullable = field->nullable != 0;
-      record->fields[j].ownership = ownership;
+      record->fields[j].ownership = (databind_native_source_ownership)ownership;
     }
   }
   *out = plan;
