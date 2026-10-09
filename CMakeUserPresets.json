@@ -618,6 +618,22 @@
                 "BUILD_BENCHMARKS": false,
                 "CMAKE_INSTALL_PREFIX": "$env{SALTS_ROOT}"
             }
+        },
+        {
+            "name": "ci-unicode-macos-candidate-user",
+            "inherits": "ci-native-release-user",
+            "description": "Paired AppleClang Salts/SaltsUtils macOS Unicode installed SDK qualification.",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CMAKE_OBJC_COMPILER": "$penv{QIGAO_APPLE_CLANG}",
+                "CMAKE_OSX_ARCHITECTURES": "arm64",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/stage/sdk/macos-arm64",
+                "VCPKG_INSTALL_OPTIONS": "--only-binarycaching",
+                "BUILD_TESTS": true,
+                "BUILD_EXAMPLES": false,
+                "BUILD_BENCHMARKS": false
+            }
         }
     ],
     "buildPresets": [
@@ -965,6 +981,17 @@
             "targets": [
                 "install"
             ]
+        },
+        {
+            "name": "ci-unicode-macos-candidate-user",
+            "configurePreset": "ci-unicode-macos-candidate-user"
+        },
+        {
+            "name": "install-ci-unicode-macos-candidate-user",
+            "configurePreset": "ci-unicode-macos-candidate-user",
+            "targets": [
+                "install"
+            ]
         }
     ],
     "testPresets": [
@@ -1070,6 +1097,11 @@
             "name": "ci-unicode-candidate-user",
             "inherits": "ci-native-release-user",
             "configurePreset": "ci-unicode-candidate-user"
+        },
+        {
+            "name": "ci-unicode-macos-candidate-user",
+            "inherits": "ci-native-release-user",
+            "configurePreset": "ci-unicode-macos-candidate-user"
         }
     ]
 }
