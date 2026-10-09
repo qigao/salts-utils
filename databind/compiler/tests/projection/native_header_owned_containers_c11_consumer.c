@@ -24,6 +24,16 @@ int main(void) {
   OwnedContainers_init(&b);
   OwnedContainers_init(&moved);
 
+  /* Byte containers canonicalize a borrowed zero-length buffer to NULL. */
+  {
+    const databind_native_bytes empty_borrowed = {bytes_data, 0u};
+    databind_native_bytes empty_copy = {0};
+    if (!databind_native_bytes_trait_copy(&empty_copy, &empty_borrowed) ||
+        empty_copy.data != NULL || empty_copy.size != 0u)
+      return 11;
+    databind_native_bytes_trait_destroy(&empty_copy);
+  }
+
   if (cmeta_type_require_traits(&databind_native_text_cmeta_type,
           CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY |
           CMETA_TRAIT_COMPARE) != CMETA_OK ||
