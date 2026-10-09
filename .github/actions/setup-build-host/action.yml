@@ -6,27 +6,23 @@ runs:
   - name: Restore compiler cache
     uses: actions/cache@v4
     with:
-      path: ${{ env.SCCACHE_DIR }}
+      path: ${{ env.CCACHE_DIR }}
       key: ${{ env.SALTS_UTILS_COMPILER_CACHE_NAMESPACE }}-${{ hashFiles('CMakeUserPresets.json', '.github/actions/setup-build-host/action.yml') }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
       restore-keys: |
         ${{ env.SALTS_UTILS_COMPILER_CACHE_NAMESPACE }}-${{ hashFiles('CMakeUserPresets.json', '.github/actions/setup-build-host/action.yml') }}-
-  - name: Set up compiler cache
-    uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-    with:
-      version: v0.18.0
   - name: Prepare Linux dependencies
     if: runner.os == 'Linux'
     shell: bash
     run: |
       set -euo pipefail
       sudo apt-get update
-      sudo apt-get install -y --no-install-recommends ninja-build pkg-config nasm libudev-dev libpipewire-0.3-dev libx11-dev libxext-dev
+      sudo apt-get install -y --no-install-recommends ccache ninja-build pkg-config nasm libudev-dev libpipewire-0.3-dev libx11-dev libxext-dev
   - name: Prepare macOS dependencies
     if: runner.os == 'macOS'
     shell: bash
     run: |
       set -euo pipefail
-      brew install ninja nasm autoconf automake autoconf-archive libtool gcc@15
+      brew install ccache ninja nasm autoconf automake autoconf-archive libtool gcc@15
       echo "$(brew --prefix gcc@15)/bin" >> "$GITHUB_PATH"
       apple_clang="$(xcrun --find clang)"
       echo "QIGAO_APPLE_CLANG=$apple_clang" >> "$GITHUB_ENV"
@@ -35,9 +31,10 @@ runs:
     shell: pwsh
     run: |
       $ErrorActionPreference = "Stop"
-      choco install nasm ninja -y --no-progress
+      choco install ccache nasm ninja -y --no-progress
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
       $vsInstall = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
       if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($vsInstall)) { throw "Visual Studio x64 C++ toolchain not found" }
       "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
+      if (-not (Get-Command ccache -ErrorAction SilentlyContinue)) { throw "ccache not found on Windows PATH" }

@@ -24,27 +24,20 @@ vcpkg 优先读取共享二进制缓存；未命中时按 manifest 和 baseline 
 生成的缓存只写入本地目录。CI 不要求所有平台的新依赖事先发布到共享 feed；
 认证、下载与编译失败仍立即终止构建。
 
-项目的 C/C++ 编译通过 [sccache](https://github.com/mozilla/sccache) 复用本地编译结果，
-由 `actions/cache` 整批恢复、保存目录，避免每个对象文件分别请求远程缓存。
-每个 job 的目录上限为 512 MiB；缓存快照按 GitHub Actions 的额度和淘汰规则保留。
-`setup-build-host` 安装固定版本，CI user presets 统一设置
-compiler launcher；Linux x64/arm64、Windows、macOS、Android 和 iOS 都使用相同入口。
-缓存命名空间包含 runner、host RID 和矩阵配置，Release、sanitizer 与交叉构建相互隔离。
-CI preset 通过 `SCCACHE_C_CUSTOM_CACHE_BUSTER` 把当前 preset、SDK RID 和目标 triplet
-加入编译缓存键。同一 job 中的宿主工具与移动平台构建也保持隔离，避免 SDK 参数被
-编译缓存归入预处理参数后误用另一平台的对象文件。
-源码、头文件、编译器和编译参数由 sccache 纳入缓存键，代码更新后仍可命中未受影响的
-编译单元。目录快照使用每轮独立保存键，以平台/profile 和缓存配置摘要作为恢复前缀；
-恢复前缀不包含提交 SHA，避免每次提交都清空可复用结果。关闭 direct mode，每次编译
-重新执行预处理，让新增条件头文件等依赖变化参与缓存判断。
+项目 C/C++ 编译通过 [ccache](https://ccache.dev/) 缓存编译结果。CI 使用
+`actions/cache` 恢复 `CCACHE_DIR`，每个矩阵 job 限额 512 MiB。
+Linux 安装发行版 ccache，macOS 使用 Homebrew，Windows 使用 Chocolatey。
+CI CMake User Presets 配置 `CMAKE_C_COMPILER_LAUNCHER` 与
+`CMAKE_CXX_COMPILER_LAUNCHER` 为 ccache；首次执行或未命中时直接编译，
+不会修改 SDK 依赖版本。缓存目录按操作系统、host、目标 matrix profile
+隔离，保持 Release、Sanitizers 和交叉编译隔离。
 
-每轮仍重新解析最新 SDK、运行 CMake configure、构建完整图并执行完整 CTest。
-不跨提交恢复 `CMakeCache.txt`、Ninja 状态、vcpkg 安装树或 SDK 安装树；测试 job
-继续消费本轮构建的精确产物。测试 job 也安装 sccache，供已有包配置测试中的嵌套
-CMake 使用。首次构建或缓存被服务淘汰时正常编译；实际编译、链接或工具错误仍使 CI
-失败。链接、代码生成、下载、artifact 上传及测试时间不会由编译缓存直接缩短。
-[安装 action](https://github.com/Mozilla-Actions/sccache-action) 在 job 结束时输出命中统计；
-加速幅度以命中率和构建步骤耗时为准，不预设固定比例。
+`CCACHE_COMPILERCHECK=content` 避免依赖编译器二进制 mtime，
+源文件、头文件与实际编译参数仍参与 cache key。Windows MSVC 构建
+也经过 ccache launcher，若发现当前参数不受支持则由 ccache 委托编译，
+CI 以真实编译和 CTest 结果作为通过条件，不以缓存命中为前提。
+测试 job 恢复缓存以供嵌套 CMake 生成器使用；不缓存 build trees、
+Ninja 状态、vcpkg 安装目录或还原的 Native SDK。
 
 iOS preset 通过 `cmake/vcpkg-ports/quickjs-ng` 修正工具打包：保持共享 port 的
 QuickJS-ng 0.16.2 版本、源码摘要和库配置，但依照
@@ -54,8 +47,8 @@ QuickJS-ng 0.16.2 版本、源码摘要和库配置，但依照
 其他平台继续使用共享 port；共享版本修正并经 iOS 真机构建验证后，
 删除该本地 recipe 和 preset 中的 overlay 设置。
 
-普通 CI 覆盖 Linux x64、Windows x64、macOS arm64 Release 和 Linux ASan/UBSan
-构建与测试，以及 Android arm64-v8a、iOS 真机 arm64 交叉构建。
+普通 CI 覆盖 Linux x64、Windows x64、macOS arm64 Release 构建与测试，
+以及 Android arm64-v8a、iOS 真机 arm64 交叉构建。
 发布准备额外加入 Linux arm64 Release；该平台保持现有 Capture 关闭契约。
 交叉编译成功不代表移动设备运行测试通过。Release 与 sanitizer 使用独立构建树。
 macOS C/C++ 使用与 Salts 发布 SDK 一致的 GCC 15，保证 TinyTest 等库的 TLS ABI
@@ -83,6 +76,23 @@ Windows 恢复原 triplet，通过 preset 的 PATH 选择依赖；不手工复�
 14 天；过期必须重新执行准备流程，不能拿其他提交的包替代。
 
 ## 发布与迁移
+
+### 4.3 RC 回合主线
+
+将 `v4.3.0-rc.1`（`049f8e39e1d19ff21e9825df7c497e40b75a8ddf`）与 master
+的发布入口提交 `c259f4c6fabc8c5d4c9663c44c5cb738519f5c30` 合并，保留双方历史。
+已发布 tag 和包保持不可变；本次同步不发布稳定包，也不包含 Unicode 所有权迁移。
+
+主线继续通过 `Salts.Native` 的 `Version="*"` 和 `--no-cache --force-evaluate`
+解析最新稳定 SDK。RC 分支曾为六平台验收选择 Salts 2.3.0 周期的正式 RC 包；
+该版本周期限制不带入 master，避免未来发布后仍停留在 2.3.0。RC tag 的成功 CI
+只能证明其原始组合，合并结果必须重新通过完整原生构建与 CTest。
+
+`release/salts-utils-4.3-idlc-606` 的 RC 版本后缀与打包触发条件继续限定在该分支；
+普通 master push 不发布 SDK。手动发布仍保留既有 tag 不可变、精确来源验收与
+稳定版下游确认要求。若集成发生回归，回滚此合并并重新运行 CI，不移动发布 tag。
+
+### 手动发布
 
 不再由 tag push 自动编译发布。先提交变更，确认根 CMake 与 vcpkg 的版本一致，然后：
 

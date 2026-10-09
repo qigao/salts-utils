@@ -8,11 +8,31 @@ add_test(NAME test_databind_projection_config_stale_rejected
 set_tests_properties(test_databind_projection_config_stale_rejected
   PROPERTIES LABELS "databind;compiler;projection-config")
 
+# Reuse the canonical executable Wasm Core fixture for real artifact
+# transaction tests instead of constructing synthetic bytes in C.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(DATABIND_PROJECTION_WASM_CORE
+    "${CMAKE_CURRENT_BINARY_DIR}/projection_wasm_execution_core.wasm")
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}"
+    "${DATABIND_COMPILER_SOURCE_DIR}/package_config/wasm_execution/write_core.py"
+    "${DATABIND_PROJECTION_WASM_CORE}"
+  RESULT_VARIABLE _projection_wasm_core_status)
+if(NOT _projection_wasm_core_status EQUAL 0 OR
+   NOT EXISTS "${DATABIND_PROJECTION_WASM_CORE}")
+  message(FATAL_ERROR "Could not prepare canonical Wasm Core transaction fixture")
+endif()
+
 cmake_add_test(test_databind_projection_registry
   SOURCES
     test_projection_registry.c
     "${DATABIND_COMPILER_SOURCE_DIR}/projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/native_source_ir.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/wasm_projection.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/plugin_projection.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/service_native.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c"
@@ -20,9 +40,13 @@ cmake_add_test(test_databind_projection_registry
     Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
+    databind_binding_compiler
     Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/core/example.schema"
+    SCHEMA_NATIVE_SERVICE_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/native/test_service_native_lowering.schema"
+    SCHEMA_WASM_EXECUTION_FILE="${DATABIND_COMPILER_SOURCE_DIR}/package_config/wasm_execution/wasm_execution.schema"
+    WASM_CORE_FIXTURE_FILE="${DATABIND_PROJECTION_WASM_CORE}"
     TBE_COMPILER_RESOURCE_DIR="${DATABIND_COMPILER_SOURCE_DIR}"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/contract
@@ -40,6 +64,7 @@ cmake_add_test(test_databind_projection_frontend
     "${DATABIND_COMPILER_SOURCE_DIR}/projection_config.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/service_native.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/native_source_ir.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/plugin_projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/wasm_projection.c"
@@ -71,3 +96,401 @@ set_target_properties(test_databind_projection_frontend PROPERTIES
 
 target_link_libraries(test_databind_projection_frontend
   PRIVATE databind_binding_compiler)
+
+
+# Exercise the exact same public TYPES CMake surface in build-tree CTest;
+# the separate installed-SDK consumer qualifies package relocation/linkage.
+salts_idl_target(
+  TARGET databind_contract_types_public_fixture
+  FOLDER "databind/compiler/generated/contract-types"
+  IDL "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_types.schema"
+  ARTIFACT_NAME "contract_types"
+  ARTIFACTS TYPES)
+
+add_executable(test_databind_contract_types_public_c11
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_types_consumer.c")
+target_link_libraries(test_databind_contract_types_public_c11 PRIVATE
+  ${databind_contract_types_public_fixture_TYPES_TARGET})
+add_dependencies(test_databind_contract_types_public_c11
+  databind_contract_types_public_fixture_idl_codegen)
+set_target_properties(test_databind_contract_types_public_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_types_public_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_types_public_c11>)
+set_tests_properties(test_databind_contract_types_public_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;public;contract-only;c11")
+
+# Public Contract-only owning scalar records must produce a real CMeta
+# VALUE descriptor usable by the native DataBind plan, not a borrowed VIEW.
+salts_idl_target(
+  TARGET databind_contract_value_public_fixture
+  FOLDER "databind/compiler/generated/contract-value"
+  IDL "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_value.schema"
+  ARTIFACT_NAME "contract_value"
+  ARTIFACTS TYPES)
+add_executable(test_databind_contract_value_public_c11
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_value_consumer.c")
+target_compile_definitions(test_databind_contract_value_public_c11 PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
+target_link_libraries(test_databind_contract_value_public_c11 PRIVATE
+  ${databind_contract_value_public_fixture_TYPES_TARGET} Salts::DataBind)
+add_dependencies(test_databind_contract_value_public_c11
+  databind_contract_value_public_fixture_idl_codegen)
+set_target_properties(test_databind_contract_value_public_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_value_public_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_value_public_c11>)
+set_tests_properties(test_databind_contract_value_public_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;public;cmeta;owned;contract-only;c11")
+
+# Public Contract-only native-state metadata must preserve exact C11 bool
+# presence/null field offsets, with no borrowed VIEW -> VALUE admission.
+salts_idl_target(
+  TARGET databind_contract_state_public_fixture
+  FOLDER "databind/compiler/generated/contract-state"
+  IDL "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_state.schema"
+  ARTIFACT_NAME "contract_state"
+  ARTIFACTS TYPES)
+
+add_executable(test_databind_contract_state_public_c11
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_state_consumer.c")
+target_compile_definitions(test_databind_contract_state_public_c11 PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
+target_link_libraries(test_databind_contract_state_public_c11 PRIVATE
+  ${databind_contract_state_public_fixture_TYPES_TARGET} Salts::DataBind)
+add_dependencies(test_databind_contract_state_public_c11
+  databind_contract_state_public_fixture_idl_codegen)
+set_target_properties(test_databind_contract_state_public_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_state_public_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_state_public_c11>)
+set_tests_properties(test_databind_contract_state_public_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;public;state;contract-only;c11")
+
+# Compile, link and run a real Native Service artifact directly from the
+# Contract-only C frontend. Binary *_native.c is deliberately absent.
+set(_contract_service_dir "${CMAKE_CURRENT_BINARY_DIR}/contract_service")
+set(_contract_service_record "${_contract_service_dir}/contract_service.h")
+set(_contract_service_header "${_contract_service_dir}/contract_service.service_native.h")
+set(_contract_service_source "${_contract_service_dir}/contract_service.service_native.c")
+set(_contract_service_schema
+    "${DATABIND_COMPILER_SOURCE_DIR}/package_config/wasm_execution/wasm_execution.schema")
+add_custom_command(
+  OUTPUT "${_contract_service_record}"
+         "${_contract_service_header}" "${_contract_service_source}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${_contract_service_dir}"
+  COMMAND $<TARGET_FILE:salts_idlc>
+          "${_contract_service_schema}"
+          --lang c
+          --output "${_contract_service_record}"
+          --artifacts native
+          --artifact-name contract_service
+  DEPENDS salts_idlc "${_contract_service_schema}"
+  VERBATIM)
+add_executable(test_databind_contract_native_service_c11
+  native_service_contract_c11_consumer.c
+  "${_contract_service_source}" "${_contract_service_header}"
+  "${_contract_service_record}")
+target_include_directories(test_databind_contract_native_service_c11
+  PRIVATE "${_contract_service_dir}")
+target_link_libraries(test_databind_contract_native_service_c11
+  PRIVATE Salts::DataBind)
+set_target_properties(test_databind_contract_native_service_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_native_service_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_native_service_c11>)
+set_tests_properties(test_databind_contract_native_service_c11 PROPERTIES
+  LABELS "databind;compiler;native-service;contract-only;c11;execution")
+
+# Contract-only Plugin: real provider manifest/typed Client compilation and
+# exact business invocation, without a Binary native serializer or catalog.
+set(_contract_plugin_dir "${CMAKE_CURRENT_BINARY_DIR}/contract_plugin")
+set(_contract_plugin_h "${_contract_plugin_dir}/contract_plugin_native.h")
+set(_contract_plugin_provider_h "${_contract_plugin_dir}/contract_plugin.plugin.h")
+set(_contract_plugin_provider_c "${_contract_plugin_dir}/contract_plugin.plugin.c")
+set(_contract_plugin_client_h "${_contract_plugin_dir}/contract_plugin.plugin_client.h")
+set(_contract_plugin_client_c "${_contract_plugin_dir}/contract_plugin.plugin_client.c")
+set(_contract_plugin_schema
+    "${DATABIND_COMPILER_SOURCE_DIR}/package_config/wasm_execution/wasm_execution.schema")
+add_custom_command(
+  OUTPUT "${_contract_plugin_h}" "${_contract_plugin_provider_h}"
+         "${_contract_plugin_provider_c}" "${_contract_plugin_client_h}"
+         "${_contract_plugin_client_c}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${_contract_plugin_dir}"
+  COMMAND $<TARGET_FILE:salts_idlc>
+          "${_contract_plugin_schema}"
+          --lang c
+          --output "${_contract_plugin_h}"
+          --artifacts plugin --artifact-name contract_plugin
+          --component WasmRuntime.Calculator
+          --artifact-version 1.0.0
+  DEPENDS salts_idlc "${_contract_plugin_schema}"
+  VERBATIM)
+add_executable(test_databind_contract_plugin_c11
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_consumer.c"
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_business.c"
+  "${_contract_plugin_provider_c}" "${_contract_plugin_provider_h}"
+  "${_contract_plugin_client_c}" "${_contract_plugin_client_h}"
+  "${_contract_plugin_h}")
+target_include_directories(test_databind_contract_plugin_c11
+  PRIVATE "${_contract_plugin_dir}")
+target_link_libraries(test_databind_contract_plugin_c11
+  PRIVATE Salts::DataBind Salts::PluginABI Salts::Plugin)
+set_target_properties(test_databind_contract_plugin_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_plugin_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_plugin_c11>)
+set_tests_properties(test_databind_contract_plugin_c11 PROPERTIES
+  LABELS "databind;compiler;plugin;contract-only;c11;execution")
+
+# Compile an actual NativeSourceIR-emitted header with each platform's C11 compiler.
+add_executable(databind_native_header_fixture_generator
+  native_header_fixture_generator.c
+  "${DATABIND_COMPILER_SOURCE_DIR}/native_source_ir.c")
+target_include_directories(databind_native_header_fixture_generator PRIVATE
+  "${DATABIND_COMPILER_SOURCE_DIR}"
+  "${DATABIND_SOURCE_ROOT}/idl/include")
+set_target_properties(databind_native_header_fixture_generator PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+set(_native_fixture_header "${CMAKE_CURRENT_BINARY_DIR}/native_contract_fixture.h")
+add_custom_command(OUTPUT "${_native_fixture_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_fixture_header}"
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_header_c11
+  native_header_c11_consumer.c "${_native_fixture_header}")
+target_include_directories(test_databind_native_header_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+set_target_properties(test_databind_native_header_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+# Compile the optional CMeta descriptor path with the real Salts headers.
+add_executable(test_databind_native_header_cmeta
+  native_header_c11_consumer.c "${_native_fixture_header}")
+add_dependencies(test_databind_native_header_cmeta
+  databind_native_header_fixture_generator)
+target_compile_definitions(test_databind_native_header_cmeta PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
+target_include_directories(test_databind_native_header_cmeta PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(test_databind_native_header_cmeta PRIVATE Salts::DataBind)
+set_target_properties(test_databind_native_header_cmeta PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_header_cmeta
+  COMMAND $<TARGET_FILE:test_databind_native_header_cmeta>)
+set_tests_properties(test_databind_native_header_cmeta PROPERTIES
+  LABELS "databind;compiler;native-source;cmeta")
+
+add_test(NAME test_databind_native_header_c11
+  COMMAND $<TARGET_FILE:test_databind_native_header_c11>)
+set_tests_properties(test_databind_native_header_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;c11")
+
+
+# VALUE-mode CMeta data lifecycle is legal only for complete native scalar
+# records without DataBind optional/null overlay state or owned buffers.
+set(_native_value_header "${CMAKE_CURRENT_BINARY_DIR}/native_value_fixture.h")
+add_custom_command(OUTPUT "${_native_value_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_value_header}" value
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_cmeta_value_c11
+  native_header_cmeta_value_c11_consumer.c "${_native_value_header}")
+target_include_directories(test_databind_native_cmeta_value_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(test_databind_native_cmeta_value_c11 PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
+target_link_libraries(test_databind_native_cmeta_value_c11 PRIVATE Salts::DataBind)
+set_target_properties(test_databind_native_cmeta_value_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_cmeta_value_c11
+  COMMAND $<TARGET_FILE:test_databind_native_cmeta_value_c11>)
+set_tests_properties(test_databind_native_cmeta_value_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;cmeta;value;c11")
+
+# CMeta VALUE must own native text/bytes buffers, with real DataBind
+# init/copy/move/clear admission. The no-CMeta C11 header remains standalone.
+set(_native_owned_value_header
+    "${CMAKE_CURRENT_BINARY_DIR}/native_owned_value_fixture.h")
+add_custom_command(OUTPUT "${_native_owned_value_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_owned_value_header}" writable
+  DEPENDS databind_native_header_fixture_generator VERBATIM)
+add_executable(test_databind_native_cmeta_owned_value_c11
+  native_header_cmeta_owned_value_c11_consumer.c "${_native_owned_value_header}")
+target_include_directories(test_databind_native_cmeta_owned_value_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(test_databind_native_cmeta_owned_value_c11 PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
+target_link_libraries(test_databind_native_cmeta_owned_value_c11
+  PRIVATE Salts::DataBind)
+set_target_properties(test_databind_native_cmeta_owned_value_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_cmeta_owned_value_c11
+  COMMAND $<TARGET_FILE:test_databind_native_cmeta_owned_value_c11>)
+set_tests_properties(test_databind_native_cmeta_owned_value_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;cmeta;owned;value;c11")
+
+# Compile and execute generated C11 lifetime for owned native buffers.
+set(_native_owned_header "${CMAKE_CURRENT_BINARY_DIR}/native_owned_fixture.h")
+add_custom_command(OUTPUT "${_native_owned_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_owned_header}" owned
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_owned_c11
+  native_header_owned_c11_consumer.c "${_native_owned_header}")
+target_include_directories(test_databind_native_owned_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+set_target_properties(test_databind_native_owned_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_owned_c11
+  COMMAND $<TARGET_FILE:test_databind_native_owned_c11>)
+set_tests_properties(test_databind_native_owned_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;ownership;c11")
+
+# Compile and exercise multi-level owning record lifecycle in generated C11.
+set(_native_nested_header "${CMAKE_CURRENT_BINARY_DIR}/native_nested_fixture.h")
+add_custom_command(OUTPUT "${_native_nested_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_nested_header}" nested
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_nested_c11
+  native_header_nested_c11_consumer.c "${_native_nested_header}")
+target_include_directories(test_databind_native_nested_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+set_target_properties(test_databind_native_nested_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_nested_c11
+  COMMAND $<TARGET_FILE:test_databind_native_nested_c11>)
+set_tests_properties(test_databind_native_nested_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;ownership;nested;c11")
+
+# Generated native sequence consumes the canonical Salts CSTL vec ABI.
+set(_native_sequence_header "${CMAKE_CURRENT_BINARY_DIR}/native_sequence_fixture.h")
+add_custom_command(OUTPUT "${_native_sequence_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_sequence_header}" sequence
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_sequence_c11
+  native_header_sequence_c11_consumer.c "${_native_sequence_header}")
+target_include_directories(test_databind_native_sequence_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(test_databind_native_sequence_c11 PRIVATE Salts::CSTL)
+set_target_properties(test_databind_native_sequence_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_sequence_c11
+  COMMAND $<TARGET_FILE:test_databind_native_sequence_c11>)
+set_tests_properties(test_databind_native_sequence_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;cstl;sequence;c11")
+
+# Generated associative ownership must use Salts CSTL and canonical CMeta traits.
+set(_native_assoc_header "${CMAKE_CURRENT_BINARY_DIR}/native_assoc_fixture.h")
+add_custom_command(OUTPUT "${_native_assoc_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_assoc_header}" associative
+  DEPENDS databind_native_header_fixture_generator VERBATIM)
+add_executable(test_databind_native_assoc_c11
+  native_header_assoc_c11_consumer.c "${_native_assoc_header}")
+target_include_directories(test_databind_native_assoc_c11 PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(test_databind_native_assoc_c11 PRIVATE Salts::CSTL)
+set_target_properties(test_databind_native_assoc_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_assoc_c11
+  COMMAND $<TARGET_FILE:test_databind_native_assoc_c11>)
+set_tests_properties(test_databind_native_assoc_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;cstl;map;set;c11")
+
+# Exercise generated owning element traits against the real Salts CSTL SDK.
+set(_native_owned_containers_header
+    "${CMAKE_CURRENT_BINARY_DIR}/native_owned_containers_fixture.h")
+add_custom_command(OUTPUT "${_native_owned_containers_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_owned_containers_header}" traits
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_owned_containers_c11
+  native_header_owned_containers_c11_consumer.c
+  "${_native_owned_containers_header}")
+target_include_directories(test_databind_native_owned_containers_c11
+  PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(test_databind_native_owned_containers_c11 PRIVATE Salts::CSTL)
+set_target_properties(test_databind_native_owned_containers_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_owned_containers_c11
+  COMMAND $<TARGET_FILE:test_databind_native_owned_containers_c11>)
+set_tests_properties(test_databind_native_owned_containers_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;ownership;cstl;c11")
+
+# Ownable nested native Records are element values; their CMeta traits must
+# run through canonical Salts CSTL copy/move/destroy callbacks.
+set(_native_record_containers_header
+    "${CMAKE_CURRENT_BINARY_DIR}/native_record_containers_fixture.h")
+add_custom_command(OUTPUT "${_native_record_containers_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_record_containers_header}" record
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_record_containers_c11
+  native_header_record_containers_c11_consumer.c
+  "${_native_record_containers_header}")
+target_include_directories(test_databind_native_record_containers_c11
+  PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(test_databind_native_record_containers_c11 PRIVATE Salts::CSTL)
+set_target_properties(test_databind_native_record_containers_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_record_containers_c11
+  COMMAND $<TARGET_FILE:test_databind_native_record_containers_c11>)
+set_tests_properties(test_databind_native_record_containers_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;ownership;record;cstl;c11")
+
+# Compile the same native C record in separate translation units. The CMeta
+# identity is Schema/Contract-version scoped, never inferred from C layout.
+set(_native_identity_objects)
+foreach(_native_profile IN ITEMS alpha alpha_copy beta alpha_v2)
+  if(_native_profile STREQUAL "beta")
+    set(_native_schema "Beta")
+    set(_native_schema_version "1")
+  elseif(_native_profile STREQUAL "alpha_v2")
+    set(_native_schema "Alpha")
+    set(_native_schema_version "2")
+  else()
+    set(_native_schema "Alpha")
+    set(_native_schema_version "1")
+  endif()
+  set(_native_identity_header
+      "${CMAKE_CURRENT_BINARY_DIR}/native_identity_${_native_profile}.h")
+  add_custom_command(OUTPUT "${_native_identity_header}"
+    COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+            "${_native_identity_header}"
+            "${_native_schema}" "${_native_schema_version}"
+    DEPENDS databind_native_header_fixture_generator
+    VERBATIM)
+  add_library(databind_native_identity_${_native_profile} OBJECT
+    native_header_identity_source.c "${_native_identity_header}")
+  target_include_directories(databind_native_identity_${_native_profile} PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}")
+  target_compile_definitions(databind_native_identity_${_native_profile} PRIVATE
+    DATABIND_NATIVE_ENABLE_CMETA
+    "NATIVE_IDENTITY_HEADER=\"native_identity_${_native_profile}.h\""
+    "NATIVE_IDENTITY_GETTER=native_identity_${_native_profile}")
+  target_link_libraries(databind_native_identity_${_native_profile} PRIVATE
+    Salts::Core)
+  set_target_properties(databind_native_identity_${_native_profile} PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  list(APPEND _native_identity_objects
+    $<TARGET_OBJECTS:databind_native_identity_${_native_profile}>)
+endforeach()
+
+add_executable(test_databind_native_identity
+  native_header_identity_compare.c ${_native_identity_objects})
+target_link_libraries(test_databind_native_identity PRIVATE Salts::Core)
+set_target_properties(test_databind_native_identity PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_identity
+  COMMAND $<TARGET_FILE:test_databind_native_identity>)
+set_tests_properties(test_databind_native_identity PROPERTIES
+  LABELS "databind;compiler;native-source;cmeta;identity")

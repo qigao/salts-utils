@@ -3,6 +3,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/multi-transport"
   IDL "${DATABIND_COMPILER_TEST_SOURCE_DIR}/flowmq/test_flowmq_plan_public.schema"
   ARTIFACT_NAME "device_multi"
+  BINARY_CODEC
   TRANSPORTS SOCKET FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_socket_projection_config.json")
@@ -12,6 +13,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/multi-transport"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_transport_provider.schema"
   ARTIFACT_NAME "binary_exec"
+  BINARY_CODEC
   TRANSPORTS SOCKET FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_transport_provider_config.json")
@@ -57,6 +59,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/multi-transport"
   IDL "${DATABIND_COMPILER_TEST_SOURCE_DIR}/flowmq/test_flowmq_plan_public.schema"
   ARTIFACT_NAME "opaque_bytes"
+  BINARY_CODEC
   TRANSPORTS SOCKET FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_opaque_transport_config.json")
@@ -84,6 +87,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/multi-transport"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_opaque_service.schema"
   ARTIFACT_NAME "opaque_service"
+  BINARY_CODEC
   TRANSPORTS HTTP FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_opaque_service_config.json")
@@ -111,6 +115,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/multi-transport"
   IDL "${DATABIND_COMPILER_TEST_SOURCE_DIR}/binary/test_binary_reader_var_data.schema"
   ARTIFACT_NAME "binary_var"
+  BINARY_CODEC
   TRANSPORTS SOCKET FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_var_data_transport_config.json")

@@ -91,3 +91,68 @@ protocol, rather than guessing which filenames a generator touched.
 - [ ] Run C-only, C+source, C+guest, C+Socket/FlowMQ, SDK-installed consumer builds across Windows/Android/macOS/Linux + Sanitizers; assert native CMeta/RAII identity.
 
 Related: [#578](https://github.com/qigao/salts-utils/issues/578) native CMeta convergence, [#588](https://github.com/qigao/salts-utils/issues/588) runtime/frontend linkage separation, [#595](https://github.com/qigao/salts-utils/issues/595) source language cutovers.
+
+
+## Phase 2d: required multi-output transaction contract (post #604)
+
+#604 staged the named C/source/guest/DSL output set plus selected backends
+whose `output_policy == STAGED_SINGLE`. It does **not** make
+`SELF_PUBLISHED` generators transaction-safe. In particular, treating the
+primary request output as the only published path is incorrect for Native
+Service (source + header), Plugin (provider + host client files), and Wasm
+(component + host + guest files).
+
+### Protocol and invariants
+
+1. The existing frontend `outputs[]` list is the authoritative **final
+   path** manifest. Validate all secondary output ownership, destination
+   identities, path aliases and collisions before constructing any stage.
+   A callback may not invent an unlisted output.
+2. Resolve a selected backend's **exact** declared outputs before generation;
+   allocate a distinct sibling stage for **each** manifest entry. The
+   coordinator holds originals unchanged until all selected generators finish.
+3. Backends receive an immutable mapping of `final_path -> staging_path`,
+   not arbitrary replacement of `request.output` or mutation of the
+   frontend plan. Staging paths must never appear in generated includes,
+   guards, symbols, package identifiers, or references to companion outputs.
+4. Prepare and write can fail, leaving partial stages. An abort removes every
+   stage while preserving old outputs and absence of never-existing outputs.
+   Commit first validates staged files, then performs the existing
+   rollback-aware backup/replace sequence for **all** outputs. Errors from
+   backup restore or stage cleanup propagate, never silently succeed.
+5. The backend's prior private publisher must not run within the coordinated
+   transaction. In particular, Native Service currently invokes
+   `native_service_commit` for its two outputs: coordinator integration must
+   separate render from publish, rather than stacking two nested commits.
+6. Only an explicit complete multi-output preparation capability can join a
+   coordinator session. Unknown policy, incomplete path mapping, non-file
+   destinations and mixed unsupported backends must be rejected **before**
+   output publication; do not infer transaction capability by artifact type.
+7. Keep standalone legacy generation distinct until all callers migrate;
+   never claim cross-backend rollback for that path. Named, multi-output
+   transaction behavior is unrelated to crash durability or concurrent
+   readers observing a simultaneous multi-path snapshot.
+
+### Qualification matrix
+
+| Fixture | Expected behavior |
+| --- | --- |
+| Native Service header staged, source generator then fails | Old header/source and C primary remain byte-for-byte unchanged |
+| Plugin provider succeeds, subsequent client emits partial file then fails | Old provider and host client outputs unchanged; absent outputs remain absent |
+| Wasm component staged, later host/guest generator fails | All old outputs unchanged, no intermediate outputs leak |
+| Plugin + Native + Wasm + HTTP selected; last backend fails | Entire manifest rolls back, not merely final backend |
+| Successful mixed selection | Every expected final output published and generated includes use **final** basenames |
+| Duplicate secondary path / Windows slash or case alias | Fail before rendering any output |
+| Unknown / mixed capability | Fail closed; no implicit independent publication |
+| Rollback restore or cleanup error | Return failure with diagnostic |
+| Installed SDK consumer | Generated headers and sources compile across supported OS matrix |
+
+### C/Native format split remains a separate, required closure
+
+No transaction milestone removes `databind_binary_contract_apply` or the
+Binary wire helpers from bare C generation. Do not declare #599 complete
+until a typed `NativeSourceIR` permits Binary-incompatible semantic
+Contracts to generate C declarations without Binary admission, while an
+explicit selected Binary transport rejects the same schema before
+publishing output. That change needs separate native/CSerde regression
+coverage and preservation of CMeta/CSTL/RAII contracts.

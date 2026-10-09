@@ -146,7 +146,8 @@ static int backends_valid(
         backends[i].name[0] == '\0' ||
         backends[i].generate == NULL ||
         (backends[i].output_policy != DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED &&
-         backends[i].output_policy != DATABIND_COMPILER_OUTPUT_STAGED_SINGLE))
+         backends[i].output_policy != DATABIND_COMPILER_OUTPUT_STAGED_SINGLE &&
+         backends[i].output_policy != DATABIND_COMPILER_OUTPUT_STAGED_MULTI))
       return 0;
 
     canonical_name = databind_compiler_projection_id_name(backends[i].id);

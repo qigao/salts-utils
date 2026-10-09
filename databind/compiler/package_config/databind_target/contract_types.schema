@@ -1,0 +1,11 @@
+schema NativeTypeSdk [version(1)];
+
+message NativeEntry {
+  string label;
+  uint32 id;
+}
+
+message NativeBatch {
+  list<NativeEntry> items;
+  map<string,NativeEntry> by_name;
+}

@@ -1,0 +1,15 @@
+schema NativeStateSdk [version(1)];
+
+message Packet {
+  optional uint32 count;
+  nullable int16 delta;
+  optional nullable bool active;
+}
+
+message PresenceOnly {
+  optional uint32 code;
+}
+
+message NullOnly {
+  nullable int16 reading;
+}

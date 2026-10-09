@@ -1,6 +1,7 @@
 #include "plugin_projection.h"
 
 #include "service_native.h"
+#include "native_service_projection.h"
 #include "cmeta_fs.h"
 
 #include <salts/plugin.h>
@@ -9,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 static const char *plugin_schema_name(const IdlContract *contract) {
   return contract != NULL ? contract->name : NULL;
@@ -1098,10 +1100,310 @@ static int plugin_write_source(
   return 1;
 }
 
-int databind_compiler_plugin_generate(
+
+/* Contract-only Plugin publication. The provider owns ordinary C records and
+ * exports a canonical CMeta Function ABI. Lease acquisition, not a private
+ * Binary codec/catalog, grants clients access to the typed exported function.
+ * Every artifact is written to coordinator-owned stages before publication. */
+static int plugin_contract_write_header(
+    FILE *file, const IdlContract *contract, const IdlComponent *component,
+    const databind_compiler_plugin_config *config,
+    const databind_compiler_service_native_ir *ir) {
+  char guard[320];
+  size_t i;
+  if (!plugin_header_guard(plugin_schema_name(contract),
+          component != NULL ? component->name : NULL,
+          "_CONTRACT_PLUGIN_H", guard, sizeof(guard)))
+    return 0;
+  if (fprintf(file, "#ifndef %s\n#define %s\n"
+                    "#ifndef DATABIND_NATIVE_ENABLE_CMETA\n"
+                    "#define DATABIND_NATIVE_ENABLE_CMETA\n#endif\n"
+                    "#ifndef DATABIND_NATIVE_ENABLE_DATABIND\n"
+                    "#define DATABIND_NATIVE_ENABLE_DATABIND\n#endif\n",
+              guard, guard) < 0 ||
+      fputs("#include ", file) == EOF ||
+      !plugin_write_c_string(file, config->native_header) ||
+      fputs("\n#include <data_bind_binding_plan.h>\n"
+            "#include <cmeta/function.h>\n"
+            "#include <salts/plugin.h>\n"
+            "#ifdef __cplusplus\nextern \"C\" {\n#endif\n", file) == EOF)
+    return 0;
+  for (i = 0u; i < ir->operation_count; ++i)
+    if (!databind_compiler_native_contract_emit_header_op(
+            file, &ir->operations[i]))
+      return 0;
+  return fprintf(file, "#ifdef __cplusplus\n}\n#endif\n#endif /* %s */\n",
+                 guard) >= 0;
+}
+
+static int plugin_contract_write_provider(
+    FILE *file, const IdlComponent *component,
+    const databind_compiler_plugin_config *config,
+    const databind_compiler_service_native_ir *ir,
+    uint32_t contract_version) {
+  const char *provider_header = plugin_basename(config->service_header_output);
+  size_t i;
+  if (!plugin_text_valid(provider_header) ||
+      fputs("#include ", file) == EOF ||
+      !plugin_write_c_string(file, provider_header) ||
+      fputs("\n#include <string.h>\n#include <salts/plugin.h>\n", file) == EOF)
+    return 0;
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    if (!databind_compiler_native_contract_emit_reflection(file, op) ||
+        !databind_compiler_native_contract_emit_invoke(file, op) ||
+        !databind_compiler_native_contract_emit_binding(file, op))
+      return 0;
+  }
+  if (fputs("static const cmeta_plugin_export databind_plugin_exports[] = {\n",
+            file) == EOF)
+    return 0;
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    if (fprintf(file,
+          "  {\n"
+          "    .struct_size = CMETA_PLUGIN_EXPORT_SIZE,\n"
+          "    .kind = CMETA_PLUGIN_EXPORT_FUNCTION,\n"
+          "    .contract_version = %uu,\n"
+          "    .capabilities = 0u,\n"
+          "    .export_id = ", contract_version) < 0 ||
+        !plugin_write_c_string(file, op->qualified_operation) ||
+        fputs(",\n    .contract_id = ", file) == EOF ||
+        !plugin_write_c_string(file, op->qualified_service) ||
+        fprintf(file,
+          ",\n"
+          "    .value.function = {\n"
+          "      .desc = &%s__function_meta,\n"
+          "      .abi = &%s__function_abi_meta,\n"
+          "      .context = NULL,\n"
+          "      .invoke = %s__databind_invoke\n"
+          "    }\n"
+          "  },\n",
+          op->symbol, op->symbol, op->symbol) < 0)
+      return 0;
+  }
+  if (fputs("};\n"
+            "static const cmeta_plugin_manifest databind_plugin_manifest = {\n"
+            "  .struct_size = CMETA_PLUGIN_MANIFEST_SIZE,\n"
+            "  .abi_version = CMETA_PLUGIN_ABI_VERSION,\n"
+            "  .plugin_id = ", file) == EOF ||
+      !plugin_write_c_string(file, component->qualified_name) ||
+      fprintf(file,
+            ",\n  .version = {%uu, %uu, %uu},\n"
+            "  .exports = databind_plugin_exports,\n"
+            "  .export_count = %zuu\n"
+            "};\n"
+            "CMETA_PLUGIN_QUERY_EXPORT\n"
+            "const cmeta_plugin_manifest *CMETA_PLUGIN_CALL\n"
+            "cmeta_plugin_query(uint32_t host_abi) {\n"
+            "  return host_abi == CMETA_PLUGIN_ABI_VERSION\n"
+            "      ? &databind_plugin_manifest : NULL;\n"
+            "}\n",
+            config->plugin_version_major,
+            config->plugin_version_minor,
+            config->plugin_version_patch, ir->operation_count) < 0)
+    return 0;
+  return 1;
+}
+
+static int plugin_contract_write_client_header(
+    FILE *file, const IdlContract *contract, const IdlComponent *component,
+    const databind_compiler_plugin_config *config,
+    const databind_compiler_service_native_ir *ir) {
+  char guard[320], client_symbol[512];
+  const char *provider_header = plugin_basename(config->service_header_output);
+  size_t i;
+  if (!plugin_header_guard(plugin_schema_name(contract), component->name,
+          "_CONTRACT_PLUGIN_CLIENT_H", guard, sizeof(guard)) ||
+      !plugin_client_symbol(contract, component,
+          client_symbol, sizeof(client_symbol)) ||
+      !plugin_text_valid(provider_header))
+    return 0;
+  if (fprintf(file, "#ifndef %s\n#define %s\n#include ", guard, guard) < 0 ||
+      !plugin_write_c_string(file, provider_header) ||
+      fprintf(file,
+          "\n#include <salts/plugin.h>\n#include <stdbool.h>\n"
+          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n"
+          "typedef struct %s {\n"
+          "  cmeta_plugin_registry *registry;\n"
+          "  cmeta_plugin_lease lease;\n",
+          client_symbol) < 0)
+    return 0;
+  for (i = 0u; i < ir->operation_count; ++i)
+    if (fprintf(file, "  const cmeta_plugin_export *%s_export;\n",
+                ir->operations[i].symbol) < 0)
+      return 0;
+  if (fprintf(file,
+        "} %s;\n"
+        "bool %s_valid(const %s *client);\n"
+        "cmeta_plugin_status %s_open(\n"
+        "    cmeta_plugin_registry *registry, cmeta_plugin_ref ref,\n"
+        "    %s *out_client);\n"
+        "cmeta_plugin_status %s_close(%s *client);\n",
+        client_symbol,
+        client_symbol, client_symbol,
+        client_symbol, client_symbol,
+        client_symbol, client_symbol) < 0)
+    return 0;
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    if (fprintf(file,
+          "cmeta_plugin_status %s_plugin_client_call(\n"
+          "    %s *client, const %s *request, %s *response,\n"
+          "    int *native_status);\n",
+          op->symbol, client_symbol,
+          op->request_type, op->response_type) < 0)
+      return 0;
+  }
+  return fprintf(file, "#ifdef __cplusplus\n}\n#endif\n#endif /* %s */\n",
+                 guard) >= 0;
+}
+
+static int plugin_contract_write_client_source(
+    FILE *file, const IdlContract *contract, const IdlComponent *component,
+    const databind_compiler_plugin_config *config,
+    const databind_compiler_service_native_ir *ir, uint32_t contract_version) {
+  char client_symbol[512];
+  const char *header = plugin_basename(config->client_header_output);
+  size_t i;
+  if (!plugin_text_valid(header) ||
+      !plugin_client_symbol(contract, component, client_symbol, sizeof(client_symbol)) ||
+      fputs("#include ", file) == EOF ||
+      !plugin_write_c_string(file, header) ||
+      fputs("\n#include <cmeta/function.h>\n#include <string.h>\n", file) == EOF)
+    return 0;
+  for (i = 0u; i < ir->operation_count; ++i)
+    if (!databind_compiler_native_contract_emit_reflection(
+            file, &ir->operations[i]))
+      return 0;
+  if (fprintf(file,
+        "bool %s_valid(const %s *client) {\n"
+        "  if (!client || !client->registry ||\n"
+        "      !cmeta_plugin_lease_valid(client->lease)) return false;\n",
+        client_symbol, client_symbol) < 0)
+    return 0;
+  for (i = 0u; i < ir->operation_count; ++i)
+    if (fprintf(file,
+          "  if (!client->%s_export ||\n"
+          "      client->%s_export->kind != CMETA_PLUGIN_EXPORT_FUNCTION ||\n"
+          "      !client->%s_export->value.function.invoke) return false;\n",
+          ir->operations[i].symbol,
+          ir->operations[i].symbol,
+          ir->operations[i].symbol) < 0)
+      return 0;
+  if (fprintf(file,
+        "  return true;\n"
+        "}\n"
+        "static cmeta_plugin_status %s__release(%s *client) {\n"
+        "  cmeta_plugin_lease lease;\n"
+        "  cmeta_plugin_status status;\n"
+        "  if (!client || !client->registry ||\n"
+        "      !cmeta_plugin_lease_valid(client->lease))\n"
+        "    return CMETA_PLUGIN_INVALID_ARGUMENT;\n"
+        "  lease = client->lease;\n"
+        "  status = cmeta_plugin_registry_release(client->registry, &lease);\n"
+        "  if (status == CMETA_PLUGIN_OK) memset(client, 0, sizeof(*client));\n"
+        "  return status;\n"
+        "}\n"
+        "cmeta_plugin_status %s_open(\n"
+        "    cmeta_plugin_registry *registry, cmeta_plugin_ref ref,\n"
+        "    %s *out_client) {\n"
+        "  cmeta_plugin_lease lease = {0};\n"
+        "  const cmeta_plugin_manifest *manifest = NULL;\n"
+        "  const cmeta_plugin_export *entry = NULL;\n"
+        "  cmeta_plugin_status status, release_status;\n"
+        "  if (!out_client) return CMETA_PLUGIN_INVALID_ARGUMENT;\n"
+        "  if (out_client->registry || out_client->lease.slot ||\n"
+        "      out_client->lease.generation)\n"
+        "    return CMETA_PLUGIN_ALREADY;\n"
+        "  if (!registry || !cmeta_plugin_ref_valid(ref))\n"
+        "    return CMETA_PLUGIN_INVALID_ARGUMENT;\n"
+        "  status = cmeta_plugin_registry_acquire(registry, ref, &lease, &manifest);\n"
+        "  if (status != CMETA_PLUGIN_OK) return status;\n"
+        "  if (!manifest || !manifest->plugin_id ||\n"
+        "      strcmp(manifest->plugin_id, ",
+        client_symbol, client_symbol,
+        client_symbol, client_symbol) < 0 ||
+      !plugin_write_c_string(file, component->qualified_name) ||
+      fputs(") != 0) {\n"
+            "    status = CMETA_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+            "    goto fail;\n"
+            "  }\n", file) == EOF)
+    return 0;
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    if (fputs("  entry = NULL;\n"
+              "  status = cmeta_plugin_manifest_find_export(manifest, ", file) == EOF ||
+        !plugin_write_c_string(file, op->qualified_operation) ||
+        fputs(", &entry);\n"
+              "  if (status != CMETA_PLUGIN_OK) goto fail;\n"
+              "  status = cmeta_plugin_export_require_function(entry, ", file) == EOF ||
+        !plugin_write_c_string(file, op->qualified_service) ||
+        fprintf(file,
+           ", %uu, 0u);\n"
+           "  if (status != CMETA_PLUGIN_OK) goto fail;\n"
+           "  if (!cmeta_function_desc_equal(entry->value.function.desc,\n"
+           "          &%s__function_meta) ||\n"
+           "      !cmeta_function_abi_desc_equal(entry->value.function.abi,\n"
+           "          &%s__function_abi_meta)) {\n"
+           "    status = CMETA_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+           "    goto fail;\n"
+           "  }\n"
+           "  out_client->%s_export = entry;\n",
+           contract_version, op->symbol, op->symbol, op->symbol) < 0)
+      return 0;
+  }
+  if (fprintf(file,
+        "  out_client->registry = registry;\n"
+        "  out_client->lease = lease;\n"
+        "  return CMETA_PLUGIN_OK;\n"
+        "fail:\n"
+        "  memset(out_client, 0, sizeof(*out_client));\n"
+        "  out_client->registry = registry;\n"
+        "  out_client->lease = lease;\n"
+        "  release_status = %s__release(out_client);\n"
+        "  return release_status == CMETA_PLUGIN_OK ? status : release_status;\n"
+        "}\n"
+        "cmeta_plugin_status %s_close(%s *client) {\n"
+        "  return %s__release(client);\n"
+        "}\n",
+        client_symbol, client_symbol, client_symbol, client_symbol) < 0)
+    return 0;
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    if (fprintf(file,
+       "cmeta_plugin_status %s_plugin_client_call(\n"
+       "    %s *client, const %s *request, %s *response,\n"
+       "    int *native_status) {\n"
+       "  const cmeta_plugin_export *entry;\n"
+       "  void *params[2];\n"
+       "  int result;\n"
+       "  if (!%s_valid(client) || !request || !response || !native_status)\n"
+       "    return CMETA_PLUGIN_INVALID_ARGUMENT;\n"
+       "  entry = client->%s_export;\n"
+       "  if (!entry || entry->kind != CMETA_PLUGIN_EXPORT_FUNCTION ||\n"
+       "      !entry->value.function.invoke)\n"
+       "    return CMETA_PLUGIN_INVALID_STATE;\n"
+       "  params[0] = (void *)request;\n"
+       "  params[1] = response;\n"
+       "  if (!entry->value.function.invoke(entry->value.function.context,\n"
+       "          &result, params, 2u))\n"
+       "    return CMETA_PLUGIN_INVALID_STATE;\n"
+       "  *native_status = result;\n"
+       "  return CMETA_PLUGIN_OK;\n"
+       "}\n",
+       op->symbol, client_symbol, op->request_type, op->response_type,
+       client_symbol, op->symbol) < 0)
+      return 0;
+  }
+  return 1;
+}
+
+static int plugin_generate_impl(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
-    void *context) {
+    void *context,
+    const char *const stages[4]) {
   const IdlContract *contract = input != NULL ? input->contract : NULL;
   const databind_compiler_plugin_config *config =
       request != NULL
@@ -1163,35 +1465,75 @@ int databind_compiler_plugin_generate(
           &selected_count) ||
       selected_count != native_ir.operation_count)
     goto cleanup;
+  /* Binary is never implicitly admitted by a typed Plugin selection.
+   * No catalog/codec is exported on the Contract-only Function ABI path. */
+  const int contract_only = input->binary_format == NULL &&
+      !config->binary_presentation;
+  if (contract_only &&
+      !databind_compiler_native_contract_admitted(contract, &native_ir))
+    goto cleanup;
 
-  header_file = plugin_open_staging(
-      config->service_header_output, &header_staging);
+  if (stages != NULL) {
+    size_t i, j;
+    const char *finals[] = {
+        config->service_header_output, request->output,
+        config->client_header_output, config->client_source_output};
+    for (i = 0u; i < 4u; ++i) {
+      struct stat info;
+      if (stages[i] == NULL || stages[i][0] == '\0' ||
+          stat(stages[i], &info) != 0 || info.st_size != 0)
+        goto cleanup;
+#ifdef _WIN32
+      if ((info.st_mode & _S_IFMT) != _S_IFREG) goto cleanup;
+#else
+      if (!S_ISREG(info.st_mode)) goto cleanup;
+#endif
+      for (j = 0u; j < 4u; ++j)
+        if (strcmp(stages[i], finals[j]) == 0) goto cleanup;
+      for (j = 0u; j < i; ++j)
+        if (strcmp(stages[i], stages[j]) == 0) goto cleanup;
+    }
+  }
+
+  header_file = stages != NULL
+      ? fopen(stages[0], "wb")
+      : plugin_open_staging(config->service_header_output, &header_staging);
   if (header_file == NULL) goto cleanup;
 
-  source_file = plugin_open_staging(
-      request->output, &source_staging);
+  source_file = stages != NULL
+      ? fopen(stages[1], "wb")
+      : plugin_open_staging(request->output, &source_staging);
   if (source_file == NULL) goto cleanup;
 
-  client_header_file = plugin_open_staging(
-      config->client_header_output, &client_header_staging);
+  client_header_file = stages != NULL
+      ? fopen(stages[2], "wb")
+      : plugin_open_staging(config->client_header_output, &client_header_staging);
   if (client_header_file == NULL) goto cleanup;
 
-  client_source_file = plugin_open_staging(
-      config->client_source_output, &client_source_staging);
+  client_source_file = stages != NULL
+      ? fopen(stages[3], "wb")
+      : plugin_open_staging(config->client_source_output, &client_source_staging);
   if (client_source_file == NULL) goto cleanup;
 
-  if (!plugin_write_header(
-          header_file, contract, component,
-          config, &native_ir) ||
-      !plugin_write_source(
-          source_file, component, config, &native_ir,
-          contract_version) ||
-      !plugin_write_client_header(
-          client_header_file, contract, component,
-          config, &native_ir) ||
-      !plugin_write_client_source(
-          client_source_file, contract, component,
-          config, &native_ir, contract_version))
+  if (contract_only
+          ? (!plugin_contract_write_header(
+                 header_file, contract, component, config, &native_ir) ||
+             !plugin_contract_write_provider(
+                 source_file, component, config, &native_ir, contract_version) ||
+             !plugin_contract_write_client_header(
+                 client_header_file, contract, component, config, &native_ir) ||
+             !plugin_contract_write_client_source(
+                 client_source_file, contract, component, config, &native_ir,
+                 contract_version))
+          : (!plugin_write_header(
+                 header_file, contract, component, config, &native_ir) ||
+             !plugin_write_source(
+                 source_file, component, config, &native_ir, contract_version) ||
+             !plugin_write_client_header(
+                 client_header_file, contract, component, config, &native_ir) ||
+             !plugin_write_client_source(
+                 client_source_file, contract, component, config, &native_ir,
+                 contract_version)))
     goto cleanup;
 
   if (!plugin_close_staging(&header_file) ||
@@ -1199,6 +1541,11 @@ int databind_compiler_plugin_generate(
       !plugin_close_staging(&client_header_file) ||
       !plugin_close_staging(&client_source_file))
     goto cleanup;
+
+  if (stages != NULL) {
+    result = 0;
+    goto cleanup;
+  }
 
   outputs[0].final_path = config->service_header_output;
   outputs[0].staging_path = header_staging;
@@ -1247,6 +1594,26 @@ cleanup:
   return result;
 }
 
+int databind_compiler_plugin_generate(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    void *context) {
+  return plugin_generate_impl(input, request, context, NULL);
+}
+
+int databind_compiler_plugin_render_staged(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    const char *provider_header_stage,
+    const char *provider_source_stage,
+    const char *client_header_stage,
+    const char *client_source_stage) {
+  const char *stages[] = {
+      provider_header_stage, provider_source_stage,
+      client_header_stage, client_source_stage};
+  return plugin_generate_impl(input, request, NULL, stages);
+}
+
 const databind_compiler_projection_backend
     DATABIND_COMPILER_PLUGIN_BACKEND = {
         {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
@@ -1254,5 +1621,5 @@ const databind_compiler_projection_backend
         "plugin",
         databind_compiler_plugin_generate,
         NULL,
-        DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED,
+        DATABIND_COMPILER_OUTPUT_STAGED_MULTI,
 };
