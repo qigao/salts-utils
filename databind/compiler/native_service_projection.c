@@ -1,6 +1,7 @@
 #include "native_service_projection.h"
 
 #include "service_native.h"
+#include "native_source_ir.h"
 #include "cmeta_fs.h"
 
 #include <ctype.h>
@@ -188,6 +189,213 @@ static int native_service_header_guard(
   return 1;
 }
 
+/* Contract-only Native Service ABI. Unlike the explicitly selected legacy
+ * Binary generator, this publishes exact NativeSourceIR Record values and
+ * caller-owned CMeta/DataBind bindings. No Record_t aliases or implicit wire
+ * descriptors are emitted. */
+static int native_service_contract_record_admitted(
+    const databind_native_source_ir *types, const char *name) {
+  size_t i, j;
+  if (!types || !name) return 0;
+  for (i = 0u; i < types->record_count; ++i) {
+    const databind_native_source_record *record = &types->records[i];
+    if (strcmp(name, record->name) != 0) continue;
+    for (j = 0u; j < record->field_count; ++j) {
+      const databind_native_source_field *field = &record->fields[j];
+      if (field->optional || field->nullable ||
+          (field->ownership != DATABIND_NATIVE_TRIVIAL &&
+           field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
+           field->ownership != DATABIND_NATIVE_OWNED_BYTES))
+        return 0;
+    }
+    return 1;
+  }
+  return 0;
+}
+
+static int native_service_contract_admitted(
+    const IdlContract *contract,
+    const databind_compiler_service_native_ir *services) {
+  databind_native_source_ir types = {0};
+  size_t i;
+  int ok = 0;
+  if (!contract || !services ||
+      databind_native_source_ir_build(contract, &types) != 0)
+    return 0;
+  ok = 1;
+  for (i = 0u; i < services->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op =
+        &services->operations[i];
+    if (op->error_count || op->request_presence_count ||
+        op->request_null_count || op->response_presence_count ||
+        op->response_null_count ||
+        !native_service_contract_record_admitted(&types, op->request_type) ||
+        !native_service_contract_record_admitted(&types, op->response_type)) {
+      fprintf(stderr,
+              "Contract-only Native Service requires complete VALUE records "
+              "without optional/null/typed-error state: %s\n",
+              op->qualified_operation ? op->qualified_operation : "<unknown>");
+      ok = 0;
+      break;
+    }
+  }
+  databind_native_source_ir_destroy(&types);
+  return ok;
+}
+
+static int native_service_write_contract_header(
+    FILE *file, const IdlContract *contract,
+    const databind_compiler_native_service_config *config,
+    const databind_compiler_service_native_ir *services) {
+  char guard[320];
+  size_t i;
+  if (!file || !contract || !config || !services ||
+      !native_service_header_guard(contract, guard, sizeof(guard)))
+    return 0;
+  if (fprintf(file, "#ifndef %s\n#define %s\n\n"
+                    "#ifndef DATABIND_NATIVE_ENABLE_CMETA\n"
+                    "#define DATABIND_NATIVE_ENABLE_CMETA\n#endif\n"
+                    "#ifndef DATABIND_NATIVE_ENABLE_DATABIND\n"
+                    "#define DATABIND_NATIVE_ENABLE_DATABIND\n#endif\n",
+              guard, guard) < 0 ||
+      fputs("#include ", file) == EOF ||
+      !native_service_write_include(file, config->native_header) ||
+      fputs("\n#include <data_bind_binding_plan.h>\n"
+            "#include <cmeta/function.h>\n"
+            "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n", file) == EOF)
+    return 0;
+  for (i = 0u; i < services->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op =
+        &services->operations[i];
+    if (fprintf(file,
+        "int %s(const %s *request, %s *response);\n"
+        "typedef struct %s__native_owner {\n"
+        "    %s_native_cmeta_binding request_metadata;\n"
+        "    %s_native_cmeta_binding response_metadata;\n"
+        "    DataBindNativeTypeBinding request_binding;\n"
+        "    DataBindNativeTypeBinding response_binding;\n"
+        "} %s__native_owner;\n"
+        "const cmeta_function_desc *%s__databind_function(void);\n"
+        "const cmeta_function_abi_desc *%s__databind_function_abi(void);\n"
+        "const DataBindNativeExecution *%s__databind_execution(void);\n"
+        "DataBindStatus %s__databind_native_binding(\n"
+        "    %s__native_owner *owner,\n"
+        "    DataBindServiceNativeBinding *service_out,\n"
+        "    DataBindError *error);\n\n",
+        op->symbol, op->request_type, op->response_type,
+        op->symbol, op->request_type, op->response_type,
+        op->symbol, op->symbol, op->symbol, op->symbol,
+        op->symbol, op->symbol) < 0)
+      return 0;
+  }
+  return fprintf(file, "#ifdef __cplusplus\n}\n#endif\n\n"
+                       "#endif /* %s */\n", guard) >= 0;
+}
+
+static int native_service_write_contract_source(
+    FILE *file, const databind_compiler_native_service_config *config,
+    const databind_compiler_service_native_ir *services) {
+  const char *header;
+  size_t i;
+  if (!file || !config || !services ||
+      !(header = native_service_basename(config->header_output)) ||
+      fputs("#include ", file) == EOF ||
+      !native_service_write_include(file, header) ||
+      fputs("\n#include <string.h>\n\n", file) == EOF)
+    return 0;
+  for (i = 0u; i < services->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op =
+        &services->operations[i];
+    /* Pointer reflection reuses the exact NativeSourceIR storage TypeDesc.
+     * Its Schema/version identity comes from the generated Contract header,
+     * never from the legacy Record_t Binary ABI. */
+    if (fprintf(file,
+      "static const cmeta_type_desc %s__request_ptr_type = {\n"
+      "    .name = \"const %s *\", .size = sizeof(const %s *),\n"
+      "    .align = _Alignof(const %s *), .kind = CMETA_T_POINTER,\n"
+      "    .pointee = &%s_native_cmeta_type\n"
+      "};\n"
+      "static const cmeta_type_desc %s__response_ptr_type = {\n"
+      "    .name = \"%s *\", .size = sizeof(%s *),\n"
+      "    .align = _Alignof(%s *), .kind = CMETA_T_POINTER,\n"
+      "    .pointee = &%s_native_cmeta_type\n"
+      "};\n"
+      "CMETA_FUNCTION_METADATA_AS_ABI_RESULT(\n"
+      "    %s, \"%s\", unknown, &cmeta_type_int, CMETA_ABI_SCALAR,\n"
+      "    CMETA_RESULT_VALUE,\n"
+      "    (const %s *, request,\n"
+      "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
+      "     &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
+      "    (%s *, response,\n"
+      "     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,\n"
+      "     &%s__response_ptr_type, CMETA_ABI_OBJECT_POINTER));\n",
+      op->symbol, op->request_type, op->request_type, op->request_type,
+      op->request_type,
+      op->symbol, op->response_type, op->response_type, op->response_type,
+      op->response_type,
+      op->symbol, op->qualified_operation,
+      op->request_type, op->symbol,
+      op->response_type, op->symbol) < 0)
+      return 0;
+    if (fprintf(file,
+      "static bool DATA_BIND_NATIVE_CALL %s__databind_invoke(\n"
+      "    void *context, void *return_storage, void *const *params,\n"
+      "    size_t param_count) {\n"
+      "    int status;\n"
+      "    (void)context;\n"
+      "    if (!return_storage || !params || param_count != 2u ||\n"
+      "        !params[0] || !params[1]) return false;\n"
+      "    status = %s((const %s *)params[0], (%s *)params[1]);\n"
+      "    *(int *)return_storage = status;\n"
+      "    return true;\n"
+      "}\n"
+      "static const DataBindNativeExecution %s__execution_meta = {\n"
+      "    sizeof(DataBindNativeExecution), DATA_BIND_NATIVE_EXECUTION_ABI_VERSION,\n"
+      "    &%s__function_meta, &%s__function_abi_meta, NULL,\n"
+      "    %s__databind_invoke\n"
+      "};\n"
+      "const cmeta_function_desc *%s__databind_function(void) {\n"
+      "    return &%s__function_meta;\n"
+      "}\n"
+      "const cmeta_function_abi_desc *%s__databind_function_abi(void) {\n"
+      "    return &%s__function_abi_meta;\n"
+      "}\n"
+      "const DataBindNativeExecution *%s__databind_execution(void) {\n"
+      "    return &%s__execution_meta;\n"
+      "}\n",
+      op->symbol, op->symbol, op->request_type, op->response_type,
+      op->symbol, op->symbol, op->symbol, op->symbol,
+      op->symbol, op->symbol, op->symbol, op->symbol,
+      op->symbol, op->symbol) < 0)
+      return 0;
+    if (fprintf(file,
+      "DataBindStatus %s__databind_native_binding(\n"
+      "    %s__native_owner *owner,\n"
+      "    DataBindServiceNativeBinding *service_out,\n"
+      "    DataBindError *error) {\n"
+      "    (void)error;\n"
+      "    if (!owner || !service_out) return DATA_BIND_ERR_INVALID_ARG;\n"
+      "    if (%s_native_type_binding(&owner->request_metadata,\n"
+      "            &owner->request_binding) != 0 ||\n"
+      "        %s_native_type_binding(&owner->response_metadata,\n"
+      "            &owner->response_binding) != 0)\n"
+      "        return DATA_BIND_ERR_SCHEMA;\n"
+      "    *service_out = (DataBindServiceNativeBinding){\n"
+      "        sizeof(DataBindServiceNativeBinding),\n"
+      "        DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
+      "        &%s__function_meta,\n"
+      "        &owner->request_binding, &owner->response_binding,\n"
+      "        NULL, 0u, SIZE_MAX, 0u, 0u, 0u\n"
+      "    };\n"
+      "    return DATA_BIND_OK;\n"
+      "}\n\n",
+      op->symbol, op->symbol, op->request_type, op->response_type,
+      op->symbol) < 0)
+      return 0;
+  }
+  return 1;
+}
+
 static int native_service_write_header(
     FILE *file,
     const IdlContract *contract,
@@ -328,6 +536,9 @@ int databind_compiler_native_service_render_staged(
   if (databind_compiler_service_native_build(contract, &ir) != 0 ||
       ir.operations == NULL || ir.operation_count == 0u)
     goto cleanup;
+  if (input->binary_format == NULL &&
+      !native_service_contract_admitted(contract, &ir))
+    goto cleanup;
 
   /* Empty, unique coordinator reservations are valid; populated files are not. */
   if (!native_service_stage_ready(header_stage) ||
@@ -337,8 +548,12 @@ int databind_compiler_native_service_render_staged(
   if (header_file == NULL) goto cleanup;
   source_file = fopen(source_stage, "wb");
   if (source_file == NULL) goto cleanup;
-  if (!native_service_write_header(header_file, contract, config, &ir) ||
-      !native_service_write_source(source_file, config, &ir))
+  if (input->binary_format == NULL
+          ? (!native_service_write_contract_header(
+                 header_file, contract, config, &ir) ||
+             !native_service_write_contract_source(source_file, config, &ir))
+          : (!native_service_write_header(header_file, contract, config, &ir) ||
+             !native_service_write_source(source_file, config, &ir)))
     goto cleanup;
   if (!native_service_close(&header_file) ||
       !native_service_close(&source_file))
