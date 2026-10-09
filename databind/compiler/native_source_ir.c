@@ -584,6 +584,12 @@ int databind_native_source_ir_write_header(
         "};\n",
         out) == EOF) failed = 1;
   }
+  /* Descriptors may be referenced before their record definition, and
+   * collection-recursive records are legal even when inline value cycles are not. */
+  for (i = 0u; i < ir->record_count && !failed; ++i)
+    if (native_record_needs_element_traits(ir, ir->records[i].name) &&
+        fprintf(out, "static const cmeta_type_desc %s_native_element_cmeta_type;\n",
+                ir->records[i].name) < 0) failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
     if (fprintf(out, "typedef struct %s {\n", record->name) < 0)
@@ -658,6 +664,13 @@ int databind_native_source_ir_write_header(
     }
     for (j = 0u; j < record->field_count && !failed; ++j) {
       const databind_native_source_field *field = &record->fields[j];
+      char element_buffer[256], value_buffer[256];
+      const char *element_cmeta = native_collection_element_symbol(
+          ir, field->element_cmeta_symbol, field->element_type,
+          element_buffer, sizeof(element_buffer));
+      const char *value_cmeta = native_collection_element_symbol(
+          ir, field->value_cmeta_symbol, field->value_type,
+          value_buffer, sizeof(value_buffer));
       if (field->ownership == DATABIND_NATIVE_OWNED_RECORD) {
         if (fprintf(out,
             "    if (%s_clone(&tmp.%s, &src->%s) != 0) goto native_clone_fail;\n",
@@ -682,14 +695,14 @@ int databind_native_source_ir_write_header(
             "      tmp.%s = src->%s;\n"
             "    }\n",
             field->name, field->name, field->key_cmeta_symbol,
-            field->name, field->value_cmeta_symbol,
-            field->name, field->key_cmeta_symbol, field->name, field->value_cmeta_symbol,
+            field->name, value_cmeta,
+            field->name, field->key_cmeta_symbol, field->name, value_cmeta,
             field->name, field->name,
             field->name, field->name, field->name,
             field->name, field->name, field->name, field->name,
             field->name, field->name, field->name,
             field->name, field->name, field->name, field->key_cmeta_symbol,
-            field->name, field->value_cmeta_symbol, field->name, field->name) < 0) failed = 1;
+            field->name, value_cmeta, field->name, field->name) < 0) failed = 1;
         continue;
       }
       if (field->ownership == DATABIND_NATIVE_OWNED_SET) {
@@ -707,12 +720,12 @@ int databind_native_source_ir_write_header(
             "      if (!cmeta_type_equal(src->%s.element_type, &%s)) goto native_clone_fail;\n"
             "      tmp.%s = src->%s;\n"
             "    }\n",
-            field->name, field->name, field->element_cmeta_symbol,
-            field->name, field->element_cmeta_symbol, field->name, field->name,
+            field->name, field->name, element_cmeta,
+            field->name, element_cmeta, field->name, field->name,
             field->name, field->name,
             field->name, field->name, field->name,
             field->name, field->name,
-            field->name, field->name, field->name, field->element_cmeta_symbol,
+            field->name, field->name, field->name, element_cmeta,
             field->name, field->name) < 0) failed = 1;
         continue;
       }
@@ -726,8 +739,8 @@ int databind_native_source_ir_write_header(
             "        if (!element || vec_push(&tmp.%s, element) != STL_OK) goto native_clone_fail;\n"
             "      }\n"
             "    } else if (src->%s.data || src->%s.size) goto native_clone_fail;\n",
-            field->name, field->name, field->element_cmeta_symbol,
-            field->name, field->element_cmeta_symbol, field->name,
+            field->name, field->name, element_cmeta,
+            field->name, element_cmeta, field->name,
             field->name, field->name, field->name, field->name,
             field->name) < 0) failed = 1;
         continue;
@@ -767,6 +780,51 @@ int databind_native_source_ir_write_header(
         record->name, record->name,
         record->name, record->name, record->name,
         record->name, record->name) < 0) failed = 1;
+    if (!failed && native_record_needs_element_traits(ir, record->name)) {
+      char stable_id[1024];
+      if (!native_format_stable_id(ir, record->name, stable_id,
+                                   sizeof(stable_id))) {
+        failed = 1;
+      } else if (fprintf(out,
+          "static bool %s_native_element_copy(void *dst, const void *src) {\n"
+          "    if (!dst || !src) return false;\n"
+          "    %s_init((%s *)dst);\n"
+          "    return %s_clone((%s *)dst, (const %s *)src) == 0;\n"
+          "}\n"
+          "static void %s_native_element_move(void *dst, void *src) {\n"
+          "    if (!dst || !src || dst == src) return;\n"
+          "    %s_init((%s *)dst);\n"
+          "    if (%s_move((%s *)dst, (%s *)src) != 0) abort();\n"
+          "}\n"
+          "static void %s_native_element_destroy(void *value) {\n"
+          "    %s_clear((%s *)value);\n"
+          "}\n",
+          record->name, record->name, record->name,
+          record->name, record->name, record->name,
+          record->name, record->name, record->name,
+          record->name, record->name, record->name,
+          record->name, record->name, record->name) < 0)
+        failed = 1;
+      if (!failed && fprintf(out,
+          "static const cmeta_type_traits %s_native_element_traits = {\n"
+          "    .flags = CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY,\n"
+          "    .copy_construct = %s_native_element_copy,\n"
+          "    .move_construct = %s_native_element_move,\n"
+          "    .destroy = %s_native_element_destroy\n"
+          "};\n"
+          "static const cmeta_type_identity %s_native_element_identity =\n"
+          "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
+          "static const cmeta_type_desc %s_native_element_cmeta_type = {\n"
+          "    .name = \"%s\", .size = sizeof(%s), .align = _Alignof(%s),\n"
+          "    .kind = CMETA_T_OBJECT,\n"
+          "    .traits = &%s_native_element_traits,\n"
+          "    .identity = &%s_native_element_identity\n"
+          "};\n\n",
+          record->name, record->name, record->name, record->name,
+          record->name, stable_id, record->name, record->name,
+          record->name, record->name, record->name, record->name) < 0)
+        failed = 1;
+    }
   }
   /* Reuse Salts CMeta descriptors without imposing a Salts dependency on
    * the standalone C11 source-only header unless reflection is requested. */
