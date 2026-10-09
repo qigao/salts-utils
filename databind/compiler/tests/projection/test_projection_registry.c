@@ -1282,6 +1282,39 @@ describe("compiler integration") {
     for (i = 0u; i < 12u; ++i) (void)remove(outputs[i]);
   }
 
+  it("rejects Contract-only Native secondary path collision before publication") {
+    static const char primary[] = "projection_native_contract_collision.h";
+    static const char service_source[] =
+        "projection_native_contract_collision.service.c";
+    databind_compiler_native_service_config native = {
+        .native_header = primary, .header_output = primary};
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE),
+        service_source, &native};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u
+    };
+    (void)remove(primary);
+    (void)remove(service_source);
+    check_true(write_sentinel(primary, "original-native-header"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-native-header"));
+    check_false(file_exists(service_source));
+    (void)remove(primary);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_false(file_exists(primary));
+    check_false(file_exists(service_source));
+  }
+
   it("rolls back Contract-only Native Plugin Wasm DSL and typed artifact together") {
     static const char primary[] = "projection_native_contract_txn.h";
     static const char native_c[] = "projection_native_contract_txn.service.c";
