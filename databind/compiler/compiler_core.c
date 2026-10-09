@@ -4888,6 +4888,109 @@ done:
   return status;
 }
 
+/* Contract-only C + optional DSL and typed stage-safe artifact outputs
+ * participate in the SAME rollback-aware transaction. Binary is not admitted
+ * here, and a multi-output/self-publishing backend is never treated as a
+ * single-file callback. The Contract is the only semantic authority. */
+static int databind_compiler_generate_contract_native_bundle(
+    const tbe_compiler_options_t *options) {
+  tbe_compiler_output_transaction txn = {0};
+  databind_native_source_ir native = {0};
+  databind_compiler_projection_request *staged = NULL;
+  databind_compiler_projection_input projection_input = {0};
+  Node *tree = NULL;
+  IdlContract *contract = NULL;
+  char *source = NULL;
+  char template_path[SALTS_FS_MAX_PATH];
+  const char *dsl_stage = NULL;
+  const char *dsl_template;
+  size_t i;
+  int status = -1;
+
+  if (options == NULL || options->schema_path == NULL ||
+      options->output_path == NULL || options->output_path[0] == '\0')
+    return -1;
+  if (options->projection_count != 0u) {
+    if (!databind_compiler_projection_all_staged_single(
+            options->projection_requests, options->projection_count,
+            options->projection_backends, options->projection_backend_count))
+      return -1;
+    for (i = 0u; i < options->projection_count; ++i)
+      if (options->projection_requests[i].id.axis !=
+          DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT) {
+        fprintf(stderr,
+                "Contract-only Native C artifacts must be non-Binary and stage-safe\n");
+        return -1;
+      }
+  }
+
+  if (databind_compiler_parse_contract_only_file(options->schema_path, &tree,
+                                                  &contract, &source) != 0)
+    goto done;
+  if (databind_native_source_ir_build(contract, &native) != 0)
+    goto done;
+  if (tbe_compiler_txn_add(&txn, options->output_path) != 0)
+    goto done;
+
+  if (options->dsl_output_path != NULL) {
+    if (tbe_compiler_txn_add(&txn, options->dsl_output_path) != 0)
+      goto done;
+    dsl_stage = txn.items[txn.count - 1u].staging_path;
+  }
+
+  if (options->projection_count != 0u) {
+    if (options->projection_count > SIZE_MAX / sizeof(*staged))
+      goto done;
+    staged = (databind_compiler_projection_request *)calloc(
+        options->projection_count, sizeof(*staged));
+    if (staged == NULL) goto done;
+    for (i = 0u; i < options->projection_count; ++i) {
+      staged[i] = options->projection_requests[i];
+      if (tbe_compiler_txn_add(&txn, staged[i].output) != 0)
+        goto done;
+      staged[i].output = txn.items[txn.count - 1u].staging_path;
+    }
+  }
+
+  if (databind_native_source_ir_write_header(
+          &native, txn.items[0].staging_path) != 0)
+    goto done;
+
+  if (dsl_stage != NULL) {
+    /* A render-only Node adapter is projected from the immutable Contract;
+     * Binary overlay is never applied or consulted. */
+    tbe_compiler_annotate_language_types(contract, tree);
+    dsl_template = tbe_compiler_resolve_resource(
+        options, "templates/reflection/rfl_types.mustache",
+        template_path, sizeof(template_path));
+    if (dsl_template == NULL ||
+        tbe_compiler_render_file(tree, dsl_template, dsl_stage) != 0)
+      goto done;
+  }
+
+  if (staged != NULL) {
+    projection_input.contract = contract;
+    projection_input.binary_format = NULL; /* No implicit Binary plan. */
+    if (databind_compiler_projection_run(
+            &projection_input, staged, options->projection_count,
+            options->projection_backends, options->projection_backend_count) != 0)
+      goto done;
+  }
+  if (tbe_compiler_txn_commit(&txn) != 0)
+    goto done;
+  status = 0;
+
+done:
+  if (txn.count != 0u && tbe_compiler_txn_abort(&txn) != 0)
+    status = -1;
+  free(staged);
+  databind_native_source_ir_destroy(&native);
+  idl_contract_destroy(contract);
+  node_free(tree);
+  free(source);
+  return status;
+}
+
 static int tbe_compiler_output_paths_distinct(
     const tbe_compiler_options_t *options) {
   const char *paths[4];
@@ -5020,17 +5123,18 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
       options->source_output_path == NULL &&
       options->guest_output_path == NULL &&
       !tbe_compiler_projection_requires_binary(options)) {
-    if (options->template_path != NULL ||
-        options->projection_count != 0u ||
-        options->dsl_output_path != NULL) {
+    if (options->template_path != NULL) {
       fprintf(stderr,
-              "Native C source-only output with custom/selected secondary artifacts "
-              "is not yet supported; explicitly request --binary-codec "
-              "for Binary-backed C generation\n");
+              "Custom C templates require explicit --binary-codec; "
+              "NativeSourceIR never falls back to a Binary template\n");
       return 1;
     }
-    /* No Binary-mutated Node or wire template is ever constructed here.
-     * Named output is transactional; absent --output uses admitted stdout. */
+    /* Bare C, Contract DSL, and stage-safe typed artifact outputs never
+     * construct a Binary-mutated Node or wire representation. */
+    if (options->dsl_output_path != NULL ||
+        options->projection_count != 0u)
+      return databind_compiler_generate_contract_native_bundle(options) == 0
+                 ? 0 : 1;
     return databind_compiler_generate_contract_native_header(
                options->schema_path, options->output_path) == 0 ? 0 : 1;
   }
