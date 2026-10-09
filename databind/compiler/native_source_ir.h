@@ -30,6 +30,9 @@ typedef struct databind_native_source_field {
    * metadata only: an owning CSTL element trait is required for rendering. */
   const char *element_type;
   int element_is_trivial;
+  /* Canonical CMeta descriptor symbol for a scalar CSTL element. NULL
+   * means provider admission is unresolved; never synthesize a descriptor. */
+  const char *element_cmeta_symbol;
 } databind_native_source_field;
 
 typedef struct databind_native_source_record {
