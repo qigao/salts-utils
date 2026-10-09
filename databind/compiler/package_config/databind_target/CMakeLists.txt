@@ -51,6 +51,27 @@ add_dependencies(installed_contract_types_consumer
 add_test(NAME installed_contract_types_consumer
   COMMAND installed_contract_types_consumer)
 
+# Qualify actual installed CMeta/DataBind execution from a Contract-only
+# NativeSourceIR VALUE record with owned STRING/BYTES buffer providers.
+salts_idl_target(
+  TARGET installed_contract_value
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/contract_value.schema"
+  ARTIFACT_NAME "contract_value"
+  ARTIFACTS TYPES)
+
+add_executable(installed_contract_value_consumer contract_value_consumer.c)
+target_compile_features(installed_contract_value_consumer PRIVATE c_std_11)
+target_compile_definitions(installed_contract_value_consumer PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA)
+set_target_properties(installed_contract_value_consumer PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(installed_contract_value_consumer PRIVATE
+  installed_contract_value_types Salts::DataBind)
+add_dependencies(installed_contract_value_consumer
+  installed_contract_value_idl_codegen)
+add_test(NAME installed_contract_value_consumer
+  COMMAND installed_contract_value_consumer)
+
 salts_idl_target(
   TARGET installed_image
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
@@ -110,7 +131,8 @@ target_link_libraries(installed_image_plugin_client_cpp
 set_target_properties(installed_image_plugin_client_cpp PROPERTIES
   CXX_EXTENSIONS NO)
 add_dependencies(installed_image installed_image_plugin_client_cpp)
-add_dependencies(installed_image installed_contract_types_consumer)
+add_dependencies(installed_image installed_contract_types_consumer
+  installed_contract_value_consumer)
 
 
 salts_idl_target(

@@ -119,6 +119,29 @@ add_test(NAME test_databind_contract_types_public_c11
 set_tests_properties(test_databind_contract_types_public_c11 PROPERTIES
   LABELS "databind;compiler;native-source;public;contract-only;c11")
 
+# Public Contract-only owning scalar records must produce a real CMeta
+# VALUE descriptor usable by the native DataBind plan, not a borrowed VIEW.
+salts_idl_target(
+  TARGET databind_contract_value_public_fixture
+  FOLDER "databind/compiler/generated/contract-value"
+  IDL "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_value.schema"
+  ARTIFACT_NAME "contract_value"
+  ARTIFACTS TYPES)
+add_executable(test_databind_contract_value_public_c11
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_value_consumer.c")
+target_compile_definitions(test_databind_contract_value_public_c11 PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA)
+target_link_libraries(test_databind_contract_value_public_c11 PRIVATE
+  ${databind_contract_value_public_fixture_TYPES_TARGET} Salts::DataBind)
+add_dependencies(test_databind_contract_value_public_c11
+  databind_contract_value_public_fixture_idl_codegen)
+set_target_properties(test_databind_contract_value_public_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_value_public_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_value_public_c11>)
+set_tests_properties(test_databind_contract_value_public_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;public;cmeta;owned;contract-only;c11")
+
 # Compile an actual NativeSourceIR-emitted header with each platform's C11 compiler.
 add_executable(databind_native_header_fixture_generator
   native_header_fixture_generator.c
