@@ -13,11 +13,15 @@ int main(void) {
       map_put(&a.lookup, &k2, &v2) != STL_OK ||
       set_add(&a.unique, &k1) != STL_OK ||
       set_add(&a.unique, &k2) != STL_OK) FAIL(1);
-  if (AssocPacket_clone(&b, &a) != 0 ||
-      map_size(&b.lookup) != 2u || set_size(&b.unique) != 2u ||
-      b.lookup.impl == a.lookup.impl || b.unique.map.impl == a.unique.map.impl ||
-      !map_contains(&b.lookup, &k1) || !set_contains(&b.unique, &k2) ||
-      *(const int32_t *)map_get_const(&b.lookup, &k2) != v2) FAIL(2);
+  if (AssocPacket_clone(&b, &a) != 0) FAIL(20);
+  if (map_size(&b.lookup) != 2u) FAIL(21);
+  if (set_size(&b.unique) != 2u) FAIL(22);
+  if (b.lookup.impl == a.lookup.impl) FAIL(23);
+  if (b.unique.map.impl == a.unique.map.impl) FAIL(24);
+  if (!map_contains(&b.lookup, &k1)) FAIL(25);
+  if (!set_contains(&b.unique, &k2)) FAIL(26);
+  if (map_get_const(&b.lookup, &k2) == NULL ||
+      *(const int32_t *)map_get_const(&b.lookup, &k2) != v2) FAIL(27);
   if (AssocPacket_move(&moved, &b) != 0 ||
       b.lookup.impl || b.unique.map.impl ||
       !set_contains(&moved.unique, &k2) ||
