@@ -8,6 +8,29 @@ int main(int argc, char **argv) {
   };
   databind_native_source_record record = {"Packet", 3u, fields};
   databind_native_source_ir ir = {1u, &record, "NativeFixture", "1"};
+  if (argc == 3 && argv[2][0] == 'r') {
+    databind_native_source_field item_fields[] = {
+        {"label", "databind_native_text", 0, 0, DATABIND_NATIVE_OWNED_TEXT,
+         NULL, 0, NULL, NULL, NULL, NULL, NULL},
+        {"payload", "databind_native_bytes", 0, 0, DATABIND_NATIVE_OWNED_BYTES,
+         NULL, 0, NULL, NULL, NULL, NULL, NULL}
+    };
+    databind_native_source_field holder_fields[] = {
+        {"items", "vec_t", 0, 0, DATABIND_NATIVE_OWNED_SEQUENCE,
+         "RecordItem", 0, NULL, NULL, NULL, NULL, NULL},
+        {"byname", "map_t", 0, 0, DATABIND_NATIVE_OWNED_MAP,
+         NULL, 0, NULL, "string", "RecordItem",
+         "databind_native_text_cmeta_type", NULL}
+    };
+    databind_native_source_record records[] = {
+        {"RecordItem", 2u, item_fields},
+        {"RecordHolder", 2u, holder_fields}
+    };
+    databind_native_source_ir record_ir = {
+        2u, records, "RecordElementFixture", "1"
+    };
+    return databind_native_source_ir_write_header(&record_ir, argv[1]) == 0 ? 0 : 1;
+  }
   if (argc == 3 && argv[2][0] == 't') {
     databind_native_source_field owned_containers[] = {
         {"labels", "vec_t", 0, 0, DATABIND_NATIVE_OWNED_SEQUENCE,
