@@ -40,6 +40,9 @@ typedef struct databind_compiler_plugin_config {
   /* Generated host-side typed Plugin client artifacts. */
   const char *client_header_output;
   const char *client_source_output;
+  /* Explicitly selected Binary codec presentation, never inferred from a
+   * Plugin request. Absent selects exact Contract-only NativeSourceIR ABI. */
+  int binary_presentation;
 } databind_compiler_plugin_config;
 
 /*
