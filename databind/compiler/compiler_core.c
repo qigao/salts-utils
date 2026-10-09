@@ -4972,6 +4972,13 @@ static int databind_compiler_generate_contract_native_bundle(
         fprintf(stderr, "Artifact has no audited staged-output contract\n");
         goto done;
       }
+      if ((entry->backend->generate == databind_compiler_native_service_generate ||
+           entry->backend->generate == databind_compiler_plugin_generate ||
+           entry->backend->generate == databind_compiler_wasm_generate) &&
+          !entry->native && !entry->plugin && !entry->wasm) {
+        fprintf(stderr, "Multi-output artifact backend has dishonest staging capability\n");
+        goto done;
+      }
       staged[i] = *request;
     }
   }
