@@ -1484,6 +1484,23 @@ describe("compiler integration") {
     (void)remove(path);
   }
 
+  it("rejects collection record elements without explicit CMeta traits") {
+    static const char schema_path[] = "native_unbound_record.schema";
+    static const char output[] = "native_unbound_record.h";
+    static const char schema[] =
+        "schema NativeUnbound; message Detail { uint32 id; } "
+        "message Parent { list<Detail> items; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_true(write_sentinel(output, "existing-output"));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), -1);
+    check_true(file_matches(output, "existing-output"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
   it("admits canonical uint32 CSTL sequence without Binary format") {
     static const char schema_path[] = "native_cstl_scalar.schema";
     static const char output[] = "native_cstl_scalar.h";
