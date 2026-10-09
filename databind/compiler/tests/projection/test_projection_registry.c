@@ -1446,7 +1446,7 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
-  it("tracks sequence element lifetime before CSTL provider admission") {
+  it("tracks scalar and owning sequence provider admission") {
     static const char path[] = "native_sequence_metadata.schema";
     static const char source_text[] =
         "schema NativeSequence; message Item { "
@@ -1469,11 +1469,13 @@ describe("compiler integration") {
     check_equal(ir.records[0].fields[1].ownership, DATABIND_NATIVE_OWNED_SEQUENCE);
     check_equal(ir.records[0].fields[1].element_type, "string");
     check_false(ir.records[0].fields[1].element_is_trivial);
-    check_null(ir.records[0].fields[1].element_cmeta_symbol);
-    check_true(write_sentinel("native_sequence_metadata.h", "preserved"));
+    check_equal(ir.records[0].fields[1].element_cmeta_symbol,
+                "databind_native_text_cmeta_type");
     check_equal(databind_native_source_ir_write_header(
-                    &ir, "native_sequence_metadata.h"), -1);
-    check_true(file_matches("native_sequence_metadata.h", "preserved"));
+                    &ir, "native_sequence_metadata.h"), 0);
+    check_true(file_contains("native_sequence_metadata.h",
+                             "databind_native_text_cmeta_traits"));
+    check_false(file_contains("native_sequence_metadata.h", "binary_wire"));
     (void)remove("native_sequence_metadata.h");
     databind_native_source_ir_destroy(&ir);
     idl_contract_destroy(contract);
