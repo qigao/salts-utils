@@ -1381,8 +1381,15 @@ describe("compiler integration") {
     check_true(write_sentinel(schema_path, unsupported));
     check_equal(databind_compiler_parse_contract_only_file(
                     schema_path, &tree, &contract, &source), 0);
-    check_equal(databind_native_source_ir_build(contract, &ir), -1);
-    check_true(ir.records == NULL);
+    check_equal(databind_native_source_ir_build(contract, &ir), 0);
+    check_equal(ir.record_count, (size_t)1u);
+    check_equal(ir.records[0].fields[0].ownership, DATABIND_NATIVE_OWNED_TEXT);
+    check_equal(ir.records[0].fields[1].ownership, DATABIND_NATIVE_TRIVIAL);
+    check_true(write_sentinel("native_source_scalar.h", "existing-header"));
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_source_scalar.h"), -1);
+    check_true(file_matches("native_source_scalar.h", "existing-header"));
+    (void)remove("native_source_scalar.h");
     databind_native_source_ir_destroy(&ir);
     idl_contract_destroy(contract);
     node_free(tree);
