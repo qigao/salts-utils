@@ -18,6 +18,7 @@ set(_root "${CMAKE_CURRENT_BINARY_DIR}/public-native-format-gates")
 file(MAKE_DIRECTORY "${_root}")
 foreach(_case IN ITEMS message_without_codec socket_without_codec
                        native_with_transport_without_codec
+                       wasm_with_transport_without_codec
                        types_with_codec types_with_native)
   set(_dir "${_root}/${_case}")
   file(REMOVE_RECURSE "${_dir}")
@@ -34,6 +35,9 @@ foreach(_case IN ITEMS message_without_codec socket_without_codec
   elseif(_case STREQUAL "socket_without_codec")
     set(_selection "TRANSPORTS SOCKET")
     set(_expected "requires explicit BINARY_CODEC")
+  elseif(_case STREQUAL "wasm_with_transport_without_codec")
+    set(_selection "ARTIFACTS WASM TRANSPORTS HTTP")
+    set(_expected "Contract-only WASM Component cannot select formatted transports")
   elseif(_case STREQUAL "types_with_codec")
     set(_selection "ARTIFACTS TYPES BINARY_CODEC")
     set(_expected "Contract-only")

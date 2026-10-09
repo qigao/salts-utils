@@ -108,6 +108,8 @@ completed before any of them is published. A later backend failure,
 including one after partially writing its staged file, preserves all
 previous caller files and removes otherwise-new files.
 
+For Contract-only Wasm, the currently admitted Core Component ABI is a bounded ordered-u32 little-endian list<u8> envelope; no Binary record builder/view or implicit `--source-output` is used. Other Wasm scalar and complex shapes fail before artifact publication. The historical Binary Wasm path remains available only when explicitly selected.
+
 **Native/Plugin/Wasm multi-output transaction:** Typed artifact selection
 with bare `--lang c --output <header>` uses Contract-only NativeSourceIR.
 Native Service, Plugin and Wasm backends each declare

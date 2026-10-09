@@ -194,6 +194,32 @@ salts_idl_target(
   SOURCES calculator_business.c)
 ```
 
+### Contract-only Plugin and Wasm Component
+
+Contract-only `ARTIFACTS PLUGIN` emits the NativeSourceIR `Record` type
+and exact CMeta FunctionDesc/FunctionAbi provider and lease-based typed client,
+with no Binary `*_native.c` companion. The Plugin DSO and client are qualified
+through actual registry load, lease ownership, typed invocation, quiescence
+and unload, in both build-tree and installed SDK consumers.
+
+A no-codec `ARTIFACTS WASM` selection uses the same Contract-owned CMeta
+Function ABI. In the first executable Component slice the Core `list<u8>`
+envelope carries ordered `uint32` fields encoded as 4 little-endian bytes
+per field, independent of the generated C record's padding or DataBind
+BinaryFormatPlan. The response envelope is a little-endian i32 status plus,
+on success, the ordered response fields. Every request and response member
+must be a required `uint32` with no default, optional, null, collection,
+typed error or nested record; other shapes fail before publication rather
+than being projected as an undocumented wire ABI. The host and guest use
+canonical `Record` and `Record_native_cmeta_value_bind` declarations, not
+Binary `Record_t`, `*_BLOCK_LENGTH`, wire views or builders.
+
+`ARTIFACTS PLUGIN WASM` can share the no-codec type header; a formatted
+transport still requires an independently explicit Binary admission. Public
+`salts_idl_target()` no-codec Plugin/Wasm sources must not include or link
+`*_native.c`. Installed TurboWasm::Component runtime qualification uses
+the published Core Wasm fixture to execute the same u32 Component envelope.
+
 ### NATIVE Service artifact
 
 `ARTIFACTS NATIVE` publishes the generated Service metadata and executable
