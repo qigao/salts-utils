@@ -154,6 +154,7 @@ suite("salts_serial mocked backend") {
     salts_serial_config_t config;
     char out[4] = {0};
     size_t bytes_read = 0;
+    size_t attempts = 0u;
 
     salts_serial_config_default(&config);
     config.rx_buffer_size = 8;
@@ -170,7 +171,11 @@ suite("salts_serial mocked backend") {
     salts_serial_test_set_handle(serial, FAKE_HANDLE);
 
     check_equal(salts_serial_start_async(serial), SALTS_SERIAL_OK);
-    cmeta_sleep_ms(30);
+    /* Observe actual SPSC delivery; sleeping a fixed 30ms is not a
+     * synchronization contract on a loaded macOS runner. */
+    while (salts_serial_rx_available(serial) < 3u && attempts++ < 2000u &&
+           salts_serial_last_error(serial) == SALTS_SERIAL_OK)
+      cmeta_sleep_ms(1u);
     check_equal(salts_serial_stop_async(serial), SALTS_SERIAL_OK);
 
     check_equal(salts_serial_rx_available(serial), 3);
@@ -189,6 +194,7 @@ suite("salts_serial mocked backend") {
   it("drains tx bytes through the mocked backend") {
     salts_serial_config_t config;
     size_t bytes_buffered = 0;
+    size_t attempts = 0u;
 
     salts_serial_config_default(&config);
     config.rx_buffer_size = 8;
@@ -204,8 +210,14 @@ suite("salts_serial mocked backend") {
                 SALTS_SERIAL_OK);
     check_equal(bytes_buffered, 2);
 
-    cmeta_sleep_ms(30);
+    /* The worker is the sole TX SPSC consumer. Wait for it to release
+     * the queued bytes, then join before reading the test-owned fake buffer. */
+    while (salts_serial_tx_available(serial) != 0u && attempts++ < 2000u &&
+           salts_serial_last_error(serial) == SALTS_SERIAL_OK)
+      cmeta_sleep_ms(1u);
     check_equal(salts_serial_stop_async(serial), SALTS_SERIAL_OK);
+    check_equal(salts_serial_tx_available(serial), (size_t)0u);
+    check_equal(salts_serial_last_error(serial), SALTS_SERIAL_OK);
 
     check_equal(fake_tx_len, 2);
     check_equal(fake_tx_data, "XY", 2);
