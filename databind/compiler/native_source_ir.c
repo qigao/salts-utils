@@ -27,6 +27,23 @@ static const char *native_scalar(const char *type) {
   return NULL;
 }
 
+/* These spellings are the exported Salts CMeta scalar descriptors, not
+ * compiler-owned substitutes. A type without a canonical descriptor stays
+ * unadmitted until an explicit provider contract exists. */
+static const char *native_sequence_cmeta_symbol(const char *type) {
+  static const native_scalar_map descriptors[] = {
+      {"int8", "cmeta_type_int8"}, {"uint8", "cmeta_type_uint8"},
+      {"int16", "cmeta_type_int16"}, {"uint16", "cmeta_type_uint16"},
+      {"int32", "cmeta_type_int32"}, {"uint32", "cmeta_type_uint32"},
+      {"int64", "cmeta_type_int64"}, {"uint64", "cmeta_type_uint64"}
+  };
+  size_t i;
+  if (type == NULL) return NULL;
+  for (i = 0u; i < sizeof(descriptors) / sizeof(descriptors[0]); ++i)
+    if (strcmp(type, descriptors[i].idl) == 0) return descriptors[i].c;
+  return NULL;
+}
+
 /* Build an ownership plan even for types the current renderer cannot emit.
  * Never confuse non-trivial fields with a trivially copied scalar. */
 static int native_field_ownership(
@@ -171,6 +188,8 @@ int databind_native_source_ir_build(
         if (element == NULL || element[0] == '\0') goto fail;
         record->fields[j].element_type = element;
         record->fields[j].element_is_trivial = native_scalar(element) != NULL;
+        record->fields[j].element_cmeta_symbol =
+            native_sequence_cmeta_symbol(element);
       }
     }
   }
