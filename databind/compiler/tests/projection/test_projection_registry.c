@@ -1421,6 +1421,12 @@ describe("compiler integration") {
     check_equal(ir.records[1].name, "Parent");
     check_equal(ir.records[1].fields[0].ownership,
                 DATABIND_NATIVE_OWNED_RECORD);
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_nested_order.h"), 0);
+    check_true(file_contains("native_nested_order.h", "Child_clear(&value->child);"));
+    check_true(file_contains("native_nested_order.h",
+                             "Child_clone(&tmp.child, &src->child)"));
+    (void)remove("native_nested_order.h");
     databind_native_source_ir_destroy(&ir);
     idl_contract_destroy(contract);
     node_free(tree);
