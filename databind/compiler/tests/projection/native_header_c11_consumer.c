@@ -1,7 +1,7 @@
 #include "native_contract_fixture.h"
+#include <stddef.h>
 #ifdef DATABIND_NATIVE_ENABLE_CMETA
 #include <string.h>
-#include <stddef.h>
 #endif
 
 int main(void) {
