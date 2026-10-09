@@ -172,9 +172,12 @@ and CFlow remain independent; there is no public PluginCFlow subsystem.
 
 Mustache and Jinja CMeta have independent source, tests, documentation, and install headers. Jinja reuses the Mustache runtime through a one-way dependency rather than duplicating template execution machinery.
 
-### Unicode
+### Unicode — Salts SDK
 
-The Unicode component uses generated data with a fixed Unicode version and exposes UTF-8 scalar and identifier/whitespace property APIs without embedding template-engine semantics.
+Unicode 17 scalar, UTF-8, segmentation, case, emoji and Bidi APIs belong to
+`Salts::Unicode` in the **installed Salts SDK** (qigao/salts#1088).
+Jinja links that imported target. SaltsUtils does not build, export or ship
+Unicode data or a second implementation, and never falls back to ICU.
 
 ### IDL, Schema, DataBind and the Binary format compiler
 
@@ -188,14 +191,6 @@ Detailed documentation:
 - [IDL compiler CLI options](databind/compiler/CLI_OPTIONS.md)
 - [Database DDL generation design](docs/architecture/databind-database-ddl-generation.md)
 - [DataBind ownership and adapter design](databind/runtime/README.md)
-
-## Unicode ownership
-
-Unicode 17 scalar, UTF-8, segmentation, case and Bidi APIs are owned by the
-installed `Salts::Unicode` target from Salts (qigao/salts#1088). SaltsUtils
-does not build, export, or ship a second Unicode implementation. Jinja links
-the imported target; an SDK missing it fails at configure rather than falling
-back to ICU or local tables.
 
 ## Build and test
 
