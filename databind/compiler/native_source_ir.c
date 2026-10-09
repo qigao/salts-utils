@@ -429,7 +429,7 @@ int databind_native_source_ir_write_header(
       }
     }
     if ((text_provider || bytes_provider) &&
-        fputs("#include <assert.h>\\n", out) == EOF) failed = 1;
+        fputs("#include <assert.h>\n", out) == EOF) failed = 1;
     if (!failed && text_provider &&
         fputs(
         "/* Native text CSTL provider: copy/move/destroy are explicit ownership operations. */\n"
