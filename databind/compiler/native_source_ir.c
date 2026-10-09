@@ -233,7 +233,7 @@ int databind_native_source_ir_write_header(
     const databind_native_source_record *record = &ir->records[i];
     if (fprintf(out,
         "static const cmeta_type_desc %s_native_cmeta_type = {\n"
-        "    .name = \\"%s\\",\n"
+        "    .name = \"%s\",\n"
         "    .size = sizeof(%s),\n"
         "    .align = _Alignof(%s),\n"
         "    .kind = CMETA_T_OBJECT\n"
