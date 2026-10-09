@@ -178,6 +178,47 @@ add_test(NAME test_databind_contract_native_service_c11
 set_tests_properties(test_databind_contract_native_service_c11 PROPERTIES
   LABELS "databind;compiler;native-service;contract-only;c11;execution")
 
+# Contract-only Plugin: real provider manifest/typed Client compilation and
+# exact business invocation, without a Binary native serializer or catalog.
+set(_contract_plugin_dir "${CMAKE_CURRENT_BINARY_DIR}/contract_plugin")
+set(_contract_plugin_h "${_contract_plugin_dir}/contract_plugin_native.h")
+set(_contract_plugin_provider_h "${_contract_plugin_dir}/contract_plugin.plugin.h")
+set(_contract_plugin_provider_c "${_contract_plugin_dir}/contract_plugin.plugin.c")
+set(_contract_plugin_client_h "${_contract_plugin_dir}/contract_plugin.plugin_client.h")
+set(_contract_plugin_client_c "${_contract_plugin_dir}/contract_plugin.plugin_client.c")
+set(_contract_plugin_schema
+    "${DATABIND_COMPILER_SOURCE_DIR}/package_config/wasm_execution/wasm_execution.schema")
+add_custom_command(
+  OUTPUT "${_contract_plugin_h}" "${_contract_plugin_provider_h}"
+         "${_contract_plugin_provider_c}" "${_contract_plugin_client_h}"
+         "${_contract_plugin_client_c}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${_contract_plugin_dir}"
+  COMMAND $<TARGET_FILE:salts_idlc>
+          "${_contract_plugin_schema}"
+          --lang c
+          --output "${_contract_plugin_h}"
+          --artifacts plugin --artifact-name contract_plugin
+          --component WasmRuntime.Calculator
+          --artifact-version 1.0.0
+  DEPENDS salts_idlc "${_contract_plugin_schema}"
+  VERBATIM)
+add_executable(test_databind_contract_plugin_c11
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_consumer.c"
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_business.c"
+  "${_contract_plugin_provider_c}" "${_contract_plugin_provider_h}"
+  "${_contract_plugin_client_c}" "${_contract_plugin_client_h}"
+  "${_contract_plugin_h}")
+target_include_directories(test_databind_contract_plugin_c11
+  PRIVATE "${_contract_plugin_dir}")
+target_link_libraries(test_databind_contract_plugin_c11
+  PRIVATE Salts::DataBind Salts::PluginABI Salts::Plugin)
+set_target_properties(test_databind_contract_plugin_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_plugin_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_plugin_c11>)
+set_tests_properties(test_databind_contract_plugin_c11 PROPERTIES
+  LABELS "databind;compiler;plugin;contract-only;c11;execution")
+
 # Compile an actual NativeSourceIR-emitted header with each platform's C11 compiler.
 add_executable(databind_native_header_fixture_generator
   native_header_fixture_generator.c
