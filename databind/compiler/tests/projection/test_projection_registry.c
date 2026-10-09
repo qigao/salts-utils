@@ -1477,8 +1477,8 @@ describe("compiler integration") {
   it("rejects native presence flag collisions before changing a header") {
     static const char output[] = "native_presence_collision.h";
     databind_native_source_field fields[2] = {
-        {"count", "uint32_t", 1, 0},
-        {"has_count", "uint32_t", 0, 0}
+        {"count", "uint32_t", 1, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0},
+        {"has_count", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0}
     };
     databind_native_source_record record = {"Packet", 2u, fields};
     databind_native_source_ir ir = {1u, &record, "ManualFixture", NULL};
