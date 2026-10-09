@@ -104,7 +104,7 @@ int databind_native_source_ir_build(
       const databind_native_source_ownership ownership =
           native_field_ownership(contract, field);
       const char *type = native_scalar(field->type_name);
-      if (field->name == NULL || field->name[0] == '\\0' ||
+      if (field->name == NULL || field->name[0] == '\0' ||
           field->default_value != NULL || (int)ownership < 0)
         goto fail;
       record->fields[j].name = field->name;
