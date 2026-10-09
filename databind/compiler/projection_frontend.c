@@ -210,12 +210,6 @@ static int add_native_service(
   if (ensure_artifact_context(input, out, error, error_size) != 0)
     return -1;
 
-  if (input->source_output_path == NULL ||
-      input->source_output_path[0] == '\0')
-    return frontend_error(
-        error, error_size,
-        "NATIVE artifact requires --source-output for codec/native metadata");
-
   if (!derive_artifact_path(
           out->artifact_dir, input->artifact_name,
           ".service_native.h", out->native_service_header,
