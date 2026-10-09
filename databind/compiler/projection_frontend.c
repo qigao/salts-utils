@@ -658,6 +658,7 @@ static int add_wasm(
       .host_source_output = out->wasm_host_source,
       .guest_header_output = out->wasm_guest_header,
       .symbol_prefix = out->wasm_symbol_prefix,
+      .binary_presentation = input->source_output_path != NULL,
   };
   out->requests[out->request_count++] =
       (databind_compiler_projection_request){

@@ -258,7 +258,7 @@ function(salts_idl_target)
     list(APPEND _normalized_transports "${transport_upper}")
   endforeach()
 
-  if((_has_message OR _has_wasm OR _has_socket OR _has_flowmq) AND
+  if((_has_message OR _has_socket OR _has_flowmq) AND
      NOT DB_BINARY_CODEC)
     message(FATAL_ERROR
             "Generated Binary codec/transport source requires explicit BINARY_CODEC")
@@ -269,6 +269,10 @@ function(salts_idl_target)
             "Contract-only PLUGIN requires an independent typed Function ABI; "
             "mixed Native/transport generation is not admitted without explicit BINARY_CODEC")
   endif()
+  if(_has_wasm AND NOT DB_BINARY_CODEC AND DB_TRANSPORTS)
+    message(FATAL_ERROR
+            "Contract-only WASM Component cannot select formatted transports")
+  endif()
   if(_has_native AND NOT DB_BINARY_CODEC AND DB_TRANSPORTS)
     message(FATAL_ERROR
             "Contract-only NATIVE Service cannot select transport adapters; "
@@ -277,8 +281,8 @@ function(salts_idl_target)
   # Only an explicitly selected wire/codec execution output requires a Binary
   # companion. NATIVE alone is a typed Service ABI with CMeta VALUE records.
   set(_needs_native_source FALSE)
-  if(_has_message OR _has_wasm OR _has_socket OR _has_flowmq OR
-     ((_has_native OR _has_plugin) AND DB_BINARY_CODEC))
+  if(_has_message OR _has_socket OR _has_flowmq OR
+     ((_has_native OR _has_plugin OR _has_wasm) AND DB_BINARY_CODEC))
     set(_needs_native_source TRUE)
   endif()
 
@@ -676,11 +680,12 @@ function(salts_idl_target)
       message(FATAL_ERROR
               "WASM artifact requires released TurboWasm::Component")
     endif()
-    add_library("${DB_TARGET}_wasm" STATIC
-      "${_wasm_host_source}"
-      "${_wasm_host_header}"
-      "${_native_source}"
-      "${_native_header}")
+    set(_wasm_target_sources
+      "${_wasm_host_source}" "${_wasm_host_header}" "${_native_header}")
+    if(_needs_native_source)
+      list(APPEND _wasm_target_sources "${_native_source}")
+    endif()
+    add_library("${DB_TARGET}_wasm" STATIC ${_wasm_target_sources})
     add_dependencies("${DB_TARGET}_wasm"
       "${DB_TARGET}_idl_codegen")
     target_compile_features("${DB_TARGET}_wasm" PRIVATE c_std_11)

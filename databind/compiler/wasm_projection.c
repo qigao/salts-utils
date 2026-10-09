@@ -2,6 +2,7 @@
 
 #include "schema_cmeta.h"
 #include "service_native.h"
+#include "native_service_projection.h"
 
 #include <cmeta_fs.h>
 
@@ -548,9 +549,298 @@ static int wasm_header_guard(
   return used != 0u;
 }
 
+
+/* The first Contract-only Wasm Core ABI slice is an ordered stream of
+ * little-endian u32 values. The Component memory32 list<u8> envelope is a
+ * distinct, explicit Core protocol, not DataBind BinaryFormatPlan, generated
+ * record offsets, or a platform-dependent memcpy of a padded C struct.
+ * Unsupported scalar/owned/state layouts must fail before publication. */
+static int wasm_contract_u32_admitted(
+    const IdlContract *contract,
+    const databind_compiler_service_native_ir *ir,
+    const wasm_operation_view *views, size_t view_count) {
+  size_t i, j;
+  if (!databind_compiler_native_contract_admitted(contract, ir))
+    return 0;
+  for (i = 0u; i < view_count; ++i) {
+    const IdlDataDecl *messages[2] = {
+        views[i].request, views[i].response};
+    size_t k;
+    for (k = 0u; k < 2u; ++k) {
+      const IdlDataDecl *message = messages[k];
+      if (!message || message->field_count == 0u ||
+          message->field_count > (UINT32_MAX - 4u) / 4u)
+        return 0;
+      for (j = 0u; j < message->field_count; ++j) {
+        const IdlField *field = &message->fields[j];
+        if (!field->name || !field->type_name ||
+            strcmp(field->type_name, "uint32") != 0 ||
+            field->collection_kind != IDL_COLLECTION_NONE ||
+            field->optional || field->nullable || field->default_value)
+          return 0;
+      }
+    }
+  }
+  return 1;
+}
+
+static int wasm_write_contract_host_header(
+    FILE *file, const databind_compiler_wasm_config *config,
+    const wasm_operation_view *views, size_t view_count) {
+  char guard[256];
+  const char *native_header = wasm_basename(config->native_header);
+  size_t i;
+  if (!file || !config || !views || !native_header ||
+      !wasm_header_guard(config->symbol_prefix, "_WASM_HOST_H",
+                         guard, sizeof(guard)))
+    return 0;
+  if (fprintf(file,
+        "#ifndef %s\n#define %s\n"
+        "#ifndef DATABIND_NATIVE_ENABLE_CMETA\n"
+        "#define DATABIND_NATIVE_ENABLE_CMETA\n#endif\n"
+        "#ifndef DATABIND_NATIVE_ENABLE_DATABIND\n"
+        "#define DATABIND_NATIVE_ENABLE_DATABIND\n#endif\n"
+        "#include \"%s\"\n"
+        "#include <data_bind_binding_plan.h>\n"
+        "#include <cmeta/function.h>\n"
+        "#include <stddef.h>\n#include <stdint.h>\n"
+        "#ifdef __cplusplus\nextern \"C\" {\n#endif\n"
+        "typedef struct %s_wasm_host {\n"
+        "    const uint8_t *component_bytes;\n"
+        "    size_t component_size;\n"
+        "} %s_wasm_host;\n"
+        "int %s_wasm_host_init(%s_wasm_host *host,\n"
+        "    const void *component_bytes, size_t component_size);\n"
+        "void %s_wasm_host_destroy(%s_wasm_host *host);\n",
+        guard, guard, native_header, config->symbol_prefix,
+        config->symbol_prefix, config->symbol_prefix,
+        config->symbol_prefix, config->symbol_prefix,
+        config->symbol_prefix) < 0)
+    return 0;
+  for (i = 0u; i < view_count; ++i) {
+    const databind_compiler_service_native_operation *op = views[i].native;
+    if (fprintf(file,
+          "typedef struct %s__native_owner {\n"
+          "    %s_native_cmeta_binding request_metadata;\n"
+          "    %s_native_cmeta_binding response_metadata;\n"
+          "    DataBindNativeTypeBinding request_binding;\n"
+          "    DataBindNativeTypeBinding response_binding;\n"
+          "} %s__native_owner;\n"
+          "const cmeta_function_desc *%s__databind_function(void);\n"
+          "const cmeta_function_abi_desc *%s__databind_function_abi(void);\n"
+          "DataBindStatus %s__databind_native_binding(\n"
+          "    %s__native_owner *owner,\n"
+          "    DataBindServiceNativeBinding *service_out,\n"
+          "    DataBindError *error);\n"
+          "int %s__databind_wasm_execution(\n"
+          "    %s_wasm_host *host, DataBindNativeExecution *out);\n",
+          op->symbol, op->request_type, op->response_type,
+          op->symbol, op->symbol, op->symbol,
+          op->symbol, op->symbol,
+          op->symbol, config->symbol_prefix) < 0)
+      return 0;
+  }
+  return fprintf(file, "#ifdef __cplusplus\n}\n#endif\n"
+                       "#endif /* %s */\n", guard) >= 0;
+}
+
+static int wasm_write_contract_guest_header(
+    FILE *file, const databind_compiler_wasm_config *config,
+    const wasm_operation_view *views, size_t view_count) {
+  char guard[256];
+  const char *native_header = wasm_basename(config->native_header);
+  size_t i, j;
+  if (!file || !config || !views || !native_header ||
+      !wasm_header_guard(config->symbol_prefix, "_WASM_GUEST_H",
+                         guard, sizeof(guard)))
+    return 0;
+  if (fprintf(file,
+          "#ifndef %s\n#define %s\n"
+          "#include \"%s\"\n"
+          "#include <stddef.h>\n#include <stdint.h>\n"
+          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n"
+          "/* Contract-only Core list<u8> ABI: declared u32 fields, each in\n"
+          " * four little-endian bytes, not BinaryFormatPlan record storage. */\n"
+          "enum { DATABIND_WASM_EXECUTION_STATUS_BYTES = 4u };\n"
+          "uint32_t cabi_realloc(uint32_t old_ptr, uint32_t old_size,\n"
+          "    uint32_t align, uint32_t new_size);\n",
+          guard, guard, native_header) < 0)
+    return 0;
+  for (i = 0u; i < view_count; ++i) {
+    const wasm_operation_view *view = &views[i];
+    const size_t bytes = view->request->field_count * 4u;
+    if (fprintf(file,
+          "uint32_t %s(uint32_t request_offset, uint32_t request_length);\n"
+          "static inline int %s__wasm_request_decode(\n"
+          "    uint32_t request_offset, uint32_t request_length,\n"
+          "    %s *out) {\n"
+          "    const uint8_t *bytes = (const uint8_t *)(uintptr_t)request_offset;\n"
+          "    %s value = {0};\n"
+          "    if (!out || !bytes || request_length != %zuu) return 0;\n",
+          view->native->symbol, view->native->symbol,
+          view->native->request_type, view->native->request_type, bytes) < 0)
+      return 0;
+    for (j = 0u; j < view->request->field_count; ++j) {
+      const char *name = view->request->fields[j].name;
+      const size_t offset = 4u * j;
+      if (fprintf(file,
+            "    value.%s = (uint32_t)bytes[%zuu] |\n"
+            "        ((uint32_t)bytes[%zuu] << 8u) |\n"
+            "        ((uint32_t)bytes[%zuu] << 16u) |\n"
+            "        ((uint32_t)bytes[%zuu] << 24u);\n",
+            name, offset, offset + 1u, offset + 2u, offset + 3u) < 0)
+        return 0;
+    }
+    if (fputs("    *out = value;\n    return 1;\n}\n", file) == EOF)
+      return 0;
+  }
+  return fprintf(file, "#ifdef __cplusplus\n}\n#endif\n"
+                       "#endif /* %s */\n", guard) >= 0;
+}
+
+static int wasm_write_contract_host_invoke(
+    FILE *file, const databind_compiler_wasm_config *config,
+    const wasm_operation_view *view) {
+  const databind_compiler_service_native_operation *op = view->native;
+  const size_t request_bytes = view->request->field_count * 4u;
+  const size_t response_bytes = view->response->field_count * 4u;
+  size_t j;
+  if (fprintf(file,
+        "static bool DATA_BIND_NATIVE_CALL %s__wasm_invoke(\n"
+        "    void *context, void *return_storage,\n"
+        "    void *const *params, size_t param_count) {\n"
+        "    %s_wasm_host *host = (%s_wasm_host *)context;\n"
+        "    const %s *request;\n"
+        "    %s *response;\n"
+        "    uint8_t request_wire[%zuu] = {0};\n"
+        "    turbowasm_component_host_value request_items[%zuu] = {{0}};\n"
+        "    turbowasm_component_host_value argument = {0};\n"
+        "    turbowasm_component_host_value result = {0};\n"
+        "    turbowasm_component component = {0};\n"
+        "    turbowasm_component_instance instance = {0};\n"
+        "    size_t result_count = 0u;\n"
+        "    size_t k;\n"
+        "    uint32_t status_bits;\n"
+        "    int native_status;\n"
+        "    turbowasm_trap trap = TURBOWASM_TRAP_NONE;\n"
+        "    int ok = 0;\n"
+        "    if (!host || !host->component_bytes || !return_storage ||\n"
+        "        !params || param_count != 2u || !params[0] || !params[1])\n"
+        "        return false;\n"
+        "    request = (const %s *)params[0];\n"
+        "    response = (%s *)params[1];\n",
+        op->symbol, config->symbol_prefix, config->symbol_prefix,
+        op->request_type, op->response_type, request_bytes, request_bytes,
+        op->request_type, op->response_type) < 0)
+    return 0;
+  for (j = 0u; j < view->request->field_count; ++j) {
+    const char *name = view->request->fields[j].name;
+    const size_t pos = j * 4u;
+    if (fprintf(file,
+          "    { uint32_t bits = request->%s;\n"
+          "      request_wire[%zuu] = (uint8_t)bits;\n"
+          "      request_wire[%zuu] = (uint8_t)(bits >> 8u);\n"
+          "      request_wire[%zuu] = (uint8_t)(bits >> 16u);\n"
+          "      request_wire[%zuu] = (uint8_t)(bits >> 24u); }\n",
+          name, pos, pos + 1u, pos + 2u, pos + 3u) < 0)
+      return 0;
+  }
+  if (fprintf(file,
+        "    for (k = 0u; k < %zuu; ++k) {\n"
+        "        request_items[k].kind = TURBOWASM_COMPONENT_HOST_U8;\n"
+        "        request_items[k].as.u8 = request_wire[k];\n"
+        "    }\n"
+        "    argument.kind = TURBOWASM_COMPONENT_HOST_LIST;\n"
+        "    argument.as.list.items = request_items;\n"
+        "    argument.as.list.count = %zuu;\n"
+        "    if (turbowasm_component_load_borrowed(\n"
+        "            &component, host->component_bytes,\n"
+        "            host->component_size) != TURBOWASM_OK) goto done;\n"
+        "    if (turbowasm_component_instance_create(\n"
+        "            &instance, &component) != TURBOWASM_OK) goto done;\n"
+        "    if (turbowasm_component_instance_invoke(\n"
+        "            &instance, (turbowasm_name){\n"
+        "                (const uint8_t *)\"%s\", %zuu},\n"
+        "            &argument, 1u, &result, 1u, &result_count,\n"
+        "            &trap) != TURBOWASM_OK ||\n"
+        "        trap != TURBOWASM_TRAP_NONE || result_count != 1u ||\n"
+        "        result.kind != TURBOWASM_COMPONENT_HOST_LIST ||\n"
+        "        result.as.list.count < 4u || !result.as.list.items)\n"
+        "        goto done;\n"
+        "    for (k = 0u; k < result.as.list.count; ++k)\n"
+        "        if (result.as.list.items[k].kind !=\n"
+        "            TURBOWASM_COMPONENT_HOST_U8) goto done;\n"
+        "    status_bits = (uint32_t)result.as.list.items[0].as.u8 |\n"
+        "        ((uint32_t)result.as.list.items[1].as.u8 << 8u) |\n"
+        "        ((uint32_t)result.as.list.items[2].as.u8 << 16u) |\n"
+        "        ((uint32_t)result.as.list.items[3].as.u8 << 24u);\n"
+        "    native_status = (int)(int32_t)status_bits;\n"
+        "    if (native_status != 0) {\n"
+        "        if (result.as.list.count != 4u) goto done;\n"
+        "        *(int *)return_storage = native_status;\n"
+        "        ok = 1;\n"
+        "        goto done;\n"
+        "    }\n"
+        "    if (result.as.list.count != 4u + %zuu) goto done;\n",
+        request_bytes, request_bytes, op->qualified_operation,
+        strlen(op->qualified_operation), response_bytes) < 0)
+    return 0;
+  for (j = 0u; j < view->response->field_count; ++j) {
+    const char *name = view->response->fields[j].name;
+    const size_t pos = 4u + j * 4u;
+    if (fprintf(file,
+          "    response->%s =\n"
+          "        (uint32_t)result.as.list.items[%zuu].as.u8 |\n"
+          "        ((uint32_t)result.as.list.items[%zuu].as.u8 << 8u) |\n"
+          "        ((uint32_t)result.as.list.items[%zuu].as.u8 << 16u) |\n"
+          "        ((uint32_t)result.as.list.items[%zuu].as.u8 << 24u);\n",
+          name, pos, pos + 1u, pos + 2u, pos + 3u) < 0)
+      return 0;
+  }
+  if (fprintf(file,
+        "    *(int *)return_storage = 0;\n"
+        "    ok = 1;\n"
+        "done:\n"
+        "    if (result_count != 0u)\n"
+        "        turbowasm_component_host_value_destroy(&result);\n"
+        "    turbowasm_component_instance_destroy(&instance);\n"
+        "    turbowasm_component_destroy(&component);\n"
+        "    return ok != 0;\n"
+        "}\n"
+        "int %s__databind_wasm_execution(\n"
+        "    %s_wasm_host *host, DataBindNativeExecution *out) {\n"
+        "    DataBindNativeExecution execution =\n"
+        "        (DataBindNativeExecution)DATA_BIND_NATIVE_EXECUTION_INIT;\n"
+        "    if (!out) return 0;\n"
+        "    *out = execution;\n"
+        "    if (!host || !host->component_bytes ||\n"
+        "        host->component_size == 0u) return 0;\n"
+        "    execution.function = &%s__function_meta;\n"
+        "    execution.abi = &%s__function_abi_meta;\n"
+        "    execution.context = host;\n"
+        "    execution.invoke = %s__wasm_invoke;\n"
+        "    if (!data_bind_native_execution_valid(&execution)) return 0;\n"
+        "    *out = execution;\n"
+        "    return 1;\n"
+        "}\n"
+        "const cmeta_function_desc *%s__databind_function(void) {\n"
+        "    return &%s__function_meta;\n"
+        "}\n"
+        "const cmeta_function_abi_desc *%s__databind_function_abi(void) {\n"
+        "    return &%s__function_abi_meta;\n"
+        "}\n",
+        op->symbol, config->symbol_prefix,
+        op->symbol, op->symbol, op->symbol,
+        op->symbol, op->symbol, op->symbol, op->symbol) < 0)
+    return 0;
+  return 1;
+}
+
 static int wasm_write_host_header(
     FILE *file, const databind_compiler_wasm_config *config,
     const wasm_operation_view *views, size_t view_count) {
+  if (!config->binary_presentation)
+    return wasm_write_contract_host_header(file, config, views, view_count);
   char guard[256];
   size_t i;
   if (file == NULL || config == NULL || views == NULL ||
@@ -627,6 +917,8 @@ static int wasm_write_guest_header(
     return 0;
   native_header = wasm_basename(config->native_header);
   if (native_header == NULL) return 0;
+  if (!config->binary_presentation)
+    return wasm_write_contract_guest_header(file, config, views, view_count);
 
   if (fprintf(
           file,
@@ -707,11 +999,18 @@ static int wasm_write_host_source(
     return 0;
 
   for (i = 0u; i < view_count; ++i) {
-    if (databind_compiler_service_native_emit_reflection(
-            file, views[i].native, 1) != 0 ||
-        databind_compiler_service_native_emit_binding(
-            file, views[i].native) != 0)
+    if (!config->binary_presentation) {
+      if (!databind_compiler_native_contract_emit_reflection(
+              file, views[i].native) ||
+          !databind_compiler_native_contract_emit_binding(
+              file, views[i].native))
+        return 0;
+    } else if (databind_compiler_service_native_emit_reflection(
+                   file, views[i].native, 1) != 0 ||
+               databind_compiler_service_native_emit_binding(
+                   file, views[i].native) != 0) {
       return 0;
+    }
   }
 
   if (fprintf(
@@ -745,6 +1044,11 @@ static int wasm_write_host_source(
 
   for (i = 0u; i < view_count; ++i) {
     const wasm_operation_view *view = &views[i];
+    if (!config->binary_presentation) {
+      if (!wasm_write_contract_host_invoke(file, config, view))
+        return 0;
+      continue;
+    }
 
     if (fprintf(
             file,
@@ -1036,6 +1340,8 @@ static int wasm_generate_impl(
   unsigned char *core_module = NULL;
   size_t core_module_size = 0u;
   wasm_buffer component_binary = {0};
+  databind_compiler_wasm_config rendering_config;
+  int contract_only;
   int ok = 0;
 
   if (input == NULL || request == NULL || config == NULL ||
@@ -1064,6 +1370,14 @@ static int wasm_generate_impl(
   if (!wasm_operations_build(
           input->contract, component, &ir, &views, &view_count))
     goto cleanup;
+  /* The selected Component ABI is explicit. No BinaryFormatPlan, old
+   * builder/view, or Record_t is admitted by a typed-only Wasm request. */
+  contract_only = input->binary_format == NULL && !config->binary_presentation;
+  if (contract_only &&
+      !wasm_contract_u32_admitted(input->contract, &ir, views, view_count))
+    goto cleanup;
+  rendering_config = *config;
+  rendering_config.binary_presentation = !contract_only;
 
   if (!wasm_read_file(
           config->core_module_path,
@@ -1080,15 +1394,15 @@ static int wasm_generate_impl(
       !wasm_write_text_output(
           stages != NULL ? stages[1] : config->host_header_output,
           wasm_write_host_header_adapter,
-          input->contract, config, views, view_count) ||
+          input->contract, &rendering_config, views, view_count) ||
       !wasm_write_text_output(
           stages != NULL ? stages[2] : config->host_source_output,
           wasm_write_host_source,
-          input->contract, config, views, view_count) ||
+          input->contract, &rendering_config, views, view_count) ||
       !wasm_write_text_output(
           stages != NULL ? stages[3] : config->guest_header_output,
           wasm_write_guest_header,
-          input->contract, config, views, view_count))
+          input->contract, &rendering_config, views, view_count))
     goto cleanup;
 
   ok = 1;

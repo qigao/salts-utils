@@ -21,6 +21,8 @@ typedef struct databind_compiler_wasm_config {
 
   /* Stable C identifier derived from the artifact basename. */
   const char *symbol_prefix;
+  /* Explicit Binary presentation for the legacy wire layout, if selected. */
+  int binary_presentation;
 } databind_compiler_wasm_config;
 
 /* Compiler-private stage destinations; semantic names remain in config.
