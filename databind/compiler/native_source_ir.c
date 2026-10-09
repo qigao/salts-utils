@@ -166,6 +166,12 @@ int databind_native_source_ir_build(
       record->fields[j].optional = field->optional != 0;
       record->fields[j].nullable = field->nullable != 0;
       record->fields[j].ownership = (databind_native_source_ownership)ownership;
+      if (ownership == DATABIND_NATIVE_OWNED_SEQUENCE) {
+        const char *element = field->inner_type;
+        if (element == NULL || element[0] == '\0') goto fail;
+        record->fields[j].element_type = element;
+        record->fields[j].element_is_trivial = native_scalar(element) != NULL;
+      }
     }
   }
   if (native_sort_records(&plan) != 0) goto fail;
