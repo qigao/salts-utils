@@ -227,7 +227,7 @@ round-trip significand，再按 Python/Jinja 的 `-4 <= exponent < 16` fixed/sci
 实际CR/CRLF规范化为LF，反斜杠接实际换行输出零字节。
 `\N{NAME}` 由共享 Unicode 17 名称/别名查询校验并解码；未知名称、空名称、命名序列返回
 `SYNTAX`，raw/comment 不解析内部转义，转义反斜杠保留字面量。数据版本与大小写契约见
-[Unicode 名称数据](../../unicode/data/README.md)，不是宿主 Python Unicode 版本的隐式副本。
+[Unicode 名称数据](https://github.com/qigao/salts/blob/master/unicode/data/README.md)，不是宿主 Python Unicode 版本的隐式副本。
 re2c使用无符号字节避免将UTF-8高位字节误判为EOF。内容中的 `|` 不参与 filter 分隔；未闭合引号返回 `SYNTAX`。字符串 literal
 比较先解码，再以显式长度按 canonical UTF-8 byte lexical order 求值；embedded NUL 参与比较，且不做
 normalization 或 locale collation。同类型 literal 比较在 compile 折叠；含路径或异类型 literal 的比较
