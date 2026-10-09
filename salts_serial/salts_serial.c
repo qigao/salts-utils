@@ -532,14 +532,18 @@ salts_serial_result_t salts_serial_start_async(salts_serial_t *serial) {
   atomic_store(&serial->error.last_error, (int)SALTS_SERIAL_OK);
   atomic_store(&serial->async.wake_requested, true);
 
+  /* Publish the running state before launching the worker. A newly created
+   * thread may run immediately; publishing only after create() lets its first
+   * while (async_running) check observe false and exit without pumping. On a
+   * failed launch, roll the state back before returning to the caller. */
+  atomic_store(&serial->async.async_running, true);
   thread_result = cmeta_thread_create(&serial->async.worker_thread, pump_worker_main, serial);
   if (thread_result != 0) {
+    atomic_store(&serial->async.async_running, false);
     atomic_store(&serial->async.wake_requested, false);
     return SALTS_SERIAL_IO_FAILED;
   }
 
-  /* Only set running flag after thread creation succeeds to maintain invariant */
-  atomic_store(&serial->async.async_running, true);
   wake_worker(serial);
   return SALTS_SERIAL_OK;
 }
