@@ -5011,9 +5011,8 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     return 1;
   }
   if (options->binary_codec &&
-      (options->lang_enum != TBE_COMPILER_LANG_C ||
-       options->template_path != NULL)) {
-    fprintf(stderr, "--binary-codec requires built-in --lang c\n");
+      options->lang_enum != TBE_COMPILER_LANG_C) {
+    fprintf(stderr, "--binary-codec requires --lang c\n");
     return 1;
   }
   if (options->lang_enum == TBE_COMPILER_LANG_C &&
