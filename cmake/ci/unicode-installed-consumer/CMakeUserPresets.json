@@ -14,6 +14,7 @@
         "VCPKG_TARGET_TRIPLET": "$env{QIGAO_TARGET_TRIPLET}",
         "VCPKG_HOST_TRIPLET": "$env{QIGAO_HOST_TRIPLET}",
         "VCPKG_MANIFEST_FEATURES": "capture",
+        "VCPKG_INSTALL_OPTIONS": "--only-binarycaching",
         "CMAKE_FIND_USE_PACKAGE_REGISTRY": false,
         "CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY": false
       },
