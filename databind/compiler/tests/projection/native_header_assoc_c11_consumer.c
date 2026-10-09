@@ -7,8 +7,11 @@ int main(void) {
   const uint32_t k1 = 7u, k2 = 11u;
   const int32_t v1 = 19, v2 = 23;
   AssocPacket_init(&a); AssocPacket_init(&b); AssocPacket_init(&moved);
-  if (map_raw_init(&a.lookup, &cmeta_type_uint32, &cmeta_type_int32, 32u) != STL_OK ||
-      set_raw_init(&a.unique, &cmeta_type_uint32, 32u) != STL_OK ||
+  a.lookup.key_type = &cmeta_type_uint32;
+  a.lookup.value_type = &cmeta_type_int32;
+  a.unique.element_type = &cmeta_type_uint32;
+  if (map_init(&a.lookup, 32u) != STL_OK ||
+      set_init(&a.unique, 32u) != STL_OK ||
       map_put(&a.lookup, &k1, &v1) != STL_OK ||
       map_put(&a.lookup, &k2, &v2) != STL_OK ||
       set_add(&a.unique, &k1) != STL_OK ||
