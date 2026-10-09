@@ -15,7 +15,12 @@ int main(void) {
       strcmp(Packet_native_cmeta_fields[0].name, "count") != 0 ||
       Packet_native_cmeta_fields[0].offset != offsetof(Packet, count) ||
       strcmp(Packet_native_cmeta_fields[1].name, "delta") != 0 ||
-      Packet_native_cmeta_fields[1].offset != offsetof(Packet, delta))
+      Packet_native_cmeta_fields[1].offset != offsetof(Packet, delta) ||
+      strcmp(Packet_native_cmeta_fields[2].name, "active") != 0 ||
+      Packet_native_cmeta_fields[2].offset != offsetof(Packet, active) ||
+      Packet_native_cmeta_fields[0].size != sizeof(packet.count) ||
+      Packet_native_cmeta_fields[1].size != sizeof(packet.delta) ||
+      Packet_native_cmeta_fields[2].size != sizeof(packet.active))
     return 2;
 #endif
   Packet_init(&packet);
