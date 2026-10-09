@@ -1385,10 +1385,12 @@ describe("compiler integration") {
     check_equal(ir.record_count, (size_t)1u);
     check_equal(ir.records[0].fields[0].ownership, DATABIND_NATIVE_OWNED_TEXT);
     check_equal(ir.records[0].fields[1].ownership, DATABIND_NATIVE_TRIVIAL);
-    check_true(write_sentinel("native_source_scalar.h", "existing-header"));
     check_equal(databind_native_source_ir_write_header(
-                    &ir, "native_source_scalar.h"), -1);
-    check_true(file_matches("native_source_scalar.h", "existing-header"));
+                    &ir, "native_source_scalar.h"), 0);
+    check_true(file_contains("native_source_scalar.h", "databind_native_text label;"));
+    check_true(file_contains("native_source_scalar.h", "free(value->label.data);"));
+    check_true(file_contains("native_source_scalar.h", "native_clone_fail:"));
+    check_false(file_contains("native_source_scalar.h", "binary_wire"));
     (void)remove("native_source_scalar.h");
     databind_native_source_ir_destroy(&ir);
     idl_contract_destroy(contract);
