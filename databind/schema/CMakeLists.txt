@@ -99,7 +99,7 @@ set(ENUM_ENHANCED_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced.h)
 add_custom_command(
   OUTPUT ${ENUM_ENHANCED_HEADER}
   COMMAND salts_idlc ${ENUM_ENHANCED_SCHEMA}
-          --template ${C_STRUCT_TEMPLATE} --lang c --output ${ENUM_ENHANCED_HEADER}
+          --template ${C_STRUCT_TEMPLATE} --lang c --binary-codec --output ${ENUM_ENHANCED_HEADER}
   WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
   DEPENDS salts_idlc ${ENUM_ENHANCED_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating test_enum_enhanced.h"
@@ -110,7 +110,7 @@ set(ENUM_ENHANCED_SIMPLE_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced_simpl
 add_custom_command(
   OUTPUT ${ENUM_ENHANCED_SIMPLE_HEADER}
   COMMAND salts_idlc ${ENUM_ENHANCED_SIMPLE_SCHEMA}
-          --template ${C_STRUCT_TEMPLATE} --lang c --output ${ENUM_ENHANCED_SIMPLE_HEADER}
+          --template ${C_STRUCT_TEMPLATE} --lang c --binary-codec --output ${ENUM_ENHANCED_SIMPLE_HEADER}
   WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
   DEPENDS salts_idlc ${ENUM_ENHANCED_SIMPLE_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating test_enum_enhanced_simple.h"
@@ -135,7 +135,7 @@ set(UNION_TYPES_HEADER ${CMAKE_BINARY_DIR}/bin/test_union_types.h)
 add_custom_command(
   OUTPUT ${UNION_TYPES_HEADER}
   COMMAND salts_idlc ${UNION_TYPES_SCHEMA}
-          --template ${C_STRUCT_TEMPLATE} --lang c --output ${UNION_TYPES_HEADER}
+          --template ${C_STRUCT_TEMPLATE} --lang c --binary-codec --output ${UNION_TYPES_HEADER}
   WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
   DEPENDS salts_idlc ${UNION_TYPES_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating test_union_types.h"
@@ -178,7 +178,7 @@ set(C_STRUCT_TEMPLATE
 add_custom_command(
   OUTPUT ${BENCH_HEADER}
   COMMAND salts_idlc ${BENCH_SCHEMA} --template ${C_STRUCT_TEMPLATE}
-          --lang c --output ${BENCH_HEADER}
+          --lang c --binary-codec --output ${BENCH_HEADER}
   DEPENDS salts_idlc ${BENCH_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating benchmark headers with salts_idlc"
   VERBATIM)

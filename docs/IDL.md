@@ -66,8 +66,51 @@ salts_idl_target(
   TARGET app_messages
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/messages.schema"
   ARTIFACTS MESSAGE
+  BINARY_CODEC
   FOLDER "generated/message")
 ```
+
+For Contract-only C data types, select `TYPES` alone. This built-in
+`salts_idl_target()` mode emits only a NativeSourceIR C11 header and exposes
+an INTERFACE target linked to canonical Salts CSTL; it does not generate a
+Binary `*_native.c`, admit BinaryFormatPlan, or invent wire offsets:
+
+```cmake
+salts_idl_target(
+  TARGET native_contract
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/native_contract.schema"
+  ARTIFACTS TYPES)
+target_link_libraries(app PRIVATE native_contract_types)
+```
+
+The generated header path is available as
+`native_contract_TYPES_HEADER`, and the target as
+`native_contract_TYPES_TARGET`. `TYPES` cannot be combined with transport or
+other artifact selections because that would conflate the type representation
+with their separate execution/binding ABI. Optional/nullable fields
+retain exact per-field `has_*/is_null_*` C11 bool storage outside the CMeta
+value graph. Under `DATABIND_NATIVE_ENABLE_CMETA` and
+`DATABIND_NATIVE_ENABLE_DATABIND`, generated
+`Record_native_state_bind()` publishes caller-owned
+`DataBindNativeStateBinding` arrays mapping each state to its byte offset
+and bit zero. The generator rejects non-byte or noncanonical bool
+representations before modifying either output array. This is **state
+metadata**, not an executable CMeta VALUE provider; stateful records remain
+VIEW-only pending full canonical lifecycle and native MessagePlan admission.
+Contract-only NATIVE Service
+and PLUGIN function exports now use the exact NativeSourceIR Record/FunctionDesc
+contract for admitted VALUE records. Their public CMake targets omit the
+Binary serializer source when no codec/transport is requested. The Wasm host
+wire bridge, typed-error Service, and presence/null overlays remain separate
+explicit format/ABI work, not compatibility fallbacks.
+
+Executable MESSAGE/WASM and formatted SOCKET/FLOWMQ generation still
+requires explicit `BINARY_CODEC` where its wire/native source has not yet
+adopted NativeSourceIR. NATIVE-only Service and PLUGIN-only Function exports
+without a transport instead consume Contract-only VALUE records and do not
+generate `*_native.c`. Optional/null/typed-error and non-VALUE shapes are
+rejected before publication; mixed Plugin or Native with transports requires
+explicit Binary. `ARTIFACTS TYPES` never admits `BINARY_CODEC`.
 
 The folder applies to the aggregate target, its `_idl_codegen` target, and all
 generated native, Plugin, Plugin client, or WASM library targets. Callers can
@@ -132,12 +175,60 @@ Transport and artifact axes remain orthogonal:
 
 ```text
 TRANSPORT: HTTP | RPC | SOCKET | FLOWMQ | MQTT | WEBSOCKET
-ARTIFACT:  NATIVE | PLUGIN | WASM | OPENAPI | MOCK
+ARTIFACT:  TYPES (Contract-only) | NATIVE | PLUGIN | WASM | OPENAPI | MOCK
 ```
 
 Transport runtimes keep sessions, queues, reconnect, TLS, routing and
 backpressure. Plugin publication consumes the Salts-owned Plugin ABI; it does
 not define another Service model.
+
+### Contract-only PLUGIN artifact
+
+A plugin-only target uses the same canonical CMeta FunctionDesc and
+`DataBindNativeExecution` as NATIVE Service, publishing strongly typed
+`Record` request/response values directly through the Salts Plugin ABI.
+The generated client borrows Function exports only while its acquired Plugin
+lease remains valid, validates both FunctionDesc and FunctionAbi, and releases
+the lease on close. It does **not** publish a Binary codec or a synthetic
+DataBind catalog interface. Use `BINARY_CODEC` explicitly to request the
+separate legacy wire/catalog artifact.
+
+```cmake
+salts_idl_target(
+  TARGET calculator
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/calculator.schema"
+  COMPONENT "Example.Calculator"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "calculator"
+  ARTIFACTS PLUGIN
+  SOURCES calculator_business.c)
+```
+
+### Contract-only Plugin and Wasm Component
+
+Contract-only `ARTIFACTS PLUGIN` emits the NativeSourceIR `Record` type
+and exact CMeta FunctionDesc/FunctionAbi provider and lease-based typed client,
+with no Binary `*_native.c` companion. The Plugin DSO and client are qualified
+through actual registry load, lease ownership, typed invocation, quiescence
+and unload, in both build-tree and installed SDK consumers.
+
+A no-codec `ARTIFACTS WASM` selection uses the same Contract-owned CMeta
+Function ABI. In the first executable Component slice the Core `list<u8>`
+envelope carries ordered `uint32` fields encoded as 4 little-endian bytes
+per field, independent of the generated C record's padding or DataBind
+BinaryFormatPlan. The response envelope is a little-endian i32 status plus,
+on success, the ordered response fields. Every request and response member
+must be a required `uint32` with no default, optional, null, collection,
+typed error or nested record; other shapes fail before publication rather
+than being projected as an undocumented wire ABI. The host and guest use
+canonical `Record` and `Record_native_cmeta_value_bind` declarations, not
+Binary `Record_t`, `*_BLOCK_LENGTH`, wire views or builders.
+
+`ARTIFACTS PLUGIN WASM` can share the no-codec type header; a formatted
+transport still requires an independently explicit Binary admission. Public
+`salts_idl_target()` no-codec Plugin/Wasm sources must not include or link
+`*_native.c`. Installed TurboWasm::Component runtime qualification uses
+the published Core Wasm fixture to execute the same u32 Component envelope.
 
 ### NATIVE Service artifact
 

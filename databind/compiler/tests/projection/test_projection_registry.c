@@ -1,10 +1,26 @@
 #include "projection.h"
 
 #include "compiler_core.h"
+#include "native_source_ir.h"
+#include "native_service_projection.h"
+#include "wasm_projection.h"
+#include "plugin_projection.h"
 #include "tinytest.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef WASM_CORE_FIXTURE_FILE
+#error "WASM_CORE_FIXTURE_FILE is required"
+#endif
+
+#ifndef SCHEMA_WASM_EXECUTION_FILE
+#error "SCHEMA_WASM_EXECUTION_FILE is required"
+#endif
+
+#ifndef SCHEMA_NATIVE_SERVICE_FILE
+#error "SCHEMA_NATIVE_SERVICE_FILE is required"
+#endif
 
 #ifndef SCHEMA_EXAMPLE_FILE
 #error "SCHEMA_EXAMPLE_FILE is required"
@@ -56,6 +72,32 @@ static int file_matches(const char *path, const char *expected) {
   return strcmp(buffer, expected) == 0;
 }
 
+static int file_contains(const char *path, const char *needle) {
+  FILE *file;
+  char *data;
+  long length;
+  int found = 0;
+  if (path == NULL || needle == NULL) return 0;
+  file = fopen(path, "rb");
+  if (file == NULL) return 0;
+  if (fseek(file, 0, SEEK_END) != 0 ||
+      (length = ftell(file)) < 0 ||
+      fseek(file, 0, SEEK_SET) != 0) {
+    (void)fclose(file);
+    return 0;
+  }
+  data = (char *)malloc((size_t)length + 1u);
+  if (data != NULL) {
+    if (fread(data, 1u, (size_t)length, file) == (size_t)length) {
+      data[length] = '\0';
+      found = strstr(data, needle) != NULL;
+    }
+    free(data);
+  }
+  (void)fclose(file);
+  return found;
+}
+
 static int write_sentinel(const char *path, const char *sentinel) {
   size_t size = strlen(sentinel);
   FILE *file = fopen(path, "wb");
@@ -96,6 +138,15 @@ static int staged_projection_generate(
     if (!wrote || !closed) return -1;
   }
   return probe->fail_after_write ? -1 : 0;
+}
+
+/* The Contract-only typed artifact contract cannot borrow BinaryFormatPlan. */
+static int contract_artifact_stage_generate(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    void *context) {
+  if (input == NULL || input->binary_format != NULL) return -1;
+  return staged_projection_generate(input, request, context);
 }
 
 #define ARTIFACT_ID(kind_) \
@@ -276,6 +327,7 @@ describe("compiler integration") {
         .output_path = output,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = sizeof(requests) / sizeof(requests[0]),
         .projection_backends = backends,
@@ -317,6 +369,7 @@ describe("compiler integration") {
         .source_output_path = source,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -382,6 +435,7 @@ describe("compiler integration") {
         .source_output_path = source,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -417,6 +471,1069 @@ describe("compiler integration") {
     (void)remove(source);
     (void)remove(plugin_output);
     (void)remove(http_output);
+  }
+
+  it("rolls back native service header/source when a later staged backend fails") {
+    static const char primary[] = "projection_native_txn.h";
+    static const char service_source[] = "projection_native_txn.service.c";
+    static const char service_header[] = "projection_native_txn.service.h";
+    static const char transport_output[] = "projection_native_txn.http.h";
+    databind_compiler_native_service_config native_config = {
+        .native_header = primary, .header_output = service_header};
+    staged_projection_probe http = {transport_output, "partial-http", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), service_source,
+         &native_config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), transport_output,
+         NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(service_header);
+    (void)remove(transport_output);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(service_source, "old-native-source"));
+    check_true(write_sentinel(service_header, "old-native-header"));
+    check_true(write_sentinel(transport_output, "old-http"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)1u);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(service_source, "old-native-source"));
+    check_true(file_matches(service_header, "old-native-header"));
+    check_true(file_matches(transport_output, "old-http"));
+
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(service_header);
+    (void)remove(transport_output);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)2u);
+    check_false(file_exists(primary));
+    check_false(file_exists(service_source));
+    check_false(file_exists(service_header));
+    check_false(file_exists(transport_output));
+
+    /* The same manifest must commit all outputs when every backend succeeds. */
+    http.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(http.calls, (size_t)3u);
+    check_true(file_exists(primary));
+    check_true(file_exists(service_source));
+    check_true(file_exists(service_header));
+    check_true(file_matches(transport_output, "partial-http"));
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(service_header);
+    (void)remove(transport_output);
+  }
+
+  it("rejects native secondary collision with primary before generation") {
+    static const char primary[] = "projection_native_collision.h";
+    static const char source[] = "projection_native_collision.service.c";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = primary};
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), source, &config};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(primary);
+    (void)remove(source);
+    check_true(write_sentinel(primary, "original-primary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-primary"));
+    check_false(file_exists(source));
+    (void)remove(primary);
+  }
+
+  it("rejects native header collision with selected HTTP output before publication") {
+    static const char primary[] = "projection_native_cross_collision.h";
+    static const char service_source[] = "projection_native_cross_collision.service.c";
+    static const char shared_output[] = "projection_native_cross_collision.http.h";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = shared_output};
+    staged_projection_probe http = {shared_output, "new-http", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), service_source,
+         &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), shared_output,
+         NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(shared_output);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(shared_output, "old-shared"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(shared_output, "old-shared"));
+    check_false(file_exists(service_source));
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(shared_output);
+  }
+
+  it("rejects Native Service source collision with transport output") {
+    static const char primary[] = "projection_native_source_collision.h";
+    static const char shared[] = "projection_native_source_collision.http.h";
+    static const char service_header[] = "projection_native_source_collision.service.h";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = service_header};
+    staged_projection_probe http = {shared, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), shared, &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), shared, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(shared);
+    (void)remove(service_header);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(shared, "old-shared"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(shared, "old-shared"));
+    check_false(file_exists(service_header));
+    (void)remove(primary);
+    (void)remove(shared);
+    (void)remove(service_header);
+  }
+
+  it("rejects mixed self-publishing Native Service selections without touching output") {
+    static const char primary[] = "projection_native_unsupported.h";
+    static const char source[] = "projection_native_unsupported.service.c";
+    static const char header[] = "projection_native_unsupported.service.h";
+    static const char secondary[] = "projection_native_unsupported.http.h";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = header};
+    staged_projection_probe http = {secondary, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), source, &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), secondary, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(source);
+    (void)remove(header);
+    (void)remove(secondary);
+    check_true(write_sentinel(primary, "original"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original"));
+    check_false(file_exists(source));
+    check_false(file_exists(header));
+    check_false(file_exists(secondary));
+    check_equal(http.calls, (size_t)0u);
+    (void)remove(primary);
+  }
+
+  it("rejects self-publishing backend before Native Service without invoking it") {
+    static const char primary[] = "projection_native_order.h";
+    static const char service_source[] = "projection_native_order.service.c";
+    static const char service_header[] = "projection_native_order.service.h";
+    static const char transport_output[] = "projection_native_order.http.h";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = service_header};
+    staged_projection_probe http = {transport_output, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), transport_output, NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), service_source, &config},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED},
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(service_source);
+    (void)remove(service_header);
+    (void)remove(transport_output);
+    check_true(write_sentinel(primary, "original-primary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-primary"));
+    check_false(file_exists(service_source));
+    check_false(file_exists(service_header));
+    check_false(file_exists(transport_output));
+    check_equal(http.calls, (size_t)0u);
+    (void)remove(primary);
+  }
+
+#ifdef _WIN32
+  it("rejects case and slash aliases across coordinator output paths") {
+    static const char primary[] = "projection_windows_txn_alias.h";
+    static const char transport[] = "PROJECTION_WINDOWS_TXN_ALIAS.H";
+    staged_projection_probe http = {transport, "new-http", 0u, 0};
+    const databind_compiler_projection_request request = {
+        TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), transport, NULL};
+    const databind_compiler_projection_backend backend = {
+        TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+        staged_projection_generate, &http,
+        DATABIND_COMPILER_OUTPUT_STAGED_SINGLE};
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(primary);
+    check_true(write_sentinel(primary, "original"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "original"));
+    (void)remove(primary);
+  }
+#endif
+
+  it("rejects mixed self-publishing transport before Wasm without publication") {
+    static const char primary[] = "projection_wasm_mixed.h";
+    static const char component[] = "projection_wasm_mixed.wasm";
+    static const char host_h[] = "projection_wasm_mixed.host.h";
+    static const char host_c[] = "projection_wasm_mixed.host.c";
+    static const char guest_h[] = "projection_wasm_mixed.guest.h";
+    static const char http_path[] = "projection_wasm_mixed.http.h";
+    databind_compiler_wasm_config config = {
+        .component_id = "Fixture.Component",
+        .native_header = primary,
+        .core_module_path = "not-read-before-admission.wasm",
+        .host_header_output = host_h,
+        .host_source_output = host_c,
+        .guest_header_output = guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe http = {http_path, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_path, NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED},
+        DATABIND_COMPILER_WASM_BACKEND,
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(host_h);
+    (void)remove(host_c);
+    (void)remove(guest_h);
+    (void)remove(http_path);
+    check_true(write_sentinel(primary, "original-header"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "original-header"));
+    check_false(file_exists(component));
+    check_false(file_exists(host_h));
+    check_false(file_exists(host_c));
+    check_false(file_exists(guest_h));
+    check_false(file_exists(http_path));
+    (void)remove(primary);
+  }
+
+  it("rejects Wasm secondary destination colliding with main C header") {
+    static const char primary[] = "projection_wasm_duplicate.h";
+    static const char component[] = "projection_wasm_duplicate.wasm";
+    databind_compiler_wasm_config config = {
+        .component_id = "Fixture.Component",
+        .native_header = primary,
+        .core_module_path = "unused-before-path-admission.wasm",
+        .host_header_output = primary,
+        .host_source_output = "projection_wasm_duplicate.host.c",
+        .guest_header_output = "projection_wasm_duplicate.guest.h",
+        .symbol_prefix = "wasm_fixture"};
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_WASM_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(config.host_source_output);
+    (void)remove(config.guest_header_output);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "old-primary"));
+    check_false(file_exists(component));
+    check_false(file_exists(config.host_source_output));
+    check_false(file_exists(config.guest_header_output));
+    (void)remove(primary);
+  }
+
+  it("rejects Wasm host source collision with selected HTTP output") {
+    static const char primary[] = "projection_wasm_http_collision.h";
+    static const char component[] = "projection_wasm_http_collision.wasm";
+    static const char shared[] = "projection_wasm_http_collision.http.h";
+    static const char host_header[] = "projection_wasm_http_collision.host.h";
+    static const char guest_header[] = "projection_wasm_http_collision.guest.h";
+    databind_compiler_wasm_config config = {
+        .component_id = "Fixture.Component",
+        .native_header = primary,
+        .core_module_path = "not-opened-before-admission.wasm",
+        .host_header_output = host_header,
+        .host_source_output = shared,
+        .guest_header_output = guest_header,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe http = {shared, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), shared, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_WASM_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_EXAMPLE_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(shared);
+    (void)remove(host_header);
+    (void)remove(guest_header);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(shared, "old-shared"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(shared, "old-shared"));
+    check_false(file_exists(component));
+    check_false(file_exists(host_header));
+    check_false(file_exists(guest_header));
+    (void)remove(primary);
+    (void)remove(shared);
+  }
+
+  it("publishes Contract-only Wasm u32 host/guest without Binary builders") {
+    static const char primary[] = "projection_wasm_contract.h";
+    static const char component[] = "projection_wasm_contract.wasm";
+    static const char host_h[] = "projection_wasm_contract.wasm.h";
+    static const char host_c[] = "projection_wasm_contract.wasm.c";
+    static const char guest_h[] = "projection_wasm_contract.wasm_guest.h";
+    static const char unsupported_path[] = "projection_wasm_contract_invalid.schema";
+    static const char unsupported[] =
+        "schema WasmRuntime [version(1)]; "
+        "component Calculator { service Calc; } "
+        "message AddRequest { int16 left; uint32 right; } "
+        "message AddResponse { uint32 sum; uint32 product; } "
+        "service Calc { Add: AddRequest -> AddResponse; }";
+    databind_compiler_wasm_config config = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = host_h,
+        .host_source_output = host_c,
+        .guest_header_output = guest_h,
+        .symbol_prefix = "wasm_contract_fixture"
+    };
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_WASM_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u
+    };
+    const char *outputs[] = {primary, component, host_h, host_c, guest_h};
+    size_t i;
+    for (i = 0u; i < 5u; ++i) (void)remove(outputs[i]);
+    (void)remove(unsupported_path);
+    check_equal(tbe_compiler_run(&options), 0);
+    for (i = 0u; i < 5u; ++i) check_true(file_exists(outputs[i]));
+    check_true(file_contains(primary, "typedef struct AddRequest"));
+    check_true(file_contains(host_h, "AddRequest_native_cmeta_binding"));
+    check_true(file_contains(host_h, "__native_owner"));
+    check_true(file_contains(host_c, "uint8_t request_wire[8u]"));
+    check_true(file_contains(host_c, "request->left"));
+    check_true(file_contains(host_c, "result.as.list.items"));
+    check_true(file_contains(guest_h, "__wasm_request_decode"));
+    check_false(file_contains(host_c, "AddRequest_t"));
+    check_false(file_contains(host_c, "_BLOCK_LENGTH"));
+    check_false(file_contains(guest_h, "_view_t"));
+    check_false(file_contains(primary, "binary_wire"));
+
+    /* A Component with unsupported native scalar storage fails closed and
+     * preserves every published artifact, including its prior Core module. */
+    check_true(write_sentinel(unsupported_path, unsupported));
+    options.schema_path = unsupported_path;
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_contains(host_c, "uint8_t request_wire[8u]"));
+    check_true(file_contains(host_h, "AddRequest_native_cmeta_binding"));
+    check_true(file_contains(guest_h, "__wasm_request_decode"));
+    for (i = 0u; i < 5u; ++i) check_true(file_exists(outputs[i]));
+    for (i = 0u; i < 5u; ++i) (void)remove(outputs[i]);
+    (void)remove(unsupported_path);
+  }
+
+  it("preserves all Wasm finals when selected core module is missing") {
+    static const char primary[] = "projection_wasm_missing_core.h";
+    static const char component[] = "projection_wasm_missing_core.wasm";
+    static const char host_h[] = "projection_wasm_missing_core.host.h";
+    static const char host_c[] = "projection_wasm_missing_core.host.c";
+    static const char guest_h[] = "projection_wasm_missing_core.guest.h";
+    databind_compiler_wasm_config config = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = "projection_wasm_missing_core.DOES_NOT_EXIST.wasm",
+        .host_header_output = host_h,
+        .host_source_output = host_c,
+        .guest_header_output = guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_WASM_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u,
+    };
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(host_h);
+    (void)remove(host_c);
+    (void)remove(guest_h);
+    (void)remove(config.core_module_path);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(component, "old-component"));
+    check_true(write_sentinel(host_h, "old-host-header"));
+    check_true(write_sentinel(host_c, "old-host-source"));
+    check_true(write_sentinel(guest_h, "old-guest-header"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(component, "old-component"));
+    check_true(file_matches(host_h, "old-host-header"));
+    check_true(file_matches(host_c, "old-host-source"));
+    check_true(file_matches(guest_h, "old-guest-header"));
+    (void)remove(primary);
+    (void)remove(component);
+    (void)remove(host_h);
+    (void)remove(host_c);
+    (void)remove(guest_h);
+  }
+
+  it("rolls back real Wasm outputs after later transport generator fails") {
+    static const char primary[] = "projection_wasm_real_txn.h";
+    static const char component[] = "projection_wasm_real_txn.wasm";
+    static const char host_h[] = "projection_wasm_real_txn.host.h";
+    static const char host_c[] = "projection_wasm_real_txn.host.c";
+    static const char guest_h[] = "projection_wasm_real_txn.guest.h";
+    static const char http_path[] = "projection_wasm_real_txn.http.h";
+    databind_compiler_wasm_config config = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = host_h,
+        .host_source_output = host_c,
+        .guest_header_output = guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe http = {http_path, "partially-rendered", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_path, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_WASM_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    const char *finals[] = {primary, component, host_h, host_c, guest_h,
+                            http_path};
+    const char *sentinels[] = {"old-primary", "old-component", "old-host-h",
+                               "old-host-c", "old-guest-h", "old-http"};
+    size_t i;
+    for (i = 0u; i < 6u; ++i) {
+      (void)remove(finals[i]);
+      check_true(write_sentinel(finals[i], sentinels[i]));
+    }
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)1u);
+    for (i = 0u; i < 6u; ++i)
+      check_true(file_matches(finals[i], sentinels[i]));
+    for (i = 0u; i < 6u; ++i) (void)remove(finals[i]);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)2u);
+    for (i = 0u; i < 6u; ++i)
+      check_false(file_exists(finals[i]));
+    http.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(http.calls, (size_t)3u);
+    for (i = 0u; i < 6u; ++i)
+      check_true(file_exists(finals[i]));
+    check_true(file_matches(http_path, "partially-rendered"));
+    for (i = 0u; i < 6u; ++i) (void)remove(finals[i]);
+  }
+
+  it("rolls back real Plugin provider and client outputs on late HTTP failure") {
+    static const char primary[] = "projection_plugin_txn.h";
+    static const char provider_c[] = "projection_plugin_txn.plugin.c";
+    static const char provider_h[] = "projection_plugin_txn.plugin.h";
+    static const char client_h[] = "projection_plugin_txn.client.h";
+    static const char client_c[] = "projection_plugin_txn.client.c";
+    static const char http_path[] = "projection_plugin_txn.http.h";
+    databind_compiler_plugin_config config = {
+        .plugin_version_major = 1u,
+        .plugin_version_minor = 0u,
+        .plugin_version_patch = 0u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = provider_h,
+        .client_header_output = client_h,
+        .client_source_output = client_c,
+    };
+    staged_projection_probe http = {http_path, "partial-http", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), provider_c, &config},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_path, NULL},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_PLUGIN_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http, DATABIND_COMPILER_OUTPUT_STAGED_SINGLE},
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    const char *paths[] = {primary, provider_c, provider_h, client_h, client_c, http_path};
+    const char *old[] = {"old-primary", "old-provider-c", "old-provider-h",
+                         "old-client-h", "old-client-c", "old-http"};
+    size_t i;
+    for (i = 0u; i < 6u; ++i) {
+      (void)remove(paths[i]);
+      check_true(write_sentinel(paths[i], old[i]));
+    }
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)1u);
+    for (i = 0u; i < 6u; ++i) check_true(file_matches(paths[i], old[i]));
+    for (i = 0u; i < 6u; ++i) (void)remove(paths[i]);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)2u);
+    for (i = 0u; i < 6u; ++i) check_false(file_exists(paths[i]));
+    http.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(http.calls, (size_t)3u);
+    for (i = 0u; i < 6u; ++i) check_true(file_exists(paths[i]));
+    for (i = 0u; i < 6u; ++i) (void)remove(paths[i]);
+  }
+
+  it("rejects unsupported backend preceding Plugin without publishing output") {
+    static const char primary[] = "projection_plugin_mixed.h";
+    static const char provider_c[] = "projection_plugin_mixed.plugin.c";
+    static const char provider_h[] = "projection_plugin_mixed.plugin.h";
+    static const char client_h[] = "projection_plugin_mixed.client.h";
+    static const char client_c[] = "projection_plugin_mixed.client.c";
+    static const char http_path[] = "projection_plugin_mixed.http.h";
+    databind_compiler_plugin_config config = {
+        .plugin_version_major = 1u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = provider_h,
+        .client_header_output = client_h,
+        .client_source_output = client_c,
+    };
+    staged_projection_probe http = {http_path, "unexpected", 0u, 0};
+    const databind_compiler_projection_request requests[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_path, NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), provider_c, &config},
+    };
+    const databind_compiler_projection_backend backends[] = {
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http,
+         DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED},
+        DATABIND_COMPILER_PLUGIN_BACKEND,
+    };
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u,
+    };
+    const char *outputs[] = {primary, provider_c, provider_h,
+                             client_h, client_c, http_path};
+    size_t i;
+    for (i = 0u; i < 6u; ++i) (void)remove(outputs[i]);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)0u);
+    check_true(file_matches(primary, "old-primary"));
+    for (i = 1u; i < 6u; ++i) check_false(file_exists(outputs[i]));
+    (void)remove(primary);
+  }
+
+  it("rejects Plugin and Wasm secondary output collision before publication") {
+    static const char primary[] = "projection_plugin_wasm_collision.h";
+    static const char shared[] = "projection_plugin_wasm_collision.shared.h";
+    static const char plugin_source[] = "projection_plugin_wasm_collision.plugin.c";
+    static const char wasm_component[] = "projection_plugin_wasm_collision.wasm";
+    databind_compiler_plugin_config plugin = {
+        .plugin_version_major = 1u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = shared,
+        .client_header_output = "projection_plugin_wasm_collision.client.h",
+        .client_source_output = "projection_plugin_wasm_collision.client.c"};
+    databind_compiler_wasm_config wasm = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = shared,
+        .host_source_output = "projection_plugin_wasm_collision.host.c",
+        .guest_header_output = "projection_plugin_wasm_collision.guest.h",
+        .symbol_prefix = "wasm_fixture"};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), plugin_source, &plugin},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), wasm_component, &wasm}};
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_PLUGIN_BACKEND, DATABIND_COMPILER_WASM_BACKEND};
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests,
+        .projection_count = 2u,
+        .projection_backends = backends,
+        .projection_backend_count = 2u};
+    const char *new_outputs[] = {
+        plugin_source, wasm_component, plugin.client_header_output,
+        plugin.client_source_output, wasm.host_source_output,
+        wasm.guest_header_output};
+    size_t i;
+    (void)remove(primary);
+    (void)remove(shared);
+    for (i = 0u; i < 6u; ++i) (void)remove(new_outputs[i]);
+    check_true(write_sentinel(primary, "old-primary"));
+    check_true(write_sentinel(shared, "old-secondary"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "old-primary"));
+    check_true(file_matches(shared, "old-secondary"));
+    for (i = 0u; i < 6u; ++i) check_false(file_exists(new_outputs[i]));
+    (void)remove(primary);
+    (void)remove(shared);
+  }
+
+  it("rolls back mixed Native Plugin Wasm and HTTP on late failure") {
+    static const char primary[] = "projection_all_txn.h";
+    static const char native_c[] = "projection_all_txn.service.c";
+    static const char native_h[] = "projection_all_txn.service.h";
+    static const char plugin_c[] = "projection_all_txn.plugin.c";
+    static const char plugin_h[] = "projection_all_txn.plugin.h";
+    static const char client_h[] = "projection_all_txn.client.h";
+    static const char client_c[] = "projection_all_txn.client.c";
+    static const char wasm_component[] = "projection_all_txn.wasm";
+    static const char wasm_host_h[] = "projection_all_txn.host.h";
+    static const char wasm_host_c[] = "projection_all_txn.host.c";
+    static const char wasm_guest_h[] = "projection_all_txn.guest.h";
+    static const char http_h[] = "projection_all_txn.http.h";
+    databind_compiler_native_service_config native = {
+        .native_header = primary, .header_output = native_h};
+    databind_compiler_plugin_config plugin = {
+        .plugin_version_major = 1u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = plugin_h,
+        .client_header_output = client_h,
+        .client_source_output = client_c};
+    databind_compiler_wasm_config wasm = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = wasm_host_h,
+        .host_source_output = wasm_host_c,
+        .guest_header_output = wasm_guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe http = {http_h, "http-new", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), native_c, &native},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), plugin_c, &plugin},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), wasm_component, &wasm},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), http_h, NULL}};
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        DATABIND_COMPILER_PLUGIN_BACKEND,
+        DATABIND_COMPILER_WASM_BACKEND,
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         staged_projection_generate, &http, DATABIND_COMPILER_OUTPUT_STAGED_SINGLE}};
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
+        .projection_requests = requests, .projection_count = 4u,
+        .projection_backends = backends, .projection_backend_count = 4u};
+    const char *outputs[] = {
+        primary, native_c, native_h, plugin_c, plugin_h, client_h, client_c,
+        wasm_component, wasm_host_h, wasm_host_c, wasm_guest_h, http_h};
+    size_t i;
+    for (i = 0u; i < 12u; ++i) {
+      (void)remove(outputs[i]);
+      check_true(write_sentinel(outputs[i], "old"));
+    }
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)1u);
+    for (i = 0u; i < 12u; ++i) check_true(file_matches(outputs[i], "old"));
+    for (i = 0u; i < 12u; ++i) (void)remove(outputs[i]);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(http.calls, (size_t)2u);
+    for (i = 0u; i < 12u; ++i) check_false(file_exists(outputs[i]));
+    http.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(http.calls, (size_t)3u);
+    for (i = 0u; i < 12u; ++i) check_true(file_exists(outputs[i]));
+    check_true(file_contains(native_c, native_h));
+    check_true(file_contains(plugin_c, plugin_h));
+    check_true(file_contains(wasm_host_c, wasm_host_h));
+    check_false(file_contains(plugin_c, "projection_all_txn.plugin.h.tbe."));
+    check_false(file_contains(wasm_host_c, "projection_all_txn.host.h.tbe."));
+    for (i = 0u; i < 12u; ++i) (void)remove(outputs[i]);
+  }
+
+  it("rejects Contract-only Native secondary path collision before publication") {
+    static const char primary[] = "projection_native_contract_collision.h";
+    static const char service_source[] =
+        "projection_native_contract_collision.service.c";
+    databind_compiler_native_service_config native = {
+        .native_header = primary, .header_output = primary};
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE),
+        service_source, &native};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u
+    };
+    (void)remove(primary);
+    (void)remove(service_source);
+    check_true(write_sentinel(primary, "original-native-header"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-native-header"));
+    check_false(file_exists(service_source));
+    (void)remove(primary);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_false(file_exists(primary));
+    check_false(file_exists(service_source));
+  }
+
+  it("rejects dishonest single-stage declaration for a multi-file Native artifact") {
+    static const char primary[] = "projection_native_dishonest.h";
+    static const char service_h[] = "projection_native_dishonest.service.h";
+    static const char service_c[] = "projection_native_dishonest.service.c";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = service_h};
+    databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), service_c, &config};
+    databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u
+    };
+    backend.output_policy = DATABIND_COMPILER_OUTPUT_STAGED_SINGLE;
+    (void)remove(primary);
+    (void)remove(service_h);
+    (void)remove(service_c);
+    check_true(write_sentinel(primary, "original-header"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-header"));
+    check_false(file_exists(service_h));
+    check_false(file_exists(service_c));
+    (void)remove(primary);
+  }
+
+  it("rejects unqualified optional Native Service VALUE ABI without publication") {
+    static const char schema_path[] = "contract_native_service_optional.schema";
+    static const char primary[] = "contract_native_service_optional.h";
+    static const char provider_h[] = "contract_native_service_optional.service_native.h";
+    static const char provider_c[] = "contract_native_service_optional.service_native.c";
+    static const char schema[] =
+        "schema NativeOptional; message Request { optional uint32 value; } "
+        "message Response { uint32 result; } "
+        "service Calculator { Add: Request -> Response; }";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = provider_h};
+    databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), provider_c, &config};
+    databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = primary,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u
+    };
+    (void)remove(schema_path);
+    (void)remove(primary);
+    (void)remove(provider_h);
+    (void)remove(provider_c);
+    check_true(write_sentinel(schema_path, schema));
+    check_true(write_sentinel(primary, "original-header"));
+    check_true(write_sentinel(provider_h, "original-provider"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-header"));
+    check_true(file_matches(provider_h, "original-provider"));
+    check_false(file_exists(provider_c));
+    (void)remove(schema_path);
+    (void)remove(primary);
+    (void)remove(provider_h);
+  }
+
+  it("rolls back Contract-only Native Plugin Wasm DSL and typed artifact together") {
+    static const char primary[] = "projection_native_contract_txn.h";
+    static const char native_c[] = "projection_native_contract_txn.service.c";
+    static const char native_h[] = "projection_native_contract_txn.service.h";
+    static const char plugin_c[] = "projection_native_contract_txn.plugin.c";
+    static const char plugin_h[] = "projection_native_contract_txn.plugin.h";
+    static const char client_h[] = "projection_native_contract_txn.client.h";
+    static const char client_c[] = "projection_native_contract_txn.client.c";
+    static const char wasm_component[] = "projection_native_contract_txn.wasm";
+    static const char wasm_host_h[] = "projection_native_contract_txn.host.h";
+    static const char wasm_host_c[] = "projection_native_contract_txn.host.c";
+    static const char wasm_guest_h[] = "projection_native_contract_txn.guest.h";
+    static const char artifact_h[] = "projection_native_contract_txn.artifact.h";
+    static const char dsl[] = "projection_native_contract_txn.rfl";
+    databind_compiler_native_service_config native = {
+        .native_header = primary, .header_output = native_h};
+    databind_compiler_plugin_config plugin = {
+        .plugin_version_major = 1u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = plugin_h,
+        .client_header_output = client_h,
+        .client_source_output = client_c};
+    databind_compiler_wasm_config wasm = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = wasm_host_h,
+        .host_source_output = wasm_host_c,
+        .guest_header_output = wasm_guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe artifact = {artifact_h, "artifact-new", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), native_c, &native},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), plugin_c, &plugin},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), wasm_component, &wasm},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_OPENAPI), artifact_h, NULL}};
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        DATABIND_COMPILER_PLUGIN_BACKEND,
+        DATABIND_COMPILER_WASM_BACKEND,
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_OPENAPI), "openapi",
+         contract_artifact_stage_generate, &artifact, DATABIND_COMPILER_OUTPUT_STAGED_SINGLE}};
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .dsl_output_path = dsl,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests, .projection_count = 4u,
+        .projection_backends = backends, .projection_backend_count = 4u};
+    const char *outputs[] = {
+        primary, native_c, native_h, plugin_c, plugin_h, client_h, client_c,
+        wasm_component, wasm_host_h, wasm_host_c, wasm_guest_h, artifact_h, dsl};
+    size_t i;
+    for (i = 0u; i < 13u; ++i) {
+      (void)remove(outputs[i]);
+      check_true(write_sentinel(outputs[i], "old"));
+    }
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(artifact.calls, (size_t)1u);
+    for (i = 0u; i < 13u; ++i) check_true(file_matches(outputs[i], "old"));
+    for (i = 0u; i < 13u; ++i) (void)remove(outputs[i]);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(artifact.calls, (size_t)2u);
+    for (i = 0u; i < 13u; ++i) check_false(file_exists(outputs[i]));
+    artifact.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(artifact.calls, (size_t)3u);
+    for (i = 0u; i < 13u; ++i) check_true(file_exists(outputs[i]));
+    check_true(file_contains(primary, "typedef struct AddRequest"));
+    check_false(file_contains(primary, "binary_wire"));
+    check_true(file_contains(dsl, "declare AddRequest"));
+    check_true(file_contains(native_c, native_h));
+    check_true(file_contains(plugin_c, plugin_h));
+    check_true(file_contains(wasm_host_c, wasm_host_h));
+    check_false(file_contains(plugin_c, "projection_native_contract_txn.plugin.h.tbe."));
+    check_false(file_contains(wasm_host_c, "projection_native_contract_txn.host.h.tbe."));
+    for (i = 0u; i < 13u; ++i) (void)remove(outputs[i]);
   }
 
   it("rejects incomplete or dishonest selected staging capability sets") {
@@ -464,6 +1581,7 @@ describe("compiler integration") {
         .output_path = output,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = sizeof(requests) / sizeof(requests[0]),
         .projection_backends = backends,
@@ -486,6 +1604,505 @@ describe("compiler integration") {
     check_equal(plugin.calls, (size_t)0u);
     check_false(file_exists(output));
     check_false(file_exists(source));
+  }
+
+  it("lowers fixed-width C fields from Contract without Binary offsets") {
+    static const char schema_path[] = "native_source_scalar.schema";
+    static const char valid[] = "schema NativeScalar; message Packet { uint32 count; int16 delta; }";
+    static const char unsupported[] = "schema NativeScalar; message Packet { string label; uint32 count; }";
+    Node *tree = NULL;
+    IdlContract *contract = NULL;
+    char *source = NULL;
+    databind_native_source_ir ir = {0};
+    (void)remove(schema_path);
+    check_true(write_sentinel(schema_path, valid));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), 0);
+    check_equal(ir.record_count, (size_t)1u);
+    check_equal(ir.schema_name, "NativeScalar");
+    check_null(ir.schema_version);
+    check_equal(ir.records[0].name, "Packet");
+    check_equal(ir.records[0].field_count, (size_t)2u);
+    check_equal(ir.records[0].fields[0].name, "count");
+    check_equal(ir.records[0].fields[0].c_type, "uint32_t");
+    check_equal(ir.records[0].fields[1].c_type, "int16_t");
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_source_scalar.h"), 0);
+    check_true(file_contains("native_source_scalar.h", "#include <stdint.h>"));
+    check_true(file_contains("native_source_scalar.h", "uint32_t count;"));
+    check_true(file_contains("native_source_scalar.h", "int16_t delta;"));
+    check_false(file_contains("native_source_scalar.h", "binary_wire"));
+    check_false(file_contains("native_source_scalar.h", "_OFFSET"));
+    (void)remove("native_source_scalar.h");
+    ir.records[0].fields[0].optional = 1;
+    ir.records[0].fields[1].nullable = 1;
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_source_scalar.h"), 0);
+    check_true(file_contains("native_source_scalar.h", "bool has_count;"));
+    check_true(file_contains("native_source_scalar.h", "bool is_null_delta;"));
+    check_false(file_contains("native_source_scalar.h", "binary_wire"));
+    (void)remove("native_source_scalar.h");
+    {
+      databind_native_source_record duplicate[2] = {
+          ir.records[0], ir.records[0]
+      };
+      databind_native_source_ir invalid = {2u, duplicate, "NativeScalar", NULL};
+      check_true(write_sentinel("native_source_scalar.h", "existing-header"));
+      check_equal(databind_native_source_ir_write_header(
+                      &invalid, "native_source_scalar.h"), -1);
+      check_true(file_matches("native_source_scalar.h", "existing-header"));
+      (void)remove("native_source_scalar.h");
+    }
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    tree = NULL;
+    contract = NULL;
+    source = NULL;
+    check_true(write_sentinel(schema_path, unsupported));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), 0);
+    check_equal(ir.record_count, (size_t)1u);
+    check_equal(ir.records[0].fields[0].ownership, DATABIND_NATIVE_OWNED_TEXT);
+    check_equal(ir.records[0].fields[1].ownership, DATABIND_NATIVE_TRIVIAL);
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_source_scalar.h"), 0);
+    check_true(file_contains("native_source_scalar.h", "databind_native_text label;"));
+    check_true(file_contains("native_source_scalar.h", "free(value->label.data);"));
+    check_true(file_contains("native_source_scalar.h", "native_clone_fail:"));
+    check_false(file_contains("native_source_scalar.h", "binary_wire"));
+    (void)remove("native_source_scalar.h");
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    (void)remove(schema_path);
+  }
+
+  it("orders nested Native records and rejects recursive value cycles") {
+    static const char schema_path[] = "native_nested_order.schema";
+    static const char forward[] =
+        "schema NativeGraph; message Parent { Child child; } "
+        "message Child { uint32 count; }";
+    static const char cyclic[] =
+        "schema NativeGraph; message Parent { Child child; } "
+        "message Child { Parent parent; }";
+    Node *tree = NULL;
+    IdlContract *contract = NULL;
+    char *source = NULL;
+    databind_native_source_ir ir = {0};
+    (void)remove(schema_path);
+    check_true(write_sentinel(schema_path, forward));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), 0);
+    check_equal(ir.record_count, (size_t)2u);
+    check_equal(ir.records[0].name, "Child");
+    check_equal(ir.records[1].name, "Parent");
+    check_equal(ir.records[1].fields[0].ownership,
+                DATABIND_NATIVE_OWNED_RECORD);
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_nested_order.h"), 0);
+    check_true(file_contains("native_nested_order.h", "Child_clear(&value->child);"));
+    check_true(file_contains("native_nested_order.h",
+                             "Child_clone(&tmp.child, &src->child)"));
+    (void)remove("native_nested_order.h");
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    tree = NULL;
+    contract = NULL;
+    source = NULL;
+    check_true(write_sentinel(schema_path, cyclic));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), -1);
+    check_true(ir.records == NULL);
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    (void)remove(schema_path);
+  }
+
+  it("tracks scalar and owning sequence provider admission") {
+    static const char path[] = "native_sequence_metadata.schema";
+    static const char source_text[] =
+        "schema NativeSequence; message Item { "
+        "list<uint32> numbers; list<string> names; }";
+    Node *tree = NULL;
+    IdlContract *contract = NULL;
+    char *source = NULL;
+    databind_native_source_ir ir = {0};
+    (void)remove(path);
+    check_true(write_sentinel(path, source_text));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), 0);
+    check_equal(ir.record_count, (size_t)1u);
+    check_equal(ir.records[0].fields[0].ownership, DATABIND_NATIVE_OWNED_SEQUENCE);
+    check_equal(ir.records[0].fields[0].element_type, "uint32");
+    check_true(ir.records[0].fields[0].element_is_trivial);
+    check_equal(ir.records[0].fields[0].element_cmeta_symbol,
+                "cmeta_type_uint32");
+    check_equal(ir.records[0].fields[1].ownership, DATABIND_NATIVE_OWNED_SEQUENCE);
+    check_equal(ir.records[0].fields[1].element_type, "string");
+    check_false(ir.records[0].fields[1].element_is_trivial);
+    check_equal(ir.records[0].fields[1].element_cmeta_symbol,
+                "databind_native_text_cmeta_type");
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_sequence_metadata.h"), 0);
+    check_true(file_contains("native_sequence_metadata.h",
+                             "databind_native_text_cmeta_traits"));
+    check_false(file_contains("native_sequence_metadata.h", "binary_wire"));
+    (void)remove("native_sequence_metadata.h");
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    (void)remove(path);
+  }
+
+  it("admits owning Record sequences and Map values from Contract only") {
+    static const char schema_path[] = "native_record_collections.schema";
+    static const char output[] = "native_record_collections.h";
+    static const char schema[] =
+        "schema NativeRecordElements [version(2)]; "
+        "message Parent { list<Detail> items; map<string,Detail> lookup; } "
+        "message Detail { string label; bytes payload; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "static const cmeta_type_desc Detail_native_element_cmeta_type;"));
+    check_true(file_contains(output, "Detail_native_element_copy"));
+    check_true(file_contains(output, "Detail_native_element_move"));
+    check_true(file_contains(output, "Detail_native_element_destroy"));
+    check_true(file_contains(output, "tbe.native.NativeRecordElements.v2.Detail"));
+    check_true(file_contains(output, "vec_t items;"));
+    check_true(file_contains(output, "map_t lookup;"));
+    check_true(file_contains(output, "&Detail_native_element_cmeta_type"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
+  it("rejects Record keys and Set elements without comparison traits") {
+    static const char schema_path[] = "native_record_key_reject.schema";
+    static const char output[] = "native_record_key_reject.h";
+    static const char record_decl[] = "message Detail { uint32 id; }";
+    static const char invalid_set[] =
+        "schema NativeRecordKeys; message Detail { uint32 id; } "
+        "message Parent { set<Detail> keys; }";
+    static const char invalid_map[] =
+        "schema NativeRecordKeys; message Detail { uint32 id; } "
+        "message Parent { map<Detail,uint32> lookup; }";
+    (void)record_decl;
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(output, "original-output"));
+    check_true(write_sentinel(schema_path, invalid_set));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), -1);
+    check_true(file_matches(output, "original-output"));
+    check_true(write_sentinel(schema_path, invalid_map));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), -1);
+    check_true(file_matches(output, "original-output"));
+    (void)remove(schema_path);
+    (void)remove(output);
+  }
+
+  it("allows collection-recursive Record without inline value cycle") {
+    static const char schema_path[] = "native_record_recursive.schema";
+    static const char output[] = "native_record_recursive.h";
+    static const char schema[] =
+        "schema NativeRecursive; message Node { uint32 id; list<Node> children; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "Node_native_element_cmeta_type"));
+    check_true(file_contains(output, "vec_t children;"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
+  it("admits canonical uint32 CSTL sequence without Binary format") {
+    static const char schema_path[] = "native_cstl_scalar.schema";
+    static const char output[] = "native_cstl_scalar.h";
+    static const char schema[] =
+        "schema NativeSequence; message Item { list<uint32> numbers; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "#include <cstl/vec.h>"));
+    check_true(file_contains(output, "vec_t numbers;"));
+    check_true(file_contains(output, "vec_raw_init(&tmp.numbers, &cmeta_type_uint32"));
+    check_true(file_contains(output, "vec_destroy(&value->numbers)"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
+  it("renders canonical CSTL map and set without Binary admission") {
+    static const char schema_path[] = "native_assoc.schema";
+    static const char output[] = "native_assoc.h";
+    static const char schema[] =
+        "schema NativeAssoc; message Item { "
+        "map<uint32,int32> lookup; set<uint32> unique; }";
+    (void)remove(schema_path); (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(schema_path, output), 0);
+    check_true(file_contains(output, "map_t lookup;"));
+    check_true(file_contains(output, "set_t unique;"));
+    check_true(file_contains(output, "map_init(&tmp.lookup, map_entry_limit(&src->lookup)"));
+    check_true(file_contains(output, "set_init(&tmp.unique, set_element_limit(&src->unique)"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output); (void)remove(schema_path);
+  }
+
+  it("lowers owning string and bytes CSTL collections through canonical CMeta") {
+    static const char schema_path[] = "native_owned_collections.schema";
+    static const char output[] = "native_owned_collections.h";
+    static const char schema[] =
+        "schema NativeOwnedCollections; message Entry { "
+        "list<string> labels; list<bytes> buffers; "
+        "map<string,bytes> attrs; set<string> tags; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "vec_t labels;"));
+    check_true(file_contains(output, "vec_t buffers;"));
+    check_true(file_contains(output, "map_t attrs;"));
+    check_true(file_contains(output, "set_t tags;"));
+    check_true(file_contains(output, "databind_native_text_cmeta_type"));
+    check_true(file_contains(output, "databind_native_bytes_cmeta_type"));
+    check_true(file_contains(output, "CMETA_TRAIT_COPY"));
+    check_true(file_contains(output, "CMETA_TRAIT_DESTROY"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
+  it("streams Contract-only Native C without opening a caller-owned file") {
+    databind_native_source_field field = {
+        .name = "count", .c_type = "uint32_t",
+        .ownership = DATABIND_NATIVE_TRIVIAL
+    };
+    databind_native_source_record record = {"StreamPacket", 1u, &field};
+    databind_native_source_ir ir = {
+        1u, &record, "StreamFixture", "1"
+    };
+    FILE *stream = tmpfile();
+    char line[256];
+    int saw_struct = 0, saw_field = 0;
+    check_not_null(stream);
+    if (stream != NULL) {
+      check_equal(databind_native_source_ir_write_stream(&ir, stream), 0);
+      rewind(stream);
+      while (fgets(line, sizeof(line), stream) != NULL) {
+        if (strstr(line, "typedef struct StreamPacket") != NULL)
+          saw_struct = 1;
+        if (strstr(line, "uint32_t count;") != NULL)
+          saw_field = 1;
+      }
+      check_true(saw_struct);
+      check_true(saw_field);
+      check_equal(fclose(stream), 0);
+    }
+    check_equal(databind_native_source_ir_write_stream(&ir, NULL), -1);
+  }
+
+  it("preserves IDL optional and nullable flags through Native header publication") {
+    static const char schema_path[] = "native_source_presence.schema";
+    static const char output[] = "native_source_presence.h";
+    static const char schema[] =
+        "schema NativePresence [version(3)]; message Packet { optional uint32 count; "
+        "nullable int16 delta; optional nullable bool active; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    /* Overlaid presence/null state is outside native CMeta fieldwise VALUE
+     * lifecycle. This type is inspectable VIEW only, never a value provider. */
+    check_false(file_contains(output, "Packet_native_cmeta_value_bind"));
+    check_true(file_contains(output, "bool has_count;"));
+    check_true(file_contains(output, "uint32_t count;"));
+    check_true(file_contains(output, "bool is_null_delta;"));
+    check_true(file_contains(output, "int16_t delta;"));
+    check_true(file_contains(output, "bool has_active;"));
+    check_true(file_contains(output,
+                             "tbe.native.NativePresence.v3.Packet"));
+    check_true(file_contains(output, "bool is_null_active;"));
+    check_true(file_contains(output, "bool active;"));
+    check_true(file_contains(output, "Packet_init(Packet *value)"));
+    check_true(file_contains(output, "Packet_clear(Packet *value)"));
+    check_true(file_contains(output, "*value = (Packet){0};"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
+  it("rejects native presence flag collisions before changing a header") {
+    static const char output[] = "native_presence_collision.h";
+    databind_native_source_field fields[2] = {
+        {"count", "uint32_t", 1, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL},
+        {"has_count", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL}
+    };
+    databind_native_source_record record = {"Packet", 2u, fields};
+    databind_native_source_ir ir = {1u, &record, "ManualFixture", NULL};
+    (void)remove(output);
+    check_true(write_sentinel(output, "existing-presence-header"));
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "existing-presence-header"));
+    fields[0].optional = 0;
+    fields[0].nullable = 1;
+    fields[1].name = "is_null_count";
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "existing-presence-header"));
+    (void)remove(output);
+  }
+
+  it("rejects empty records and lifecycle symbol collisions before publication") {
+    static const char output[] = "native_invalid_symbols.h";
+    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL};
+    databind_native_source_record records[2] = {
+        {"Packet", 1u, &field}, {"Packet_init", 1u, &field}
+    };
+    databind_native_source_ir ir = {2u, records, "ManualFixture", NULL};
+    (void)remove(output);
+    check_true(write_sentinel(output, "previous-header"));
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "previous-header"));
+    records[1].name = "Packet_clear";
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "previous-header"));
+    ir.record_count = 1u;
+    records[0].field_count = 0u;
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "previous-header"));
+    (void)remove(output);
+  }
+
+  it("rejects reserved C record and field identifiers without publishing") {
+    static const char output[] = "native_reserved_identifiers.h";
+    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL};
+    databind_native_source_record record = {"struct", 1u, &field};
+    databind_native_source_ir ir = {1u, &record, "ManualFixture", NULL};
+    (void)remove(output);
+    check_true(write_sentinel(output, "original-c-header"));
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "original-c-header"));
+    record.name = "Packet";
+    field.name = "while";
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "original-c-header"));
+    field.name = "_reserved";
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "original-c-header"));
+    (void)remove(output);
+  }
+
+  it("publishes Contract-only Native C header transactionally") {
+    static const char schema_path[] = "native_source_publish.schema";
+    static const char output[] = "native_source_publish.h";
+    static const char valid[] = "schema NativePublish; message Packet { uint32 count; int16 delta; }";
+    static const char unsupported[] = "schema NativePublish; message Packet { uuid token; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, valid));
+    check_true(write_sentinel(output, "original-native-header"));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "uint32_t count;"));
+    check_false(file_contains(output, "binary_wire"));
+    check_true(write_sentinel(schema_path, unsupported));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), -1);
+    check_true(file_contains(output, "uint32_t count;"));
+    (void)remove(output);
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), -1);
+    check_false(file_exists(output));
+    (void)remove(schema_path);
+  }
+
+  it("freezes a Binary-incompatible logical Contract without wire admission") {
+    static const char schema_path[] = "projection_contract_only.schema";
+    static const char schema[] =
+        "message Packet { string label; uint32 sequence; }";
+    Node *tree = NULL;
+    IdlContract *contract = NULL;
+    char *source = NULL;
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    schema_path, &tree, &contract, &source), 0);
+    check_not_null(tree);
+    check_not_null(contract);
+    check_not_null(source);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    tree = NULL;
+    contract = NULL;
+    source = NULL;
+    check_equal(databind_compiler_parse_contract_file(
+                    schema_path, &tree, &contract, &source), 1);
+    check_true(tree == NULL);
+    check_true(contract == NULL);
+    check_true(source == NULL);
+    (void)remove(schema_path);
+  }
+
+  it("uses NativeSourceIR for bare C and strict Binary only on explicit selection") {
+    static const char schema_path[] = "projection_c_binary_boundary.schema";
+    static const char output[] = "projection_c_binary_boundary.h";
+    static const char companion[] = "projection_c_binary_boundary.c";
+    static const char schema[] =
+        "schema NativeBoundary; message Packet { string label; uint32 sequence; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+    };
+    (void)remove(schema_path);
+    (void)remove(output);
+    (void)remove(companion);
+    check_true(write_sentinel(schema_path, schema));
+    check_true(write_sentinel(output, "existing-c-header"));
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(file_contains(output, "databind_native_text label;"));
+    check_true(file_contains(output, "uint32_t sequence;"));
+    check_false(file_contains(output, "binary_wire"));
+    check_false(file_contains(output, "existing-c-header"));
+
+    options.binary_codec = 1;
+    check_true(write_sentinel(output, "untouched-binary-header"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(output, "untouched-binary-header"));
+    options.binary_codec = 0;
+    options.source_output_path = companion;
+    check_true(write_sentinel(companion, "untouched-companion"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(output, "untouched-binary-header"));
+    check_true(file_matches(companion, "untouched-companion"));
+    (void)remove(output);
+    (void)remove(companion);
+    (void)remove(schema_path);
   }
 
   it("admits source-only artifact requests without Binary layout") {

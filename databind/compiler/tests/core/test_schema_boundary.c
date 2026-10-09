@@ -173,6 +173,7 @@ spec("tbe_compiler_default_type_identity") {
         .output_path = output_path,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
     };
     char *output;
     int status, qualified = 0;
@@ -402,6 +403,7 @@ spec("typescript_contract_render_ir") {
     check_true(test_render_file_contains(output_path, "status: Status;"));
 
     options.lang_enum = TBE_COMPILER_LANG_C;
+    options.binary_codec = 1;
     options.output_path = binary_path;
     check_not_equal(tbe_compiler_run(&options), 0);
     check_false(file_exists(binary_path));
@@ -431,6 +433,7 @@ spec("typescript_contract_render_ir") {
     check_true(test_render_file_contains(ts_path, "sequence: number;"));
 
     options.lang_enum = TBE_COMPILER_LANG_C;
+    options.binary_codec = 1;
     options.output_path = c_path;
     check_not_equal(tbe_compiler_run(&options), 0);
     check_false(file_exists(c_path));
@@ -556,6 +559,7 @@ spec("python_contract_render_ir") {
     check_false(test_render_file_contains(output_path, "# size:"));
 
     options.lang_enum = TBE_COMPILER_LANG_C;
+    options.binary_codec = 1;
     options.output_path = binary_path;
     check_not_equal(tbe_compiler_run(&options), 0);
     check_false(file_exists(binary_path));
@@ -664,6 +668,7 @@ spec("go_contract_render_ir") {
     check_true(test_render_file_contains(go_path, "Parts []Parts"));
 
     options.lang_enum = TBE_COMPILER_LANG_C;
+    options.binary_codec = 1;
     options.output_path = c_path;
     check_not_equal(tbe_compiler_run(&options), 0);
     check_false(file_exists(c_path));
@@ -813,6 +818,7 @@ spec("rust_contract_render_ir") {
     check_false(test_render_file_contains(output_path, "size_bytes"));
 
     options.lang_enum = TBE_COMPILER_LANG_C;
+    options.binary_codec = 1;
     options.output_path = binary_path;
     check_not_equal(tbe_compiler_run(&options), 0);
     check_false(file_exists(binary_path));
@@ -1007,6 +1013,7 @@ spec("cpp_contract_render_ir") {
     }
 
     options.lang_enum = TBE_COMPILER_LANG_C;
+    options.binary_codec = 1;
     options.output_path = binary_path;
     check_not_equal(tbe_compiler_run(&options), 0);
     check_false(file_exists(binary_path));

@@ -78,7 +78,10 @@ typedef int (*databind_compiler_projection_generate_fn)(
  * of request->output in generated contents. Other backends must not opt in. */
 typedef enum databind_compiler_output_policy {
   DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED = 0,
-  DATABIND_COMPILER_OUTPUT_STAGED_SINGLE = 1
+  DATABIND_COMPILER_OUTPUT_STAGED_SINGLE = 1,
+  /* A verified generator has a fixed multi-output stage signature. All its
+   * declared outputs are reserved, completed and committed by one coordinator. */
+  DATABIND_COMPILER_OUTPUT_STAGED_MULTI = 2
 } databind_compiler_output_policy;
 
 typedef struct databind_compiler_projection_backend {

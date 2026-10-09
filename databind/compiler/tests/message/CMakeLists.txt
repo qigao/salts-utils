@@ -43,7 +43,7 @@ set_tests_properties(test_databind_nullable_codegen
 cmake_add_test(test_databind_message_native
   SOURCES
     test_message_native.c
-    "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c" "${DATABIND_COMPILER_SOURCE_DIR}/native_source_ir.c" "${DATABIND_COMPILER_SOURCE_DIR}/plugin_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/wasm_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/service_native.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c"
@@ -72,6 +72,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/message"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_message_native_artifact.schema"
   ARTIFACT_NAME "message_native_artifact"
+  BINARY_CODEC
   ARTIFACTS MESSAGE)
 
 salts_idl_target(
@@ -79,6 +80,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/message"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_nested_native_generics.schema"
   ARTIFACT_NAME "nested_native_generics"
+  BINARY_CODEC
   ARTIFACTS MESSAGE)
 
 cmake_add_test(test_databind_nested_native_generics
