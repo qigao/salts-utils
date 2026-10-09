@@ -69,6 +69,28 @@ salts_idl_target(
   FOLDER "generated/message")
 ```
 
+For Contract-only C data types, select `TYPES` alone. This built-in
+`salts_idl_target()` mode emits only a NativeSourceIR C11 header and exposes
+an INTERFACE target linked to canonical Salts CSTL; it does not generate a
+Binary `*_native.c`, admit BinaryFormatPlan, or invent wire offsets:
+
+```cmake
+salts_idl_target(
+  TARGET native_contract
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/native_contract.schema"
+  ARTIFACTS TYPES)
+target_link_libraries(app PRIVATE native_contract_types)
+```
+
+The generated header path is available as
+`native_contract_TYPES_HEADER`, and the target as
+`native_contract_TYPES_TARGET`. `TYPES` cannot be combined with transport or
+other artifact selections because that would conflate the type representation
+with their separate execution/binding ABI. Existing NATIVE/PLUGIN/WASM
+execution providers still need a separate CMeta/DataBind ABI cutover before
+their Binary companion can be removed; this is a strict boundary, not a
+fallback renderer.
+
 The folder applies to the aggregate target, its `_idl_codegen` target, and all
 generated native, Plugin, Plugin client, or WASM library targets. Callers can
 group different artifact and transport templates under separate folder paths.
@@ -132,7 +154,7 @@ Transport and artifact axes remain orthogonal:
 
 ```text
 TRANSPORT: HTTP | RPC | SOCKET | FLOWMQ | MQTT | WEBSOCKET
-ARTIFACT:  NATIVE | PLUGIN | WASM | OPENAPI | MOCK
+ARTIFACT:  TYPES (Contract-only) | NATIVE | PLUGIN | WASM | OPENAPI | MOCK
 ```
 
 Transport runtimes keep sessions, queues, reconnect, TLS, routing and
