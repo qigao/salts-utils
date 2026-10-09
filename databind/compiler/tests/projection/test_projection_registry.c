@@ -1325,8 +1325,8 @@ describe("compiler integration") {
 
   it("lowers fixed-width C fields from Contract without Binary offsets") {
     static const char schema_path[] = "native_source_scalar.schema";
-    static const char valid[] = "message Packet { uint32 count; int16 delta; }";
-    static const char unsupported[] = "message Packet { string label; uint32 count; }";
+    static const char valid[] = "schema NativeScalar; message Packet { uint32 count; int16 delta; }";
+    static const char unsupported[] = "schema NativeScalar; message Packet { string label; uint32 count; }";
     Node *tree = NULL;
     IdlContract *contract = NULL;
     char *source = NULL;
@@ -1362,7 +1362,7 @@ describe("compiler integration") {
       databind_native_source_record duplicate[2] = {
           ir.records[0], ir.records[0]
       };
-      databind_native_source_ir invalid = {2u, duplicate};
+      databind_native_source_ir invalid = {2u, duplicate, "NativeScalar", NULL};
       check_true(write_sentinel("native_source_scalar.h", "existing-header"));
       check_equal(databind_native_source_ir_write_header(
                       &invalid, "native_source_scalar.h"), -1);
@@ -1392,7 +1392,7 @@ describe("compiler integration") {
     static const char schema_path[] = "native_source_presence.schema";
     static const char output[] = "native_source_presence.h";
     static const char schema[] =
-        "message Packet { optional uint32 count; "
+        "schema NativePresence; message Packet { optional uint32 count; "
         "nullable int16 delta; optional nullable bool active; }";
     (void)remove(schema_path);
     (void)remove(output);
@@ -1421,7 +1421,7 @@ describe("compiler integration") {
         {"has_count", "uint32_t", 0, 0}
     };
     databind_native_source_record record = {"Packet", 2u, fields};
-    databind_native_source_ir ir = {1u, &record};
+    databind_native_source_ir ir = {1u, &record, "ManualFixture", NULL};
     (void)remove(output);
     check_true(write_sentinel(output, "existing-presence-header"));
     check_equal(databind_native_source_ir_write_header(&ir, output), -1);
@@ -1440,7 +1440,7 @@ describe("compiler integration") {
     databind_native_source_record records[2] = {
         {"Packet", 1u, &field}, {"Packet_init", 1u, &field}
     };
-    databind_native_source_ir ir = {2u, records};
+    databind_native_source_ir ir = {2u, records, "ManualFixture", NULL};
     (void)remove(output);
     check_true(write_sentinel(output, "previous-header"));
     check_equal(databind_native_source_ir_write_header(&ir, output), -1);
@@ -1459,7 +1459,7 @@ describe("compiler integration") {
     static const char output[] = "native_reserved_identifiers.h";
     databind_native_source_field field = {"value", "uint32_t", 0, 0};
     databind_native_source_record record = {"struct", 1u, &field};
-    databind_native_source_ir ir = {1u, &record};
+    databind_native_source_ir ir = {1u, &record, "ManualFixture", NULL};
     (void)remove(output);
     check_true(write_sentinel(output, "original-c-header"));
     check_equal(databind_native_source_ir_write_header(&ir, output), -1);
@@ -1477,8 +1477,8 @@ describe("compiler integration") {
   it("publishes Contract-only Native C header transactionally") {
     static const char schema_path[] = "native_source_publish.schema";
     static const char output[] = "native_source_publish.h";
-    static const char valid[] = "message Packet { uint32 count; int16 delta; }";
-    static const char unsupported[] = "message Packet { string label; }";
+    static const char valid[] = "schema NativePublish; message Packet { uint32 count; int16 delta; }";
+    static const char unsupported[] = "schema NativePublish; message Packet { string label; }";
     (void)remove(schema_path);
     (void)remove(output);
     check_true(write_sentinel(schema_path, valid));
