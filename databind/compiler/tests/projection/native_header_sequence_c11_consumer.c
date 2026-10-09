@@ -14,6 +14,14 @@ int main(void) {
       b.numbers.data == a.numbers.data ||
       *(const uint32_t *)vec_at_const(&b.numbers, 0u) != v1 ||
       *(const uint32_t *)vec_at_const(&b.numbers, 1u) != v2) return 2;
+  /* An alien element descriptor cannot be reinterpreted as uint32. */
+  {
+    SequencePacket mismatched = a;
+    mismatched.numbers.element_type = &cmeta_type_int16;
+    if (SequencePacket_clone(&dst, &mismatched) == 0 ||
+        dst.numbers.initialized || dst.numbers.data ||
+        vec_size(&a.numbers) != 2u) return 6;
+  }
   if (SequencePacket_move(&dst, &b) != 0 ||
       b.numbers.initialized || b.numbers.data ||
       vec_size(&dst.numbers) != 2u) return 3;
