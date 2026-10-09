@@ -86,7 +86,8 @@ endif()
 get_target_property(_contract_native_sources
   installed_contract_service_native SOURCES)
 foreach(_source IN LISTS _contract_native_sources)
-  if(_source MATCHES "_native\\.c$")
+  get_filename_component(_source_name "${_source}" NAME)
+  if(_source_name STREQUAL "installed_contract_service_native.c")
     message(FATAL_ERROR
       "Contract-only NATIVE must not build a Binary *_native.c companion")
   endif()
