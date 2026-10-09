@@ -1464,9 +1464,12 @@ describe("compiler integration") {
     check_equal(ir.records[0].fields[0].ownership, DATABIND_NATIVE_OWNED_SEQUENCE);
     check_equal(ir.records[0].fields[0].element_type, "uint32");
     check_true(ir.records[0].fields[0].element_is_trivial);
+    check_equal(ir.records[0].fields[0].element_cmeta_symbol,
+                "cmeta_type_uint32");
     check_equal(ir.records[0].fields[1].ownership, DATABIND_NATIVE_OWNED_SEQUENCE);
     check_equal(ir.records[0].fields[1].element_type, "string");
     check_false(ir.records[0].fields[1].element_is_trivial);
+    check_null(ir.records[0].fields[1].element_cmeta_symbol);
     check_true(write_sentinel("native_sequence_metadata.h", "preserved"));
     check_equal(databind_native_source_ir_write_header(
                     &ir, "native_sequence_metadata.h"), -1);
