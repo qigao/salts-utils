@@ -1347,6 +1347,47 @@ describe("compiler integration") {
     (void)remove(primary);
   }
 
+  it("rejects unqualified optional Native Service VALUE ABI without publication") {
+    static const char schema_path[] = "contract_native_service_optional.schema";
+    static const char primary[] = "contract_native_service_optional.h";
+    static const char provider_h[] = "contract_native_service_optional.service_native.h";
+    static const char provider_c[] = "contract_native_service_optional.service_native.c";
+    static const char schema[] =
+        "schema NativeOptional; message Request { optional uint32 value; } "
+        "message Response { uint32 result; } "
+        "service Calculator { Add: Request -> Response; }";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = provider_h};
+    databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), provider_c, &config};
+    databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = primary,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u
+    };
+    (void)remove(schema_path);
+    (void)remove(primary);
+    (void)remove(provider_h);
+    (void)remove(provider_c);
+    check_true(write_sentinel(schema_path, schema));
+    check_true(write_sentinel(primary, "original-header"));
+    check_true(write_sentinel(provider_h, "original-provider"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-header"));
+    check_true(file_matches(provider_h, "original-provider"));
+    check_false(file_exists(provider_c));
+    (void)remove(schema_path);
+    (void)remove(primary);
+    (void)remove(provider_h);
+  }
+
   it("rolls back Contract-only Native Plugin Wasm DSL and typed artifact together") {
     static const char primary[] = "projection_native_contract_txn.h";
     static const char native_c[] = "projection_native_contract_txn.service.c";
