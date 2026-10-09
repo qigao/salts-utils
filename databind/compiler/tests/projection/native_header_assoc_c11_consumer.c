@@ -37,17 +37,22 @@ int main(void) {
     if (AssocPacket_clone(&b, &incorrect) == 0 ||
         b.lookup.impl || b.unique.map.impl) FAIL(5);
   }
-  /* A typed but unmaterialized associative handle is not an empty owned
-   * container: reject it instead of silently dropping declared bindings. */
+  /* Preserve valid lazy typed bindings, reject incomplete/wrong providers. */
   {
-    AssocPacket malformed = {0};
-    malformed.lookup.key_type = &cmeta_type_uint32;
-    malformed.lookup.value_type = &cmeta_type_int32;
-    if (AssocPacket_clone(&b, &malformed) == 0) FAIL(28);
-    malformed.lookup = (map_t){0};
-    malformed.unique.element_type = &cmeta_type_uint32;
-    if (AssocPacket_clone(&b, &malformed) == 0) FAIL(29);
-    if (b.lookup.impl || b.unique.map.impl) FAIL(30);
+    AssocPacket lazy = {0};
+    lazy.lookup.key_type = &cmeta_type_uint32;
+    lazy.lookup.value_type = &cmeta_type_int32;
+    lazy.unique.element_type = &cmeta_type_uint32;
+    if (AssocPacket_clone(&b, &lazy) != 0 ||
+        b.lookup.key_type != &cmeta_type_uint32 ||
+        b.lookup.value_type != &cmeta_type_int32 ||
+        b.unique.element_type != &cmeta_type_uint32 ||
+        b.lookup.impl || b.unique.map.impl) FAIL(28);
+    lazy.lookup.value_type = NULL;
+    if (AssocPacket_clone(&b, &lazy) == 0) FAIL(29);
+    lazy.lookup.value_type = &cmeta_type_int32;
+    lazy.unique.element_type = &cmeta_type_int16;
+    if (AssocPacket_clone(&b, &lazy) == 0) FAIL(30);
   }
   AssocPacket_clear(&a); AssocPacket_clear(&b); AssocPacket_clear(&moved);
   AssocPacket_clear(&moved);
