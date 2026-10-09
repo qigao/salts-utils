@@ -142,6 +142,41 @@ add_test(NAME test_databind_contract_value_public_c11
 set_tests_properties(test_databind_contract_value_public_c11 PROPERTIES
   LABELS "databind;compiler;native-source;public;cmeta;owned;contract-only;c11")
 
+# Compile, link and run a real Native Service artifact directly from the
+# Contract-only C frontend. Binary *_native.c is deliberately absent.
+set(_contract_service_dir "${CMAKE_CURRENT_BINARY_DIR}/contract_service")
+set(_contract_service_record "${_contract_service_dir}/contract_service.h")
+set(_contract_service_header "${_contract_service_dir}/contract_service.service_native.h")
+set(_contract_service_source "${_contract_service_dir}/contract_service.service_native.c")
+set(_contract_service_schema
+    "${DATABIND_COMPILER_SOURCE_DIR}/package_config/wasm_execution/wasm_execution.schema")
+add_custom_command(
+  OUTPUT "${_contract_service_record}"
+         "${_contract_service_header}" "${_contract_service_source}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${_contract_service_dir}"
+  COMMAND $<TARGET_FILE:salts_idlc>
+          "${_contract_service_schema}"
+          --lang c
+          --output "${_contract_service_record}"
+          --artifacts native
+          --artifact-name contract_service
+  DEPENDS salts_idlc "${_contract_service_schema}"
+  VERBATIM)
+add_executable(test_databind_contract_native_service_c11
+  native_service_contract_c11_consumer.c
+  "${_contract_service_source}" "${_contract_service_header}"
+  "${_contract_service_record}")
+target_include_directories(test_databind_contract_native_service_c11
+  PRIVATE "${_contract_service_dir}")
+target_link_libraries(test_databind_contract_native_service_c11
+  PRIVATE Salts::DataBind)
+set_target_properties(test_databind_contract_native_service_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_native_service_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_native_service_c11>)
+set_tests_properties(test_databind_contract_native_service_c11 PROPERTIES
+  LABELS "databind;compiler;native-service;contract-only;c11;execution")
+
 # Compile an actual NativeSourceIR-emitted header with each platform's C11 compiler.
 add_executable(databind_native_header_fixture_generator
   native_header_fixture_generator.c
