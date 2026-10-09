@@ -361,7 +361,8 @@ static int native_source_ir_render(
   FILE *out;
   size_t i, j;
   int failed = 0;
-  int has_owning = 0;
+  int has_unsupported_reflection = 0;
+  int needs_text_value = 0, needs_bytes_value = 0;
   if (ir == NULL || (stream == NULL && (path == NULL || path[0] == '\0')) ||
       !native_identifier(ir->schema_name) ||
       !native_version_token(ir->schema_version) ||
@@ -828,21 +829,194 @@ static int native_source_ir_render(
   }
   /* Reuse Salts CMeta descriptors without imposing a Salts dependency on
    * the standalone C11 source-only header unless reflection is requested. */
-  /* Owning CMeta field providers are not installed yet; reject their
-   * reflection opt-in instead of projecting fake scalar descriptors. */
-  { for (i = 0u; i < ir->record_count; ++i)
-      for (j = 0u; j < ir->records[i].field_count; ++j)
-        if (ir->records[i].fields[j].ownership != DATABIND_NATIVE_TRIVIAL)
-          has_owning = 1;
-    if (has_owning && !failed &&
-        fprintf(out, "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n#error Native owning CMeta reflection is not implemented\n#endif\n") < 0)
-      failed = 1;
+  /* Owning text/bytes use native managed BufferOps. Nested Record and CSTL
+   * graph reflection needs additional providers and must remain fail-fast. */
+  for (i = 0u; i < ir->record_count; ++i) {
+    for (j = 0u; j < ir->records[i].field_count; ++j) {
+      const databind_native_source_field *field = &ir->records[i].fields[j];
+      if (field->ownership == DATABIND_NATIVE_OWNED_TEXT)
+        needs_text_value = 1;
+      else if (field->ownership == DATABIND_NATIVE_OWNED_BYTES)
+        needs_bytes_value = 1;
+      else if (field->ownership != DATABIND_NATIVE_TRIVIAL)
+        has_unsupported_reflection = 1;
+    }
   }
-  if (!has_owning) {
+  if (has_unsupported_reflection && !failed &&
+      fprintf(out, "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n#error Native nested/CSTL CMeta VALUE provider is not implemented\n#endif\n") < 0)
+    failed = 1;
+  if (!has_unsupported_reflection) {
   if (!failed && fprintf(out,
       "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n"
       "#include <cmeta_cmeta_data.h>\n") < 0)
     failed = 1;
+  if (!failed && needs_text_value &&
+      fputs(
+        "/* Compiler-private owned text DataDesc; independent of Binary format. */\n"
+        "static const cmeta_type_identity databind_native_text_data_identity =\n"
+        "    CMETA_TYPE_ID_ATOM_INIT(\"tbe.native.owned_text.v1\");\n"
+        "static const cmeta_type_desc databind_native_text_cmeta_type = {\n"
+        "    .name = \"databind_native_text\", .size = sizeof(databind_native_text),\n"
+        "    .align = _Alignof(databind_native_text), .kind = CMETA_T_OBJECT,\n"
+        "    .identity = &databind_native_text_data_identity\n"
+        "};\n"
+        "static bool databind_native_text_data_is_zero(const void *object) {\n"
+        "    const databind_native_text *v = (const databind_native_text *)object;\n"
+        "    return v != NULL && v->data == NULL && v->size == 0u;\n"
+        "}\n"
+        "static cmeta_status databind_native_text_data_init_zero(void *object) {\n"
+        "    if (!object) return CMETA_INVALID_ARGUMENT;\n"
+        "    *(databind_native_text *)object = (databind_native_text){0};\n"
+        "    return CMETA_OK;\n"
+        "}\n"
+        "static cmeta_status databind_native_text_data_assign(void *object,\n"
+        "    const unsigned char *data, size_t size, size_t max_bytes) {\n"
+        "    databind_native_text *value = (databind_native_text *)object;\n"
+        "    char *copy;\n"
+        "    if (!value || (size && !data)) return CMETA_INVALID_ARGUMENT;\n"
+        "    if (size > max_bytes || size == SIZE_MAX)\n"
+        "        return CMETA_CAPACITY_EXCEEDED;\n"
+        "    if (!databind_native_text_data_is_zero(value)) return CMETA_INVALID_ARGUMENT;\n"
+        "    if (size == 0u) return CMETA_OK;\n"
+        "    copy = (char *)malloc(size + 1u);\n"
+        "    if (!copy) return CMETA_OUT_OF_MEMORY;\n"
+        "    memcpy(copy, data, size);\n"
+        "    copy[size] = '\\0';\n"
+        "    value->data = copy;\n"
+        "    value->size = size;\n"
+        "    return CMETA_OK;\n"
+        "}\n"
+        "static cmeta_status databind_native_text_data_read(const void *object,\n"
+        "    const unsigned char **data, size_t *size) {\n"
+        "    const databind_native_text *value = (const databind_native_text *)object;\n"
+        "    if (!value || !data || !size) return CMETA_INVALID_ARGUMENT;\n"
+        "    if (value->size && !value->data) return CMETA_CALLBACK_ERROR;\n"
+        "    *data = (const unsigned char *)value->data;\n"
+        "    *size = value->size;\n"
+        "    return CMETA_OK;\n"
+        "}\n"
+        "static void databind_native_text_data_restore_zero(void *object) {\n"
+        "    databind_native_text *value = (databind_native_text *)object;\n"
+        "    if (!value) return;\n"
+        "    free(value->data);\n"
+        "    *value = (databind_native_text){0};\n"
+        "}\n"
+        "static void databind_native_text_data_move(void *destination, void *source) {\n"
+        "    databind_native_text *dst = (databind_native_text *)destination;\n"
+        "    databind_native_text *src = (databind_native_text *)source;\n"
+        "    if (!dst || !src || dst == src) abort();\n"
+        "    *dst = *src;\n"
+        "    *src = (databind_native_text){0};\n"
+        "}\n"
+        "static const cmeta_data_buffer_shape databind_native_text_data_shape = {\n"
+        "    CMETA_DATA_BUFFER_OWNED\n"
+        "};\n"
+        "static const cmeta_data_buffer_ops databind_native_text_data_ops = {\n"
+        "    .struct_size = sizeof(cmeta_data_buffer_ops),\n"
+        "    .abi_version = CMETA_DATA_BUFFER_OPS_ABI_VERSION,\n"
+        "    .storage_type = &databind_native_text_cmeta_type,\n"
+        "    .ownership = CMETA_DATA_BUFFER_OWNED,\n"
+        "    .is_zero = databind_native_text_data_is_zero,\n"
+        "    .assign = databind_native_text_data_assign,\n"
+        "    .restore_zero = databind_native_text_data_restore_zero,\n"
+        "    .read = databind_native_text_data_read,\n"
+        "    .init_zero = databind_native_text_data_init_zero,\n"
+        "    .move = databind_native_text_data_move\n"
+        "};\n"
+        "static const cmeta_data_desc databind_native_text_cmeta_data = {\n"
+        "    .struct_size = sizeof(cmeta_data_desc),\n"
+        "    .abi_version = CMETA_DATA_DESC_ABI_VERSION,\n"
+        "    .stable_id = \"tbe.native.owned_text.v1.data\",\n"
+        "    .display_name = \"databind_native_text\",\n"
+        "    .kind = CMETA_DATA_STRING,\n"
+        "    .storage_type = &databind_native_text_cmeta_type,\n"
+        "    .shape = &databind_native_text_data_shape,\n"
+        "    .buffer_ops = &databind_native_text_data_ops\n"
+        "};\n",
+        out) == EOF) failed = 1;
+  if (!failed && needs_bytes_value &&
+      fputs(
+        "/* Compiler-private owned bytes DataDesc; independent of Binary format. */\n"
+        "static const cmeta_type_identity databind_native_bytes_data_identity =\n"
+        "    CMETA_TYPE_ID_ATOM_INIT(\"tbe.native.owned_bytes.v1\");\n"
+        "static const cmeta_type_desc databind_native_bytes_cmeta_type = {\n"
+        "    .name = \"databind_native_bytes\", .size = sizeof(databind_native_bytes),\n"
+        "    .align = _Alignof(databind_native_bytes), .kind = CMETA_T_OBJECT,\n"
+        "    .identity = &databind_native_bytes_data_identity\n"
+        "};\n"
+        "static bool databind_native_bytes_data_is_zero(const void *object) {\n"
+        "    const databind_native_bytes *v = (const databind_native_bytes *)object;\n"
+        "    return v != NULL && v->data == NULL && v->size == 0u;\n"
+        "}\n"
+        "static cmeta_status databind_native_bytes_data_init_zero(void *object) {\n"
+        "    if (!object) return CMETA_INVALID_ARGUMENT;\n"
+        "    *(databind_native_bytes *)object = (databind_native_bytes){0};\n"
+        "    return CMETA_OK;\n"
+        "}\n"
+        "static cmeta_status databind_native_bytes_data_assign(void *object,\n"
+        "    const unsigned char *data, size_t size, size_t max_bytes) {\n"
+        "    databind_native_bytes *value = (databind_native_bytes *)object;\n"
+        "    unsigned char *copy;\n"
+        "    if (!value || (size && !data)) return CMETA_INVALID_ARGUMENT;\n"
+        "    if (size > max_bytes)\n"
+        "        return CMETA_CAPACITY_EXCEEDED;\n"
+        "    if (!databind_native_bytes_data_is_zero(value)) return CMETA_INVALID_ARGUMENT;\n"
+        "    if (size == 0u) return CMETA_OK;\n"
+        "    copy = (unsigned char *)malloc(size);\n"
+        "    if (!copy) return CMETA_OUT_OF_MEMORY;\n"
+        "    memcpy(copy, data, size);\n"
+        "    value->data = copy;\n"
+        "    value->size = size;\n"
+        "    return CMETA_OK;\n"
+        "}\n"
+        "static cmeta_status databind_native_bytes_data_read(const void *object,\n"
+        "    const unsigned char **data, size_t *size) {\n"
+        "    const databind_native_bytes *value = (const databind_native_bytes *)object;\n"
+        "    if (!value || !data || !size) return CMETA_INVALID_ARGUMENT;\n"
+        "    if (value->size && !value->data) return CMETA_CALLBACK_ERROR;\n"
+        "    *data = (const unsigned char *)value->data;\n"
+        "    *size = value->size;\n"
+        "    return CMETA_OK;\n"
+        "}\n"
+        "static void databind_native_bytes_data_restore_zero(void *object) {\n"
+        "    databind_native_bytes *value = (databind_native_bytes *)object;\n"
+        "    if (!value) return;\n"
+        "    free(value->data);\n"
+        "    *value = (databind_native_bytes){0};\n"
+        "}\n"
+        "static void databind_native_bytes_data_move(void *destination, void *source) {\n"
+        "    databind_native_bytes *dst = (databind_native_bytes *)destination;\n"
+        "    databind_native_bytes *src = (databind_native_bytes *)source;\n"
+        "    if (!dst || !src || dst == src) abort();\n"
+        "    *dst = *src;\n"
+        "    *src = (databind_native_bytes){0};\n"
+        "}\n"
+        "static const cmeta_data_buffer_shape databind_native_bytes_data_shape = {\n"
+        "    CMETA_DATA_BUFFER_OWNED\n"
+        "};\n"
+        "static const cmeta_data_buffer_ops databind_native_bytes_data_ops = {\n"
+        "    .struct_size = sizeof(cmeta_data_buffer_ops),\n"
+        "    .abi_version = CMETA_DATA_BUFFER_OPS_ABI_VERSION,\n"
+        "    .storage_type = &databind_native_bytes_cmeta_type,\n"
+        "    .ownership = CMETA_DATA_BUFFER_OWNED,\n"
+        "    .is_zero = databind_native_bytes_data_is_zero,\n"
+        "    .assign = databind_native_bytes_data_assign,\n"
+        "    .restore_zero = databind_native_bytes_data_restore_zero,\n"
+        "    .read = databind_native_bytes_data_read,\n"
+        "    .init_zero = databind_native_bytes_data_init_zero,\n"
+        "    .move = databind_native_bytes_data_move\n"
+        "};\n"
+        "static const cmeta_data_desc databind_native_bytes_cmeta_data = {\n"
+        "    .struct_size = sizeof(cmeta_data_desc),\n"
+        "    .abi_version = CMETA_DATA_DESC_ABI_VERSION,\n"
+        "    .stable_id = \"tbe.native.owned_bytes.v1.data\",\n"
+        "    .display_name = \"databind_native_bytes\",\n"
+        "    .kind = CMETA_DATA_BYTES,\n"
+        "    .storage_type = &databind_native_bytes_cmeta_type,\n"
+        "    .shape = &databind_native_bytes_data_shape,\n"
+        "    .buffer_ops = &databind_native_bytes_data_ops\n"
+        "};\n",
+        out) == EOF) failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
     char stable_type_id[1024];
@@ -918,13 +1092,32 @@ static int native_source_ir_render(
           scalar = NATIVE_SCALARS[k].idl;
           break;
         }
-      if (scalar == NULL || fprintf(out,
+      if (scalar == NULL &&
+          field->ownership == DATABIND_NATIVE_OWNED_TEXT)
+        scalar = "native_text";
+      if (scalar == NULL &&
+          field->ownership == DATABIND_NATIVE_OWNED_BYTES)
+        scalar = "native_bytes";
+      if (scalar == NULL) {
+        failed = 1;
+      } else if (strcmp(scalar, "native_text") == 0 ||
+                 strcmp(scalar, "native_bytes") == 0) {
+        const char *symbol = field->ownership == DATABIND_NATIVE_OWNED_TEXT
+            ? "databind_native_text_cmeta_data" : "databind_native_bytes_cmeta_data";
+        if (fprintf(out,
+            "    out[%zuu] = (cmeta_data_field_desc){"
+            "\"%s.%s\", \"%s\", offsetof(%s, %s), &%s};\n",
+            j, stable_type_id, field->name, field->name,
+            record->name, field->name, symbol) < 0)
+          failed = 1;
+      } else if (fprintf(out,
           "    out[%zuu] = (cmeta_data_field_desc){"
           "\"%s.%s\", \"%s\", offsetof(%s, %s), "
           "&cmeta_data_%s};\n",
           j, stable_type_id, field->name, field->name,
-          record->name, field->name, scalar) < 0)
+          record->name, field->name, scalar) < 0) {
         failed = 1;
+      }
     }
     if (!failed && fprintf(out, "    return 0;\n}\n") < 0)
       failed = 1;
@@ -1006,7 +1199,9 @@ static int native_source_ir_render(
       int native_value_complete = 1;
       for (j = 0u; j < record->field_count; ++j) {
         const databind_native_source_field *field = &record->fields[j];
-        if (field->ownership != DATABIND_NATIVE_TRIVIAL ||
+        if ((field->ownership != DATABIND_NATIVE_TRIVIAL &&
+             field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
+             field->ownership != DATABIND_NATIVE_OWNED_BYTES) ||
             field->optional || field->nullable) {
           native_value_complete = 0;
           break;

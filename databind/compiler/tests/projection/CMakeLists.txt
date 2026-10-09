@@ -185,6 +185,29 @@ add_test(NAME test_databind_native_cmeta_value_c11
 set_tests_properties(test_databind_native_cmeta_value_c11 PROPERTIES
   LABELS "databind;compiler;native-source;cmeta;value;c11")
 
+# CMeta VALUE must own native text/bytes buffers, with real DataBind
+# init/copy/move/clear admission. The no-CMeta C11 header remains standalone.
+set(_native_owned_value_header
+    "${CMAKE_CURRENT_BINARY_DIR}/native_owned_value_fixture.h")
+add_custom_command(OUTPUT "${_native_owned_value_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_owned_value_header}" writable
+  DEPENDS databind_native_header_fixture_generator VERBATIM)
+add_executable(test_databind_native_cmeta_owned_value_c11
+  native_header_cmeta_owned_value_c11_consumer.c "${_native_owned_value_header}")
+target_include_directories(test_databind_native_cmeta_owned_value_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(test_databind_native_cmeta_owned_value_c11 PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA)
+target_link_libraries(test_databind_native_cmeta_owned_value_c11
+  PRIVATE Salts::DataBind)
+set_target_properties(test_databind_native_cmeta_owned_value_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_cmeta_owned_value_c11
+  COMMAND $<TARGET_FILE:test_databind_native_cmeta_owned_value_c11>)
+set_tests_properties(test_databind_native_cmeta_owned_value_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;cmeta;owned;value;c11")
+
 # Compile and execute generated C11 lifetime for owned native buffers.
 set(_native_owned_header "${CMAKE_CURRENT_BINARY_DIR}/native_owned_fixture.h")
 add_custom_command(OUTPUT "${_native_owned_header}"
