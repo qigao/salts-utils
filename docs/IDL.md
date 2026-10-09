@@ -87,16 +87,20 @@ The generated header path is available as
 `native_contract_TYPES_HEADER`, and the target as
 `native_contract_TYPES_TARGET`. `TYPES` cannot be combined with transport or
 other artifact selections because that would conflate the type representation
-with their separate execution/binding ABI. Existing NATIVE/PLUGIN/WASM
-execution providers still need a separate CMeta/DataBind ABI cutover before
-their Binary companion can be removed; this is a strict boundary, not a
-fallback renderer.
+with their separate execution/binding ABI. Contract-only NATIVE Service
+and PLUGIN function exports now use the exact NativeSourceIR Record/FunctionDesc
+contract for admitted VALUE records. Their public CMake targets omit the
+Binary serializer source when no codec/transport is requested. The Wasm host
+wire bridge, typed-error Service, and presence/null overlays remain separate
+explicit format/ABI work, not compatibility fallbacks.
 
-Executable MESSAGE/NATIVE/PLUGIN/WASM and formatted SOCKET/FLOWMQ
-generation still requires explicit `BINARY_CODEC` because its generated
-native execution and binding sources have not yet adopted NativeSourceIR's
-CMeta and presence-state ABI. This strict selection is not a fallback;
-`ARTIFACTS TYPES` never admits `BINARY_CODEC`.
+Executable MESSAGE/WASM and formatted SOCKET/FLOWMQ generation still
+requires explicit `BINARY_CODEC` where its wire/native source has not yet
+adopted NativeSourceIR. NATIVE-only Service and PLUGIN-only Function exports
+without a transport instead consume Contract-only VALUE records and do not
+generate `*_native.c`. Optional/null/typed-error and non-VALUE shapes are
+rejected before publication; mixed Plugin or Native with transports requires
+explicit Binary. `ARTIFACTS TYPES` never admits `BINARY_CODEC`.
 
 The folder applies to the aggregate target, its `_idl_codegen` target, and all
 generated native, Plugin, Plugin client, or WASM library targets. Callers can
@@ -167,6 +171,28 @@ ARTIFACT:  TYPES (Contract-only) | NATIVE | PLUGIN | WASM | OPENAPI | MOCK
 Transport runtimes keep sessions, queues, reconnect, TLS, routing and
 backpressure. Plugin publication consumes the Salts-owned Plugin ABI; it does
 not define another Service model.
+
+### Contract-only PLUGIN artifact
+
+A plugin-only target uses the same canonical CMeta FunctionDesc and
+`DataBindNativeExecution` as NATIVE Service, publishing strongly typed
+`Record` request/response values directly through the Salts Plugin ABI.
+The generated client borrows Function exports only while its acquired Plugin
+lease remains valid, validates both FunctionDesc and FunctionAbi, and releases
+the lease on close. It does **not** publish a Binary codec or a synthetic
+DataBind catalog interface. Use `BINARY_CODEC` explicitly to request the
+separate legacy wire/catalog artifact.
+
+```cmake
+salts_idl_target(
+  TARGET calculator
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/calculator.schema"
+  COMPONENT "Example.Calculator"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "calculator"
+  ARTIFACTS PLUGIN
+  SOURCES calculator_business.c)
+```
 
 ### NATIVE Service artifact
 
