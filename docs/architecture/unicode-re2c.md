@@ -9,6 +9,13 @@
 保留三个源码 SHA、run/attempt 和实际范围，制品名包含 run/attempt；手动重跑不得用
 移动分支名冒充不可变输入。此流程仍是 Linux 源码集成，不是发布资格门禁。
 
+候选分支已同步包含 `v4.3.0-rc.1` 的 master。源码生产者使用正式 configure/build/install
+preset；SaltsUtils 执行完整 CTest 图，包含 Jinja 与新主线的 IDL 回归。两个 SDK 安装到
+同一隔离前缀，现有 C11/C++17 与 stun/flexUI 安装测试通过同一个消费工程 preset 执行。
+消费测试复用 SaltsUtils 的 vcpkg manifest 和安装依赖，不向共享 SDK 路径写入。
+flexUI 测试 executable 启用 ASan/UBSan，SDK 库仍为 Release，不能据此宣称库内部已被
+sanitizer 完整检测。候选制品保存组合安装树及三个来源 SHA。
+
 稳定晋级必须遵循 Salts `unicode/README.md` 中的成对发布和回滚约束。新 Salts 加旧
 SaltsUtils 会发生重复 target，新 SaltsUtils 加旧 Salts 会缺 target；先发布任意一方
 都不能解决混合窗口。未完成全平台候选 SDK 配对验收、消费方协调及发布方案前，保持

@@ -4,7 +4,15 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-find_package(SaltsUtils CONFIG REQUIRED)
+if(NOT IS_DIRECTORY "$ENV{SALTS_ROOT}" OR
+   NOT IS_DIRECTORY "$ENV{SALTS_UTILS_CANDIDATE_ROOT}")
+  message(FATAL_ERROR "The installed candidate SDK roots are required")
+endif()
+unset(SaltsUtils_DIR CACHE)
+unset(SaltsUtils_DIR)
+find_package(SaltsUtils CONFIG REQUIRED
+  PATHS "$ENV{SALTS_UTILS_CANDIDATE_ROOT}"
+  NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 foreach(_target IN ITEMS Salts::Core Salts::Unicode Salts::JinjaCMeta)
   if(NOT TARGET ${_target})
     message(FATAL_ERROR "Installed candidate is missing ${_target}")
@@ -21,3 +29,9 @@ target_link_libraries(unicode_cutover_cpp17 PRIVATE Salts::Unicode Salts::JinjaC
 enable_testing()
 add_test(NAME unicode_cutover_c11 COMMAND unicode_cutover_c11)
 add_test(NAME unicode_cutover_cpp17 COMMAND unicode_cutover_cpp17)
+
+# Run the existing downstream boundary tests with this same toolchain and SDK.
+if(NOT EXISTS "$ENV{STUN_SOURCE}/flexUI/tests/unicode_install_consumer/CMakeLists.txt")
+  message(FATAL_ERROR "STUN_SOURCE must name the checked-out downstream candidate")
+endif()
+add_subdirectory("$ENV{STUN_SOURCE}/flexUI/tests/unicode_install_consumer" flexui)

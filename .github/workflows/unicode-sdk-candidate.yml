@@ -6,6 +6,8 @@ name: Unicode SDK candidate integration
     paths:
       - .github/workflows/unicode-sdk-candidate.yml
       - CMakeLists.txt
+      - CMakeUserPresets.json
+      - .github/actions/setup-build-host/**
       - cmake/SaltsUtilsConfig.cmake.in
       - cmake/ci/unicode-installed-consumer/**
       - jinja/**
@@ -41,9 +43,9 @@ jobs:
       QIGAO_TARGET_TRIPLET: x64-linux
       QIGAO_HOST_TRIPLET: x64-linux
       QIGAO_NUGET_PACKAGES: ${{ github.workspace }}/stage/nuget
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 512M
-      SCCACHE_DIRECT: 'false'
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_MAXSIZE: 512M
+      CCACHE_COMPILERCHECK: content
       SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-unicode-candidate-linux
     steps:
       - name: Require immutable manual qualification inputs
@@ -89,72 +91,35 @@ jobs:
         run: |
           set -euo pipefail
           source_sha="$(git -C candidate/salts-source rev-parse HEAD)"
-          test -f candidate/salts-source/unicode/include/salts_unicode.h
           pushd candidate/salts-source
-          cmake --preset linux-release-ci -DENABLE_TESTS=OFF -DBUILD_TESTS=OFF \
-            -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF \
-            -DCMETA_BUILD_BENCHMARKS=OFF -DNATIVE_IO_BUILD_BENCHMARKS=OFF \
-            -DCOROUTINE_BUILD_BENCHMARKS=OFF -DCNET_BUILD_BENCHMARKS=OFF
+          cmake --preset linux-release-ci
           cmake --build --preset linux-release-ci --parallel 2
-          cmake --install build/linux-gcc-release \
-            --prefix "$GITHUB_WORKSPACE/candidate/salts-sdk"
+          cmake --build --preset install-linux-release-ci --parallel 2
           popd
-          prefix="$GITHUB_WORKSPACE/candidate/salts-sdk"
-          test -f "$prefix/include/unicode/salts_unicode.h"
-          test -f "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
-          test -f "$prefix/share/licenses/salts_unicode/LICENSE.txt"
-          grep -Fq 'Salts::Unicode' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
-          printf 'source_sha=%s\nprofile=unicode-candidate\n' "$source_sha" \
+          prefix="$GITHUB_WORKSPACE/candidate/salts-source/stage/sdk/linux-x64"
+          printf 'source_sha=%s\nprofile=linux-release-ci\n' "$source_sha" \
             > "$prefix/unicode-candidate-manifest.txt"
           echo "SALTS_ROOT=$prefix" >> "$GITHUB_ENV"
           echo "SALTS_HOST_ROOT=$prefix" >> "$GITHUB_ENV"
           echo "SALTS_UNICODE_CANDIDATE_SHA=$source_sha" >> "$GITHUB_ENV"
-      - name: Build SaltsUtils/Jinja against candidate SDK
+      - name: Build SaltsUtils against candidate SDK
         shell: bash
         run: |
           set -euo pipefail
-          test -f "$SALTS_ROOT/unicode-candidate-manifest.txt"
-          cmake --preset ci-native-release-user \
-            -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
-          cmake --build --preset ci-native-release-user --parallel 2
-      - name: Run real Jinja Unicode consumers and regressions
+          cmake --preset ci-unicode-candidate-user
+          cmake --build --preset ci-unicode-candidate-user --parallel 2
+      - name: Run full SaltsUtils CTest graph against candidate SDK
         shell: bash
         run: |
           set -euo pipefail
-          ctest --preset ci-native-release-user --no-tests=error \
-            --output-on-failure --timeout 180 --parallel 2 -R '^test_jinja'
-      - name: Install SaltsUtils and reject duplicate Unicode owner
+          ctest --preset ci-unicode-candidate-user --no-tests=error \
+            --output-on-failure --timeout 180 --parallel 2
+      - name: Install SaltsUtils beside the isolated Salts candidate
         shell: bash
         run: |
           set -euo pipefail
-          prefix="$GITHUB_WORKSPACE/candidate/saltsutils-sdk"
-          cmake --install build/ci-sdk/linux-x64 --prefix "$prefix"
-          utils_targets="$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
-          test -f "$utils_targets"
-          if grep -Eq 'add_library\(Salts::Unicode|add_executable\(Salts::Unicode' "$utils_targets"; then
-            echo 'SaltsUtils must not export a second Salts::Unicode target' >&2
-            exit 1
-          fi
-          test ! -f "$prefix/include/unicode/salts_unicode.h"
-          echo "SALTS_UTILS_CANDIDATE_ROOT=$prefix" >> "$GITHUB_ENV"
-      - name: Compile and execute standalone installed C11/C++17 consumers
-        shell: bash
-        run: |
-          set -euo pipefail
-          cmake -S cmake/ci/unicode-installed-consumer \
-            -B candidate/cutover-consumer-build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            "-DCMAKE_PREFIX_PATH=$SALTS_UTILS_CANDIDATE_ROOT;$SALTS_ROOT"
-          cmake --build candidate/cutover-consumer-build --parallel 2
-          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_UTILS_CANDIDATE_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
-          ctest --test-dir candidate/cutover-consumer-build --no-tests=error --output-on-failure
-          {
-            echo '### Unicode #1088 candidate integration'
-            echo "- Salts source SHA: $SALTS_UNICODE_CANDIDATE_SHA"
-            echo "- SaltsUtils source SHA: $(git rev-parse HEAD)"
-            echo '- Tested Linux installed C11/C++17 consumers and Jinja'
-            echo '- **No public package, stable tag, or RC branch changes**'
-          } >> "$GITHUB_STEP_SUMMARY"
+          cmake --build --preset install-ci-unicode-candidate-user --parallel 2
+          echo "SALTS_UTILS_CANDIDATE_ROOT=$SALTS_ROOT" >> "$GITHUB_ENV"
       - name: Checkout actual stun/flexUI Unicode consumer
         uses: actions/checkout@v4
         with:
@@ -162,31 +127,25 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.stun_ref || 'master' }}
           path: candidate/stun-source
           persist-credentials: false
-      - name: Qualify flexUI installed Unicode against the single-owner SDK
+      - name: Run installed C11, C++17 and flexUI boundary tests
         shell: bash
+        env:
+          STUN_SOURCE: ${{ github.workspace }}/candidate/stun-source
         run: |
           set -euo pipefail
-          # The existing stun smoke requires a single isolated install prefix.
-          # This adds SaltsUtils exports to the already qualified Salts prefix.
-          cmake --install build/ci-sdk/linux-x64 --prefix "$SALTS_ROOT"
-          test -f "$SALTS_ROOT/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
-          if grep -Eq 'add_library\(Salts::Unicode|add_executable\(Salts::Unicode' \
-              "$SALTS_ROOT/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"; then
-            echo 'duplicate Unicode target exported by SaltsUtils' >&2
-            exit 1
-          fi
-          cmake -S candidate/stun-source/flexUI/tests/unicode_install_consumer \
-            -B candidate/stun-unicode-consumer-build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            "-DFLEXUI_UNICODE_INSTALL_PREFIX=$SALTS_ROOT" \
-            -DFLEXUI_UNICODE_ENABLE_SANITIZERS=ON
-          cmake --build candidate/stun-unicode-consumer-build --parallel 2
-          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
-          ctest --test-dir candidate/stun-unicode-consumer-build \
-            --no-tests=error --output-on-failure --timeout 120
+          pushd cmake/ci/unicode-installed-consumer
+          cmake --preset installed-candidate
+          cmake --build --preset installed-candidate --parallel 2
+          ctest --preset installed-candidate
+          popd
           {
+            echo '### Unicode #1088 candidate integration'
+            echo "- Salts source SHA: $SALTS_UNICODE_CANDIDATE_SHA"
+            echo "- SaltsUtils source SHA: $(git rev-parse HEAD)"
             echo "- stun/flexUI SHA: $(git -C candidate/stun-source rev-parse HEAD)"
-            echo '- Qualified flexUI text boundaries with ASan+UBSan against installed Salts + SaltsUtils'
+            echo '- Full SaltsUtils CTest graph and installed C11/C++17 tests'
+            echo '- flexUI boundary test executables use ASan+UBSan; SDK libraries use Release'
+            echo '- No public package, stable tag, or RC branch changes'
           } >> "$GITHUB_STEP_SUMMARY"
           {
             printf 'salts_sha=%s\n' "$SALTS_UNICODE_CANDIDATE_SHA"
@@ -195,13 +154,12 @@ jobs:
             printf 'run_id=%s\nrun_attempt=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
             printf 'scope=linux-x64-source-integration\nrelease_qualified=false\n'
           } > candidate/unicode-cutover-manifest.txt
-      - name: Retain exact candidate SDK pair for downstream inspection
+      - name: Retain exact combined candidate SDK for downstream inspection
         uses: actions/upload-artifact@v4
         with:
           name: unicode-cutover-candidate-linux-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             candidate/unicode-cutover-manifest.txt
-            candidate/salts-sdk/
-            candidate/saltsutils-sdk/
+            candidate/salts-source/stage/sdk/linux-x64/
           if-no-files-found: error
           retention-days: 7
