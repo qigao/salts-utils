@@ -318,6 +318,7 @@ describe("compiler integration") {
         .output_path = output,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = sizeof(requests) / sizeof(requests[0]),
         .projection_backends = backends,
@@ -359,6 +360,7 @@ describe("compiler integration") {
         .source_output_path = source,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -424,6 +426,7 @@ describe("compiler integration") {
         .source_output_path = source,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -486,6 +489,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -545,6 +549,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = &request,
         .projection_count = 1u,
         .projection_backends = &backend,
@@ -583,6 +588,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -625,6 +631,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -668,6 +675,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -710,6 +718,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -745,6 +754,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = &request,
         .projection_count = 1u,
         .projection_backends = &backend,
@@ -790,6 +800,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -833,6 +844,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = &request,
         .projection_count = 1u,
         .projection_backends = &backend,
@@ -881,6 +893,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -927,6 +940,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = &request,
         .projection_count = 1u,
         .projection_backends = &backend,
@@ -987,6 +1001,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -1051,6 +1066,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -1109,6 +1125,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -1156,6 +1173,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = 2u,
         .projection_backends = backends,
@@ -1225,6 +1243,7 @@ describe("compiler integration") {
         .output_path = primary,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests, .projection_count = 4u,
         .projection_backends = backends, .projection_backend_count = 4u};
     const char *outputs[] = {
@@ -1299,6 +1318,7 @@ describe("compiler integration") {
         .output_path = output,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
         .projection_requests = requests,
         .projection_count = sizeof(requests) / sizeof(requests[0]),
         .projection_backends = backends,
@@ -1781,11 +1801,12 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
-  it("keeps legacy C Binary admission fail-closed before output publication") {
+  it("uses NativeSourceIR for bare C and strict Binary only on explicit selection") {
     static const char schema_path[] = "projection_c_binary_boundary.schema";
     static const char output[] = "projection_c_binary_boundary.h";
+    static const char companion[] = "projection_c_binary_boundary.c";
     static const char schema[] =
-        "message Packet { string label; uint32 sequence; }";
+        "schema NativeBoundary; message Packet { string label; uint32 sequence; }";
     tbe_compiler_options_t options = {
         .schema_path = schema_path,
         .output_path = output,
@@ -1794,15 +1815,27 @@ describe("compiler integration") {
     };
     (void)remove(schema_path);
     (void)remove(output);
+    (void)remove(companion);
     check_true(write_sentinel(schema_path, schema));
     check_true(write_sentinel(output, "existing-c-header"));
-    /* C still emits wire helpers. Do not silently admit a Contract whose
-     * Binary layout is invalid until NativeSourceIR replaces that template. */
+    check_equal(tbe_compiler_run(&options), 0);
+    check_true(file_contains(output, "databind_native_text label;"));
+    check_true(file_contains(output, "uint32_t sequence;"));
+    check_false(file_contains(output, "binary_wire"));
+    check_false(file_contains(output, "existing-c-header"));
+
+    options.binary_codec = 1;
+    check_true(write_sentinel(output, "untouched-binary-header"));
     check_equal(tbe_compiler_run(&options), 1);
-    check_true(file_matches(output, "existing-c-header"));
+    check_true(file_matches(output, "untouched-binary-header"));
+    options.binary_codec = 0;
+    options.source_output_path = companion;
+    check_true(write_sentinel(companion, "untouched-companion"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(output, "untouched-binary-header"));
+    check_true(file_matches(companion, "untouched-companion"));
     (void)remove(output);
-    check_equal(tbe_compiler_run(&options), 1);
-    check_false(file_exists(output));
+    (void)remove(companion);
     (void)remove(schema_path);
   }
 

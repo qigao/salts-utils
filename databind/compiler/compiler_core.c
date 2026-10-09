@@ -3350,9 +3350,9 @@ static int tbe_compiler_validate_options(const tbe_compiler_options_t *options,
   return 1;
 }
 
-/* Binary is a format admission, not part of typed Contract semantics.
- * Legacy C still requires its Binary-backed presentation until NativeSourceIR
- * and the C templates no longer consume wire offsets. */
+/* Binary is selected format admission, never part of the default typed C
+ * Contract. An explicitly requested C codec/transport keeps its distinct
+ * wire representation and strict layout constraints. */
 typedef enum databind_compiler_format_admission {
   DATABIND_COMPILER_FORMAT_CONTRACT_ONLY = 0,
   DATABIND_COMPILER_FORMAT_BINARY = 1
@@ -5009,6 +5009,31 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   if (source_language && options->dsl_output_path != NULL) {
     fprintf(stderr, "--dsl-output requires native RulesForge lowering, not a source-only language\n");
     return 1;
+  }
+  if (options->binary_codec &&
+      (options->lang_enum != TBE_COMPILER_LANG_C ||
+       options->template_path != NULL)) {
+    fprintf(stderr, "--binary-codec requires built-in --lang c\n");
+    return 1;
+  }
+  if (options->lang_enum == TBE_COMPILER_LANG_C &&
+      !options->binary_codec &&
+      options->source_output_path == NULL &&
+      options->guest_output_path == NULL &&
+      !tbe_compiler_projection_requires_binary(options)) {
+    if (options->template_path != NULL ||
+        options->projection_count != 0u ||
+        options->dsl_output_path != NULL) {
+      fprintf(stderr,
+              "Native C source-only output with custom/selected secondary artifacts "
+              "is not yet supported; explicitly request --binary-codec "
+              "for Binary-backed C generation\n");
+      return 1;
+    }
+    /* No Binary-mutated Node or wire template is ever constructed here.
+     * Named output is transactional; absent --output uses admitted stdout. */
+    return databind_compiler_generate_contract_native_header(
+               options->schema_path, options->output_path) == 0 ? 0 : 1;
   }
   int status = databind_compiler_parse_contract_file_mode(
       options->schema_path, &task->root, &task->contract,

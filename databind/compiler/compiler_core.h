@@ -21,6 +21,10 @@ typedef struct tbe_compiler_options_s {
   const char *dsl_output_path;
   const char *resource_dir;
   int64_t lang_enum;
+  /* Explicit Binary wire header admission for C. --source-output and
+   * --guest-output separately select Binary codec/bridge artifacts. Bare C
+   * with no companion uses Contract-only NativeSourceIR by default. */
+  int binary_codec;
 
   /*
    * Compiler-private artifact projection selection.

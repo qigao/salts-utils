@@ -46,8 +46,14 @@ salts-idlc <schema_file> [options]
 - `--lang <language>` or `-l <language>`
   - Target source language
   - Options: `c`, `cpp`, `go`, `rust`, `python`, `py`, `ts`, `typescript`, `sqlite`, `postgresql`, `postgres`
-  - Default: `c`
-  - Example: `--lang c`
+  - Default: `c`; without an explicitly selected Binary codec/transport, built-in C uses Contract-only NativeSourceIR
+  - Example: `--lang c --output order.h`
+
+- `--binary-codec`
+  - Explicitly selects the Binary-backed C wire header and strict Binary layout admission
+  - Bare built-in `--lang c` now produces Contract-only NativeSourceIR types
+  - `--source-output` and `--guest-output` themselves explicitly select Binary artifacts
+  - The `--binary-codec` switch is only valid for built-in `--lang c`; it is not a fallback
 
 - `--template <file>` or `-t <file>`
   - Path to custom Mustache template file
