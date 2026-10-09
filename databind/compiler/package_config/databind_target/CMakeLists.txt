@@ -19,12 +19,175 @@ if(TARGET Salts::DataBindGeneratedABI)
           "removed Salts::DataBindGeneratedABI must not be exported")
 endif()
 
+# Qualify the installed public Contract-only NativeSourceIR entry independently
+# of Binary codec artifacts. The public INTERFACE target owns the C11/CSTL
+# include and link contract, not a generated *_native.c.
+salts_idl_target(
+  TARGET installed_contract_types
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/contract_types.schema"
+  ARTIFACT_NAME "contract_types"
+  ARTIFACTS TYPES)
+
+if(NOT TARGET installed_contract_types_types)
+  message(FATAL_ERROR "missing Contract-only C types target")
+endif()
+if(TARGET installed_contract_types_native)
+  message(FATAL_ERROR "Contract-only TYPES must not publish Binary native source")
+endif()
+get_target_property(
+  _installed_types_links installed_contract_types_types INTERFACE_LINK_LIBRARIES)
+if(NOT "Salts::CSTL" IN_LIST _installed_types_links)
+  message(FATAL_ERROR "NativeSourceIR TYPES must link canonical Salts::CSTL")
+endif()
+
+add_executable(installed_contract_types_consumer contract_types_consumer.c)
+target_compile_features(installed_contract_types_consumer PRIVATE c_std_11)
+set_target_properties(installed_contract_types_consumer PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(installed_contract_types_consumer PRIVATE
+  installed_contract_types_types)
+add_dependencies(installed_contract_types_consumer
+  installed_contract_types_idl_codegen)
+add_test(NAME installed_contract_types_consumer
+  COMMAND installed_contract_types_consumer)
+
+# Qualify actual installed CMeta/DataBind execution from a Contract-only
+# NativeSourceIR VALUE record with owned STRING/BYTES buffer providers.
+salts_idl_target(
+  TARGET installed_contract_value
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/contract_value.schema"
+  ARTIFACT_NAME "contract_value"
+  ARTIFACTS TYPES)
+
+add_executable(installed_contract_value_consumer contract_value_consumer.c)
+target_compile_features(installed_contract_value_consumer PRIVATE c_std_11)
+target_compile_definitions(installed_contract_value_consumer PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
+set_target_properties(installed_contract_value_consumer PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(installed_contract_value_consumer PRIVATE
+  installed_contract_value_types Salts::DataBind)
+add_dependencies(installed_contract_value_consumer
+  installed_contract_value_idl_codegen)
+add_test(NAME installed_contract_value_consumer
+  COMMAND installed_contract_value_consumer)
+
+# Qualify native per-field optional/nullable metadata from an installed
+# Contract-only TYPES header. VIEW is deliberately not a VALUE provider yet.
+salts_idl_target(
+  TARGET installed_contract_state
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/contract_state.schema"
+  ARTIFACT_NAME "contract_state"
+  ARTIFACTS TYPES)
+
+add_executable(installed_contract_state_consumer contract_state_consumer.c)
+target_compile_features(installed_contract_state_consumer PRIVATE c_std_11)
+target_compile_definitions(installed_contract_state_consumer PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
+target_link_libraries(installed_contract_state_consumer PRIVATE
+  installed_contract_state_types Salts::DataBind)
+add_dependencies(installed_contract_state_consumer
+  installed_contract_state_idl_codegen)
+add_test(NAME installed_contract_state_consumer
+  COMMAND installed_contract_state_consumer)
+
+# Public installed SDK Contract-only NATIVE execution artifact.
+# No --source-output, BINARY_CODEC or legacy *_native.c participates.
+salts_idl_target(
+  TARGET installed_contract_service
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/native_contract_service.schema"
+  ARTIFACT_NAME "installed_contract_service"
+  ARTIFACTS NATIVE)
+
+if(NOT TARGET installed_contract_service_native)
+  message(FATAL_ERROR "missing Contract-only NATIVE executable target")
+endif()
+get_target_property(_contract_native_sources
+  installed_contract_service_native SOURCES)
+foreach(_source IN LISTS _contract_native_sources)
+  get_filename_component(_source_name "${_source}" NAME)
+  if(_source_name STREQUAL "installed_contract_service_native.c")
+    message(FATAL_ERROR
+      "Contract-only NATIVE must not build a Binary *_native.c companion")
+  endif()
+endforeach()
+target_sources(installed_contract_service_native PRIVATE
+  native_contract_service_business.c)
+
+add_executable(installed_contract_service_consumer
+  native_contract_service_consumer.c)
+target_compile_features(installed_contract_service_consumer PRIVATE c_std_11)
+target_link_libraries(installed_contract_service_consumer PRIVATE
+  installed_contract_service_native Salts::DataBind)
+add_dependencies(installed_contract_service_consumer
+  installed_contract_service_idl_codegen)
+add_test(NAME installed_contract_service_consumer
+  COMMAND installed_contract_service_consumer)
+
+# Relocated installed-SDK Contract-only Plugin: the DSO provider and typed
+# lease Client compile against the same NativeSourceIR VALUE records. No
+# Binary *_native.c source or generated codec/catalog is permitted.
+salts_idl_target(
+  TARGET installed_contract_plugin
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/native_contract_service.schema"
+  COMPONENT "WasmRuntime.Calculator"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "contract_plugin"
+  ARTIFACTS PLUGIN
+  SOURCES contract_plugin_business.c)
+
+if(NOT TARGET installed_contract_plugin_plugin OR
+   NOT TARGET installed_contract_plugin_plugin_client OR
+   TARGET installed_contract_plugin_native)
+  message(FATAL_ERROR "Contract-only Plugin provider/client targets are invalid")
+endif()
+foreach(_plugin_target IN ITEMS installed_contract_plugin_plugin
+                                installed_contract_plugin_plugin_client)
+  get_target_property(_contract_plugin_sources "${_plugin_target}" SOURCES)
+  foreach(_source IN LISTS _contract_plugin_sources)
+    get_filename_component(_source_name "${_source}" NAME)
+    if(_source_name STREQUAL "contract_plugin_native.c")
+      message(FATAL_ERROR
+        "Contract-only Plugin must not compile a Binary native companion")
+    endif()
+  endforeach()
+endforeach()
+
+add_executable(installed_contract_plugin_consumer contract_plugin_consumer.c)
+target_compile_features(installed_contract_plugin_consumer PRIVATE c_std_11)
+target_link_libraries(installed_contract_plugin_consumer PRIVATE
+  installed_contract_plugin_plugin
+  installed_contract_plugin_plugin_client
+  Salts::DataBind Salts::PluginABI)
+add_dependencies(installed_contract_plugin_consumer
+  installed_contract_plugin_idl_codegen)
+add_test(NAME installed_contract_plugin_consumer
+  COMMAND installed_contract_plugin_consumer)
+
+# Load the generated Contract-only provider DSO with the public Plugin
+# registry and exercise a leased, typed client across real dynamic calls.
+# Do not link the provider DSO into this test executable.
+add_executable(installed_contract_plugin_lease_consumer
+  contract_plugin_lease_consumer.c)
+target_compile_features(installed_contract_plugin_lease_consumer
+  PRIVATE c_std_11)
+target_compile_definitions(installed_contract_plugin_lease_consumer PRIVATE
+  GENERATED_CONTRACT_PLUGIN_PATH="$<TARGET_FILE:installed_contract_plugin_plugin>")
+target_link_libraries(installed_contract_plugin_lease_consumer PRIVATE
+  installed_contract_plugin_plugin_client Salts::Plugin)
+add_dependencies(installed_contract_plugin_lease_consumer
+  installed_contract_plugin_plugin
+  installed_contract_plugin_plugin_client)
+add_test(NAME installed_contract_plugin_lease_consumer
+  COMMAND installed_contract_plugin_lease_consumer)
+
 salts_idl_target(
   TARGET installed_image
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
   COMPONENT "Image.ImageProcessor"
   VERSION "1.0.0"
   ARTIFACT_NAME "image"
+  BINARY_CODEC
   ARTIFACTS PLUGIN
   SOURCES business.c)
 
@@ -77,12 +240,17 @@ target_link_libraries(installed_image_plugin_client_cpp
 set_target_properties(installed_image_plugin_client_cpp PROPERTIES
   CXX_EXTENSIONS NO)
 add_dependencies(installed_image installed_image_plugin_client_cpp)
+add_dependencies(installed_image installed_contract_types_consumer
+  installed_contract_value_consumer installed_contract_state_consumer
+  installed_contract_service_consumer
+  installed_contract_plugin_consumer installed_contract_plugin_lease_consumer)
 
 
 salts_idl_target(
   TARGET installed_socket
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/socket.schema"
   ARTIFACT_NAME "installed_device"
+  BINARY_CODEC
   TRANSPORTS SOCKET
   PROJECTION_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/socket_config.json")
 
@@ -105,6 +273,7 @@ salts_idl_target(
   TARGET installed_message
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/message.schema"
   ARTIFACT_NAME "installed_message"
+  BINARY_CODEC
   ARTIFACTS MESSAGE)
 
 if(NOT TARGET installed_message_native)
@@ -162,6 +331,7 @@ salts_idl_target(
   TARGET installed_nested_generics
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/message/test_nested_native_generics.schema"
   ARTIFACT_NAME "nested_native_generics"
+  BINARY_CODEC
   ARTIFACTS MESSAGE)
 
 add_executable(installed_nested_generics_consumer
@@ -193,6 +363,7 @@ salts_idl_target(
   TARGET installed_service
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/service.schema"
   ARTIFACT_NAME "installed_service"
+  BINARY_CODEC
   ARTIFACTS NATIVE
   TRANSPORTS HTTP RPC)
 
@@ -284,6 +455,7 @@ salts_idl_target(
   TARGET installed_flow
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/flowmq.schema"
   ARTIFACT_NAME "installed_flow"
+  BINARY_CODEC
   TRANSPORTS FLOWMQ
   PROJECTION_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/flowmq_config.json")
 
@@ -307,6 +479,7 @@ salts_idl_target(
   TARGET installed_flow_service
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/service.schema"
   ARTIFACT_NAME "installed_service_flow"
+  BINARY_CODEC
   TRANSPORTS FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/flowmq_service_config.json")

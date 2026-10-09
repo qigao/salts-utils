@@ -86,6 +86,7 @@ spec("sql_idl_format_independence") {
         .output_path = output,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
         .lang_enum = TBE_COMPILER_LANG_C,
+        .binary_codec = 1,
     };
     remove(input);
     remove(output);

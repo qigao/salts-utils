@@ -1823,6 +1823,7 @@ spec("tbe_compiler") {
           .output_path = output_path,
           .dsl_output_path = NULL,
           .lang_enum = 0,
+          .binary_codec = 1,
       };
 
       cleanup_test_file(output_path);
@@ -2708,6 +2709,7 @@ spec("tbe_compiler") {
           .output_path = header_path,
           .dsl_output_path = dsl_path,
           .lang_enum = TBE_COMPILER_LANG_C,
+          .binary_codec = 1,
       };
 
       cleanup_test_file(schema_path);

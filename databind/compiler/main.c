@@ -82,6 +82,7 @@ int main(int argc, char **argv) {
     char    *source_output_path = NULL;
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
+    CmdArgerBool binary_codec = cmd_arger_false;
     char    *artifact_names = NULL;
     char    *transport_names = NULL;
     char    *projection_config_path = NULL;
@@ -118,6 +119,8 @@ int main(int argc, char **argv) {
                                  "Generate the C Wasm guest adapter source"),
         cmd_arger_desc_string_sh(&dsl_output_path, "dsl-output", "d",
                                  "Generate DSL type declarations (.rfl file)"),
+        cmd_arger_desc_flag(&binary_codec, "binary-codec",
+                            "Explicitly admit Binary layout and generate C wire helpers"),
         cmd_arger_desc_string(
             &artifact_names, "artifacts",
             "Comma-separated artifact selections (native,plugin,wasm,openapi,mock)"),
@@ -208,6 +211,7 @@ int main(int argc, char **argv) {
         .dsl_output_path = dsl_output_path,
         .resource_dir = resource_dir,
         .lang_enum = lang_enum,
+        .binary_codec = binary_codec != cmd_arger_false,
         .projection_requests = projection_plan.requests,
         .projection_count = projection_plan.request_count,
         .projection_backends = projection_plan.backends,

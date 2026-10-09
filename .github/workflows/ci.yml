@@ -2,11 +2,13 @@ name: SaltsUtils CI
 on:
   pull_request:
   push:
-    branches: [master]
+    branches:
+      - master
+      - release/salts-utils-4.3-idlc-606
   workflow_dispatch:
     inputs:
       prepare_release:
-        description: Build all SDK platforms and retain a package for manual publication
+        description: Validate six-RID SDK for Release, publication through Actions UI
         type: boolean
         default: false
 permissions:
@@ -38,7 +40,8 @@ jobs:
           CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           CI_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
           PREPARE_RELEASE: ${{ inputs.prepare_release || false }}
-        run: ./cmake/ci/select-ci-scope.ps1 -EventName $env:CI_EVENT -BaseRef $env:CI_BASE -HeadRef $env:CI_HEAD -PrepareRelease ($env:PREPARE_RELEASE -eq 'true')
+          CI_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: ./cmake/ci/select-ci-scope.ps1 -EventName $env:CI_EVENT -BaseRef $env:CI_BASE -HeadRef $env:CI_HEAD -HeadBranch $env:CI_BRANCH -PrepareRelease ($env:PREPARE_RELEASE -eq 'true')
       - name: Read package version
         id: version
         shell: pwsh
@@ -48,6 +51,11 @@ jobs:
           $project = Get-Content CMakeLists.txt -Raw
           if ($project -notmatch '(?m)^\s*VERSION\s+([0-9][^\s)]*)' -or $Matches[1] -ne $version) {
             throw 'CMake and package versions differ'
+          }
+          if ($env:GITHUB_REF -eq 'refs/heads/release/salts-utils-4.3-idlc-606') {
+            $channel = (Get-Content cmake/ci/rc-channel.txt -Raw).Trim()
+            if ($channel -notmatch '^rc\.[1-9][0-9]*$') { throw "Invalid RC channel: $channel" }
+            $version = "$version-$channel"
           }
           "version=$version" >> $env:GITHUB_OUTPUT
       - name: Qualify nupkg permission rewrite
@@ -69,7 +77,7 @@ jobs:
       tests: ${{ needs.scope.outputs.tests }}
   package:
     needs: [scope, native, tests]
-    if: github.event_name == 'workflow_dispatch' && inputs.prepare_release
+    if: (github.event_name == 'workflow_dispatch' && inputs.prepare_release) || (github.event_name == 'push' && github.ref == 'refs/heads/release/salts-utils-4.3-idlc-606')
     uses: ./.github/workflows/sdk-package.yml
     with:
       version: ${{ needs.scope.outputs.version }}
@@ -89,6 +97,7 @@ jobs:
           BUILD_RESULT: ${{ needs.native.result }}
           TEST_RESULT: ${{ needs.tests.result }}
           PREPARE_RELEASE: ${{ inputs.prepare_release || false }}
+          RC_BRANCH_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/release/salts-utils-4.3-idlc-606' }}
           PACKAGE_RESULT: ${{ needs.package.result }}
         run: |
           set -euo pipefail
@@ -98,4 +107,4 @@ jobs:
             test "$BUILD_RESULT" = success
             test "$TEST_RESULT" = success
           fi
-          if [ "$PREPARE_RELEASE" = true ]; then test "$PACKAGE_RESULT" = success; fi
+          if [ "$PREPARE_RELEASE" = true ] || [ "$RC_BRANCH_PUSH" = true ]; then test "$PACKAGE_RESULT" = success; fi

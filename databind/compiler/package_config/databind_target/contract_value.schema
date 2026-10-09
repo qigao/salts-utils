@@ -1,0 +1,7 @@
+schema NativeValueSdk [version(1)];
+
+message OwnedValue {
+  string label;
+  bytes payload;
+  uint32 count;
+}

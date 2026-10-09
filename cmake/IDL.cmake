@@ -139,7 +139,7 @@ function(_saltsutils_idl_host_command
 endfunction()
 
 function(salts_idl_target)
-  set(options)
+  set(options BINARY_CODEC)
   set(one_value_args
       TARGET
       FOLDER
@@ -191,6 +191,7 @@ function(salts_idl_target)
   set(_normalized_artifacts)
   set(_normalized_transports)
   set(_has_native FALSE)
+  set(_has_types FALSE)
   set(_has_message FALSE)
   set(_has_plugin FALSE)
   set(_has_wasm FALSE)
@@ -203,7 +204,9 @@ function(salts_idl_target)
   set(_compiler_artifacts)
   foreach(artifact IN LISTS DB_ARTIFACTS)
     string(TOUPPER "${artifact}" artifact_upper)
-    if(artifact_upper STREQUAL "NATIVE")
+    if(artifact_upper STREQUAL "TYPES")
+      set(_has_types TRUE)
+    elseif(artifact_upper STREQUAL "NATIVE")
       set(_has_native TRUE)
       list(APPEND _compiler_artifacts "${artifact_upper}")
     elseif(artifact_upper STREQUAL "MESSAGE")
@@ -224,6 +227,12 @@ function(salts_idl_target)
     endif()
     list(APPEND _normalized_artifacts "${artifact_upper}")
   endforeach()
+
+  if(_has_types AND
+     (NOT "${_normalized_artifacts}" STREQUAL "TYPES" OR DB_TRANSPORTS OR DB_BINARY_CODEC))
+    message(FATAL_ERROR
+            "salts_idl_target TYPES is Contract-only and cannot be mixed with another artifact or transport")
+  endif()
 
   if(_has_message AND _has_native)
     message(FATAL_ERROR
@@ -248,6 +257,34 @@ function(salts_idl_target)
     endif()
     list(APPEND _normalized_transports "${transport_upper}")
   endforeach()
+
+  if((_has_message OR _has_socket OR _has_flowmq) AND
+     NOT DB_BINARY_CODEC)
+    message(FATAL_ERROR
+            "Generated Binary codec/transport source requires explicit BINARY_CODEC")
+  endif()
+  if(_has_plugin AND NOT DB_BINARY_CODEC AND
+     (_has_native OR DB_TRANSPORTS))
+    message(FATAL_ERROR
+            "Contract-only PLUGIN requires an independent typed Function ABI; "
+            "mixed Native/transport generation is not admitted without explicit BINARY_CODEC")
+  endif()
+  if(_has_wasm AND NOT DB_BINARY_CODEC AND DB_TRANSPORTS)
+    message(FATAL_ERROR
+            "Contract-only WASM Component cannot select formatted transports")
+  endif()
+  if(_has_native AND NOT DB_BINARY_CODEC AND DB_TRANSPORTS)
+    message(FATAL_ERROR
+            "Contract-only NATIVE Service cannot select transport adapters; "
+            "choose explicit BINARY_CODEC for a wire transport")
+  endif()
+  # Only an explicitly selected wire/codec execution output requires a Binary
+  # companion. NATIVE alone is a typed Service ABI with CMeta VALUE records.
+  set(_needs_native_source FALSE)
+  if(_has_message OR _has_socket OR _has_flowmq OR
+     ((_has_native OR _has_plugin OR _has_wasm) AND DB_BINARY_CODEC))
+    set(_needs_native_source TRUE)
+  endif()
 
   if(_has_openapi AND NOT _has_http)
     message(FATAL_ERROR
@@ -296,6 +333,11 @@ function(salts_idl_target)
     message(FATAL_ERROR
             "salts_idl_target generated target already exists: "
             "${DB_TARGET}_wasm")
+  endif()
+  if(_has_types AND TARGET "${DB_TARGET}_types")
+    message(FATAL_ERROR
+            "salts_idl_target generated target already exists: "
+            "${DB_TARGET}_types")
   endif()
 
   if(_has_plugin)
@@ -454,7 +496,7 @@ function(salts_idl_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.flowmq.h")
 
   set(_generated_outputs "${_native_header}")
-  if(_has_message OR _has_native OR _has_plugin OR _has_wasm OR _has_socket OR _has_flowmq)
+  if(_needs_native_source)
     list(APPEND _generated_outputs "${_native_source}")
   endif()
   if(_has_native)
@@ -496,6 +538,9 @@ function(salts_idl_target)
       "${_idl}"
       --lang c
       --output "${_native_header}")
+  if(DB_BINARY_CODEC)
+    list(APPEND _compiler_args --binary-codec)
+  endif()
   if(_compiler_artifacts OR _normalized_transports)
     list(APPEND _compiler_args
       --artifact-name "${DB_ARTIFACT_NAME}")
@@ -508,7 +553,7 @@ function(salts_idl_target)
     list(APPEND _compiler_args
       --transports "${_transport_csv}")
   endif()
-  if(_has_message OR _has_native OR _has_plugin OR _has_wasm OR _has_socket OR _has_flowmq)
+  if(_needs_native_source)
     list(APPEND _compiler_args
       --source-output "${_native_source}")
   endif()
@@ -553,10 +598,21 @@ function(salts_idl_target)
   add_custom_target("${DB_TARGET}_idl_codegen"
     DEPENDS ${_generated_outputs})
 
+  if(_has_types)
+    # Public installed SDK consumer of the Contract-only NativeSourceIR
+    # representation; this target has no Binary codec companion or wire ABI.
+    add_library("${DB_TARGET}_types" INTERFACE)
+    add_dependencies("${DB_TARGET}_types" "${DB_TARGET}_idl_codegen")
+    target_include_directories("${DB_TARGET}_types" INTERFACE
+      "${_generated_dir}")
+    target_link_libraries("${DB_TARGET}_types" INTERFACE Salts::CSTL)
+  endif()
+
   if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
-    set(_native_target_sources
-      "${_native_source}"
-      "${_native_header}")
+    set(_native_target_sources "${_native_header}")
+    if(_needs_native_source)
+      list(APPEND _native_target_sources "${_native_source}")
+    endif()
     if(_has_native)
       list(APPEND _native_target_sources
         "${_native_service_source}"
@@ -572,18 +628,22 @@ function(salts_idl_target)
     target_link_libraries("${DB_TARGET}_native" PUBLIC
       Salts::DataBind
       ${DB_LIBRARIES})
-    if(_has_native)
-      target_link_libraries("${DB_TARGET}_native" PUBLIC
-        Salts::CFlow)
+    if(_has_native AND DB_BINARY_CODEC)
+      target_link_libraries("${DB_TARGET}_native" PUBLIC Salts::CFlow)
     endif()
   endif()
 
   if(_has_plugin)
+    # The no-codec Plugin provider/client share the exact C11 NativeSourceIR
+    # Record header; neither links a Binary wire/serializer companion.
+    set(_plugin_type_sources "${_native_header}")
+    if(_needs_native_source)
+      list(APPEND _plugin_type_sources "${_native_source}")
+    endif()
     add_library("${DB_TARGET}_plugin" SHARED
       "${_plugin_source}"
       "${_plugin_header}"
-      "${_native_source}"
-      "${_native_header}"
+      ${_plugin_type_sources}
       ${DB_SOURCES})
     add_dependencies("${DB_TARGET}_plugin"
       "${DB_TARGET}_idl_codegen")
@@ -601,8 +661,7 @@ function(salts_idl_target)
     add_library("${DB_TARGET}_plugin_client" STATIC
       "${_plugin_client_source}"
       "${_plugin_client_header}"
-      "${_native_source}"
-      "${_native_header}")
+      ${_plugin_type_sources})
     add_dependencies("${DB_TARGET}_plugin_client"
       "${DB_TARGET}_idl_codegen")
     target_compile_features("${DB_TARGET}_plugin_client" PRIVATE c_std_11)
@@ -621,11 +680,12 @@ function(salts_idl_target)
       message(FATAL_ERROR
               "WASM artifact requires released TurboWasm::Component")
     endif()
-    add_library("${DB_TARGET}_wasm" STATIC
-      "${_wasm_host_source}"
-      "${_wasm_host_header}"
-      "${_native_source}"
-      "${_native_header}")
+    set(_wasm_target_sources
+      "${_wasm_host_source}" "${_wasm_host_header}" "${_native_header}")
+    if(_needs_native_source)
+      list(APPEND _wasm_target_sources "${_native_source}")
+    endif()
+    add_library("${DB_TARGET}_wasm" STATIC ${_wasm_target_sources})
     add_dependencies("${DB_TARGET}_wasm"
       "${DB_TARGET}_idl_codegen")
     target_compile_features("${DB_TARGET}_wasm" PRIVATE c_std_11)
@@ -640,6 +700,9 @@ function(salts_idl_target)
   add_dependencies("${DB_TARGET}" "${DB_TARGET}_idl_codegen")
   if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
     add_dependencies("${DB_TARGET}" "${DB_TARGET}_native")
+  endif()
+  if(_has_types)
+    add_dependencies("${DB_TARGET}" "${DB_TARGET}_types")
   endif()
   if(_has_plugin)
     add_dependencies("${DB_TARGET}"
@@ -726,6 +789,14 @@ function(salts_idl_target)
         "${_native_service_header}" PARENT_SCOPE)
     set(${DB_TARGET}_NATIVE_SERVICE_SOURCE
         "${_native_service_source}" PARENT_SCOPE)
+  endif()
+  if(_has_types)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_NATIVE_TYPES_TARGET "${DB_TARGET}_types")
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_NATIVE_TYPES_HEADER "${_native_header}")
+    set(${DB_TARGET}_TYPES_TARGET "${DB_TARGET}_types" PARENT_SCOPE)
+    set(${DB_TARGET}_TYPES_HEADER "${_native_header}" PARENT_SCOPE)
   endif()
   if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
     set_property(TARGET "${DB_TARGET}" PROPERTY

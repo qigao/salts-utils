@@ -21,6 +21,10 @@ typedef struct tbe_compiler_options_s {
   const char *dsl_output_path;
   const char *resource_dir;
   int64_t lang_enum;
+  /* Explicit Binary wire header admission for C. --source-output and
+   * --guest-output separately select Binary codec/bridge artifacts. Bare C
+   * with no companion uses Contract-only NativeSourceIR by default. */
+  int binary_codec;
 
   /*
    * Compiler-private artifact projection selection.
@@ -55,6 +59,18 @@ const char *tbe_compiler_resolve_template(const char *user_template,
 
 void tbe_compiler_annotate_language_types(
     const IdlContract *contract, Node *root);
+
+/* Compiler-private semantic freeze without Binary layout admission.
+ * Returned legacy tree is unannotated and must not be used by C wire templates.
+ * Caller owns tree, contract and schema data. */
+/* Compiler-private Contract-only Native header path. Named outputs use the
+ * rollback-aware coordinator; NULL output writes to stdout after admission. */
+int databind_compiler_generate_contract_native_header(
+    const char *schema_path, const char *output_path);
+
+int databind_compiler_parse_contract_only_file(
+    const char *schema_path, Node **out_legacy_tree,
+    IdlContract **out_contract, char **out_schema_data);
 
 int databind_compiler_parse_contract_file(
     const char *schema_path, Node **out_legacy_tree,

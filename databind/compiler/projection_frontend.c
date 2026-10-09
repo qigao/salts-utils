@@ -210,12 +210,6 @@ static int add_native_service(
   if (ensure_artifact_context(input, out, error, error_size) != 0)
     return -1;
 
-  if (input->source_output_path == NULL ||
-      input->source_output_path[0] == '\0')
-    return frontend_error(
-        error, error_size,
-        "NATIVE artifact requires --source-output for codec/native metadata");
-
   if (!derive_artifact_path(
           out->artifact_dir, input->artifact_name,
           ".service_native.h", out->native_service_header,
@@ -241,6 +235,7 @@ static int add_native_service(
   out->native_service = (databind_compiler_native_service_config){
       .native_header = out->native_header,
       .header_output = out->native_service_header,
+      .binary_presentation = input->source_output_path != NULL,
   };
   out->requests[out->request_count++] =
       (databind_compiler_projection_request){
@@ -578,6 +573,7 @@ static int add_plugin(
       .service_header_output = out->plugin_service_header,
       .client_header_output = out->plugin_client_header,
       .client_source_output = out->plugin_client_source,
+      .binary_presentation = input->source_output_path != NULL,
   };
 
   out->requests[out->request_count++] =
@@ -662,6 +658,7 @@ static int add_wasm(
       .host_source_output = out->wasm_host_source,
       .guest_header_output = out->wasm_guest_header,
       .symbol_prefix = out->wasm_symbol_prefix,
+      .binary_presentation = input->source_output_path != NULL,
   };
   out->requests[out->request_count++] =
       (databind_compiler_projection_request){

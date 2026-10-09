@@ -11,6 +11,10 @@
 #include "idl_contract_internal.h"
 #include "binary_contract_overlay.h"
 #include "binary_reader_codegen.h"
+#include "native_service_projection.h"
+#include "wasm_projection.h"
+#include "plugin_projection.h"
+#include "native_source_ir.h"
 #include "binary_layout_lowering.h"
 #include "schema_cmeta.h"
 #include <cmeta_cmeta_data.h>
@@ -3346,12 +3350,18 @@ static int tbe_compiler_validate_options(const tbe_compiler_options_t *options,
   return 1;
 }
 
-/* The caller selects whether this producer needs Binary wire lowering.
- * Source-language contract admission is independent of that choice. */
+/* Binary is selected format admission, never part of the default typed C
+ * Contract. An explicitly requested C codec/transport keeps its distinct
+ * wire representation and strict layout constraints. */
+typedef enum databind_compiler_format_admission {
+  DATABIND_COMPILER_FORMAT_CONTRACT_ONLY = 0,
+  DATABIND_COMPILER_FORMAT_BINARY = 1
+} databind_compiler_format_admission;
+
 static int databind_compiler_parse_contract_file_mode(
     const char *schema_path, Node **out_legacy_tree,
     IdlContract **out_contract, char **out_schema_data,
-    int require_binary_format) {
+    databind_compiler_format_admission admission) {
   tbe_error_t parse_err;
   IdlDiagnostic contract_error = IDL_DIAGNOSTIC_INIT;
   IdlContract *contract = NULL;
@@ -3400,7 +3410,16 @@ static int databind_compiler_parse_contract_file_mode(
     return 1;
   }
 
-  if (require_binary_format) {
+  if (admission != DATABIND_COMPILER_FORMAT_CONTRACT_ONLY &&
+      admission != DATABIND_COMPILER_FORMAT_BINARY) {
+    fprintf(stderr, "Invalid compiler format admission\n");
+    idl_contract_destroy(contract);
+    free(schema_data);
+    node_free(root);
+    return 1;
+  }
+
+  if (admission == DATABIND_COMPILER_FORMAT_BINARY) {
     if (databind_binary_contract_apply(root, &parse_err) != 0) {
       fprintf(stderr, "Binary format error: %s\n", parse_err.message);
       idl_contract_destroy(contract);
@@ -3419,11 +3438,20 @@ static int databind_compiler_parse_contract_file_mode(
   return 0;
 }
 
+int databind_compiler_parse_contract_only_file(
+    const char *schema_path, Node **out_legacy_tree,
+    IdlContract **out_contract, char **out_schema_data) {
+  return databind_compiler_parse_contract_file_mode(
+      schema_path, out_legacy_tree, out_contract, out_schema_data,
+      DATABIND_COMPILER_FORMAT_CONTRACT_ONLY);
+}
+
 int databind_compiler_parse_contract_file(
     const char *schema_path, Node **out_legacy_tree,
     IdlContract **out_contract, char **out_schema_data) {
   return databind_compiler_parse_contract_file_mode(
-      schema_path, out_legacy_tree, out_contract, out_schema_data, 1);
+      schema_path, out_legacy_tree, out_contract, out_schema_data,
+      DATABIND_COMPILER_FORMAT_BINARY);
 }
 
 int tbe_compiler_parse_schema_file(
@@ -4640,6 +4668,25 @@ static int tbe_compiler_txn_reserve(
   return 0;
 }
 
+/* Match the frontend's lexical destination identity on Windows. */
+static int tbe_compiler_txn_same_path(const char *a, const char *b) {
+  if (a == NULL || b == NULL) return 0;
+#ifdef _WIN32
+  while (*a != '\0' && *b != '\0') {
+    unsigned char x = (unsigned char)*a++;
+    unsigned char y = (unsigned char)*b++;
+    if (x == '\\') x = '/';
+    if (y == '\\') y = '/';
+    if (x >= 'A' && x <= 'Z') x = (unsigned char)(x - 'A' + 'a');
+    if (y >= 'A' && y <= 'Z') y = (unsigned char)(y - 'A' + 'a');
+    if (x != y) return 0;
+  }
+  return *a == *b;
+#else
+  return strcmp(a, b) == 0;
+#endif
+}
+
 static int tbe_compiler_txn_add(
     tbe_compiler_output_transaction *txn, const char *final_path) {
   tbe_compiler_staged_output *output;
@@ -4648,7 +4695,7 @@ static int tbe_compiler_txn_add(
       txn->count >= TBE_COMPILER_TRANSACTION_OUTPUT_LIMIT)
     return -1;
   for (i = 0u; i < txn->count; ++i)
-    if (strcmp(txn->items[i].final_path, final_path) == 0) {
+    if (tbe_compiler_txn_same_path(txn->items[i].final_path, final_path)) {
       fprintf(stderr, "Duplicate generated transaction output: %s\n", final_path);
       return -1;
     }
@@ -4699,16 +4746,34 @@ static int tbe_compiler_txn_commit(
     tbe_compiler_output_transaction *txn) {
   size_t i;
   int cleanup_failed = 0;
-  if (txn == NULL || txn->count < 2u) return -1;
+  /* A single staged output needs the same backup/publish/rollback semantics
+   * as a multi-output transaction; reject only empty transactions. */
+  if (txn == NULL || txn->count == 0u) return -1;
 
   /* Prepare all backup slots before moving a single published file.
    * Every stage and backup is a unique O_EXCL sibling of the final path. */
   for (i = 0u; i < txn->count; ++i) {
     tbe_compiler_staged_output *item = &txn->items[i];
     struct stat info;
+    /* Reject missing or non-regular staged outputs before touching any
+     * caller-owned final path. Reservation alone is not proof of rendering;
+     * backend callbacks must populate their declared outputs. */
     if (item->staging_path == NULL ||
-        stat(item->final_path, &info) != 0) {
-      if (item->staging_path == NULL || errno != ENOENT) {
+        stat(item->staging_path, &info) != 0) {
+      fprintf(stderr, "Missing staged compiler output: %s\n", item->final_path);
+      goto rollback;
+    }
+#ifdef _WIN32
+    if ((info.st_mode & _S_IFMT) != _S_IFREG) {
+#else
+    if (!S_ISREG(info.st_mode)) {
+#endif
+      fprintf(stderr, "Staged compiler output is not a regular file: %s\n",
+              item->final_path);
+      goto rollback;
+    }
+    if (stat(item->final_path, &info) != 0) {
+      if (errno != ENOENT) {
         fprintf(stderr, "Failed to inspect output: %s\n", item->final_path);
         goto rollback;
       }
@@ -4782,6 +4847,266 @@ rollback:
   if (tbe_compiler_txn_abort(txn) != 0)
     fprintf(stderr, "Compiler transaction rollback was incomplete\n");
   return -1;
+}
+
+/* Contract-only Native headers share the existing staged-output coordinator.
+ * The legacy C/Wire entry remains separately Binary-admitted. */
+int databind_compiler_generate_contract_native_header(
+    const char *schema_path, const char *output_path) {
+  tbe_compiler_output_transaction txn = {0};
+  databind_native_source_ir ir = {0};
+  Node *tree = NULL;
+  IdlContract *contract = NULL;
+  char *source = NULL;
+  int status = -1;
+  if (schema_path == NULL ||
+      (output_path != NULL && output_path[0] == '\0')) return -1;
+  if (databind_compiler_parse_contract_only_file(
+          schema_path, &tree, &contract, &source) != 0)
+    goto done;
+  if (databind_native_source_ir_build(contract, &ir) != 0)
+    goto done;
+  /* Source-only stdout has no named filesystem transaction. Every output
+   * path instead retains the rollback-aware staging/commit coordinator. */
+  if (output_path == NULL) {
+    status = databind_native_source_ir_write_stream(&ir, stdout);
+    goto done;
+  }
+  if (tbe_compiler_txn_add(&txn, output_path) != 0)
+    goto done;
+  if (databind_native_source_ir_write_header(
+          &ir, txn.items[0].staging_path) != 0)
+    goto done;
+  status = tbe_compiler_txn_commit(&txn);
+done:
+  if (txn.count != 0u && tbe_compiler_txn_abort(&txn) != 0)
+    status = -1;
+  databind_native_source_ir_destroy(&ir);
+  idl_contract_destroy(contract);
+  node_free(tree);
+  free(source);
+  return status;
+}
+
+/* All Contract-only artifacts use the same staged publication coordinator.
+ * Native/Plugin/Wasm declare *every* output before rendering. A stage-safe
+ * single-file artifact participates in the same transaction. None of these
+ * artifacts implies Binary wire admission.
+ *
+ * The backend configuration retains final paths for generated #include
+ * references; stage path pointers are owned by the transaction until commit. */
+typedef struct databind_contract_artifact_stage {
+  const databind_compiler_projection_backend *backend;
+  size_t first_stage;
+  size_t stage_count;
+  int native;
+  int plugin;
+  int wasm;
+} databind_contract_artifact_stage;
+
+static int databind_compiler_generate_contract_native_bundle(
+    const tbe_compiler_options_t *options) {
+  tbe_compiler_output_transaction txn = {0};
+  databind_native_source_ir native = {0};
+  databind_compiler_projection_request *staged = NULL;
+  databind_contract_artifact_stage *artifact_stages = NULL;
+  databind_compiler_projection_input projection_input = {0};
+  Node *tree = NULL;
+  IdlContract *contract = NULL;
+  char *source = NULL;
+  char template_path[SALTS_FS_MAX_PATH];
+  const char *dsl_stage = NULL;
+  const char *dsl_template;
+  size_t i;
+  int status = -1;
+
+  if (options == NULL || options->schema_path == NULL ||
+      options->output_path == NULL || options->output_path[0] == '\0' ||
+      options->projection_count > TBE_COMPILER_TRANSACTION_OUTPUT_LIMIT)
+    return -1;
+
+  if (options->projection_count != 0u) {
+    if (options->projection_count > SIZE_MAX / sizeof(*staged) ||
+        options->projection_count > SIZE_MAX / sizeof(*artifact_stages))
+      return -1;
+    staged = (databind_compiler_projection_request *)calloc(
+        options->projection_count, sizeof(*staged));
+    artifact_stages = (databind_contract_artifact_stage *)calloc(
+        options->projection_count, sizeof(*artifact_stages));
+    if (staged == NULL || artifact_stages == NULL)
+      goto done;
+    for (i = 0u; i < options->projection_count; ++i) {
+      size_t j;
+      const databind_compiler_projection_request *request =
+          &options->projection_requests[i];
+      databind_contract_artifact_stage *entry = &artifact_stages[i];
+      if (request->id.axis !=
+          DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT) {
+        fprintf(stderr, "Contract-only C cannot select a Binary transport\n");
+        goto done;
+      }
+      for (j = 0u; j < options->projection_backend_count; ++j)
+        if (databind_compiler_projection_id_equal(
+                request->id, options->projection_backends[j].id)) {
+          entry->backend = &options->projection_backends[j];
+          break;
+        }
+      if (entry->backend == NULL) goto done;
+      /* True multi-file backends must use their audited staged API.
+       * Other selected artifacts are admitted only with STAGED_SINGLE. */
+      entry->native =
+          entry->backend->output_policy == DATABIND_COMPILER_OUTPUT_STAGED_MULTI &&
+          entry->backend->generate == databind_compiler_native_service_generate &&
+          request->id.kind == DATABIND_COMPILER_ARTIFACT_NATIVE;
+      entry->plugin =
+          entry->backend->output_policy == DATABIND_COMPILER_OUTPUT_STAGED_MULTI &&
+          entry->backend->generate == databind_compiler_plugin_generate &&
+          request->id.kind == DATABIND_COMPILER_ARTIFACT_PLUGIN;
+      entry->wasm =
+          entry->backend->output_policy == DATABIND_COMPILER_OUTPUT_STAGED_MULTI &&
+          entry->backend->generate == databind_compiler_wasm_generate &&
+          request->id.kind == DATABIND_COMPILER_ARTIFACT_WASM;
+      if (!entry->native && !entry->plugin && !entry->wasm &&
+          entry->backend->output_policy !=
+              DATABIND_COMPILER_OUTPUT_STAGED_SINGLE) {
+        fprintf(stderr, "Artifact has no audited staged-output contract\n");
+        goto done;
+      }
+      if ((entry->backend->generate == databind_compiler_native_service_generate ||
+           entry->backend->generate == databind_compiler_plugin_generate ||
+           entry->backend->generate == databind_compiler_wasm_generate) &&
+          !entry->native && !entry->plugin && !entry->wasm) {
+        fprintf(stderr, "Multi-output artifact backend has dishonest staging capability\n");
+        goto done;
+      }
+      staged[i] = *request;
+    }
+  }
+
+  if (databind_compiler_parse_contract_only_file(options->schema_path, &tree,
+                                                  &contract, &source) != 0)
+    goto done;
+  if (databind_native_source_ir_build(contract, &native) != 0)
+    goto done;
+  if (tbe_compiler_txn_add(&txn, options->output_path) != 0)
+    goto done;
+
+  if (options->dsl_output_path != NULL) {
+    if (tbe_compiler_txn_add(&txn, options->dsl_output_path) != 0)
+      goto done;
+    dsl_stage = txn.items[txn.count - 1u].staging_path;
+  }
+
+  /* Reserve *all* declared output paths before invoking any generator.
+   * The transaction's duplicate/alias detection applies across artifacts,
+   * DSL, primary header, and every secondary file. */
+  for (i = 0u; i < options->projection_count; ++i) {
+    const databind_compiler_projection_request *request =
+        &options->projection_requests[i];
+    databind_contract_artifact_stage *entry = &artifact_stages[i];
+    const char *final_paths[4] = {0};
+    size_t j;
+    if (entry->native) {
+      const databind_compiler_native_service_config *config =
+          (const databind_compiler_native_service_config *)request->config;
+      if (config == NULL) goto done;
+      final_paths[0] = config->header_output;
+      final_paths[1] = request->output;
+      entry->stage_count = 2u;
+    } else if (entry->plugin) {
+      const databind_compiler_plugin_config *config =
+          (const databind_compiler_plugin_config *)request->config;
+      if (config == NULL) goto done;
+      final_paths[0] = config->service_header_output;
+      final_paths[1] = request->output;
+      final_paths[2] = config->client_header_output;
+      final_paths[3] = config->client_source_output;
+      entry->stage_count = 4u;
+    } else if (entry->wasm) {
+      const databind_compiler_wasm_config *config =
+          (const databind_compiler_wasm_config *)request->config;
+      if (config == NULL) goto done;
+      final_paths[0] = request->output;
+      final_paths[1] = config->host_header_output;
+      final_paths[2] = config->host_source_output;
+      final_paths[3] = config->guest_header_output;
+      entry->stage_count = 4u;
+    } else {
+      final_paths[0] = request->output;
+      entry->stage_count = 1u;
+    }
+    entry->first_stage = txn.count;
+    for (j = 0u; j < entry->stage_count; ++j)
+      if (tbe_compiler_txn_add(&txn, final_paths[j]) != 0)
+        goto done;
+    if (entry->stage_count == 1u)
+      staged[i].output = txn.items[entry->first_stage].staging_path;
+  }
+
+  if (databind_native_source_ir_write_header(
+          &native, txn.items[0].staging_path) != 0)
+    goto done;
+
+  if (dsl_stage != NULL) {
+    /* A render-only Node adapter is projected from the immutable Contract;
+     * Binary overlay is never applied or consulted. */
+    tbe_compiler_annotate_language_types(contract, tree);
+    dsl_template = tbe_compiler_resolve_resource(
+        options, "templates/reflection/rfl_types.mustache",
+        template_path, sizeof(template_path));
+    if (dsl_template == NULL ||
+        tbe_compiler_render_file(tree, dsl_template, dsl_stage) != 0)
+      goto done;
+  }
+
+  projection_input.contract = contract;
+  projection_input.binary_format = NULL; /* No implicit Binary plan. */
+  for (i = 0u; i < options->projection_count; ++i) {
+    const databind_compiler_projection_request *request = &staged[i];
+    const databind_contract_artifact_stage *entry = &artifact_stages[i];
+    const size_t first = entry->first_stage;
+    if (entry->native) {
+      if (databind_compiler_native_service_render_staged(
+              &projection_input, request,
+              txn.items[first].staging_path,
+              txn.items[first + 1u].staging_path) != 0)
+        goto done;
+    } else if (entry->plugin) {
+      if (databind_compiler_plugin_render_staged(
+              &projection_input, request,
+              txn.items[first].staging_path,
+              txn.items[first + 1u].staging_path,
+              txn.items[first + 2u].staging_path,
+              txn.items[first + 3u].staging_path) != 0)
+        goto done;
+    } else if (entry->wasm) {
+      if (databind_compiler_wasm_render_staged(
+              &projection_input, request,
+              txn.items[first].staging_path,
+              txn.items[first + 1u].staging_path,
+              txn.items[first + 2u].staging_path,
+              txn.items[first + 3u].staging_path) != 0)
+        goto done;
+    } else if (entry->backend->generate(
+                   &projection_input, request,
+                   entry->backend->context) != 0)
+      goto done;
+  }
+
+  if (tbe_compiler_txn_commit(&txn) != 0)
+    goto done;
+  status = 0;
+
+done:
+  if (txn.count != 0u && tbe_compiler_txn_abort(&txn) != 0)
+    status = -1;
+  free(artifact_stages);
+  free(staged);
+  databind_native_source_ir_destroy(&native);
+  idl_contract_destroy(contract);
+  node_free(tree);
+  free(source);
+  return status;
 }
 
 static int tbe_compiler_output_paths_distinct(
@@ -4860,6 +5185,18 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   const char *dsl_output_path = options->dsl_output_path;
   int transactional_outputs = 0;
   int backend_transaction = 0;
+  int native_transaction = 0;
+  int wasm_transaction = 0;
+  int plugin_transaction = 0;
+  int seen_plugin = 0;
+  const databind_compiler_plugin_config *plugin_config = NULL;
+  const char *plugin_stages[4] = {0};
+  int seen_wasm = 0;
+  const databind_compiler_wasm_config *wasm_config = NULL;
+  const char *wasm_stages[4] = {0};
+  const databind_compiler_native_service_config *native_config = NULL;
+  const char *native_header_stage = NULL;
+  const char *native_source_stage = NULL;
   int database_language;
   int source_language;
   if (lang_name == NULL) {
@@ -4894,9 +5231,37 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     fprintf(stderr, "--dsl-output requires native RulesForge lowering, not a source-only language\n");
     return 1;
   }
+  if (options->binary_codec &&
+      options->lang_enum != TBE_COMPILER_LANG_C) {
+    fprintf(stderr, "--binary-codec requires --lang c\n");
+    return 1;
+  }
+  if (options->lang_enum == TBE_COMPILER_LANG_C &&
+      !options->binary_codec &&
+      options->source_output_path == NULL &&
+      options->guest_output_path == NULL &&
+      !tbe_compiler_projection_requires_binary(options)) {
+    if (options->template_path != NULL) {
+      fprintf(stderr,
+              "Custom C templates require explicit --binary-codec; "
+              "NativeSourceIR never falls back to a Binary template\n");
+      return 1;
+    }
+    /* Bare C, Contract DSL, and stage-safe typed artifact outputs never
+     * construct a Binary-mutated Node or wire representation. */
+    if (options->dsl_output_path != NULL ||
+        options->projection_count != 0u)
+      return databind_compiler_generate_contract_native_bundle(options) == 0
+                 ? 0 : 1;
+    return databind_compiler_generate_contract_native_header(
+               options->schema_path, options->output_path) == 0 ? 0 : 1;
+  }
   int status = databind_compiler_parse_contract_file_mode(
       options->schema_path, &task->root, &task->contract,
-      &task->schema_data, !database_language && !source_language);
+      &task->schema_data,
+      (database_language || source_language)
+          ? DATABIND_COMPILER_FORMAT_CONTRACT_ONLY
+          : DATABIND_COMPILER_FORMAT_BINARY);
   if (status != 0) return status;
 
   /*
@@ -5049,8 +5414,88 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
   backend_transaction = databind_compiler_projection_all_staged_single(
       options->projection_requests, options->projection_count,
       options->projection_backends, options->projection_backend_count);
+  /* Native Service participates only with stage-safe peers. Unsupported
+   * mixes fail before any caller-owned output is rendered. */
+  if (options->projection_count != 0u &&
+      options->projection_requests != NULL &&
+      options->projection_backends != NULL) {
+    size_t i;
+    int seen_native = 0;
+    int qualified = 1;
+    for (i = 0u; i < options->projection_count; ++i) {
+      size_t j;
+      const databind_compiler_projection_request *request =
+          &options->projection_requests[i];
+      const databind_compiler_projection_backend *backend = NULL;
+      for (j = 0u; j < options->projection_backend_count; ++j)
+        if (databind_compiler_projection_id_equal(
+                request->id, options->projection_backends[j].id)) {
+          backend = &options->projection_backends[j];
+          break;
+        }
+      if (backend == NULL) { qualified = 0; continue; }
+      if (backend->generate == databind_compiler_native_service_generate &&
+          request->id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+          request->id.kind == DATABIND_COMPILER_ARTIFACT_NATIVE) {
+        native_config = (const databind_compiler_native_service_config *)request->config;
+        if (seen_native || native_config == NULL ||
+            native_config->header_output == NULL ||
+            native_config->header_output[0] == '\\0') {
+          qualified = 0;
+        }
+        seen_native = 1;
+      } else if (backend->generate == databind_compiler_plugin_generate &&
+                 request->id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+                 request->id.kind == DATABIND_COMPILER_ARTIFACT_PLUGIN) {
+        plugin_config = (const databind_compiler_plugin_config *)request->config;
+        if (seen_plugin || plugin_config == NULL ||
+            plugin_config->service_header_output == NULL ||
+            plugin_config->client_header_output == NULL ||
+            plugin_config->client_source_output == NULL ||
+            request->output == NULL || request->output[0] == '\0')
+          qualified = 0;
+        seen_plugin = 1;
+      } else if (backend->generate == databind_compiler_wasm_generate &&
+                 request->id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+                 request->id.kind == DATABIND_COMPILER_ARTIFACT_WASM) {
+        wasm_config = (const databind_compiler_wasm_config *)request->config;
+        if (seen_wasm || wasm_config == NULL ||
+            wasm_config->host_header_output == NULL ||
+            wasm_config->host_source_output == NULL ||
+            wasm_config->guest_header_output == NULL ||
+            request->output == NULL || request->output[0] == '\0')
+          qualified = 0;
+        seen_wasm = 1;
+      } else if (backend->output_policy != DATABIND_COMPILER_OUTPUT_STAGED_SINGLE ||
+                 request->output == NULL || request->output[0] == '\\0') {
+        qualified = 0;
+        continue;
+      }
+    }
+    native_transaction = seen_native && qualified && options->output_path != NULL;
+    wasm_transaction = seen_wasm && qualified && options->output_path != NULL;
+    plugin_transaction = seen_plugin && qualified && options->output_path != NULL;
+    if ((seen_native || seen_wasm || seen_plugin) && !qualified) {
+      fprintf(stderr, "Multi-output projection requires all selected backends staged; no output published\n");
+      return 1;
+    }
+    if (seen_plugin && !plugin_transaction) {
+      fprintf(stderr, "Plugin requires a named shared output transaction; no output published\n");
+      return 1;
+    }
+    if (seen_wasm && !wasm_transaction) {
+      fprintf(stderr,
+              "Wasm requires a named output and fully staged selected backends; no output published\n");
+      return 1;
+    }
+    if (seen_native && !native_transaction) {
+      fprintf(stderr,
+              "Native Service requires a named output and fully staged selected backends; no output published\n");
+      return 1;
+    }
+  }
   transactional_outputs = options->output_path != NULL &&
-      (backend_transaction ||
+      (backend_transaction || native_transaction || wasm_transaction || plugin_transaction ||
        (options->projection_count == 0u &&
         (options->source_output_path != NULL ||
          options->guest_output_path != NULL ||
@@ -5074,7 +5519,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
         goto builtin_stage_failure;
       dsl_output_path = builtins.items[builtins.count - 1u].staging_path;
     }
-    if (backend_transaction) {
+    if (backend_transaction || native_transaction || wasm_transaction || plugin_transaction) {
       size_t i;
       if (options->projection_count >
           SIZE_MAX / sizeof(*transaction_requests))
@@ -5088,8 +5533,53 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
         if (tbe_compiler_txn_add(
                 &builtins, transaction_requests[i].output) != 0)
           goto builtin_stage_failure;
-        transaction_requests[i].output =
-            builtins.items[builtins.count - 1u].staging_path;
+        if ((native_transaction || wasm_transaction) &&
+            transaction_requests[i].id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+            transaction_requests[i].id.kind == DATABIND_COMPILER_ARTIFACT_NATIVE) {
+          native_source_stage = builtins.items[builtins.count - 1u].staging_path;
+          /* Native rendering needs the original request output for include semantics. */
+        } else if (plugin_transaction &&
+                   transaction_requests[i].id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+                   transaction_requests[i].id.kind == DATABIND_COMPILER_ARTIFACT_PLUGIN) {
+          plugin_stages[1] = builtins.items[builtins.count - 1u].staging_path;
+        } else if (wasm_transaction &&
+                   transaction_requests[i].id.axis == DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+                   transaction_requests[i].id.kind == DATABIND_COMPILER_ARTIFACT_WASM) {
+          wasm_stages[0] = builtins.items[builtins.count - 1u].staging_path;
+        } else {
+          transaction_requests[i].output =
+              builtins.items[builtins.count - 1u].staging_path;
+        }
+      }
+      if (plugin_transaction) {
+        const char *secondary[] = {
+            plugin_config->service_header_output,
+            plugin_config->client_header_output,
+            plugin_config->client_source_output};
+        const size_t positions[] = {0u, 2u, 3u};
+        size_t k;
+        for (k = 0u; k < 3u; ++k) {
+          if (tbe_compiler_txn_add(&builtins, secondary[k]) != 0)
+            goto builtin_stage_failure;
+          plugin_stages[positions[k]] =
+              builtins.items[builtins.count - 1u].staging_path;
+        }
+      }
+      if (wasm_transaction) {
+        const char *secondary[] = {
+            wasm_config->host_header_output, wasm_config->host_source_output,
+            wasm_config->guest_header_output};
+        size_t k;
+        for (k = 0; k < 3u; ++k) {
+          if (tbe_compiler_txn_add(&builtins, secondary[k]) != 0)
+            goto builtin_stage_failure;
+          wasm_stages[k + 1u] = builtins.items[builtins.count - 1u].staging_path;
+        }
+      }
+      if (native_transaction) {
+        if (tbe_compiler_txn_add(&builtins, native_config->header_output) != 0)
+          goto builtin_stage_failure;
+        native_header_stage = builtins.items[builtins.count - 1u].staging_path;
       }
     }
   }
@@ -5138,7 +5628,38 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
     databind_compiler_projection_input projection_input = {
         .contract = task->contract,
         .binary_format = &task->binary_format};
-    if (databind_compiler_projection_run(
+    if (native_transaction || wasm_transaction || plugin_transaction) {
+      size_t i;
+      for (i = 0u; i < options->projection_count; ++i) {
+        const databind_compiler_projection_request *request = &transaction_requests[i];
+        size_t j;
+        const databind_compiler_projection_backend *backend = NULL;
+        for (j = 0u; j < options->projection_backend_count; ++j)
+          if (databind_compiler_projection_id_equal(
+                  request->id, options->projection_backends[j].id)) {
+            backend = &options->projection_backends[j];
+            break;
+          }
+        if (backend == NULL) { status = 1; break; }
+        if (backend->generate == databind_compiler_native_service_generate) {
+          if (databind_compiler_native_service_render_staged(
+                  &projection_input, request, native_header_stage,
+                  native_source_stage) != 0) { status = 1; break; }
+        } else if (backend->generate == databind_compiler_plugin_generate) {
+          if (databind_compiler_plugin_render_staged(&projection_input, request,
+                  plugin_stages[0], plugin_stages[1], plugin_stages[2],
+                  plugin_stages[3]) != 0) { status = 1; break; }
+        } else if (backend->generate == databind_compiler_wasm_generate) {
+          if (databind_compiler_wasm_render_staged(&projection_input, request,
+                  wasm_stages[0], wasm_stages[1], wasm_stages[2],
+                  wasm_stages[3]) != 0) { status = 1; break; }
+        } else if (backend->generate(&projection_input, request,
+                                      backend->context) != 0) {
+          status = 1;
+          break;
+        }
+      }
+    } else if (databind_compiler_projection_run(
             &projection_input,
             transaction_requests != NULL
                 ? transaction_requests : options->projection_requests,
