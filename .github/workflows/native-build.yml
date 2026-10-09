@@ -25,10 +25,10 @@ jobs:
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
       QIGAO_IOS_SYSROOT: ${{ matrix.sysroot }}
       QIGAO_NUGET_PACKAGES: ${{ github.workspace }}/stage/nuget
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 512M
-      SCCACHE_DIRECT: 'false'
-      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-compile-v2-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_MAXSIZE: 512M
+      CCACHE_NODIRECT: 'true'
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-ccache-v1-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -174,3 +174,9 @@ jobs:
             ${{ matrix.build_dir }}/CMakeFiles/CMakeConfigureLog.yaml
             ${{ matrix.build_dir }}/vcpkg-manifest-install.log
           if-no-files-found: warn
+      - name: Report ccache compiler statistics
+        if: always()
+        shell: pwsh
+        run: |
+          $ccache = Get-Command ccache -ErrorAction SilentlyContinue
+          if ($ccache) { & $ccache.Source --show-stats }
