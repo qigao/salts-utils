@@ -222,6 +222,7 @@ int databind_native_source_ir_write_header(
   FILE *out;
   size_t i, j;
   int failed = 0;
+  int has_owning = 0;
   if (ir == NULL || path == NULL || path[0] == '\0' ||
       !native_identifier(ir->schema_name) ||
       !native_version_token(ir->schema_version) ||
@@ -365,8 +366,7 @@ int databind_native_source_ir_write_header(
    * the standalone C11 source-only header unless reflection is requested. */
   /* Owning CMeta field providers are not installed yet; reject their
    * reflection opt-in instead of projecting fake scalar descriptors. */
-  { int has_owning = 0;
-    for (i = 0u; i < ir->record_count; ++i)
+  { for (i = 0u; i < ir->record_count; ++i)
       for (j = 0u; j < ir->records[i].field_count; ++j)
         if (ir->records[i].fields[j].ownership != DATABIND_NATIVE_TRIVIAL)
           has_owning = 1;
@@ -374,6 +374,7 @@ int databind_native_source_ir_write_header(
         fprintf(out, "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n#error Native owning CMeta reflection is not implemented\n#endif\n") < 0)
       failed = 1;
   }
+  if (!has_owning) {
   if (!failed && fprintf(out,
       "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n"
       "#include <cmeta_cmeta_data.h>\n") < 0)
@@ -537,6 +538,7 @@ int databind_native_source_ir_write_header(
   }
   if (!failed && fprintf(out, "#endif /* DATABIND_NATIVE_ENABLE_CMETA */\n") < 0)
     failed = 1;
+  }
   if (ferror(out)) failed = 1;
   if (fclose(out) != 0) failed = 1;
   if (failed) {
