@@ -1,6 +1,21 @@
 # re2c Unicode 模块架构决策（历史）
 
-> Unicode 17 的最终所有权已迁移至 [Salts #1088](https://github.com/qigao/salts/issues/1088)。本文件记录原 SaltsUtils 模块的历史设计，当前 SaltsUtils 不再构建或导出 Unicode。以 Salts 的 `unicode/` 为源码与测试事实源。
+> 本候选分支将 Unicode 17 所有权迁移至 [Salts #1088](https://github.com/qigao/salts/issues/1088)，不代表稳定 SDK 已完成切换。本文件记录原 SaltsUtils 模块的历史设计；本分支不再构建或导出 Unicode，以 Salts 的 `unicode/` 为源码与测试事实源。
+
+## #1088 候选验证与稳定切换
+
+`unicode-sdk-candidate.yml` 的 PR 事件用于持续源码集成；手动事件仅在迁移分支执行，
+要求 Salts 与 stun 的完整提交 SHA。SaltsUtils 使用触发事件的准确提交。SDK 对随制品
+保留三个源码 SHA、run/attempt 和实际范围，制品名包含 run/attempt；手动重跑不得用
+移动分支名冒充不可变输入。此流程仍是 Linux 源码集成，不是发布资格门禁。
+
+稳定晋级必须遵循 Salts `unicode/README.md` 中的成对发布和回滚约束。新 Salts 加旧
+SaltsUtils 会发生重复 target，新 SaltsUtils 加旧 Salts 会缺 target；先发布任意一方
+都不能解决混合窗口。未完成全平台候选 SDK 配对验收、消费方协调及发布方案前，保持
+Draft，不发布稳定包，不修改最新发布包的正常解析规则或引入 shim/EXACT pin。
+
+候选 artifact 的保留期限不等于长期发布证据。制品到期或任意待发布源码改变后，需要
+重新验收并保留对应 SDK；不能将过去一次源码分支 CI 的成功用于另一组提交或包。
 
 
 ## 背景
