@@ -926,6 +926,73 @@ describe("compiler integration") {
     (void)remove(shared);
   }
 
+  it("publishes Contract-only Wasm u32 host/guest without Binary builders") {
+    static const char primary[] = "projection_wasm_contract.h";
+    static const char component[] = "projection_wasm_contract.wasm";
+    static const char host_h[] = "projection_wasm_contract.wasm.h";
+    static const char host_c[] = "projection_wasm_contract.wasm.c";
+    static const char guest_h[] = "projection_wasm_contract.wasm_guest.h";
+    static const char unsupported_path[] = "projection_wasm_contract_invalid.schema";
+    static const char unsupported[] =
+        "schema WasmRuntime [version(1)]; "
+        "component Calculator { service Calc; } "
+        "message AddRequest { int16 left; uint32 right; } "
+        "message AddResponse { uint32 sum; uint32 product; } "
+        "service Calc { Add: AddRequest -> AddResponse; }";
+    databind_compiler_wasm_config config = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = host_h,
+        .host_source_output = host_c,
+        .guest_header_output = guest_h,
+        .symbol_prefix = "wasm_contract_fixture"
+    };
+    const databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), component, &config};
+    const databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_WASM_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u
+    };
+    const char *outputs[] = {primary, component, host_h, host_c, guest_h};
+    size_t i;
+    for (i = 0u; i < 5u; ++i) (void)remove(outputs[i]);
+    (void)remove(unsupported_path);
+    check_equal(tbe_compiler_run(&options), 0);
+    for (i = 0u; i < 5u; ++i) check_true(file_exists(outputs[i]));
+    check_true(file_contains(primary, "typedef struct AddRequest"));
+    check_true(file_contains(host_h, "AddRequest_native_cmeta_binding"));
+    check_true(file_contains(host_h, "__native_owner"));
+    check_true(file_contains(host_c, "uint8_t request_wire[8u]"));
+    check_true(file_contains(host_c, "request->left"));
+    check_true(file_contains(host_c, "result.as.list.items"));
+    check_true(file_contains(guest_h, "__wasm_request_decode"));
+    check_false(file_contains(host_c, "AddRequest_t"));
+    check_false(file_contains(host_c, "_BLOCK_LENGTH"));
+    check_false(file_contains(guest_h, "_view_t"));
+    check_false(file_contains(primary, "binary_wire"));
+
+    /* A Component with unsupported native scalar storage fails closed and
+     * preserves every published artifact, including its prior Core module. */
+    check_true(write_sentinel(unsupported_path, unsupported));
+    options.schema_path = unsupported_path;
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_contains(host_c, "uint8_t request_wire[8u]"));
+    check_true(file_contains(host_h, "AddRequest_native_cmeta_binding"));
+    check_true(file_contains(guest_h, "__wasm_request_decode"));
+    for (i = 0u; i < 5u; ++i) check_true(file_exists(outputs[i]));
+    for (i = 0u; i < 5u; ++i) (void)remove(outputs[i]);
+    (void)remove(unsupported_path);
+  }
+
   it("preserves all Wasm finals when selected core module is missing") {
     static const char primary[] = "projection_wasm_missing_core.h";
     static const char component[] = "projection_wasm_missing_core.wasm";
