@@ -1337,6 +1337,8 @@ describe("compiler integration") {
                     schema_path, &tree, &contract, &source), 0);
     check_equal(databind_native_source_ir_build(contract, &ir), 0);
     check_equal(ir.record_count, (size_t)1u);
+    check_equal(ir.schema_name, "NativeScalar");
+    check_null(ir.schema_version);
     check_equal(ir.records[0].name, "Packet");
     check_equal(ir.records[0].field_count, (size_t)2u);
     check_equal(ir.records[0].fields[0].name, "count");
@@ -1392,7 +1394,7 @@ describe("compiler integration") {
     static const char schema_path[] = "native_source_presence.schema";
     static const char output[] = "native_source_presence.h";
     static const char schema[] =
-        "schema NativePresence; message Packet { optional uint32 count; "
+        "schema NativePresence [version(3)]; message Packet { optional uint32 count; "
         "nullable int16 delta; optional nullable bool active; }";
     (void)remove(schema_path);
     (void)remove(output);
@@ -1404,6 +1406,8 @@ describe("compiler integration") {
     check_true(file_contains(output, "bool is_null_delta;"));
     check_true(file_contains(output, "int16_t delta;"));
     check_true(file_contains(output, "bool has_active;"));
+    check_true(file_contains(output,
+                             "tbe.native.NativePresence.v3.Packet"));
     check_true(file_contains(output, "bool is_null_active;"));
     check_true(file_contains(output, "bool active;"));
     check_true(file_contains(output, "Packet_init(Packet *value)"));
