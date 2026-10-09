@@ -56,6 +56,58 @@ static int native_field_ownership(
   return -1;
 }
 
+/* Value-embedded records require dependency-first C declaration order.
+ * A visiting node reached again is a recursive value cycle, not a pointer
+ * reference. Reject it before publishing any generated header. */
+static int native_order_record(const databind_native_source_ir *ir,
+                               size_t index, unsigned char *state,
+                               size_t *order, size_t *count) {
+  size_t j, k;
+  const databind_native_source_record *record = &ir->records[index];
+  if (state[index] == 2u) return 0;
+  if (state[index] == 1u) return -1;
+  state[index] = 1u;
+  for (j = 0u; j < record->field_count; ++j) {
+    const databind_native_source_field *field = &record->fields[j];
+    if (field->ownership != DATABIND_NATIVE_OWNED_RECORD) continue;
+    if (field->c_type == NULL) return -1;
+    for (k = 0u; k < ir->record_count; ++k)
+      if (strcmp(ir->records[k].name, field->c_type) == 0) break;
+    if (k == ir->record_count ||
+        native_order_record(ir, k, state, order, count) != 0)
+      return -1;
+  }
+  state[index] = 2u;
+  order[(*count)++] = index;
+  return 0;
+}
+
+static int native_sort_records(databind_native_source_ir *ir) {
+  size_t i, count = 0u;
+  unsigned char *state;
+  size_t *order;
+  databind_native_source_record *sorted;
+  if (ir->record_count == 0u) return 0;
+  state = (unsigned char *)calloc(ir->record_count, sizeof(*state));
+  order = (size_t *)malloc(ir->record_count * sizeof(*order));
+  sorted = (databind_native_source_record *)malloc(
+      ir->record_count * sizeof(*sorted));
+  if (!state || !order || !sorted) {
+    free(state); free(order); free(sorted);
+    return -1;
+  }
+  for (i = 0u; i < ir->record_count; ++i)
+    if (native_order_record(ir, i, state, order, &count) != 0) break;
+  if (i == ir->record_count && count == ir->record_count) {
+    for (i = 0u; i < count; ++i) sorted[i] = ir->records[order[i]];
+    free(ir->records);
+    ir->records = sorted;
+    sorted = NULL;
+  }
+  free(state); free(order); free(sorted);
+  return count == ir->record_count ? 0 : -1;
+}
+
 void databind_native_source_ir_destroy(databind_native_source_ir *ir) {
   size_t i;
   if (ir == NULL) return;
@@ -109,12 +161,14 @@ int databind_native_source_ir_build(
       record->fields[j].name = field->name;
       record->fields[j].c_type = type != NULL ? type :
           (ownership == DATABIND_NATIVE_OWNED_TEXT ? "databind_native_text" :
-           ownership == DATABIND_NATIVE_OWNED_BYTES ? "databind_native_bytes" : NULL);
+           ownership == DATABIND_NATIVE_OWNED_BYTES ? "databind_native_bytes" :
+           ownership == DATABIND_NATIVE_OWNED_RECORD ? field->type_name : NULL);
       record->fields[j].optional = field->optional != 0;
       record->fields[j].nullable = field->nullable != 0;
       record->fields[j].ownership = (databind_native_source_ownership)ownership;
     }
   }
+  if (native_sort_records(&plan) != 0) goto fail;
   *out = plan;
   return 0;
 fail:
