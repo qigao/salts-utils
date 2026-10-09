@@ -1,4 +1,7 @@
-# re2c Unicode 模块架构决策
+# re2c Unicode 模块架构决策（历史）
+
+> Unicode 17 的最终所有权已迁移至 [Salts #1088](https://github.com/qigao/salts/issues/1088)。本文件记录原 SaltsUtils 模块的历史设计，当前 SaltsUtils 不再构建或导出 Unicode。以 Salts 的 `unicode/` 为源码与测试事实源。
+
 
 ## 背景
 

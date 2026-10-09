@@ -2,7 +2,7 @@
 
 **Higher-level utilities for the Salts C11 ecosystem.**
 
-SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared semantics with parsers, QueryVM, crypto, filesystem/process adapters, templates, Unicode support, media helpers, IDL/Schema tooling, language bindings, and DataBind.
+SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared semantics with parsers, QueryVM, crypto, filesystem/process adapters, templates, media helpers, IDL/Schema tooling, language bindings, and DataBind.
 
 **IDL, Schema and DataBind are distinct SaltsUtils capabilities.** IDL defines contracts, Schema defines Data shape, and DataBind owns logical/native binding. They are not separate packages.
 
@@ -28,7 +28,7 @@ This keeps higher-level utilities compatible with the same explicit ownership, b
 Salts
   ├── salts-utils
   │     ├── parsers / QueryVM / crypto / filesystem / process
-  │     ├── templates / Unicode / media / helpers
+  │     ├── templates / media / helpers
   │     ├── IDL / Schema / salts-idlc
   │     ├── DataBind binding / plans / native kernel
   │     └── C++ / Lua / QuickJS bindings
@@ -48,7 +48,7 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 | Query | `Salts::QueryVM` |
 | Parsers | JSON, XML, YAML, CSV, INI, TLV/LTV, Modbus, SOA, DotEnv, Cmd, TOON, TOML, DateTime, and related component targets |
 | Templates | Mustache and Jinja CMeta |
-| Unicode | generated Unicode property/scalar support |
+| Unicode | `Salts::Unicode` is provided by the installed Salts SDK (not SaltsUtils) |
 | Media/helpers | Playback, Capture, Serial, Cron, and related utilities |
 | IDL / Schema | `Salts::IDL`, `Salts::Schema`, `salts-idlc` |
 | DataBind | `Salts::DataBind`; native/dynamic binding, immutable plans, rollback |
@@ -96,7 +96,6 @@ target_link_libraries(app PRIVATE
   Salts::Playback
   Salts::Mustache
   Salts::JinjaCMeta
-  Salts::Unicode
   Salts::Cron)
 ```
 
@@ -189,6 +188,14 @@ Detailed documentation:
 - [IDL compiler CLI options](databind/compiler/CLI_OPTIONS.md)
 - [Database DDL generation design](docs/architecture/databind-database-ddl-generation.md)
 - [DataBind ownership and adapter design](databind/runtime/README.md)
+
+## Unicode ownership
+
+Unicode 17 scalar, UTF-8, segmentation, case and Bidi APIs are owned by the
+installed `Salts::Unicode` target from Salts (qigao/salts#1088). SaltsUtils
+does not build, export, or ship a second Unicode implementation. Jinja links
+the imported target; an SDK missing it fails at configure rather than falling
+back to ICU or local tables.
 
 ## Build and test
 
