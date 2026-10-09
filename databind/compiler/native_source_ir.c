@@ -349,6 +349,7 @@ int databind_native_source_ir_write_header(
                   field->name, field->name) < 0) failed = 1;
     }
     if (!failed && fprintf(out,
+        "    if (0) goto native_clone_fail;\n"
         "    %s_clear(dst); *dst = tmp; return 0;\n"
         "native_clone_fail:\n"
         "    %s_clear(&tmp); return -1;\n}\n"
