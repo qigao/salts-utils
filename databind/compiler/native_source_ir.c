@@ -848,7 +848,10 @@ static int native_source_ir_render(
   if (!has_unsupported_reflection) {
   if (!failed && fprintf(out,
       "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n"
-      "#include <cmeta_cmeta_data.h>\n") < 0)
+      "#include <cmeta_cmeta_data.h>\n"
+      "#ifdef DATABIND_NATIVE_ENABLE_DATABIND\n"
+      "#include <data_bind_native_binding.h>\n"
+      "#endif /* DATABIND_NATIVE_ENABLE_DATABIND */\n") < 0)
     failed = 1;
   if (!failed && needs_text_value &&
       fputs(
@@ -1192,6 +1195,59 @@ static int native_source_ir_render(
         record->field_count, stable_type_id, record->name,
         record->name) < 0)
       failed = 1;
+    /* The generated flags are separate native C11 bool storage, not
+     * CMeta VALUE fields. This maps that exact state storage into DataBind's
+     * existing offset/bit contract without admitting a VIEW as a VALUE.
+     * The complete count/capacity/representation gate runs before writes. */
+    {
+      size_t present = 0u, nulls = 0u;
+      size_t p = 0u, n = 0u;
+      for (j = 0u; j < record->field_count; ++j) {
+        if (record->fields[j].optional) ++present;
+        if (record->fields[j].nullable) ++nulls;
+      }
+      if (!failed && (present || nulls)) {
+        if (fprintf(out,
+          "#ifdef DATABIND_NATIVE_ENABLE_DATABIND\n"
+          "_Static_assert(sizeof(bool) == 1u,\n"
+          "    \"Native DataBind state mapping requires one-byte bool\");\n"
+          "enum { %s_native_presence_count = %zuu,\n"
+          "       %s_native_null_count = %zuu };\n"
+          "static inline int %s_native_state_bind(\n"
+          "    DataBindNativeStateBinding *presence, size_t presence_capacity,\n"
+          "    DataBindNativeStateBinding *nulls, size_t null_capacity) {\n"
+          "    const bool true_value = true, false_value = false;\n"
+          "    if (((const unsigned char *)&true_value)[0] != 1u ||\n"
+          "        ((const unsigned char *)&false_value)[0] != 0u)\n"
+          "        return -1;\n"
+          "    if (presence_capacity < %zuu || null_capacity < %zuu ||\n"
+          "        (%zuu && !presence) || (%zuu && !nulls)) return -1;\n",
+          record->name, present, record->name, nulls,
+          record->name, present, nulls, present, nulls) < 0)
+          failed = 1;
+        for (j = 0u; j < record->field_count && !failed; ++j) {
+          const databind_native_source_field *field = &record->fields[j];
+          if (field->optional &&
+              fprintf(out,
+                "    presence[%zuu] = (DataBindNativeStateBinding){\n"
+                "        sizeof(DataBindNativeStateBinding), \"%s\",\n"
+                "        offsetof(%s, has_%s), 0u};\n",
+                p++, field->name, record->name, field->name) < 0)
+            failed = 1;
+          if (field->nullable &&
+              fprintf(out,
+                "    nulls[%zuu] = (DataBindNativeStateBinding){\n"
+                "        sizeof(DataBindNativeStateBinding), \"%s\",\n"
+                "        offsetof(%s, is_null_%s), 0u};\n",
+                n++, field->name, record->name, field->name) < 0)
+            failed = 1;
+        }
+        if (!failed &&
+            fprintf(out, "    return 0;\n}\n"
+                         "#endif /* DATABIND_NATIVE_ENABLE_DATABIND */\n") < 0)
+          failed = 1;
+      }
+    }
     /* V2 VALUE is admitted only when the CMeta fields cover the complete
      * semantic value. An optional/null overlay or owned member must not
      * silently acquire fieldwise VALUE lifecycle from a borrowed VIEW. */
@@ -1223,7 +1279,6 @@ static int native_source_ir_render(
               "/* A native plan borrows the caller-owned CMeta binder storage.\n"
               " * Keep the binder at a stable address until all plans are freed. */\n"
               "#ifdef DATABIND_NATIVE_ENABLE_DATABIND\n"
-              "#include <data_bind_native_binding.h>\n"
               "static inline int %s_native_type_binding(\n"
               "    %s_native_cmeta_binding *metadata,\n"
               "    DataBindNativeTypeBinding *out) {\n"

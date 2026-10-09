@@ -50,6 +50,34 @@ int main(void) {
       Packet_native_cmeta_states[2].null_offset != offsetof(Packet, is_null_active))
     return 6;
 #endif
+#if defined(DATABIND_NATIVE_ENABLE_CMETA) && defined(DATABIND_NATIVE_ENABLE_DATABIND)
+  DataBindNativeStateBinding presence[2] = {
+      {sizeof(DataBindNativeStateBinding), "sentinel", 777u, 5u},
+      {sizeof(DataBindNativeStateBinding), "sentinel", 777u, 5u}};
+  DataBindNativeStateBinding nulls[2] = {
+      {sizeof(DataBindNativeStateBinding), "sentinel", 777u, 5u},
+      {sizeof(DataBindNativeStateBinding), "sentinel", 777u, 5u}};
+  if (Packet_native_presence_count != 2u ||
+      Packet_native_null_count != 2u ||
+      Packet_native_state_bind(presence, 1u, nulls, 2u) == 0 ||
+      presence[0].byte_offset != 777u ||
+      nulls[0].byte_offset != 777u ||
+      Packet_native_state_bind(NULL, 2u, nulls, 2u) == 0 ||
+      Packet_native_state_bind(presence, 2u, NULL, 2u) == 0 ||
+      Packet_native_state_bind(presence, 2u, nulls, 1u) == 0 ||
+      Packet_native_state_bind(presence, 2u, nulls, 2u) != 0 ||
+      strcmp(presence[0].field_name, "count") != 0 ||
+      strcmp(presence[1].field_name, "active") != 0 ||
+      strcmp(nulls[0].field_name, "delta") != 0 ||
+      strcmp(nulls[1].field_name, "active") != 0 ||
+      presence[0].byte_offset != offsetof(Packet, has_count) ||
+      presence[1].byte_offset != offsetof(Packet, has_active) ||
+      nulls[0].byte_offset != offsetof(Packet, is_null_delta) ||
+      nulls[1].byte_offset != offsetof(Packet, is_null_active) ||
+      presence[0].bit || presence[1].bit || nulls[0].bit || nulls[1].bit ||
+      presence[0].size != sizeof(DataBindNativeStateBinding))
+    return 9;
+#endif
   Packet packet;
 #ifdef DATABIND_NATIVE_ENABLE_CMETA
   if (Packet_native_cmeta_type.name == NULL ||
@@ -76,6 +104,18 @@ int main(void) {
     return 2;
 #endif
   Packet_init(&packet);
+#if defined(DATABIND_NATIVE_ENABLE_CMETA) && defined(DATABIND_NATIVE_ENABLE_DATABIND)
+  packet.has_count = true;
+  packet.has_active = true;
+  packet.is_null_delta = true;
+  packet.is_null_active = true;
+  if (((const unsigned char *)&packet)[presence[0].byte_offset] != 1u ||
+      ((const unsigned char *)&packet)[presence[1].byte_offset] != 1u ||
+      ((const unsigned char *)&packet)[nulls[0].byte_offset] != 1u ||
+      ((const unsigned char *)&packet)[nulls[1].byte_offset] != 1u)
+    return 10;
+  Packet_clear(&packet);
+#endif
 #ifdef DATABIND_NATIVE_ENABLE_CMETA
   /* Logical-field reflection is a view: it must not claim that its scalar
    * subset can initialize or clear the separate presence/null flags. */

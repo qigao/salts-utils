@@ -246,10 +246,10 @@ add_executable(test_databind_native_header_cmeta
 add_dependencies(test_databind_native_header_cmeta
   databind_native_header_fixture_generator)
 target_compile_definitions(test_databind_native_header_cmeta PRIVATE
-  DATABIND_NATIVE_ENABLE_CMETA)
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
 target_include_directories(test_databind_native_header_cmeta PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(test_databind_native_header_cmeta PRIVATE Salts::Core)
+target_link_libraries(test_databind_native_header_cmeta PRIVATE Salts::DataBind)
 set_target_properties(test_databind_native_header_cmeta PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME test_databind_native_header_cmeta
