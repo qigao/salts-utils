@@ -428,8 +428,6 @@ int databind_native_source_ir_write_header(
         }
       }
     }
-    if ((text_provider || bytes_provider) &&
-        fputs("#include <assert.h>\n", out) == EOF) failed = 1;
     if (!failed && text_provider &&
         fputs(
         "/* Native text CSTL provider: copy/move/destroy are explicit ownership operations. */\n"
@@ -464,7 +462,7 @@ int databind_native_source_ir_write_header(
         "    const databind_native_text *b = (const databind_native_text *)right;\n"
         "    size_t n;\n"
         "    int order;\n"
-        "    assert(a && b && (a->data || !a->size) && (b->data || !b->size));\n"
+        "    if (!a || !b || (a->size && !a->data) || (b->size && !b->data)) abort();\n"
         "    n = a->size < b->size ? a->size : b->size;\n"
         "    order = n ? memcmp(a->data, b->data, n) : 0;\n"
         "    return order ? order : (a->size > b->size) - (a->size < b->size);\n"
@@ -493,7 +491,7 @@ int databind_native_source_ir_write_header(
         "    databind_native_bytes copy = {0};\n"
         "    if (!destination || !src || (src->size && !src->data))\n"
         "        return false;\n"
-        "    if (src->data) {\n"
+        "    if (src->size) {\n"
         "        copy.data = (unsigned char *)malloc(src->size);\n"
         "        if (!copy.data) return false;\n"
         "        if (src->size) memcpy(copy.data, src->data, src->size);\n"
@@ -518,7 +516,7 @@ int databind_native_source_ir_write_header(
         "    const databind_native_bytes *b = (const databind_native_bytes *)right;\n"
         "    size_t n;\n"
         "    int order;\n"
-        "    assert(a && b && (a->data || !a->size) && (b->data || !b->size));\n"
+        "    if (!a || !b || (a->size && !a->data) || (b->size && !b->data)) abort();\n"
         "    n = a->size < b->size ? a->size : b->size;\n"
         "    order = n ? memcmp(a->data, b->data, n) : 0;\n"
         "    return order ? order : (a->size > b->size) - (a->size < b->size);\n"
