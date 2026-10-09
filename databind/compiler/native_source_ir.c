@@ -1209,8 +1209,13 @@ static int native_source_ir_render(
       if (!failed && (present || nulls)) {
         if (fprintf(out,
           "#ifdef DATABIND_NATIVE_ENABLE_DATABIND\n"
+          "#ifdef __cplusplus\n"
+          "static_assert(sizeof(bool) == 1u,\n"
+          "    \"Native DataBind state mapping requires one-byte bool\");\n"
+          "#else\n"
           "_Static_assert(sizeof(bool) == 1u,\n"
           "    \"Native DataBind state mapping requires one-byte bool\");\n"
+          "#endif\n"
           "enum { %s_native_presence_count = %zuu,\n"
           "       %s_native_null_count = %zuu };\n"
           "static inline int %s_native_state_bind(\n"

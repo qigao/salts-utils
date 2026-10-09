@@ -72,6 +72,25 @@ add_dependencies(installed_contract_value_consumer
 add_test(NAME installed_contract_value_consumer
   COMMAND installed_contract_value_consumer)
 
+# Qualify native per-field optional/nullable metadata from an installed
+# Contract-only TYPES header. VIEW is deliberately not a VALUE provider yet.
+salts_idl_target(
+  TARGET installed_contract_state
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/contract_state.schema"
+  ARTIFACT_NAME "contract_state"
+  ARTIFACTS TYPES)
+
+add_executable(installed_contract_state_consumer contract_state_consumer.c)
+target_compile_features(installed_contract_state_consumer PRIVATE c_std_11)
+target_compile_definitions(installed_contract_state_consumer PRIVATE
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
+target_link_libraries(installed_contract_state_consumer PRIVATE
+  installed_contract_state_types Salts::DataBind)
+add_dependencies(installed_contract_state_consumer
+  installed_contract_state_idl_codegen)
+add_test(NAME installed_contract_state_consumer
+  COMMAND installed_contract_state_consumer)
+
 # Public installed SDK Contract-only NATIVE execution artifact.
 # No --source-output, BINARY_CODEC or legacy *_native.c participates.
 salts_idl_target(
@@ -222,7 +241,8 @@ set_target_properties(installed_image_plugin_client_cpp PROPERTIES
   CXX_EXTENSIONS NO)
 add_dependencies(installed_image installed_image_plugin_client_cpp)
 add_dependencies(installed_image installed_contract_types_consumer
-  installed_contract_value_consumer installed_contract_service_consumer
+  installed_contract_value_consumer installed_contract_state_consumer
+  installed_contract_service_consumer
   installed_contract_plugin_consumer installed_contract_plugin_lease_consumer)
 
 

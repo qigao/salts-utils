@@ -87,7 +87,17 @@ The generated header path is available as
 `native_contract_TYPES_HEADER`, and the target as
 `native_contract_TYPES_TARGET`. `TYPES` cannot be combined with transport or
 other artifact selections because that would conflate the type representation
-with their separate execution/binding ABI. Contract-only NATIVE Service
+with their separate execution/binding ABI. Optional/nullable fields
+retain exact per-field `has_*/is_null_*` C11 bool storage outside the CMeta
+value graph. Under `DATABIND_NATIVE_ENABLE_CMETA` and
+`DATABIND_NATIVE_ENABLE_DATABIND`, generated
+`Record_native_state_bind()` publishes caller-owned
+`DataBindNativeStateBinding` arrays mapping each state to its byte offset
+and bit zero. The generator rejects non-byte or noncanonical bool
+representations before modifying either output array. This is **state
+metadata**, not an executable CMeta VALUE provider; stateful records remain
+VIEW-only pending full canonical lifecycle and native MessagePlan admission.
+Contract-only NATIVE Service
 and PLUGIN function exports now use the exact NativeSourceIR Record/FunctionDesc
 contract for admitted VALUE records. Their public CMake targets omit the
 Binary serializer source when no codec/transport is requested. The Wasm host
