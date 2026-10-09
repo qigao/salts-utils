@@ -177,6 +177,25 @@ add_test(NAME test_databind_native_nested_c11
 set_tests_properties(test_databind_native_nested_c11 PROPERTIES
   LABELS "databind;compiler;native-source;ownership;nested;c11")
 
+# Generated native sequence consumes the canonical Salts CSTL vec ABI.
+set(_native_sequence_header "${CMAKE_CURRENT_BINARY_DIR}/native_sequence_fixture.h")
+add_custom_command(OUTPUT "${_native_sequence_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_sequence_header}" sequence
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_sequence_c11
+  native_header_sequence_c11_consumer.c "${_native_sequence_header}")
+target_include_directories(test_databind_native_sequence_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(test_databind_native_sequence_c11 PRIVATE Salts::CSTL)
+set_target_properties(test_databind_native_sequence_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_sequence_c11
+  COMMAND $<TARGET_FILE:test_databind_native_sequence_c11>)
+set_tests_properties(test_databind_native_sequence_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;cstl;sequence;c11")
+
 # Compile the same native C record in separate translation units. The CMeta
 # identity is Schema/Contract-version scoped, never inferred from C layout.
 set(_native_identity_objects)
