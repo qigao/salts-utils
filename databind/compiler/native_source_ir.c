@@ -231,6 +231,34 @@ int databind_native_source_ir_write_header(
     failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
+    /* Optional/nullable are separate native flags, not fields of the CMeta
+     * logical value view. Preserve their exact byte offsets explicitly. */
+    if (!failed && fprintf(out,
+        "typedef struct %s_native_state_desc {\n"
+        "    const char *name;\n"
+        "    size_t presence_offset;\n"
+        "    size_t null_offset;\n"
+        "} %s_native_state_desc;\n"
+        "static const %s_native_state_desc %s_native_cmeta_states[] = {\n",
+        record->name, record->name, record->name, record->name) < 0)
+      failed = 1;
+    for (j = 0u; j < record->field_count && !failed; ++j) {
+      const databind_native_source_field *field = &record->fields[j];
+      if (fprintf(out, "    {\"%s\", ", field->name) < 0)
+        failed = 1;
+      if (!failed && (field->optional
+          ? fprintf(out, "offsetof(%s, has_%s), ", record->name, field->name)
+          : fprintf(out, "SIZE_MAX, ")) < 0)
+        failed = 1;
+      if (!failed && (field->nullable
+          ? fprintf(out, "offsetof(%s, is_null_%s)", record->name, field->name)
+          : fprintf(out, "SIZE_MAX")) < 0)
+        failed = 1;
+      if (!failed && fprintf(out, "},\n") < 0)
+        failed = 1;
+    }
+    if (!failed && fprintf(out, "};\n") < 0)
+      failed = 1;
     if (fprintf(out, "static const cmeta_field_desc %s_native_cmeta_fields[] = {\n",
                 record->name) < 0)
       failed = 1;
