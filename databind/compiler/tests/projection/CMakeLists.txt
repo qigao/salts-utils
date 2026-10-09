@@ -139,3 +139,52 @@ add_test(NAME test_databind_native_header_c11
   COMMAND $<TARGET_FILE:test_databind_native_header_c11>)
 set_tests_properties(test_databind_native_header_c11 PROPERTIES
   LABELS "databind;compiler;native-source;c11")
+
+
+# Compile the same native C record in separate translation units. The CMeta
+# identity is Schema/Contract-version scoped, never inferred from C layout.
+set(_native_identity_objects)
+foreach(_native_profile IN ITEMS alpha alpha_copy beta alpha_v2)
+  if(_native_profile STREQUAL "beta")
+    set(_native_schema "Beta")
+    set(_native_schema_version "1")
+  elseif(_native_profile STREQUAL "alpha_v2")
+    set(_native_schema "Alpha")
+    set(_native_schema_version "2")
+  else()
+    set(_native_schema "Alpha")
+    set(_native_schema_version "1")
+  endif()
+  set(_native_identity_header
+      "${CMAKE_CURRENT_BINARY_DIR}/native_identity_${_native_profile}.h")
+  add_custom_command(OUTPUT "${_native_identity_header}"
+    COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+            "${_native_identity_header}"
+            "${_native_schema}" "${_native_schema_version}"
+    DEPENDS databind_native_header_fixture_generator
+    VERBATIM)
+  add_library(databind_native_identity_${_native_profile} OBJECT
+    native_header_identity_source.c "${_native_identity_header}")
+  target_include_directories(databind_native_identity_${_native_profile} PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}")
+  target_compile_definitions(databind_native_identity_${_native_profile} PRIVATE
+    DATABIND_NATIVE_ENABLE_CMETA
+    "NATIVE_IDENTITY_HEADER=\"native_identity_${_native_profile}.h\""
+    "NATIVE_IDENTITY_GETTER=native_identity_${_native_profile}")
+  target_link_libraries(databind_native_identity_${_native_profile} PRIVATE
+    Salts::Core)
+  set_target_properties(databind_native_identity_${_native_profile} PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  list(APPEND _native_identity_objects
+    $<TARGET_OBJECTS:databind_native_identity_${_native_profile}>)
+endforeach()
+
+add_executable(test_databind_native_identity
+  native_header_identity_compare.c ${_native_identity_objects})
+target_link_libraries(test_databind_native_identity PRIVATE Salts::Core)
+set_target_properties(test_databind_native_identity PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_identity
+  COMMAND $<TARGET_FILE:test_databind_native_identity>)
+set_tests_properties(test_databind_native_identity PROPERTIES
+  LABELS "databind;compiler;native-source;cmeta;identity")
