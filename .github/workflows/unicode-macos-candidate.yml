@@ -1,0 +1,137 @@
+name: Salts/SaltsUtils Unicode macOS paired SDK candidate
+'on':
+  pull_request:
+    paths:
+      - .github/workflows/unicode-macos-candidate.yml
+      - CMakeUserPresets.json
+      - cmake/ci/unicode-installed-consumer/**
+      - cmake/SaltsUtilsConfig.cmake.in
+      - jinja/**
+      - unicode/**
+permissions:
+  contents: read
+  actions: read
+  packages: read
+concurrency:
+  group: unicode-macos-paired-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    if: github.repository == 'qigao/salts-utils' && github.head_ref == 'ci/unicode17-macos-paired-sdk'
+    runs-on: macos-15
+    timeout-minutes: 150
+    env:
+      QIGAO_SDK_RID: macos-arm64
+      QIGAO_TARGET_TRIPLET: arm64-osx
+      QIGAO_HOST_TRIPLET: arm64-osx
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_MAXSIZE: 512M
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: saltsutils-unicode17-macos-paired
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact SaltsUtils source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha || github.sha }}'
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@master
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: ./.github/actions/setup-build-host
+      - name: Restore exact AppleClang Salts candidate SDK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=37963767058
+          source_sha=10c17c9c2b0d558addf2490c93cc13aa430906b0
+          test "$(gh api "repos/qigao/salts/actions/runs/$run" --jq .head_sha)" = "$source_sha"
+          test "$(gh api "repos/qigao/salts/actions/runs/$run" --jq .conclusion)" = success
+          mkdir -p stage/dependencies/salts
+          gh run download "$run" -R qigao/salts -n salts-sdk-macos-tinytest-candidate -D stage/dependencies/salts
+          prefix="$GITHUB_WORKSPACE/stage/dependencies/salts/macos-arm64"
+          test -f "$prefix/lib/cmake/Salts/SaltsConfig.cmake"
+          test -f "$prefix/lib/libtinytest.a"
+          test -f "$prefix/include/unicode/salts_unicode.h"
+          test -f "$prefix/salts-sdk-manifest.txt"
+          grep -Fx "commit=$source_sha" "$prefix/salts-sdk-manifest.txt"
+          grep -Fx 'os=macos' "$prefix/salts-sdk-manifest.txt"
+          grep -Fx 'arch=ARM64' "$prefix/salts-sdk-manifest.txt"
+          grep -Fq 'Salts::Unicode' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          if nm -gU "$prefix/lib/libtinytest.a" | grep -F '___emutls_v.ttest_active_config__'; then
+            echo 'Incompatible emulated TLS in Salts SDK' >&2
+            exit 1
+          fi
+          nm -gU "$prefix/lib/libtinytest.a" | grep -F ' _ttest_active_config__'
+          echo "SALTS_ROOT=$prefix" >> "$GITHUB_ENV"
+          echo "SALTS_HOST_ROOT=$prefix" >> "$GITHUB_ENV"
+          echo "SALTS_UNICODE_MACOS_SHA=$source_sha" >> "$GITHUB_ENV"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+      - name: Build and test full SaltsUtils AppleClang graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset ci-unicode-macos-candidate-user
+          cmake --build --preset ci-unicode-macos-candidate-user --parallel 2
+          export DYLD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/build/ci-sdk/macos-arm64/bin:$GITHUB_WORKSPACE/vcpkg_installed/arm64-osx/lib:${DYLD_LIBRARY_PATH:-}"
+          ctest --preset ci-unicode-macos-candidate-user --no-tests=error --output-on-failure --timeout 180 --parallel 2
+      - name: Install only SaltsUtils targets beside exact Salts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build --preset install-ci-unicode-macos-candidate-user --parallel 2
+          prefix="$GITHUB_WORKSPACE/stage/sdk/macos-arm64"
+          config="$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          targets="$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
+          test -f "$config"
+          test -f "$targets"
+          if grep -Eq 'add_library\(Salts::Unicode[[:space:]]' "$targets"; then
+            echo 'SaltsUtils illegally re-exports Salts::Unicode' >&2
+            exit 1
+          fi
+          test ! -e "$prefix/include/salts_unicode.h"
+          {
+            echo 'scope=macos-arm64-unicode17-paired-candidate'
+            echo "commit=$(git rev-parse HEAD)"
+            echo "salts_sha=$SALTS_UNICODE_MACOS_SHA"
+            echo 'os=macos'
+            echo 'arch=ARM64'
+            echo 'profile=release'
+            echo 'release_qualified=false'
+          } > "$prefix/salts-utils-sdk-manifest.txt"
+          echo "SALTS_UTILS_CANDIDATE_ROOT=$prefix" >> "$GITHUB_ENV"
+      - name: Independent installed C11 and C++17 consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DYLD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_UTILS_CANDIDATE_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/arm64-osx/lib:${DYLD_LIBRARY_PATH:-}"
+          pushd cmake/ci/unicode-installed-consumer
+          cmake --preset installed-candidate
+          cmake --build --preset installed-candidate --parallel 2
+          ctest --preset installed-candidate --no-tests=error --output-on-failure
+          popd
+          {
+            echo '### macOS paired SDK candidate'
+            echo "- Salts source: $SALTS_UNICODE_MACOS_SHA"
+            echo "- SaltsUtils source: $(git rev-parse HEAD)"
+            echo '- Full SaltsUtils CTest and independent installed C11/C++17 consumers'
+            echo '- Unicode has one owner, in installed Salts'
+            echo '- No release or source fallback'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Report ccache statistics
+        if: always()
+        shell: bash
+        run: ccache --show-stats || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saltsutils-sdk-macos-unicode-candidate
+          path: stage/sdk
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
