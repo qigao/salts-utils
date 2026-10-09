@@ -23,6 +23,10 @@ typedef struct databind_native_source_record {
 typedef struct databind_native_source_ir {
   size_t record_count;
   databind_native_source_record *records;
+  /* Borrowed, immutable Contract namespace. A named Schema is mandatory
+   * for stable cross-translation-unit CMeta type identity. */
+  const char *schema_name;
+  const char *schema_version; /* Optional Contract version, borrowed. */
 } databind_native_source_ir;
 
 int databind_native_source_ir_build(
