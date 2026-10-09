@@ -1446,6 +1446,39 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("tracks sequence element lifetime before CSTL provider admission") {
+    static const char path[] = "native_sequence_metadata.schema";
+    static const char source_text[] =
+        "schema NativeSequence; message Item { "
+        "list<uint32> numbers; list<string> names; }";
+    Node *tree = NULL;
+    IdlContract *contract = NULL;
+    char *source = NULL;
+    databind_native_source_ir ir = {0};
+    (void)remove(path);
+    check_true(write_sentinel(path, source_text));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    path, &tree, &contract, &source), 0);
+    check_equal(databind_native_source_ir_build(contract, &ir), 0);
+    check_equal(ir.record_count, (size_t)1u);
+    check_equal(ir.records[0].fields[0].ownership, DATABIND_NATIVE_OWNED_SEQUENCE);
+    check_equal(ir.records[0].fields[0].element_type, "uint32");
+    check_true(ir.records[0].fields[0].element_is_trivial);
+    check_equal(ir.records[0].fields[1].ownership, DATABIND_NATIVE_OWNED_SEQUENCE);
+    check_equal(ir.records[0].fields[1].element_type, "string");
+    check_false(ir.records[0].fields[1].element_is_trivial);
+    check_true(write_sentinel("native_sequence_metadata.h", "preserved"));
+    check_equal(databind_native_source_ir_write_header(
+                    &ir, "native_sequence_metadata.h"), -1);
+    check_true(file_matches("native_sequence_metadata.h", "preserved"));
+    (void)remove("native_sequence_metadata.h");
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    (void)remove(path);
+  }
+
   it("preserves IDL optional and nullable flags through Native header publication") {
     static const char schema_path[] = "native_source_presence.schema";
     static const char output[] = "native_source_presence.h";
