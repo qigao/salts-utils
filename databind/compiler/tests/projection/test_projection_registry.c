@@ -1828,6 +1828,9 @@ describe("compiler integration") {
     check_true(write_sentinel(schema_path, schema));
     check_equal(databind_compiler_generate_contract_native_header(
                     schema_path, output), 0);
+    /* Overlaid presence/null state is outside native CMeta fieldwise VALUE
+     * lifecycle. This type is inspectable VIEW only, never a value provider. */
+    check_false(file_contains(output, "Packet_native_cmeta_value_bind"));
     check_true(file_contains(output, "bool has_count;"));
     check_true(file_contains(output, "uint32_t count;"));
     check_true(file_contains(output, "bool is_null_delta;"));

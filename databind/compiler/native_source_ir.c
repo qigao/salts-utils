@@ -999,6 +999,35 @@ static int native_source_ir_render(
         record->field_count, stable_type_id, record->name,
         record->name) < 0)
       failed = 1;
+    /* V2 VALUE is admitted only when the CMeta fields cover the complete
+     * semantic value. An optional/null overlay or owned member must not
+     * silently acquire fieldwise VALUE lifecycle from a borrowed VIEW. */
+    if (!failed) {
+      int native_value_complete = 1;
+      for (j = 0u; j < record->field_count; ++j) {
+        const databind_native_source_field *field = &record->fields[j];
+        if (field->ownership != DATABIND_NATIVE_TRIVIAL ||
+            field->optional || field->nullable) {
+          native_value_complete = 0;
+          break;
+        }
+      }
+      if (native_value_complete &&
+          fprintf(out,
+              "static inline int %s_native_cmeta_value_bind(\n"
+              "    %s_native_cmeta_binding *binding) {\n"
+              "    if (%s_native_cmeta_bind(binding) != 0) return -1;\n"
+              "    binding->reflection.mode = CMETA_DATA_REFLECTION_VALUE;\n"
+              "    if (!cmeta_data_desc_valid(&binding->data) ||\n"
+              "        !cmeta_data_value_traits_supported(&binding->data)) {\n"
+              "        binding->reflection.mode = CMETA_DATA_REFLECTION_VIEW;\n"
+              "        return -1;\n"
+              "    }\n"
+              "    return 0;\n"
+              "}\n",
+              record->name, record->name, record->name) < 0)
+        failed = 1;
+    }
   }
   if (!failed && fprintf(out, "#endif /* DATABIND_NATIVE_ENABLE_CMETA */\n") < 0)
     failed = 1;

@@ -8,6 +8,19 @@ int main(int argc, char **argv) {
   };
   databind_native_source_record record = {"Packet", 3u, fields};
   databind_native_source_ir ir = {1u, &record, "NativeFixture", "1"};
+  if (argc == 3 && argv[2][0] == 'v') {
+    databind_native_source_field value_fields[] = {
+        {"count", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL,
+         NULL, 0, NULL, NULL, NULL, NULL, NULL},
+        {"delta", "int16_t", 0, 0, DATABIND_NATIVE_TRIVIAL,
+         NULL, 0, NULL, NULL, NULL, NULL, NULL},
+        {"active", "bool", 0, 0, DATABIND_NATIVE_TRIVIAL,
+         NULL, 0, NULL, NULL, NULL, NULL, NULL}
+    };
+    databind_native_source_record value = {"ValuePacket", 3u, value_fields};
+    databind_native_source_ir value_ir = {1u, &value, "NativeValue", "1"};
+    return databind_native_source_ir_write_header(&value_ir, argv[1]) == 0 ? 0 : 1;
+  }
   if (argc == 3 && argv[2][0] == 'r') {
     databind_native_source_field item_fields[] = {
         {"label", "databind_native_text", 0, 0, DATABIND_NATIVE_OWNED_TEXT,
