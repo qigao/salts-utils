@@ -322,7 +322,9 @@ int databind_native_source_ir_write_header(
              strcmp(record->fields[j].c_type, "databind_native_text") == 0) ||
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_BYTES &&
              record->fields[j].c_type != NULL &&
-             strcmp(record->fields[j].c_type, "databind_native_bytes") == 0)) ||
+             strcmp(record->fields[j].c_type, "databind_native_bytes") == 0) ||
+            (record->fields[j].ownership == DATABIND_NATIVE_OWNED_RECORD &&
+             record->fields[j].c_type != NULL)) ||
           native_field_collides(record, j))
         return -1; /* Renderer only accepts canonical lowered C types. */
   }
@@ -362,6 +364,9 @@ int databind_native_source_ir_write_header(
           field->ownership == DATABIND_NATIVE_OWNED_BYTES)
         if (fprintf(out, "    free(value->%s.data);\n", field->name) < 0)
           failed = 1;
+      if (field->ownership == DATABIND_NATIVE_OWNED_RECORD)
+        if (fprintf(out, "    %s_clear(&value->%s);\n",
+                    field->c_type, field->name) < 0) failed = 1;
     }
     if (!failed && fprintf(out,
         "    *value = (%s){0};\n}\n"
@@ -373,6 +378,11 @@ int databind_native_source_ir_write_header(
         record->name) < 0) failed = 1;
     for (j = 0u; j < record->field_count && !failed; ++j) {
       const databind_native_source_field *field = &record->fields[j];
+      if (field->ownership == DATABIND_NATIVE_OWNED_RECORD) {
+        if (fprintf(out, "    %s_init(&tmp.%s);\n",
+                    field->c_type, field->name) < 0) failed = 1;
+        continue;
+      }
       if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
           field->ownership != DATABIND_NATIVE_OWNED_BYTES) continue;
       if (fprintf(out, "    tmp.%s.data = NULL; tmp.%s.size = 0;\n",
@@ -380,6 +390,12 @@ int databind_native_source_ir_write_header(
     }
     for (j = 0u; j < record->field_count && !failed; ++j) {
       const databind_native_source_field *field = &record->fields[j];
+      if (field->ownership == DATABIND_NATIVE_OWNED_RECORD) {
+        if (fprintf(out,
+            "    if (%s_clone(&tmp.%s, &src->%s) != 0) goto native_clone_fail;\n",
+            field->c_type, field->name, field->name) < 0) failed = 1;
+        continue;
+      }
       if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
           field->ownership != DATABIND_NATIVE_OWNED_BYTES) continue;
       if (fprintf(out,
