@@ -66,3 +66,43 @@ target_link_libraries(wasm_execution_consumer PRIVATE
 add_dependencies(wasm_execution_consumer
   wasm_execution_fixture_plugin)
 add_test(NAME wasm_execution_consumer COMMAND wasm_execution_consumer)
+
+# Contract-only Component publication shares the NativeSourceIR
+# Record and Plugin Function ABI and never requires a generated Binary codec.
+salts_idl_target(
+  TARGET wasm_contract_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/wasm_execution.schema"
+  COMPONENT "WasmRuntime.Calculator"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "wasm_contract"
+  ARTIFACTS PLUGIN WASM
+  WASM_CORE_MODULE "${_core}"
+  SOURCES business_contract.c)
+
+foreach(_target IN ITEMS wasm_contract_fixture_wasm
+                          wasm_contract_fixture_plugin
+                          wasm_contract_fixture_plugin_client)
+  get_target_property(_contract_sources "${_target}" SOURCES)
+  foreach(_source IN LISTS _contract_sources)
+    get_filename_component(_basename "${_source}" NAME)
+    if(_basename STREQUAL "wasm_contract_native.c")
+      message(FATAL_ERROR
+        "Contract-only Component must not compile the Binary codec source")
+    endif()
+  endforeach()
+endforeach()
+
+file(GENERATE
+  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/wasm_contract_component_path.h"
+  CONTENT
+    "#define WASM_CONTRACT_COMPONENT_PATH \"${wasm_contract_fixture_WASM_ARTIFACT}\"\n")
+
+add_executable(wasm_contract_consumer main_contract.c)
+target_compile_features(wasm_contract_consumer PRIVATE c_std_11)
+target_include_directories(wasm_contract_consumer PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(wasm_contract_consumer PRIVATE
+  wasm_contract_fixture_wasm)
+add_dependencies(wasm_contract_consumer
+  wasm_contract_fixture_plugin)
+add_test(NAME wasm_contract_consumer COMMAND wasm_contract_consumer)
