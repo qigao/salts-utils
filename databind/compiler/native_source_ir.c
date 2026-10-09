@@ -290,6 +290,57 @@ int databind_native_source_ir_write_header(
         record->name, record->name, record->name, record->name) < 0)
       failed = 1;
   }
+  /* Reflection V2 VIEW intentionally has no value lifecycle: native flags
+   * for optional/nullable fields are outside the logical field projection.
+   * Every pointer below borrows caller-owned binding storage. Do not move or
+   * copy an initialized binding: bind again in its final location. */
+  for (i = 0u; i < ir->record_count && !failed; ++i) {
+    const databind_native_source_record *record = &ir->records[i];
+    if (fprintf(out,
+        "typedef struct %s_native_cmeta_binding {\n"
+        "    cmeta_field_desc layout_fields[%zuu];\n"
+        "    cmeta_data_field_desc data_fields[%zuu];\n"
+        "    cmeta_struct_desc layout;\n"
+        "    cmeta_data_reflection_shape reflection;\n"
+        "    cmeta_data_desc data;\n"
+        "} %s_native_cmeta_binding;\n"
+        "static inline int %s_native_cmeta_bind(\n"
+        "    %s_native_cmeta_binding *binding) {\n"
+        "    size_t i;\n"
+        "    if (binding == NULL || %zuu > CMETA_DATA_REFLECTION_MAX_FIELDS ||\n"
+        "        %s_native_cmeta_data_fields(binding->data_fields, %zuu) != 0)\n"
+        "        return -1;\n"
+        "    for (i = 0u; i < %zuu; ++i) {\n"
+        "        const cmeta_data_desc *value = binding->data_fields[i].value;\n"
+        "        if (value == NULL || value->storage_type == NULL) return -1;\n"
+        "        binding->layout_fields[i] = %s_native_cmeta_fields[i];\n"
+        "        binding->layout_fields[i].type = value->storage_type;\n"
+        "    }\n"
+        "    binding->layout = %s_native_cmeta_layout;\n"
+        "    binding->layout.fields = binding->layout_fields;\n"
+        "    binding->reflection = (cmeta_data_reflection_shape){\n"
+        "        {&binding->layout, binding->data_fields, %zuu},\n"
+        "        sizeof(cmeta_data_reflection_shape), CMETA_DATA_REFLECTION_VIEW\n"
+        "    };\n"
+        "    binding->data = (cmeta_data_desc){\n"
+        "        .struct_size = sizeof(cmeta_data_desc),\n"
+        "        .abi_version = CMETA_DATA_DESC_REFLECTION_ABI_VERSION,\n"
+        "        .stable_id = \"native.%s.data\",\n"
+        "        .display_name = \"%s\",\n"
+        "        .kind = CMETA_DATA_STRUCT,\n"
+        "        .storage_type = &%s_native_cmeta_type,\n"
+        "        .shape = &binding->reflection\n"
+        "    };\n"
+        "    return cmeta_data_desc_valid(&binding->data) ? 0 : -1;\n"
+        "}\n",
+        record->name, record->field_count, record->field_count,
+        record->name, record->name, record->name,
+        record->field_count, record->name, record->field_count,
+        record->field_count, record->name, record->name,
+        record->field_count, record->name, record->name,
+        record->name) < 0)
+      failed = 1;
+  }
   if (!failed && fprintf(out, "#endif /* DATABIND_NATIVE_ENABLE_CMETA */\n") < 0)
     failed = 1;
   if (ferror(out)) failed = 1;
