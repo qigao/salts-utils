@@ -4955,12 +4955,15 @@ static int databind_compiler_generate_contract_native_bundle(
       /* True multi-file backends must use their audited staged API.
        * Other selected artifacts are admitted only with STAGED_SINGLE. */
       entry->native =
+          entry->backend->output_policy == DATABIND_COMPILER_OUTPUT_STAGED_MULTI &&
           entry->backend->generate == databind_compiler_native_service_generate &&
           request->id.kind == DATABIND_COMPILER_ARTIFACT_NATIVE;
       entry->plugin =
+          entry->backend->output_policy == DATABIND_COMPILER_OUTPUT_STAGED_MULTI &&
           entry->backend->generate == databind_compiler_plugin_generate &&
           request->id.kind == DATABIND_COMPILER_ARTIFACT_PLUGIN;
       entry->wasm =
+          entry->backend->output_policy == DATABIND_COMPILER_OUTPUT_STAGED_MULTI &&
           entry->backend->generate == databind_compiler_wasm_generate &&
           request->id.kind == DATABIND_COMPILER_ARTIFACT_WASM;
       if (!entry->native && !entry->plugin && !entry->wasm &&

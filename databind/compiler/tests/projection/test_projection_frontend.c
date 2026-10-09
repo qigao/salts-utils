@@ -96,7 +96,7 @@ spec("DataBind public typed generation frontend") {
     check_true(plan.requests[0].config == &plan.native_service);
     check_equal(plan.backends[0].name, "native");
     check_equal(plan.backends[0].output_policy,
-                DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED);
+                DATABIND_COMPILER_OUTPUT_STAGED_MULTI);
     check_equal(path_base(plan.requests[0].output, base),
                 "calc.service_native.c");
     check_equal(path_base(plan.native_service_header, base),

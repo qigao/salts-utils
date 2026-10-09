@@ -1307,5 +1307,5 @@ const databind_compiler_projection_backend
         "plugin",
         databind_compiler_plugin_generate,
         NULL,
-        DATABIND_COMPILER_OUTPUT_SELF_PUBLISHED,
+        DATABIND_COMPILER_OUTPUT_STAGED_MULTI,
 };
