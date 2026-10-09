@@ -127,6 +127,50 @@ static int native_sort_records(databind_native_source_ir *ir) {
   return count == ir->record_count ? 0 : -1;
 }
 
+/* A record descriptor is usable as a sequence element or Map value.
+ * Record keys and Sets still require an explicit canonical comparator. */
+static int native_record_declared(const databind_native_source_ir *ir,
+                                  const char *name) {
+  size_t i;
+  if (ir == NULL || name == NULL) return 0;
+  for (i = 0u; i < ir->record_count; ++i)
+    if (ir->records[i].name != NULL &&
+        strcmp(ir->records[i].name, name) == 0) return 1;
+  return 0;
+}
+
+static const char *native_collection_element_symbol(
+    const databind_native_source_ir *ir, const char *provider,
+    const char *logical_type, char *buffer, size_t capacity) {
+  int n;
+  if (provider != NULL) return provider;
+  if (!native_record_declared(ir, logical_type) || !buffer || capacity == 0u)
+    return NULL;
+  n = snprintf(buffer, capacity, "%s_native_element_cmeta_type", logical_type);
+  return n >= 0 && (size_t)n < capacity ? buffer : NULL;
+}
+
+static int native_record_needs_element_traits(
+    const databind_native_source_ir *ir, const char *name) {
+  size_t i, j;
+  if (!ir || !name) return 0;
+  for (i = 0u; i < ir->record_count; ++i) {
+    const databind_native_source_record *record = &ir->records[i];
+    for (j = 0u; j < record->field_count; ++j) {
+      const databind_native_source_field *field = &record->fields[j];
+      if (field->ownership == DATABIND_NATIVE_OWNED_SEQUENCE &&
+          field->element_type != NULL &&
+          strcmp(field->element_type, name) == 0)
+        return 1;
+      if (field->ownership == DATABIND_NATIVE_OWNED_MAP &&
+          field->value_type != NULL &&
+          strcmp(field->value_type, name) == 0)
+        return 1;
+    }
+  }
+  return 0;
+}
+
 void databind_native_source_ir_destroy(databind_native_source_ir *ir) {
   size_t i;
   if (ir == NULL) return;
@@ -365,14 +409,16 @@ int databind_native_source_ir_write_header(
              record->fields[j].c_type != NULL &&
              strcmp(record->fields[j].c_type, "databind_native_bytes") == 0) ||
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_SEQUENCE &&
-             record->fields[j].element_cmeta_symbol != NULL &&
              record->fields[j].c_type != NULL &&
-             strcmp(record->fields[j].c_type, "vec_t") == 0) ||
+             strcmp(record->fields[j].c_type, "vec_t") == 0 &&
+             (record->fields[j].element_cmeta_symbol != NULL ||
+              native_record_declared(ir, record->fields[j].element_type))) ||
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_RECORD &&
              record->fields[j].c_type != NULL) ||
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_MAP &&
              record->fields[j].key_cmeta_symbol != NULL &&
-             record->fields[j].value_cmeta_symbol != NULL &&
+             (record->fields[j].value_cmeta_symbol != NULL ||
+              native_record_declared(ir, record->fields[j].value_type)) &&
              record->fields[j].c_type != NULL &&
              strcmp(record->fields[j].c_type, "map_t") == 0) ||
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_SET &&
