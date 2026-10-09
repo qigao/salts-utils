@@ -26,6 +26,10 @@ typedef struct databind_native_source_field {
   int optional;
   int nullable;
   databind_native_source_ownership ownership;
+  /* Borrowed canonical logical element name for sequence fields. This is
+   * metadata only: an owning CSTL element trait is required for rendering. */
+  const char *element_type;
+  int element_is_trivial;
 } databind_native_source_field;
 
 typedef struct databind_native_source_record {
