@@ -77,7 +77,7 @@ Windows 恢复原 triplet，通过 preset 的 PATH 选择依赖；不手工复�
 
 ## 发布与迁移
 
-### 4.3 RC 回合主线
+### 4.3 RC 合入主线
 
 将 `v4.3.0-rc.1`（`049f8e39e1d19ff21e9825df7c497e40b75a8ddf`）与 master
 的发布入口提交 `c259f4c6fabc8c5d4c9663c44c5cb738519f5c30` 合并，保留双方历史。
