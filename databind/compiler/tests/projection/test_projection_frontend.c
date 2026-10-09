@@ -572,7 +572,10 @@ spec("DataBind public typed generation frontend") {
     check_equal(plan.outputs[11].path, plan.openapi_output);
     check_equal(plan.outputs[12].path, plan.http_projection_header);
     check_equal(plan.outputs[0].owner.axis, 0);
-    check_equal(plan.outputs[1].owner.axis, 0);
+    check_equal(plan.outputs[1].owner.axis,
+                DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT);
+    check_equal(plan.outputs[1].owner.kind,
+                (uint32_t)DATABIND_COMPILER_ARTIFACT_NATIVE);
     check_equal(plan.outputs[10].owner.kind,
                 (uint32_t)DATABIND_COMPILER_ARTIFACT_WASM);
     check_equal(plan.outputs[12].owner.axis,
