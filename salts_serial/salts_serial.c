@@ -45,12 +45,16 @@ typedef struct salts_serial_size_result {
 } salts_serial_size_result_t;
 
 #ifdef SALTS_SERIAL_TESTING
+#include "test/salts_serial_test.h"
 static const salts_serial_backend_ops_t *active_backend_ops = NULL;
-
-void salts_serial_test_set_handle(salts_serial_t *serial, salts_port_handle_t *handle);
+static salts_serial_test_thread_create_fn active_thread_create = cmeta_thread_create;
 
 void salts_serial_set_backend_ops_for_testing(const salts_serial_backend_ops_t *ops) {
   active_backend_ops = ops;
+}
+
+void salts_serial_test_set_thread_create(salts_serial_test_thread_create_fn create) {
+  active_thread_create = create ? create : cmeta_thread_create;
 }
 #endif
 
@@ -531,13 +535,15 @@ salts_serial_result_t salts_serial_start_async(salts_serial_t *serial) {
 
   atomic_store(&serial->error.last_error, (int)SALTS_SERIAL_OK);
   atomic_store(&serial->async.wake_requested, true);
-
-  /* Publish the running state before launching the worker. A newly created
-   * thread may run immediately; publishing only after create() lets its first
-   * while (async_running) check observe false and exit without pumping. On a
-   * failed launch, roll the state back before returning to the caller. */
+  /* The worker can run before thread creation returns. Publish its loop
+   * condition first, and roll it back if no thread was created. */
   atomic_store(&serial->async.async_running, true);
+
+#ifdef SALTS_SERIAL_TESTING
+  thread_result = active_thread_create(&serial->async.worker_thread, pump_worker_main, serial);
+#else
   thread_result = cmeta_thread_create(&serial->async.worker_thread, pump_worker_main, serial);
+#endif
   if (thread_result != 0) {
     atomic_store(&serial->async.async_running, false);
     atomic_store(&serial->async.wake_requested, false);
