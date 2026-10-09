@@ -53,7 +53,7 @@ salts-idlc <schema_file> [options]
   - Explicitly selects the Binary-backed C wire header and strict Binary layout admission
   - Bare built-in `--lang c` now produces Contract-only NativeSourceIR types
   - `--source-output` and `--guest-output` themselves explicitly select Binary artifacts
-  - The `--binary-codec` switch is only valid for built-in `--lang c`; it is not a fallback
+  - The `--binary-codec` switch is valid only with `--lang c`, including a custom wire template; it is not a compatibility fallback
 
 - `--template <file>` or `-t <file>`
   - Path to custom Mustache template file
