@@ -1,0 +1,131 @@
+name: Unicode SDK candidate integration
+# Temporary qualification gate for Salts #1088 / SaltsUtils #610.
+# Build the Salts Unicode branch from source; never publish or pin a package.
+'on':
+  pull_request:
+    paths:
+      - .github/workflows/unicode-sdk-candidate.yml
+      - CMakeLists.txt
+      - cmake/SaltsUtilsConfig.cmake.in
+      - cmake/ci/unicode-installed-consumer/**
+      - jinja/**
+      - unicode/**
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: unicode-sdk-candidate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux:
+    if: github.repository == 'qigao/salts-utils' && github.head_ref == 'feature/unicode17-salts-cutover-1088'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      QIGAO_SDK_RID: linux-x64
+      QIGAO_TARGET_TRIPLET: x64-linux
+      QIGAO_HOST_TRIPLET: x64-linux
+      QIGAO_NUGET_PACKAGES: ${{ github.workspace }}/stage/nuget
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      SCCACHE_CACHE_SIZE: 512M
+      SCCACHE_DIRECT: 'false'
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-unicode-candidate-linux
+    steps:
+      - name: Checkout SaltsUtils cutover PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Checkout candidate Salts Unicode owner
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: feature/unicode17-core-1088
+          path: candidate/salts-source
+          persist-credentials: false
+      - name: Restore shared re2c tool and Unicode property data
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@master
+      - name: Configure shared vcpkg cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - name: Prepare Salts native build host
+        uses: ./candidate/salts-source/.github/actions/setup-build-host
+      - name: Restore Salts compiler cache
+        uses: ./candidate/salts-source/.github/actions/setup-compiler-cache
+        with:
+          profile: unicode-cutover-linux
+      - name: Prepare SaltsUtils build host
+        uses: ./.github/actions/setup-build-host
+      - name: Build exact candidate Salts SDK from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git -C candidate/salts-source rev-parse HEAD)"
+          test -f candidate/salts-source/unicode/include/salts_unicode.h
+          pushd candidate/salts-source
+          cmake --preset linux-release-ci -DENABLE_TESTS=OFF -DBUILD_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF \
+            -DCMETA_BUILD_BENCHMARKS=OFF -DNATIVE_IO_BUILD_BENCHMARKS=OFF \
+            -DCOROUTINE_BUILD_BENCHMARKS=OFF -DCNET_BUILD_BENCHMARKS=OFF
+          cmake --build --preset linux-release-ci --parallel 2
+          cmake --install build/linux-gcc-release \
+            --prefix "$GITHUB_WORKSPACE/candidate/salts-sdk"
+          popd
+          prefix="$GITHUB_WORKSPACE/candidate/salts-sdk"
+          test -f "$prefix/include/unicode/salts_unicode.h"
+          test -f "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          test -f "$prefix/share/licenses/salts_unicode/LICENSE.txt"
+          grep -Fq 'Salts::Unicode' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          printf 'source_sha=%s\nprofile=unicode-candidate\n' "$source_sha" \
+            > "$prefix/unicode-candidate-manifest.txt"
+          echo "SALTS_ROOT=$prefix" >> "$GITHUB_ENV"
+          echo "SALTS_HOST_ROOT=$prefix" >> "$GITHUB_ENV"
+          echo "SALTS_UNICODE_CANDIDATE_SHA=$source_sha" >> "$GITHUB_ENV"
+      - name: Build SaltsUtils/Jinja against candidate SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SALTS_ROOT/unicode-candidate-manifest.txt"
+          cmake --preset ci-native-release-user \
+            -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          cmake --build --preset ci-native-release-user --parallel 2
+      - name: Run real Jinja Unicode consumers and regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctest --preset ci-native-release-user --no-tests=error \
+            --output-on-failure --timeout 180 --parallel 2 -R '^test_jinja'
+      - name: Install SaltsUtils and reject duplicate Unicode owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$GITHUB_WORKSPACE/candidate/saltsutils-sdk"
+          cmake --install build/ci-sdk/linux-x64 --prefix "$prefix"
+          utils_targets="$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
+          test -f "$utils_targets"
+          if grep -Eq 'add_library\(Salts::Unicode|add_executable\(Salts::Unicode' "$utils_targets"; then
+            echo 'SaltsUtils must not export a second Salts::Unicode target' >&2
+            exit 1
+          fi
+          test ! -f "$prefix/include/unicode/salts_unicode.h"
+          echo "SALTS_UTILS_CANDIDATE_ROOT=$prefix" >> "$GITHUB_ENV"
+      - name: Compile and execute standalone installed C11/C++17 consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S cmake/ci/unicode-installed-consumer \
+            -B candidate/cutover-consumer-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_PREFIX_PATH=$SALTS_UTILS_CANDIDATE_ROOT;$SALTS_ROOT"
+          cmake --build candidate/cutover-consumer-build --parallel 2
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_UTILS_CANDIDATE_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          ctest --test-dir candidate/cutover-consumer-build --no-tests=error --output-on-failure
+          {
+            echo '### Unicode #1088 candidate integration'
+            echo "- Salts source SHA: \$SALTS_UNICODE_CANDIDATE_SHA"
+            echo "- SaltsUtils source SHA: \$(git rev-parse HEAD)"
+            echo '- Tested Linux installed C11/C++17 consumers and Jinja'
+            echo '- **No public package, stable tag, or RC branch changes**'
+          } >> "$GITHUB_STEP_SUMMARY"
