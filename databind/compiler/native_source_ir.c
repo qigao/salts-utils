@@ -223,6 +223,26 @@ int databind_native_source_ir_write_header(
         record->name, record->name, record->name) < 0)
       failed = 1;
   }
+  /* Reuse Salts CMeta descriptors without imposing a Salts dependency on
+   * the standalone C11 source-only header unless reflection is requested. */
+  if (!failed && fprintf(out,
+      "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n"
+      "#include <cmeta_cmeta_data.h>\n") < 0)
+    failed = 1;
+  for (i = 0u; i < ir->record_count && !failed; ++i) {
+    const databind_native_source_record *record = &ir->records[i];
+    if (fprintf(out,
+        "static const cmeta_type_desc %s_native_cmeta_type = {\n"
+        "    .name = \\"%s\\",\n"
+        "    .size = sizeof(%s),\n"
+        "    .align = _Alignof(%s),\n"
+        "    .kind = CMETA_T_OBJECT\n"
+        "};\n",
+        record->name, record->name, record->name, record->name) < 0)
+      failed = 1;
+  }
+  if (!failed && fprintf(out, "#endif /* DATABIND_NATIVE_ENABLE_CMETA */\n") < 0)
+    failed = 1;
   if (ferror(out)) failed = 1;
   if (fclose(out) != 0) failed = 1;
   if (failed) {
