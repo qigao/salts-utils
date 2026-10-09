@@ -31,6 +31,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/flowmq"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
   ARTIFACT_NAME "device"
+  BINARY_CODEC
   TRANSPORTS FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection_config.json")
@@ -41,6 +42,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/flowmq"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_service_plan.schema"
   ARTIFACT_NAME "service"
+  BINARY_CODEC
   TRANSPORTS FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_service_plan_config.json")

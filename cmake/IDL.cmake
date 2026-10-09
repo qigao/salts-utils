@@ -139,7 +139,7 @@ function(_saltsutils_idl_host_command
 endfunction()
 
 function(salts_idl_target)
-  set(options)
+  set(options BINARY_CODEC)
   set(one_value_args
       TARGET
       FOLDER
@@ -229,7 +229,7 @@ function(salts_idl_target)
   endforeach()
 
   if(_has_types AND
-     (NOT "${_normalized_artifacts}" STREQUAL "TYPES" OR DB_TRANSPORTS))
+     (NOT "${_normalized_artifacts}" STREQUAL "TYPES" OR DB_TRANSPORTS OR DB_BINARY_CODEC))
     message(FATAL_ERROR
             "salts_idl_target TYPES is Contract-only and cannot be mixed with another artifact or transport")
   endif()
@@ -257,6 +257,13 @@ function(salts_idl_target)
     endif()
     list(APPEND _normalized_transports "${transport_upper}")
   endforeach()
+
+  if((_has_message OR _has_native OR _has_plugin OR _has_wasm OR
+      _has_socket OR _has_flowmq) AND NOT DB_BINARY_CODEC)
+    message(FATAL_ERROR
+            "Generated native execution/codec source requires explicit BINARY_CODEC. "
+            "Use ARTIFACTS TYPES alone for Contract-only NativeSourceIR declarations.")
+  endif()
 
   if(_has_openapi AND NOT _has_http)
     message(FATAL_ERROR
@@ -510,6 +517,9 @@ function(salts_idl_target)
       "${_idl}"
       --lang c
       --output "${_native_header}")
+  if(DB_BINARY_CODEC)
+    list(APPEND _compiler_args --binary-codec)
+  endif()
   if(_compiler_artifacts OR _normalized_transports)
     list(APPEND _compiler_args
       --artifact-name "${DB_ARTIFACT_NAME}")

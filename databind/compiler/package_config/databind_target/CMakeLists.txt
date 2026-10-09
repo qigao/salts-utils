@@ -57,6 +57,7 @@ salts_idl_target(
   COMPONENT "Image.ImageProcessor"
   VERSION "1.0.0"
   ARTIFACT_NAME "image"
+  BINARY_CODEC
   ARTIFACTS PLUGIN
   SOURCES business.c)
 
@@ -116,6 +117,7 @@ salts_idl_target(
   TARGET installed_socket
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/socket.schema"
   ARTIFACT_NAME "installed_device"
+  BINARY_CODEC
   TRANSPORTS SOCKET
   PROJECTION_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/socket_config.json")
 
@@ -138,6 +140,7 @@ salts_idl_target(
   TARGET installed_message
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/message.schema"
   ARTIFACT_NAME "installed_message"
+  BINARY_CODEC
   ARTIFACTS MESSAGE)
 
 if(NOT TARGET installed_message_native)
@@ -195,6 +198,7 @@ salts_idl_target(
   TARGET installed_nested_generics
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/message/test_nested_native_generics.schema"
   ARTIFACT_NAME "nested_native_generics"
+  BINARY_CODEC
   ARTIFACTS MESSAGE)
 
 add_executable(installed_nested_generics_consumer
@@ -226,6 +230,7 @@ salts_idl_target(
   TARGET installed_service
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/service.schema"
   ARTIFACT_NAME "installed_service"
+  BINARY_CODEC
   ARTIFACTS NATIVE
   TRANSPORTS HTTP RPC)
 
@@ -317,6 +322,7 @@ salts_idl_target(
   TARGET installed_flow
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/flowmq.schema"
   ARTIFACT_NAME "installed_flow"
+  BINARY_CODEC
   TRANSPORTS FLOWMQ
   PROJECTION_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/flowmq_config.json")
 
@@ -340,6 +346,7 @@ salts_idl_target(
   TARGET installed_flow_service
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/service.schema"
   ARTIFACT_NAME "installed_service_flow"
+  BINARY_CODEC
   TRANSPORTS FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/flowmq_service_config.json")

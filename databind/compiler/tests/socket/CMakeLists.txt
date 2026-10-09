@@ -31,6 +31,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/socket"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_public.schema"
   ARTIFACT_NAME "device"
+  BINARY_CODEC
   TRANSPORTS SOCKET
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_projection_config.json")

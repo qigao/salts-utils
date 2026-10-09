@@ -46,6 +46,7 @@ salts_idl_target(
   COMPONENT "WasmRuntime.Calculator"
   VERSION "1.0.0"
   ARTIFACT_NAME "wasm_execution"
+  BINARY_CODEC
   ARTIFACTS PLUGIN WASM
   WASM_CORE_MODULE "${_core}"
   SOURCES

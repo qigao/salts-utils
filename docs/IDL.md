@@ -66,6 +66,7 @@ salts_idl_target(
   TARGET app_messages
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/messages.schema"
   ARTIFACTS MESSAGE
+  BINARY_CODEC
   FOLDER "generated/message")
 ```
 
@@ -90,6 +91,12 @@ with their separate execution/binding ABI. Existing NATIVE/PLUGIN/WASM
 execution providers still need a separate CMeta/DataBind ABI cutover before
 their Binary companion can be removed; this is a strict boundary, not a
 fallback renderer.
+
+Executable MESSAGE/NATIVE/PLUGIN/WASM and formatted SOCKET/FLOWMQ
+generation still requires explicit `BINARY_CODEC` because its generated
+native execution and binding sources have not yet adopted NativeSourceIR's
+CMeta and presence-state ABI. This strict selection is not a fallback;
+`ARTIFACTS TYPES` never admits `BINARY_CODEC`.
 
 The folder applies to the aggregate target, its `_idl_codegen` target, and all
 generated native, Plugin, Plugin client, or WASM library targets. Callers can

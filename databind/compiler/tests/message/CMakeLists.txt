@@ -72,6 +72,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/message"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_message_native_artifact.schema"
   ARTIFACT_NAME "message_native_artifact"
+  BINARY_CODEC
   ARTIFACTS MESSAGE)
 
 salts_idl_target(
@@ -79,6 +80,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/message"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_nested_native_generics.schema"
   ARTIFACT_NAME "nested_native_generics"
+  BINARY_CODEC
   ARTIFACTS MESSAGE)
 
 cmake_add_test(test_databind_nested_native_generics

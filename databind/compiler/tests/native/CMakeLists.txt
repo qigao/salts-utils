@@ -109,6 +109,7 @@ salts_idl_target(
   FOLDER "databind/compiler/generated/native"
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
   ARTIFACT_NAME "service_native_public"
+  BINARY_CODEC
   ARTIFACTS NATIVE
   TRANSPORTS HTTP RPC)
 

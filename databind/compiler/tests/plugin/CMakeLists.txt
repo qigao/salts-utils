@@ -22,6 +22,7 @@ salts_idl_target(
   COMPONENT "Image.ImageProcessor"
   VERSION "1.0.0"
   ARTIFACT_NAME "image"
+  BINARY_CODEC
   ARTIFACTS PLUGIN
   SOURCES test_plugin_business_fixture.c)
 
@@ -109,6 +110,7 @@ salts_idl_target(
   COMPONENT "GenericPlugin.GenericProcessor"
   VERSION "1.0.0"
   ARTIFACT_NAME "generic_plugin"
+  BINARY_CODEC
   ARTIFACTS PLUGIN
   SOURCES test_plugin_generic_descriptor_business.c)
 
@@ -139,6 +141,7 @@ salts_idl_target(
   COMPONENT "ErrorPlugin.StorePlugin"
   VERSION "1.0.0"
   ARTIFACT_NAME "error"
+  BINARY_CODEC
   ARTIFACTS PLUGIN
   SOURCES test_plugin_typed_error_business_fixture.c)
 
@@ -175,6 +178,7 @@ salts_idl_target(
   COMPONENT "OwnedErrorPlugin.StorePlugin"
   VERSION "1.0.0"
   ARTIFACT_NAME "owned_error"
+  BINARY_CODEC
   ARTIFACTS PLUGIN
   SOURCES test_plugin_owned_typed_error_business_fixture.c)
 
