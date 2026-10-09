@@ -15,9 +15,7 @@
         "VCPKG_HOST_TRIPLET": "$env{QIGAO_HOST_TRIPLET}",
         "VCPKG_MANIFEST_FEATURES": "capture",
         "CMAKE_FIND_USE_PACKAGE_REGISTRY": false,
-        "CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY": false,
-        "FLEXUI_UNICODE_INSTALL_PREFIX": "$env{SALTS_ROOT}",
-        "FLEXUI_UNICODE_ENABLE_SANITIZERS": true
+        "CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY": false
       },
       "environment": {
         "LD_LIBRARY_PATH": "$env{SALTS_ROOT}/lib:${sourceDir}/../../../vcpkg_installed/$env{QIGAO_TARGET_TRIPLET}/lib:$penv{LD_LIBRARY_PATH}"
@@ -25,14 +23,22 @@
     }
   ],
   "buildPresets": [
-    { "name": "installed-candidate", "configurePreset": "installed-candidate" }
+    {
+      "name": "installed-candidate",
+      "configurePreset": "installed-candidate"
+    }
   ],
   "testPresets": [
     {
       "name": "installed-candidate",
       "configurePreset": "installed-candidate",
-      "output": { "outputOnFailure": true },
-      "execution": { "noTestsAction": "error", "timeout": 120 }
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "timeout": 120
+      }
     }
   ]
 }

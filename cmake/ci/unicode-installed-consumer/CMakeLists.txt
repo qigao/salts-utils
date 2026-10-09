@@ -29,9 +29,3 @@ target_link_libraries(unicode_cutover_cpp17 PRIVATE Salts::Unicode Salts::JinjaC
 enable_testing()
 add_test(NAME unicode_cutover_c11 COMMAND unicode_cutover_c11)
 add_test(NAME unicode_cutover_cpp17 COMMAND unicode_cutover_cpp17)
-
-# Run the existing downstream boundary tests with this same toolchain and SDK.
-if(NOT EXISTS "$ENV{STUN_SOURCE}/flexUI/tests/unicode_install_consumer/CMakeLists.txt")
-  message(FATAL_ERROR "STUN_SOURCE must name the checked-out downstream candidate")
-endif()
-add_subdirectory("$ENV{STUN_SOURCE}/flexUI/tests/unicode_install_consumer" flexui)

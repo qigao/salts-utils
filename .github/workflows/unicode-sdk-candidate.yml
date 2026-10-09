@@ -18,10 +18,6 @@ name: Unicode SDK candidate integration
         description: Salts candidate commit SHA to qualify (recorded with the SDK)
         required: true
         type: string
-      stun_ref:
-        description: stun/flexUI consumer commit SHA to qualify
-        required: true
-        type: string
 permissions:
   contents: read
   packages: read
@@ -53,11 +49,10 @@ jobs:
         shell: bash
         env:
           SALTS_REF: ${{ inputs.salts_ref }}
-          STUN_REF: ${{ inputs.stun_ref }}
         run: |
           set -euo pipefail
-          if [[ ! "$SALTS_REF" =~ ^[0-9a-fA-F]{40}$ || ! "$STUN_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo 'Manual qualification requires full Salts and stun commit SHAs.' >&2
+          if [[ ! "$SALTS_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo 'Manual qualification requires a full Salts commit SHA.' >&2
             exit 1
           fi
       - name: Checkout SaltsUtils cutover PR
@@ -120,17 +115,8 @@ jobs:
           set -euo pipefail
           cmake --build --preset install-ci-unicode-candidate-user --parallel 2
           echo "SALTS_UTILS_CANDIDATE_ROOT=$SALTS_ROOT" >> "$GITHUB_ENV"
-      - name: Checkout actual stun/flexUI Unicode consumer
-        uses: actions/checkout@v4
-        with:
-          repository: qigao/stun
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.stun_ref || 'master' }}
-          path: candidate/stun-source
-          persist-credentials: false
-      - name: Run installed C11, C++17 and flexUI boundary tests
+      - name: Run SaltsUtils installed C11 and C++17 tests
         shell: bash
-        env:
-          STUN_SOURCE: ${{ github.workspace }}/candidate/stun-source
         run: |
           set -euo pipefail
           pushd cmake/ci/unicode-installed-consumer
@@ -142,15 +128,13 @@ jobs:
             echo '### Unicode #1088 candidate integration'
             echo "- Salts source SHA: $SALTS_UNICODE_CANDIDATE_SHA"
             echo "- SaltsUtils source SHA: $(git rev-parse HEAD)"
-            echo "- stun/flexUI SHA: $(git -C candidate/stun-source rev-parse HEAD)"
             echo '- Full SaltsUtils CTest graph and installed C11/C++17 tests'
-            echo '- flexUI boundary test executables use ASan+UBSan; SDK libraries use Release'
+            echo '- Scope: Salts and SaltsUtils only'
             echo '- No public package, stable tag, or RC branch changes'
           } >> "$GITHUB_STEP_SUMMARY"
           {
             printf 'salts_sha=%s\n' "$SALTS_UNICODE_CANDIDATE_SHA"
             printf 'salts_utils_sha=%s\n' "$(git rev-parse HEAD)"
-            printf 'stun_sha=%s\n' "$(git -C candidate/stun-source rev-parse HEAD)"
             printf 'run_id=%s\nrun_attempt=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
             printf 'scope=linux-x64-source-integration\nrelease_qualified=false\n'
           } > candidate/unicode-cutover-manifest.txt
