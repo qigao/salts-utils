@@ -9,6 +9,8 @@ int main(void) {
   cmeta_data_field_desc fields[3];
   if (Packet_native_cmeta_data_fields(fields, 2u) == 0 ||
       Packet_native_cmeta_data_fields(fields, 3u) != 0 ||
+      strcmp(fields[0].stable_id,
+             "tbe.native.NativeFixture.v1.Packet.count") != 0 ||
       fields[0].value != &cmeta_data_uint32 ||
       fields[1].value != &cmeta_data_int16 ||
       fields[2].value != &cmeta_data_bool ||
@@ -22,6 +24,8 @@ int main(void) {
       !cmeta_data_desc_valid(&view.data) ||
       view.data.abi_version != CMETA_DATA_DESC_REFLECTION_ABI_VERSION ||
       view.data.kind != CMETA_DATA_STRUCT ||
+      strcmp(view.data.stable_id,
+             "tbe.native.NativeFixture.v1.Packet.data") != 0 ||
       view.data.storage_type != &Packet_native_cmeta_type ||
       view.data.shape != &view.reflection ||
       view.reflection.mode != CMETA_DATA_REFLECTION_VIEW ||
@@ -49,6 +53,10 @@ int main(void) {
   Packet packet;
 #ifdef DATABIND_NATIVE_ENABLE_CMETA
   if (Packet_native_cmeta_type.name == NULL ||
+      !cmeta_type_desc_valid(&Packet_native_cmeta_type) ||
+      Packet_native_cmeta_type.identity != &Packet_native_cmeta_identity ||
+      strcmp(Packet_native_cmeta_identity.stable_atom_id,
+             "tbe.native.NativeFixture.v1.Packet") != 0 ||
       strcmp(Packet_native_cmeta_type.name, "Packet") != 0 ||
       Packet_native_cmeta_type.size != sizeof(Packet) ||
       Packet_native_cmeta_type.align != _Alignof(Packet) ||
