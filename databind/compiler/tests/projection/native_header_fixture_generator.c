@@ -2,9 +2,9 @@
 
 int main(int argc, char **argv) {
   databind_native_source_field fields[] = {
-      {"count", "uint32_t", 1, 0},
-      {"delta", "int16_t", 0, 1},
-      {"active", "bool", 1, 1}
+      {"count", "uint32_t", 1, 0, DATABIND_NATIVE_TRIVIAL},
+      {"delta", "int16_t", 0, 1, DATABIND_NATIVE_TRIVIAL},
+      {"active", "bool", 1, 1, DATABIND_NATIVE_TRIVIAL}
   };
   databind_native_source_record record = {"Packet", 3u, fields};
   databind_native_source_ir ir = {1u, &record, "NativeFixture", "1"};
