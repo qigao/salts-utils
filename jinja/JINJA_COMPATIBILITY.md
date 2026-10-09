@@ -490,7 +490,7 @@ Mustache 或 QueryVM 依赖。安全字符串与 autoescape 块已接入独立�
 raw/comment内容不进入该校验。
 `\N{NAME}` 已使用共享 Unicode 17 名称/别名查询进行词法校验和公开字符串解码；
 未知/空名称及命名序列拒绝，escaped slash保留字面量，输出仍受UTF-8字节预算约束。
-大小写和数据版本契约见 [Unicode名称数据](../unicode/data/README.md)。
+大小写和数据版本契约见 [Unicode名称数据](https://github.com/qigao/salts/blob/master/unicode/data/README.md)。
 
 私有jinja_template_parse已建立默认分隔符下的完整模板结构树：源码顺序节点、
 父块/分支、块首尾配对，复用表达式与头部解析器验证macro/call/for/if/block、
