@@ -245,6 +245,14 @@ int databind_native_source_ir_write_header(
     }
     if (!failed && fprintf(out, "};\n") < 0)
       failed = 1;
+    if (!failed && fprintf(out,
+        "static const cmeta_struct_desc %s_native_cmeta_layout = {\n"
+        "    \"%s\", sizeof(%s), _Alignof(%s),\n"
+        "    %s_native_cmeta_fields, %zuu\n"
+        "};\n",
+        record->name, record->name, record->name, record->name,
+        record->name, record->field_count) < 0)
+      failed = 1;
     if (fprintf(out,
         "static const cmeta_type_desc %s_native_cmeta_type = {\n"
         "    .name = \"%s\",\n"
