@@ -43,26 +43,21 @@ cat > "$project" <<'EOF'
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="${salts_version}" />
+    <PackageReference Include="Salts.Native" Version="$(SaltsReleaseVersion)" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
 </Project>
 EOF
 
-restore_args=()
+# Always pass the dynamically verified public release version to MSBuild;
+# the single-quoted heredoc must not be unquoted (it contains MSBuild syntax).
+restore_args=("-p:SaltsReleaseVersion=$salts_version")
 if [ "$with_turbowasm" = "1" ]; then
   restore_args+=("-p:WithTurboWasm=true")
 fi
-if [ "${#restore_args[@]}" -gt 0 ]; then
-  dotnet restore "$project" --packages "$packages" --configfile "$config" \
-    --no-cache --force-evaluate "${restore_args[@]}"
-else
-  # macOS still ships Bash 3.2. Under `set -u`, expanding an empty array
-  # raises "unbound variable", so keep the zero-extra-argument path explicit.
-  dotnet restore "$project" --packages "$packages" --configfile "$config" \
-    --no-cache --force-evaluate
-fi
+dotnet restore "$project" --packages "$packages" --configfile "$config" \
+  --no-cache --force-evaluate "${restore_args[@]}"
 
 restored_package_dir() {
   python3 - "$restore_root/obj/project.assets.json" "$packages" "$1" <<'PY'
