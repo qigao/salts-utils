@@ -29,6 +29,12 @@ esac
 mkdir -p "$restore_root"
 config="$repository_root/cmake/vcpkg-cache.nuget.config"
 project="$restore_root/qigao-native-sdk-restore.csproj"
+# NuGet 2.3.0-* also selects historical rc.sha<commit> Linux-only
+# candidates; resolve only official immutable GitHub Releases with an SDK
+# artifact, preferring stable over rc.N and highest numeric rc.N otherwise.
+salts_version="$(gh api 'repos/qigao/salts/releases?per_page=100' |
+  python3 "$repository_root/cmake/ci/select-salts-release.py" 2.3.0)"
+printf 'selected published Salts.Native %s\n' "$salts_version"
 
 cat > "$project" <<'EOF'
 <Project Sdk="Microsoft.NET.Sdk">
@@ -37,7 +43,7 @@ cat > "$project" <<'EOF'
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="2.3.0-*" />
+    <PackageReference Include="Salts.Native" Version="${salts_version}" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -71,7 +77,9 @@ PY
 }
 
 salts_package="$(restored_package_dir Salts.Native)"
-salts_version="$(basename "$salts_package")"
+test "$(basename "$salts_package")" = "$salts_version" || {
+  echo "restored unexpected Salts.Native version (expected $salts_version)" >&2; exit 1;
+}
 re2c_package="$(restored_package_dir Qigao.Re2c.Binary)"
 turbowasm_package=""
 if [ "$with_turbowasm" = "1" ]; then
