@@ -1491,7 +1491,7 @@ describe("compiler integration") {
     static const char schema_path[] = "native_source_publish.schema";
     static const char output[] = "native_source_publish.h";
     static const char valid[] = "schema NativePublish; message Packet { uint32 count; int16 delta; }";
-    static const char unsupported[] = "schema NativePublish; message Packet { string label; }";
+    static const char unsupported[] = "schema NativePublish; message Packet { uuid token; }";
     (void)remove(schema_path);
     (void)remove(output);
     check_true(write_sentinel(schema_path, valid));
