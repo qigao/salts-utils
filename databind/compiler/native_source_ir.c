@@ -492,7 +492,8 @@ int databind_native_source_ir_write_header(
             "    if (src->%s.impl) {\n"
             "      if (!cmeta_type_equal(src->%s.key_type, &%s) ||\n"
             "          !cmeta_type_equal(src->%s.value_type, &%s)) goto native_clone_fail;\n"
-            "      if (map_raw_init(&tmp.%s, &%s, &%s, map_entry_limit(&src->%s)) != STL_OK) goto native_clone_fail;\n"
+            "      tmp.%s.key_type = &%s; tmp.%s.value_type = &%s;\n"
+            "      if (map_init(&tmp.%s, map_entry_limit(&src->%s)) != STL_OK) goto native_clone_fail;\n"
             "      cmeta_range_cursor cursor_%s = {0};\n"
             "      const void *key_%s = NULL, *value_%s = NULL;\n"
             "      while (map_range_next(&src->%s, &cursor_%s, &key_%s, &value_%s)) {\n"
@@ -501,7 +502,8 @@ int databind_native_source_ir_write_header(
             "    }\n",
             field->name, field->name, field->key_cmeta_symbol,
             field->name, field->value_cmeta_symbol,
-            field->name, field->key_cmeta_symbol, field->value_cmeta_symbol, field->name,
+            field->name, field->key_cmeta_symbol, field->name, field->value_cmeta_symbol,
+            field->name, field->name,
             field->name, field->name, field->name,
             field->name, field->name, field->name, field->name,
             field->name, field->name, field->name) < 0) failed = 1;
@@ -511,7 +513,8 @@ int databind_native_source_ir_write_header(
         if (fprintf(out,
             "    if (src->%s.map.impl) {\n"
             "      if (!cmeta_type_equal(src->%s.map.key_type, &%s)) goto native_clone_fail;\n"
-            "      if (set_raw_init(&tmp.%s, &%s, set_element_limit(&src->%s)) != STL_OK) goto native_clone_fail;\n"
+            "      tmp.%s.element_type = &%s;\n"
+            "      if (set_init(&tmp.%s, set_element_limit(&src->%s)) != STL_OK) goto native_clone_fail;\n"
             "      cmeta_range_cursor cursor_%s = {0};\n"
             "      const void *element_%s = NULL;\n"
             "      while (set_range_next(&src->%s, &cursor_%s, &element_%s)) {\n"
