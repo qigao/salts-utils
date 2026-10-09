@@ -40,8 +40,10 @@ int databind_native_source_ir_build(
     const IdlContract *contract, databind_native_source_ir *out) {
   size_t i, j, count = 0u, index = 0u;
   databind_native_source_ir plan = {0};
-  if (contract == NULL || out == NULL || out->records != NULL ||
-      out->record_count != 0u)
+  if (contract == NULL || contract->name == NULL ||
+      contract->name[0] == '\0' || out == NULL || out->records != NULL ||
+      out->record_count != 0u || out->schema_name != NULL ||
+      out->schema_version != NULL)
     return -1;
   for (i = 0u; i < contract->data_count; ++i) {
     const IdlDataDecl *decl = &contract->data[i];
@@ -54,6 +56,8 @@ int databind_native_source_ir_build(
       count != 0u ? count : 1u, sizeof(*plan.records));
   if (plan.records == NULL) return -1;
   plan.record_count = count;
+  plan.schema_name = contract->name;
+  plan.schema_version = contract->version;
   for (i = 0u; i < contract->data_count; ++i) {
     const IdlDataDecl *decl = &contract->data[i];
     databind_native_source_record *record = &plan.records[index++];
@@ -152,12 +156,27 @@ static int native_identifier(const char *s) {
   return !native_reserved_identifier(s);
 }
 
+/* Namespace parts are interpolated into C string literals. Reject
+ * punctuation requiring escaping, rather than emitting ambiguous identities.
+ * Version is an optional stable token, never a rendered C identifier. */
+static int native_version_token(const char *version) {
+  const unsigned char *p = (const unsigned char *)version;
+  if (p == NULL || *p == '\0') return 1;
+  for (; *p != '\0'; ++p)
+    if (!((*p >= '0' && *p <= '9') || (*p >= 'A' && *p <= 'Z') ||
+          (*p >= 'a' && *p <= 'z') || *p == '.' || *p == '-'))
+      return 0;
+  return 1;
+}
+
 int databind_native_source_ir_write_header(
     const databind_native_source_ir *ir, const char *path) {
   FILE *out;
   size_t i, j;
   int failed = 0;
   if (ir == NULL || path == NULL || path[0] == '\0' ||
+      !native_identifier(ir->schema_name) ||
+      !native_version_token(ir->schema_version) ||
       (ir->record_count != 0u && ir->records == NULL))
     return -1;
   for (i = 0u; i < ir->record_count; ++i) {
@@ -231,6 +250,19 @@ int databind_native_source_ir_write_header(
     failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
+    char stable_type_id[1024];
+    int name_len;
+    if (ir->schema_version != NULL && ir->schema_version[0] != '\0')
+      name_len = snprintf(stable_type_id, sizeof(stable_type_id),
+                          "tbe.native.%s.v%s.%s", ir->schema_name,
+                          ir->schema_version, record->name);
+    else
+      name_len = snprintf(stable_type_id, sizeof(stable_type_id),
+                          "tbe.native.%s.%s", ir->schema_name, record->name);
+    if (name_len < 0 || (size_t)name_len >= sizeof(stable_type_id)) {
+      failed = 1; /* Stable ID must never be silently truncated. */
+      break;
+    }
     /* Optional/nullable are separate native flags, not fields of the CMeta
      * logical value view. Preserve their exact byte offsets explicitly. */
     if (!failed && fprintf(out,
@@ -300,22 +332,27 @@ int databind_native_source_ir_write_header(
         }
       if (scalar == NULL || fprintf(out,
           "    out[%zuu] = (cmeta_data_field_desc){"
-          "\"native.%s.%s\", \"%s\", offsetof(%s, %s), "
+          "\"%s.%s\", \"%s\", offsetof(%s, %s), "
           "&cmeta_data_%s};\n",
-          j, record->name, field->name, field->name,
+          j, stable_type_id, field->name, field->name,
           record->name, field->name, scalar) < 0)
         failed = 1;
     }
     if (!failed && fprintf(out, "    return 0;\n}\n") < 0)
       failed = 1;
-    if (fprintf(out,
+    if (!failed && fprintf(out,
+        "static const cmeta_type_identity %s_native_cmeta_identity =\n"
+        "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
         "static const cmeta_type_desc %s_native_cmeta_type = {\n"
         "    .name = \"%s\",\n"
         "    .size = sizeof(%s),\n"
         "    .align = _Alignof(%s),\n"
-        "    .kind = CMETA_T_OBJECT\n"
+        "    .kind = CMETA_T_OBJECT,\n"
+        "    .identity = &%s_native_cmeta_identity\n"
         "};\n",
-        record->name, record->name, record->name, record->name) < 0)
+        record->name, stable_type_id,
+        record->name, record->name, record->name, record->name,
+        record->name) < 0)
       failed = 1;
   }
   /* Reflection V2 VIEW intentionally has no value lifecycle: native flags
@@ -353,7 +390,7 @@ int databind_native_source_ir_write_header(
         "    binding->data = (cmeta_data_desc){\n"
         "        .struct_size = sizeof(cmeta_data_desc),\n"
         "        .abi_version = CMETA_DATA_DESC_REFLECTION_ABI_VERSION,\n"
-        "        .stable_id = \"native.%s.data\",\n"
+        "        .stable_id = \"%s.data\",\n"
         "        .display_name = \"%s\",\n"
         "        .kind = CMETA_DATA_STRUCT,\n"
         "        .storage_type = &%s_native_cmeta_type,\n"
@@ -365,7 +402,7 @@ int databind_native_source_ir_write_header(
         record->name, record->name, record->name,
         record->field_count, record->name, record->field_count,
         record->field_count, record->name, record->name,
-        record->field_count, record->name, record->name,
+        record->field_count, stable_type_id, record->name,
         record->name) < 0)
       failed = 1;
   }
