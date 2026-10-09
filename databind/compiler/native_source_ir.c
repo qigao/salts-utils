@@ -258,9 +258,20 @@ int databind_native_source_ir_write_header(
         "}\n"
         "static inline void %s_clear(%s *value) {\n"
         "    if (value) *value = (%s){0};\n"
+        "static inline int %s_clone(%s *dst, const %s *src) {\n"
+        "    if (!dst || !src) return -1;\n"
+        "    if (dst != src) *dst = *src;\n"
+        "    return 0;\n"
+        "}\n"
+        "static inline int %s_move(%s *dst, %s *src) {\n"
+        "    if (!dst || !src) return -1;\n"
+        "    if (dst != src) { *dst = *src; *src = (%s){0}; }\n"
+        "    return 0;\n"
         "}\n\n",
         record->name, record->name, record->name,
-        record->name, record->name, record->name) < 0)
+        record->name, record->name, record->name,
+        record->name, record->name, record->name,
+        record->name, record->name, record->name, record->name) < 0)
       failed = 1;
   }
   /* Reuse Salts CMeta descriptors without imposing a Salts dependency on
