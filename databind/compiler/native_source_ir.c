@@ -253,6 +253,33 @@ int databind_native_source_ir_write_header(
         record->name, record->name, record->name, record->name,
         record->name, record->field_count) < 0)
       failed = 1;
+    /* Bind DLL-imported scalar CMeta descriptors at call time, not in
+     * file-scope initializers (which MSVC rejects). Caller owns the array. */
+    if (!failed && fprintf(out,
+        "static inline int %s_native_cmeta_data_fields(\n"
+        "    cmeta_data_field_desc *out, size_t capacity) {\n"
+        "    if (out == NULL || capacity < %zuu) return -1;\n",
+        record->name, record->field_count) < 0)
+      failed = 1;
+    for (j = 0u; j < record->field_count && !failed; ++j) {
+      const databind_native_source_field *field = &record->fields[j];
+      const char *scalar = NULL;
+      size_t k;
+      for (k = 0u; k < sizeof(NATIVE_SCALARS)/sizeof(NATIVE_SCALARS[0]); ++k)
+        if (strcmp(field->c_type, NATIVE_SCALARS[k].c) == 0) {
+          scalar = NATIVE_SCALARS[k].idl;
+          break;
+        }
+      if (scalar == NULL || fprintf(out,
+          "    out[%zuu] = (cmeta_data_field_desc){"
+          "\"native.%s.%s\", \"%s\", offsetof(%s, %s), "
+          "&cmeta_data_%s};\n",
+          j, record->name, field->name, field->name,
+          record->name, field->name, scalar) < 0)
+        failed = 1;
+    }
+    if (!failed && fprintf(out, "    return 0;\n}\n") < 0)
+      failed = 1;
     if (fprintf(out,
         "static const cmeta_type_desc %s_native_cmeta_type = {\n"
         "    .name = \"%s\",\n"
