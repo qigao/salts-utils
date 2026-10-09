@@ -112,11 +112,16 @@ spec("DataBind public typed generation frontend") {
 
     databind_compiler_projection_frontend_dispose(&plan);
 
+    /* Native Service is a typed artifact: no Binary serde companion needed. */
     input.source_output_path = NULL;
     check_equal(databind_compiler_projection_frontend_build(
                     &input, &plan, error, sizeof(error)),
-                -1);
-    check_not_null(strstr(error, "source-output"));
+                0);
+    check_equal(plan.output_count, (size_t)3u);
+    check_equal(plan.outputs[0].path, input.output_path);
+    check_equal(plan.outputs[1].path, plan.native_service_source);
+    check_equal(plan.outputs[2].path, plan.native_service_header);
+    databind_compiler_projection_frontend_dispose(&plan);
   }
 
   it("lowers OpenAPI as an artifact over the shared HTTP projection") {
