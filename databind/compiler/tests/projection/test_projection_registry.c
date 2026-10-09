@@ -140,6 +140,15 @@ static int staged_projection_generate(
   return probe->fail_after_write ? -1 : 0;
 }
 
+/* The Contract-only typed artifact contract cannot borrow BinaryFormatPlan. */
+static int contract_artifact_stage_generate(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    void *context) {
+  if (input == NULL || input->binary_format != NULL) return -1;
+  return staged_projection_generate(input, request, context);
+}
+
 #define ARTIFACT_ID(kind_) \
   { DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT, (uint32_t)(kind_) }
 #define TRANSPORT_ID(kind_) \
@@ -1271,6 +1280,87 @@ describe("compiler integration") {
     check_false(file_contains(plugin_c, "projection_all_txn.plugin.h.tbe."));
     check_false(file_contains(wasm_host_c, "projection_all_txn.host.h.tbe."));
     for (i = 0u; i < 12u; ++i) (void)remove(outputs[i]);
+  }
+
+  it("rolls back Contract-only Native Plugin Wasm DSL and typed artifact together") {
+    static const char primary[] = "projection_native_contract_txn.h";
+    static const char native_c[] = "projection_native_contract_txn.service.c";
+    static const char native_h[] = "projection_native_contract_txn.service.h";
+    static const char plugin_c[] = "projection_native_contract_txn.plugin.c";
+    static const char plugin_h[] = "projection_native_contract_txn.plugin.h";
+    static const char client_h[] = "projection_native_contract_txn.client.h";
+    static const char client_c[] = "projection_native_contract_txn.client.c";
+    static const char wasm_component[] = "projection_native_contract_txn.wasm";
+    static const char wasm_host_h[] = "projection_native_contract_txn.host.h";
+    static const char wasm_host_c[] = "projection_native_contract_txn.host.c";
+    static const char wasm_guest_h[] = "projection_native_contract_txn.guest.h";
+    static const char artifact_h[] = "projection_native_contract_txn.artifact.h";
+    static const char dsl[] = "projection_native_contract_txn.rfl";
+    databind_compiler_native_service_config native = {
+        .native_header = primary, .header_output = native_h};
+    databind_compiler_plugin_config plugin = {
+        .plugin_version_major = 1u,
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .service_header_output = plugin_h,
+        .client_header_output = client_h,
+        .client_source_output = client_c};
+    databind_compiler_wasm_config wasm = {
+        .component_id = "WasmRuntime.Calculator",
+        .native_header = primary,
+        .core_module_path = WASM_CORE_FIXTURE_FILE,
+        .host_header_output = wasm_host_h,
+        .host_source_output = wasm_host_c,
+        .guest_header_output = wasm_guest_h,
+        .symbol_prefix = "wasm_fixture"};
+    staged_projection_probe artifact = {artifact_h, "artifact-new", 0u, 1};
+    const databind_compiler_projection_request requests[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), native_c, &native},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), plugin_c, &plugin},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_WASM), wasm_component, &wasm},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_OPENAPI), artifact_h, NULL}};
+    const databind_compiler_projection_backend backends[] = {
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND,
+        DATABIND_COMPILER_PLUGIN_BACKEND,
+        DATABIND_COMPILER_WASM_BACKEND,
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_OPENAPI), "openapi",
+         contract_artifact_stage_generate, &artifact, DATABIND_COMPILER_OUTPUT_STAGED_SINGLE}};
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_WASM_EXECUTION_FILE,
+        .output_path = primary,
+        .dsl_output_path = dsl,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .projection_requests = requests, .projection_count = 4u,
+        .projection_backends = backends, .projection_backend_count = 4u};
+    const char *outputs[] = {
+        primary, native_c, native_h, plugin_c, plugin_h, client_h, client_c,
+        wasm_component, wasm_host_h, wasm_host_c, wasm_guest_h, artifact_h, dsl};
+    size_t i;
+    for (i = 0u; i < 13u; ++i) {
+      (void)remove(outputs[i]);
+      check_true(write_sentinel(outputs[i], "old"));
+    }
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(artifact.calls, (size_t)1u);
+    for (i = 0u; i < 13u; ++i) check_true(file_matches(outputs[i], "old"));
+    for (i = 0u; i < 13u; ++i) (void)remove(outputs[i]);
+    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(artifact.calls, (size_t)2u);
+    for (i = 0u; i < 13u; ++i) check_false(file_exists(outputs[i]));
+    artifact.fail_after_write = 0;
+    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(artifact.calls, (size_t)3u);
+    for (i = 0u; i < 13u; ++i) check_true(file_exists(outputs[i]));
+    check_true(file_contains(primary, "typedef struct AddRequest"));
+    check_false(file_contains(primary, "binary_wire"));
+    check_true(file_contains(dsl, "declare AddRequest"));
+    check_true(file_contains(native_c, native_h));
+    check_true(file_contains(plugin_c, plugin_h));
+    check_true(file_contains(wasm_host_c, wasm_host_h));
+    check_false(file_contains(plugin_c, "projection_native_contract_txn.plugin.h.tbe."));
+    check_false(file_contains(wasm_host_c, "projection_native_contract_txn.host.h.tbe."));
+    for (i = 0u; i < 13u; ++i) (void)remove(outputs[i]);
   }
 
   it("rejects incomplete or dishonest selected staging capability sets") {
