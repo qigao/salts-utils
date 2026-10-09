@@ -130,7 +130,7 @@ salts_idl_target(
 add_executable(test_databind_contract_value_public_c11
   "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_value_consumer.c")
 target_compile_definitions(test_databind_contract_value_public_c11 PRIVATE
-  DATABIND_NATIVE_ENABLE_CMETA)
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
 target_link_libraries(test_databind_contract_value_public_c11 PRIVATE
   ${databind_contract_value_public_fixture_TYPES_TARGET} Salts::DataBind)
 add_dependencies(test_databind_contract_value_public_c11
@@ -199,7 +199,7 @@ add_executable(test_databind_native_cmeta_value_c11
 target_include_directories(test_databind_native_cmeta_value_c11 PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(test_databind_native_cmeta_value_c11 PRIVATE
-  DATABIND_NATIVE_ENABLE_CMETA)
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
 target_link_libraries(test_databind_native_cmeta_value_c11 PRIVATE Salts::DataBind)
 set_target_properties(test_databind_native_cmeta_value_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
@@ -221,7 +221,7 @@ add_executable(test_databind_native_cmeta_owned_value_c11
 target_include_directories(test_databind_native_cmeta_owned_value_c11 PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(test_databind_native_cmeta_owned_value_c11 PRIVATE
-  DATABIND_NATIVE_ENABLE_CMETA)
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
 target_link_libraries(test_databind_native_cmeta_owned_value_c11
   PRIVATE Salts::DataBind)
 set_target_properties(test_databind_native_cmeta_owned_value_c11 PROPERTIES

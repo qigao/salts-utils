@@ -62,7 +62,7 @@ salts_idl_target(
 add_executable(installed_contract_value_consumer contract_value_consumer.c)
 target_compile_features(installed_contract_value_consumer PRIVATE c_std_11)
 target_compile_definitions(installed_contract_value_consumer PRIVATE
-  DATABIND_NATIVE_ENABLE_CMETA)
+  DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
 set_target_properties(installed_contract_value_consumer PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 target_link_libraries(installed_contract_value_consumer PRIVATE

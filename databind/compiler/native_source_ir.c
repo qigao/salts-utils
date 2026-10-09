@@ -1219,8 +1219,23 @@ static int native_source_ir_render(
               "        return -1;\n"
               "    }\n"
               "    return 0;\n"
-              "}\n",
-              record->name, record->name, record->name) < 0)
+              "}\n"
+              "/* A native plan borrows the caller-owned CMeta binder storage.\n"
+              " * Keep the binder at a stable address until all plans are freed. */\n"
+              "#ifdef DATABIND_NATIVE_ENABLE_DATABIND\n"
+              "#include <data_bind_native_binding.h>\n"
+              "static inline int %s_native_type_binding(\n"
+              "    %s_native_cmeta_binding *metadata,\n"
+              "    DataBindNativeTypeBinding *out) {\n"
+              "    if (!metadata || !out ||\n"
+              "        %s_native_cmeta_value_bind(metadata) != 0) return -1;\n"
+              "    *out = (DataBindNativeTypeBinding)\n"
+              "        DATA_BIND_NATIVE_TYPE_BINDING_INIT(\"%s\", &metadata->data);\n"
+              "    return 0;\n"
+              "}\n"
+              "#endif /* DATABIND_NATIVE_ENABLE_DATABIND */\n",
+              record->name, record->name, record->name,
+              record->name, record->name, record->name, record->name) < 0)
         failed = 1;
     }
   }

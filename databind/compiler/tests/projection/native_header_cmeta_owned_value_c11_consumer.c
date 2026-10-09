@@ -10,6 +10,8 @@ int main(void) {
     DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
     DataBindNativeDiagnostic diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
     DataBindNativePlan *plan = NULL;
+    OwnedValue_native_cmeta_binding bound_storage = {0};
+    DataBindNativeTypeBinding native_binding = {0};
     OwnedValue source = {0}, clone = {0}, moved = {0};
     unsigned char workspace[16384] = {0};
     const unsigned char bytes[] = {3u, 7u, 9u};
@@ -20,6 +22,11 @@ int main(void) {
     options.max_items = 128u;
     options.max_owned_bytes = 4096u;
 
+    if (OwnedValue_native_type_binding(&bound_storage, &native_binding) != 0 ||
+        native_binding.data != &bound_storage.data ||
+        strcmp(native_binding.idl_type_name, "OwnedValue") != 0 ||
+        native_binding.presence_count != 0u || native_binding.null_count != 0u)
+        return 9;
     if (OwnedValue_native_cmeta_value_bind(&meta) != 0 ||
         !cmeta_data_desc_valid(&meta.data) ||
         meta.reflection.mode != CMETA_DATA_REFLECTION_VALUE ||

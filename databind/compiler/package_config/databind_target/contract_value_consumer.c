@@ -9,6 +9,7 @@ int main(void) {
   DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
   DataBindNativeDiagnostic diag = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
   DataBindNativePlan *plan = NULL, *invalid_plan = NULL;
+  DataBindNativeTypeBinding canonical_binding = {0};
   OwnedValue value = {0}, copy = {0};
   cmeta_data_reflection_shape borrowed_view;
   cmeta_data_desc borrowed_data;
@@ -20,6 +21,14 @@ int main(void) {
   options.max_depth = 16u;
   options.max_items = 128u;
   options.max_owned_bytes = 4096u;
+  if (OwnedValue_native_type_binding(&binding, &canonical_binding) != 0 ||
+      canonical_binding.data != &binding.data ||
+      strcmp(canonical_binding.idl_type_name, "OwnedValue") != 0 ||
+      canonical_binding.presence_count != 0u ||
+      canonical_binding.null_count != 0u ||
+      canonical_binding.nulls != NULL ||
+      canonical_binding.presence != NULL)
+    return 8;
   if (OwnedValue_native_cmeta_value_bind(&binding) != 0 ||
       binding.reflection.mode != CMETA_DATA_REFLECTION_VALUE ||
       !cmeta_data_desc_valid(&binding.data) ||

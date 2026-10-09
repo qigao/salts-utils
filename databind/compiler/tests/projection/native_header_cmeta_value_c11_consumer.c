@@ -10,12 +10,21 @@ int main(void) {
   ValuePacket_native_cmeta_binding owner = {0};
   ValuePacket source = {0}, copy = {0}, moved = {0};
   bool is_zero = false;
+  ValuePacket_native_cmeta_binding bound_storage = {0};
+  DataBindNativeTypeBinding native_binding = {0};
   DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
   DataBindNativeDiagnostic diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
   DataBindNativePlan *plan = NULL;
   ValuePacket executable = {0};
   unsigned char workspace[16384] = {0};
 
+  if (ValuePacket_native_type_binding(NULL, &native_binding) == 0 ||
+      ValuePacket_native_type_binding(&bound_storage, &native_binding) != 0 ||
+      native_binding.data != &bound_storage.data ||
+      strcmp(native_binding.idl_type_name, "ValuePacket") != 0 ||
+      native_binding.presence_count != 0u ||
+      native_binding.null_count != 0u)
+    return 11;
   if (ValuePacket_native_cmeta_bind(&view) != 0 ||
       view.reflection.mode != CMETA_DATA_REFLECTION_VIEW ||
       cmeta_data_value_traits_supported(&view.data))
