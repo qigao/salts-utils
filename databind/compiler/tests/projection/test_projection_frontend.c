@@ -547,7 +547,6 @@ spec("DataBind public typed generation frontend") {
         .artifact_version = "1.2.3",
         .wasm_core_module_path = __FILE__,
         .output_path = "generated/image_native.h",
-        .source_output_path = "generated/image_native.c",
     };
     databind_compiler_projection_frontend_plan plan;
     char error[256];
@@ -556,30 +555,29 @@ spec("DataBind public typed generation frontend") {
     check_equal(databind_compiler_projection_frontend_build(
                     &input, &plan, error, sizeof(error)), 0);
     check_equal(plan.request_count, (size_t)5u);
-    check_equal(plan.output_count, (size_t)14u);
+    check_equal(plan.output_count, (size_t)13u);
 
     /* Built-in outputs and every request/secondary publication destination. */
     check_equal(plan.outputs[0].path, input.output_path);
-    check_equal(plan.outputs[1].path, input.source_output_path);
-    check_equal(plan.outputs[2].path, plan.native_service_source);
-    check_equal(plan.outputs[3].path, plan.native_service_header);
-    check_equal(plan.outputs[4].path, plan.plugin_source);
-    check_equal(plan.outputs[5].path, plan.plugin_service_header);
-    check_equal(plan.outputs[6].path, plan.plugin_client_header);
-    check_equal(plan.outputs[7].path, plan.plugin_client_source);
-    check_equal(plan.outputs[8].path, plan.wasm_component_output);
-    check_equal(plan.outputs[9].path, plan.wasm_host_header);
-    check_equal(plan.outputs[10].path, plan.wasm_host_source);
-    check_equal(plan.outputs[11].path, plan.wasm_guest_header);
-    check_equal(plan.outputs[12].path, plan.openapi_output);
-    check_equal(plan.outputs[13].path, plan.http_projection_header);
+    check_equal(plan.outputs[1].path, plan.native_service_source);
+    check_equal(plan.outputs[2].path, plan.native_service_header);
+    check_equal(plan.outputs[3].path, plan.plugin_source);
+    check_equal(plan.outputs[4].path, plan.plugin_service_header);
+    check_equal(plan.outputs[5].path, plan.plugin_client_header);
+    check_equal(plan.outputs[6].path, plan.plugin_client_source);
+    check_equal(plan.outputs[7].path, plan.wasm_component_output);
+    check_equal(plan.outputs[8].path, plan.wasm_host_header);
+    check_equal(plan.outputs[9].path, plan.wasm_host_source);
+    check_equal(plan.outputs[10].path, plan.wasm_guest_header);
+    check_equal(plan.outputs[11].path, plan.openapi_output);
+    check_equal(plan.outputs[12].path, plan.http_projection_header);
     check_equal(plan.outputs[0].owner.axis, 0);
     check_equal(plan.outputs[1].owner.axis, 0);
-    check_equal(plan.outputs[11].owner.kind,
+    check_equal(plan.outputs[10].owner.kind,
                 (uint32_t)DATABIND_COMPILER_ARTIFACT_WASM);
-    check_equal(plan.outputs[13].owner.axis,
+    check_equal(plan.outputs[12].owner.axis,
                 DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT);
-    check_equal(plan.outputs[13].owner.kind,
+    check_equal(plan.outputs[12].owner.kind,
                 (uint32_t)DATABIND_COMPILER_TRANSPORT_HTTP);
 
     for (i = 0u; i < plan.output_count; ++i) {
