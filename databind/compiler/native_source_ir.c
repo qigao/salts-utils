@@ -455,7 +455,8 @@ int databind_native_source_ir_write_header(
             "    } else if (src->%s.data || src->%s.size) goto native_clone_fail;\n",
             field->name, field->name, field->element_cmeta_symbol,
             field->name, field->element_cmeta_symbol, field->name,
-            field->name, field->name, field->name, field->name) < 0) failed = 1;
+            field->name, field->name, field->name, field->name,
+            field->name) < 0) failed = 1;
         continue;
       }
       if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
