@@ -39,6 +39,8 @@ static const char *native_sequence_cmeta_symbol(const char *type) {
   };
   size_t i;
   if (type == NULL) return NULL;
+  if (strcmp(type, "string") == 0) return "databind_native_text_cmeta_type";
+  if (strcmp(type, "bytes") == 0) return "databind_native_bytes_cmeta_type";
   for (i = 0u; i < sizeof(descriptors) / sizeof(descriptors[0]); ++i)
     if (strcmp(type, descriptors[i].idl) == 0) return descriptors[i].c;
   return NULL;
@@ -364,7 +366,6 @@ int databind_native_source_ir_write_header(
              strcmp(record->fields[j].c_type, "databind_native_bytes") == 0) ||
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_SEQUENCE &&
              record->fields[j].element_cmeta_symbol != NULL &&
-             record->fields[j].element_is_trivial &&
              record->fields[j].c_type != NULL &&
              strcmp(record->fields[j].c_type, "vec_t") == 0) ||
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_RECORD &&
@@ -407,6 +408,138 @@ int databind_native_source_ir_write_header(
   if (i != ir->record_count &&
       fprintf(out, "#include <cstl/map.h>\n#include <cstl/set.h>\n\n") < 0)
     failed = 1;
+  /* A collection uses real CSTL element traits; native scalar/header-only
+   * output remains free of a Salts dependency until collections are selected. */
+  {
+    int text_provider = 0, bytes_provider = 0;
+    for (i = 0u; i < ir->record_count; ++i) {
+      for (j = 0u; j < ir->records[i].field_count; ++j) {
+        const databind_native_source_field *field = &ir->records[i].fields[j];
+        const char *symbols[] = {field->element_cmeta_symbol,
+                                 field->key_cmeta_symbol,
+                                 field->value_cmeta_symbol};
+        size_t k;
+        for (k = 0u; k < sizeof(symbols)/sizeof(symbols[0]); ++k) {
+          if (symbols[k] == NULL) continue;
+          if (strcmp(symbols[k], "databind_native_text_cmeta_type") == 0)
+            text_provider = 1;
+          if (strcmp(symbols[k], "databind_native_bytes_cmeta_type") == 0)
+            bytes_provider = 1;
+        }
+      }
+    }
+    if ((text_provider || bytes_provider) &&
+        fputs("#include <assert.h>\\n", out) == EOF) failed = 1;
+    if (!failed && text_provider &&
+        fputs(
+        "/* Native text CSTL provider: copy/move/destroy are explicit ownership operations. */\n"
+        "static bool databind_native_text_trait_copy(void *destination, const void *source) {\n"
+        "    const databind_native_text *src = (const databind_native_text *)source;\n"
+        "    databind_native_text copy = {0};\n"
+        "    if (!destination || !src || (src->size && !src->data) || src->size == SIZE_MAX)\n"
+        "        return false;\n"
+        "    if (src->data) {\n"
+        "        copy.data = (char *)malloc(src->size + 1u);\n"
+        "        if (!copy.data) return false;\n"
+        "        if (src->size) memcpy(copy.data, src->data, src->size);\n"
+        "        copy.data[src->size] = '\\0';\n"
+        "    }\n"
+        "    copy.size = src->size;\n"
+        "    *(databind_native_text *)destination = copy;\n"
+        "    return true;\n"
+        "}\n"
+        "static void databind_native_text_trait_move(void *destination, void *source) {\n"
+        "    if (!destination || !source || destination == source) return;\n"
+        "    *(databind_native_text *)destination = *(databind_native_text *)source;\n"
+        "    *(databind_native_text *)source = (databind_native_text){0};\n"
+        "}\n"
+        "static void databind_native_text_trait_destroy(void *value) {\n"
+        "    databind_native_text *item = (databind_native_text *)value;\n"
+        "    if (!item) return;\n"
+        "    free(item->data);\n"
+        "    *item = (databind_native_text){0};\n"
+        "}\n"
+        "static int databind_native_text_trait_compare(const void *left, const void *right) {\n"
+        "    const databind_native_text *a = (const databind_native_text *)left;\n"
+        "    const databind_native_text *b = (const databind_native_text *)right;\n"
+        "    size_t n;\n"
+        "    int order;\n"
+        "    assert(a && b && (a->data || !a->size) && (b->data || !b->size));\n"
+        "    n = a->size < b->size ? a->size : b->size;\n"
+        "    order = n ? memcmp(a->data, b->data, n) : 0;\n"
+        "    return order ? order : (a->size > b->size) - (a->size < b->size);\n"
+        "}\n"
+        "static const cmeta_type_traits databind_native_text_cmeta_traits = {\n"
+        "    .flags = CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY | CMETA_TRAIT_COMPARE,\n"
+        "    .compare = databind_native_text_trait_compare,\n"
+        "    .copy_construct = databind_native_text_trait_copy,\n"
+        "    .move_construct = databind_native_text_trait_move,\n"
+        "    .destroy = databind_native_text_trait_destroy\n"
+        "};\n"
+        "static const cmeta_type_identity databind_native_text_cmeta_identity =\n"
+        "    CMETA_TYPE_ID_ATOM_INIT(\"tbe.native.owned_text.v1\");\n"
+        "static const cmeta_type_desc databind_native_text_cmeta_type = {\n"
+        "    .name = \"databind_native_text\",\n"
+        "    .size = sizeof(databind_native_text), .align = _Alignof(databind_native_text),\n"
+        "    .kind = CMETA_T_OBJECT, .traits = &databind_native_text_cmeta_traits,\n"
+        "    .identity = &databind_native_text_cmeta_identity\n"
+        "};\n",
+        out) == EOF) failed = 1;
+    if (!failed && bytes_provider &&
+        fputs(
+        "/* Native bytes CSTL provider: copy/move/destroy are explicit ownership operations. */\n"
+        "static bool databind_native_bytes_trait_copy(void *destination, const void *source) {\n"
+        "    const databind_native_bytes *src = (const databind_native_bytes *)source;\n"
+        "    databind_native_bytes copy = {0};\n"
+        "    if (!destination || !src || (src->size && !src->data))\n"
+        "        return false;\n"
+        "    if (src->data) {\n"
+        "        copy.data = (unsigned char *)malloc(src->size);\n"
+        "        if (!copy.data) return false;\n"
+        "        if (src->size) memcpy(copy.data, src->data, src->size);\n"
+        "    }\n"
+        "    copy.size = src->size;\n"
+        "    *(databind_native_bytes *)destination = copy;\n"
+        "    return true;\n"
+        "}\n"
+        "static void databind_native_bytes_trait_move(void *destination, void *source) {\n"
+        "    if (!destination || !source || destination == source) return;\n"
+        "    *(databind_native_bytes *)destination = *(databind_native_bytes *)source;\n"
+        "    *(databind_native_bytes *)source = (databind_native_bytes){0};\n"
+        "}\n"
+        "static void databind_native_bytes_trait_destroy(void *value) {\n"
+        "    databind_native_bytes *item = (databind_native_bytes *)value;\n"
+        "    if (!item) return;\n"
+        "    free(item->data);\n"
+        "    *item = (databind_native_bytes){0};\n"
+        "}\n"
+        "static int databind_native_bytes_trait_compare(const void *left, const void *right) {\n"
+        "    const databind_native_bytes *a = (const databind_native_bytes *)left;\n"
+        "    const databind_native_bytes *b = (const databind_native_bytes *)right;\n"
+        "    size_t n;\n"
+        "    int order;\n"
+        "    assert(a && b && (a->data || !a->size) && (b->data || !b->size));\n"
+        "    n = a->size < b->size ? a->size : b->size;\n"
+        "    order = n ? memcmp(a->data, b->data, n) : 0;\n"
+        "    return order ? order : (a->size > b->size) - (a->size < b->size);\n"
+        "}\n"
+        "static const cmeta_type_traits databind_native_bytes_cmeta_traits = {\n"
+        "    .flags = CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY | CMETA_TRAIT_COMPARE,\n"
+        "    .compare = databind_native_bytes_trait_compare,\n"
+        "    .copy_construct = databind_native_bytes_trait_copy,\n"
+        "    .move_construct = databind_native_bytes_trait_move,\n"
+        "    .destroy = databind_native_bytes_trait_destroy\n"
+        "};\n"
+        "static const cmeta_type_identity databind_native_bytes_cmeta_identity =\n"
+        "    CMETA_TYPE_ID_ATOM_INIT(\"tbe.native.owned_bytes.v1\");\n"
+        "static const cmeta_type_desc databind_native_bytes_cmeta_type = {\n"
+        "    .name = \"databind_native_bytes\",\n"
+        "    .size = sizeof(databind_native_bytes), .align = _Alignof(databind_native_bytes),\n"
+        "    .kind = CMETA_T_OBJECT, .traits = &databind_native_bytes_cmeta_traits,\n"
+        "    .identity = &databind_native_bytes_cmeta_identity\n"
+        "};\n",
+        out) == EOF) failed = 1;
+  }
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
     if (fprintf(out, "typedef struct %s {\n", record->name) < 0)
