@@ -169,6 +169,22 @@ static int native_version_token(const char *version) {
   return 1;
 }
 
+static int native_format_stable_id(
+    const databind_native_source_ir *ir, const char *record,
+    char *out, size_t capacity) {
+  int count;
+  if (ir == NULL || ir->schema_name == NULL || record == NULL ||
+      out == NULL || capacity == 0u)
+    return 0;
+  if (ir->schema_version != NULL && ir->schema_version[0] != '\0')
+    count = snprintf(out, capacity, "tbe.native.%s.v%s.%s",
+                     ir->schema_name, ir->schema_version, record);
+  else
+    count = snprintf(out, capacity, "tbe.native.%s.%s",
+                     ir->schema_name, record);
+  return count >= 0 && (size_t)count < capacity;
+}
+
 int databind_native_source_ir_write_header(
     const databind_native_source_ir *ir, const char *path) {
   FILE *out;
@@ -181,6 +197,11 @@ int databind_native_source_ir_write_header(
     return -1;
   for (i = 0u; i < ir->record_count; ++i) {
     const databind_native_source_record *record = &ir->records[i];
+    char stable_type_id[1024];
+    /* Refuse unrepresentable IDs before opening a caller-owned output. */
+    if (!native_format_stable_id(ir, record->name, stable_type_id,
+                                 sizeof(stable_type_id)))
+      return -1;
     /* Empty C structs are not portable C11 and emit invalid declarations. */
     if (!native_identifier(record->name) || record->field_count == 0u ||
         record->fields == NULL)
@@ -251,16 +272,9 @@ int databind_native_source_ir_write_header(
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
     char stable_type_id[1024];
-    int name_len;
-    if (ir->schema_version != NULL && ir->schema_version[0] != '\0')
-      name_len = snprintf(stable_type_id, sizeof(stable_type_id),
-                          "tbe.native.%s.v%s.%s", ir->schema_name,
-                          ir->schema_version, record->name);
-    else
-      name_len = snprintf(stable_type_id, sizeof(stable_type_id),
-                          "tbe.native.%s.%s", ir->schema_name, record->name);
-    if (name_len < 0 || (size_t)name_len >= sizeof(stable_type_id)) {
-      failed = 1; /* Stable ID must never be silently truncated. */
+    if (!native_format_stable_id(ir, record->name, stable_type_id,
+                                 sizeof(stable_type_id))) {
+      failed = 1;
       break;
     }
     /* Optional/nullable are separate native flags, not fields of the CMeta
@@ -361,6 +375,12 @@ int databind_native_source_ir_write_header(
    * copy an initialized binding: bind again in its final location. */
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
+    char stable_type_id[1024];
+    if (!native_format_stable_id(ir, record->name, stable_type_id,
+                                 sizeof(stable_type_id))) {
+      failed = 1;
+      break;
+    }
     if (fprintf(out,
         "typedef struct %s_native_cmeta_binding {\n"
         "    cmeta_field_desc layout_fields[%zuu];\n"
