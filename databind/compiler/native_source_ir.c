@@ -179,7 +179,8 @@ int databind_native_source_ir_build(
       record->fields[j].c_type = type != NULL ? type :
           (ownership == DATABIND_NATIVE_OWNED_TEXT ? "databind_native_text" :
            ownership == DATABIND_NATIVE_OWNED_BYTES ? "databind_native_bytes" :
-           ownership == DATABIND_NATIVE_OWNED_RECORD ? field->type_name : NULL);
+           ownership == DATABIND_NATIVE_OWNED_RECORD ? field->type_name :
+           ownership == DATABIND_NATIVE_OWNED_SEQUENCE ? "vec_t" : NULL);
       record->fields[j].optional = field->optional != 0;
       record->fields[j].nullable = field->nullable != 0;
       record->fields[j].ownership = (databind_native_source_ownership)ownership;
@@ -348,6 +349,11 @@ int databind_native_source_ir_write_header(
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_BYTES &&
              record->fields[j].c_type != NULL &&
              strcmp(record->fields[j].c_type, "databind_native_bytes") == 0) ||
+            (record->fields[j].ownership == DATABIND_NATIVE_OWNED_SEQUENCE &&
+             record->fields[j].element_cmeta_symbol != NULL &&
+             record->fields[j].element_is_trivial &&
+             record->fields[j].c_type != NULL &&
+             strcmp(record->fields[j].c_type, "vec_t") == 0) ||
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_RECORD &&
              record->fields[j].c_type != NULL)) ||
           native_field_collides(record, j))
@@ -361,6 +367,14 @@ int databind_native_source_ir_write_header(
       "typedef struct databind_native_text { char *data; size_t size; } databind_native_text;\n"
       "typedef struct databind_native_bytes { unsigned char *data; size_t size; } databind_native_bytes;\n\n") < 0)
     failed = 1;
+  for (i = 0u; i < ir->record_count; ++i) {
+    for (j = 0u; j < ir->records[i].field_count; ++j)
+      if (ir->records[i].fields[j].ownership == DATABIND_NATIVE_OWNED_SEQUENCE)
+        break;
+    if (j != ir->records[i].field_count) break;
+  }
+  if (i != ir->record_count &&
+      fprintf(out, "#include <cstl/vec.h>\n\n") < 0) failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
     if (fprintf(out, "typedef struct %s {\n", record->name) < 0)
@@ -392,6 +406,9 @@ int databind_native_source_ir_write_header(
       if (field->ownership == DATABIND_NATIVE_OWNED_RECORD)
         if (fprintf(out, "    %s_clear(&value->%s);\n",
                     field->c_type, field->name) < 0) failed = 1;
+      if (field->ownership == DATABIND_NATIVE_OWNED_SEQUENCE)
+        if (fprintf(out, "    if (value->%s.initialized) vec_destroy(&value->%s);\n",
+                    field->name, field->name) < 0) failed = 1;
     }
     if (!failed && fprintf(out,
         "    *value = (%s){0};\n}\n"
@@ -408,6 +425,11 @@ int databind_native_source_ir_write_header(
                     field->c_type, field->name) < 0) failed = 1;
         continue;
       }
+      if (field->ownership == DATABIND_NATIVE_OWNED_SEQUENCE) {
+        if (fprintf(out, "    tmp.%s = (vec_t){0};\n",
+                    field->name) < 0) failed = 1;
+        continue;
+      }
       if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
           field->ownership != DATABIND_NATIVE_OWNED_BYTES) continue;
       if (fprintf(out, "    tmp.%s.data = NULL; tmp.%s.size = 0;\n",
@@ -419,6 +441,20 @@ int databind_native_source_ir_write_header(
         if (fprintf(out,
             "    if (%s_clone(&tmp.%s, &src->%s) != 0) goto native_clone_fail;\n",
             field->c_type, field->name, field->name) < 0) failed = 1;
+        continue;
+      }
+      if (field->ownership == DATABIND_NATIVE_OWNED_SEQUENCE) {
+        if (fprintf(out,
+            "    if (src->%s.initialized) {\n"
+            "      if (vec_raw_init(&tmp.%s, &%s, src->%s.element_limit) != STL_OK) goto native_clone_fail;\n"
+            "      for (size_t k = 0; k < vec_size(&src->%s); ++k) {\n"
+            "        const void *element = vec_at_const(&src->%s, k);\n"
+            "        if (!element || vec_push(&tmp.%s, element) != STL_OK) goto native_clone_fail;\n"
+            "      }\n"
+            "    } else if (src->%s.data || src->%s.size) goto native_clone_fail;\n",
+            field->name, field->name, field->element_cmeta_symbol,
+            field->name, field->name, field->name, field->name,
+            field->name, field->name) < 0) failed = 1;
         continue;
       }
       if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
