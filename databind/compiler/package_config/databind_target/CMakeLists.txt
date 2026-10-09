@@ -72,6 +72,38 @@ add_dependencies(installed_contract_value_consumer
 add_test(NAME installed_contract_value_consumer
   COMMAND installed_contract_value_consumer)
 
+# Public installed SDK Contract-only NATIVE execution artifact.
+# No --source-output, BINARY_CODEC or legacy *_native.c participates.
+salts_idl_target(
+  TARGET installed_contract_service
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/native_contract_service.schema"
+  ARTIFACT_NAME "installed_contract_service"
+  ARTIFACTS NATIVE)
+
+if(NOT TARGET installed_contract_service_native)
+  message(FATAL_ERROR "missing Contract-only NATIVE executable target")
+endif()
+get_target_property(_contract_native_sources
+  installed_contract_service_native SOURCES)
+foreach(_source IN LISTS _contract_native_sources)
+  if(_source MATCHES "_native\\.c$")
+    message(FATAL_ERROR
+      "Contract-only NATIVE must not build a Binary *_native.c companion")
+  endif()
+endforeach()
+target_sources(installed_contract_service_native PRIVATE
+  native_contract_service_business.c)
+
+add_executable(installed_contract_service_consumer
+  native_contract_service_consumer.c)
+target_compile_features(installed_contract_service_consumer PRIVATE c_std_11)
+target_link_libraries(installed_contract_service_consumer PRIVATE
+  installed_contract_service_native Salts::DataBind)
+add_dependencies(installed_contract_service_consumer
+  installed_contract_service_idl_codegen)
+add_test(NAME installed_contract_service_consumer
+  COMMAND installed_contract_service_consumer)
+
 salts_idl_target(
   TARGET installed_image
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
@@ -132,7 +164,7 @@ set_target_properties(installed_image_plugin_client_cpp PROPERTIES
   CXX_EXTENSIONS NO)
 add_dependencies(installed_image installed_image_plugin_client_cpp)
 add_dependencies(installed_image installed_contract_types_consumer
-  installed_contract_value_consumer)
+  installed_contract_value_consumer installed_contract_service_consumer)
 
 
 salts_idl_target(
