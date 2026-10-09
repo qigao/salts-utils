@@ -108,16 +108,26 @@ completed before any of them is published. A later backend failure,
 including one after partially writing its staged file, preserves all
 previous caller files and removes otherwise-new files.
 
-**Scope limit:** Plugin, Wasm and Native Service currently publish multiple
-files through backend-specific configuration paths. They remain explicitly
-self-publishing until all their secondary outputs participate in a shared
-transaction. A mixed selection containing even one such backend **does not**
-claim shared atomicity, including the primary header. Generic callbacks must
-explicitly opt in to staged single-output behavior; the compiler does not
-infer a capability from the typed backend ID. Rollback-aware multi-file
-renames are not a simultaneous cross-process filesystem snapshot.
-Ordinary stdout cannot be rolled back. See #599 for the remaining
-multi-output backend and C/Native format work.
+**Native/Plugin/Wasm multi-output transaction:** Typed artifact selection
+with bare `--lang c --output <header>` uses Contract-only NativeSourceIR.
+Native Service, Plugin and Wasm backends each declare
+`DATABIND_COMPILER_OUTPUT_STAGED_MULTI`; the compiler pre-reserves their
+complete fixed output sets together with the C header, optional DSL, and any
+independent single-output staged artifacts. Each backend renders into
+coordinator-owned staging files and retains final semantic pathnames for
+generated includes. No backend publishes a partial result. A later generator
+failure (including after writing a staged file) preserves every previously
+published output and removes all otherwise-new files. Native Service no longer
+requires `--source-output`: it does not imply a Binary codec.
+
+Generic artifact callbacks must explicitly opt into staged single-output
+behavior. The multi-file capability is admitted only for known staged Native,
+Plugin and Wasm generators, never inferred from an artifact name. Explicit
+`--binary-codec`, `--source-output`, `--guest-output` and Binary transport
+selections retain their strict independent wire admission. Contract-only
+artifacts do not receive a BinaryFormatPlan. Rollback-aware multi-file renames
+are **not** a simultaneously visible cross-process filesystem snapshot, and
+ordinary stdout cannot be rolled back.
 
 Lua adapters are not a DataBind compiler output. Runtime Lua interoperability
 uses Salts `Salts::Lua` and `<salts/bindings/lua/cmeta.h>` against the canonical
