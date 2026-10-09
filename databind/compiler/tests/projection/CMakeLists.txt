@@ -97,6 +97,28 @@ target_link_libraries(test_databind_projection_frontend
   PRIVATE databind_binding_compiler)
 
 
+# Exercise the exact same public TYPES CMake surface in build-tree CTest;
+# the separate installed-SDK consumer qualifies package relocation/linkage.
+salts_idl_target(
+  TARGET databind_contract_types_public_fixture
+  FOLDER "databind/compiler/generated/contract-types"
+  IDL "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_types.schema"
+  ARTIFACT_NAME "contract_types"
+  ARTIFACTS TYPES)
+
+add_executable(test_databind_contract_types_public_c11
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_types_consumer.c")
+target_link_libraries(test_databind_contract_types_public_c11 PRIVATE
+  ${databind_contract_types_public_fixture_TYPES_TARGET})
+add_dependencies(test_databind_contract_types_public_c11
+  databind_contract_types_public_fixture_idl_codegen)
+set_target_properties(test_databind_contract_types_public_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_types_public_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_types_public_c11>)
+set_tests_properties(test_databind_contract_types_public_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;public;contract-only;c11")
+
 # Compile an actual NativeSourceIR-emitted header with each platform's C11 compiler.
 add_executable(databind_native_header_fixture_generator
   native_header_fixture_generator.c
