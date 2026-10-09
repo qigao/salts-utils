@@ -1512,8 +1512,8 @@ describe("compiler integration") {
     check_equal(databind_compiler_generate_contract_native_header(schema_path, output), 0);
     check_true(file_contains(output, "map_t lookup;"));
     check_true(file_contains(output, "set_t unique;"));
-    check_true(file_contains(output, "map_raw_init(&tmp.lookup, &cmeta_type_uint32"));
-    check_true(file_contains(output, "set_raw_init(&tmp.unique, &cmeta_type_uint32"));
+    check_true(file_contains(output, "map_init(&tmp.lookup, map_entry_limit(&src->lookup)"));
+    check_true(file_contains(output, "set_init(&tmp.unique, set_element_limit(&src->unique)"));
     check_false(file_contains(output, "binary_wire"));
     (void)remove(output); (void)remove(schema_path);
   }
