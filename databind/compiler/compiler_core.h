@@ -59,8 +59,8 @@ void tbe_compiler_annotate_language_types(
 /* Compiler-private semantic freeze without Binary layout admission.
  * Returned legacy tree is unannotated and must not be used by C wire templates.
  * Caller owns tree, contract and schema data. */
-/* Compiler-private Contract-only scalar Native header path. Existing legacy
- * C/Wire output entry points are unchanged. Output uses coordinator rollback. */
+/* Compiler-private Contract-only Native header path. Named outputs use the
+ * rollback-aware coordinator; NULL output writes to stdout after admission. */
 int databind_compiler_generate_contract_native_header(
     const char *schema_path, const char *output_path);
 

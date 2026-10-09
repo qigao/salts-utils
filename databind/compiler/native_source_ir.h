@@ -3,6 +3,7 @@
 
 #include "idl_contract.h"
 #include <stddef.h>
+#include <stdio.h>
 
 /* Compiler-private, deliberately narrow Contract-only Native lowering.
  * No Binary offsets, wire byte order or ownership assumptions.
@@ -61,5 +62,9 @@ void databind_native_source_ir_destroy(databind_native_source_ir *ir);
  * native representation only, not Binary wire layout. */
 int databind_native_source_ir_write_header(
     const databind_native_source_ir *ir, const char *path);
+/* Render after complete admission to a borrowed FILE*. The stream is never
+ * closed or deleted; stdout is an allowed destination for source-only C. */
+int databind_native_source_ir_write_stream(
+    const databind_native_source_ir *ir, FILE *stream);
 
 #endif

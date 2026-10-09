@@ -356,13 +356,13 @@ static int native_format_stable_id(
   return count >= 0 && (size_t)count < capacity;
 }
 
-int databind_native_source_ir_write_header(
-    const databind_native_source_ir *ir, const char *path) {
+static int native_source_ir_render(
+    const databind_native_source_ir *ir, const char *path, FILE *stream) {
   FILE *out;
   size_t i, j;
   int failed = 0;
   int has_owning = 0;
-  if (ir == NULL || path == NULL || path[0] == '\0' ||
+  if (ir == NULL || (stream == NULL && (path == NULL || path[0] == '\0')) ||
       !native_identifier(ir->schema_name) ||
       !native_version_token(ir->schema_version) ||
       (ir->record_count != 0u && ir->records == NULL))
@@ -428,7 +428,7 @@ int databind_native_source_ir_write_header(
           native_field_collides(record, j))
         return -1; /* Renderer only accepts canonical lowered C types. */
   }
-  out = fopen(path, "wb");
+  out = stream != NULL ? stream : fopen(path, "wb");
   if (out == NULL) return -1;
   if (fprintf(out,
       "#pragma once\n#include <stdbool.h>\n#include <stdint.h>\n"
@@ -1004,10 +1004,22 @@ int databind_native_source_ir_write_header(
     failed = 1;
   }
   if (ferror(out)) failed = 1;
-  if (fclose(out) != 0) failed = 1;
-  if (failed) {
-    (void)remove(path);
-    return -1;
+  if (stream != NULL) {
+    if (fflush(out) != 0) failed = 1;
+  } else {
+    if (fclose(out) != 0) failed = 1;
+    if (failed) (void)remove(path);
   }
-  return 0;
+  return failed ? -1 : 0;
+}
+
+int databind_native_source_ir_write_header(
+    const databind_native_source_ir *ir, const char *path) {
+  return native_source_ir_render(ir, path, NULL);
+}
+
+int databind_native_source_ir_write_stream(
+    const databind_native_source_ir *ir, FILE *stream) {
+  if (stream == NULL) return -1;
+  return native_source_ir_render(ir, NULL, stream);
 }

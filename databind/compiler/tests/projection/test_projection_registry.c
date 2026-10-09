@@ -1613,6 +1613,35 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("streams Contract-only Native C without opening a caller-owned file") {
+    databind_native_source_field field = {
+        .name = "count", .c_type = "uint32_t",
+        .ownership = DATABIND_NATIVE_TRIVIAL
+    };
+    databind_native_source_record record = {"StreamPacket", 1u, &field};
+    databind_native_source_ir ir = {
+        1u, &record, "StreamFixture", "1"
+    };
+    FILE *stream = tmpfile();
+    char line[256];
+    int saw_struct = 0, saw_field = 0;
+    check_not_null(stream);
+    if (stream != NULL) {
+      check_equal(databind_native_source_ir_write_stream(&ir, stream), 0);
+      rewind(stream);
+      while (fgets(line, sizeof(line), stream) != NULL) {
+        if (strstr(line, "typedef struct StreamPacket") != NULL)
+          saw_struct = 1;
+        if (strstr(line, "uint32_t count;") != NULL)
+          saw_field = 1;
+      }
+      check_true(saw_struct);
+      check_true(saw_field);
+      check_equal(fclose(stream), 0);
+    }
+    check_equal(databind_native_source_ir_write_stream(&ir, NULL), -1);
+  }
+
   it("preserves IDL optional and nullable flags through Native header publication") {
     static const char schema_path[] = "native_source_presence.schema";
     static const char output[] = "native_source_presence.h";

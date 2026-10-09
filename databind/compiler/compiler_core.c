@@ -4859,13 +4859,19 @@ int databind_compiler_generate_contract_native_header(
   IdlContract *contract = NULL;
   char *source = NULL;
   int status = -1;
-  if (schema_path == NULL || output_path == NULL ||
-      output_path[0] == '\0') return -1;
+  if (schema_path == NULL ||
+      (output_path != NULL && output_path[0] == '\0')) return -1;
   if (databind_compiler_parse_contract_only_file(
           schema_path, &tree, &contract, &source) != 0)
     goto done;
   if (databind_native_source_ir_build(contract, &ir) != 0)
     goto done;
+  /* Source-only stdout has no named filesystem transaction. Every output
+   * path instead retains the rollback-aware staging/commit coordinator. */
+  if (output_path == NULL) {
+    status = databind_native_source_ir_write_stream(&ir, stdout);
+    goto done;
+  }
   if (tbe_compiler_txn_add(&txn, output_path) != 0)
     goto done;
   if (databind_native_source_ir_write_header(
