@@ -12,6 +12,9 @@ int main(void) {
       Packet_native_cmeta_type.size != sizeof(Packet) ||
       Packet_native_cmeta_type.align != _Alignof(Packet) ||
       Packet_native_cmeta_type.kind != CMETA_T_OBJECT ||
+      Packet_native_cmeta_layout.field_count != 3u ||
+      Packet_native_cmeta_layout.fields != Packet_native_cmeta_fields ||
+      Packet_native_cmeta_layout.size != sizeof(Packet) ||
       strcmp(Packet_native_cmeta_fields[0].name, "count") != 0 ||
       Packet_native_cmeta_fields[0].offset != offsetof(Packet, count) ||
       strcmp(Packet_native_cmeta_fields[1].name, "delta") != 0 ||
