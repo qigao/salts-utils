@@ -6,7 +6,6 @@ message Packet {
   optional nullable bool active;
 }
 
-/* Each half of a state overlay may independently be absent. */
 message PresenceOnly {
   optional uint32 code;
 }
