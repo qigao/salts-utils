@@ -107,7 +107,9 @@ int databind_native_source_ir_build(
           field->default_value != NULL || ownership < 0)
         goto fail;
       record->fields[j].name = field->name;
-      record->fields[j].c_type = type;
+      record->fields[j].c_type = type != NULL ? type :
+          (ownership == DATABIND_NATIVE_OWNED_TEXT ? "databind_native_text" :
+           ownership == DATABIND_NATIVE_OWNED_BYTES ? "databind_native_bytes" : NULL);
       record->fields[j].optional = field->optional != 0;
       record->fields[j].nullable = field->nullable != 0;
       record->fields[j].ownership = (databind_native_source_ownership)ownership;
@@ -258,14 +260,24 @@ int databind_native_source_ir_write_header(
     }
     for (j = 0u; j < record->field_count; ++j)
       if (!native_identifier(record->fields[j].name) ||
-          record->fields[j].ownership != DATABIND_NATIVE_TRIVIAL ||
-          !native_c_type(record->fields[j].c_type) ||
+          !((record->fields[j].ownership == DATABIND_NATIVE_TRIVIAL &&
+              native_c_type(record->fields[j].c_type)) ||
+            (record->fields[j].ownership == DATABIND_NATIVE_OWNED_TEXT &&
+             record->fields[j].c_type != NULL &&
+             strcmp(record->fields[j].c_type, "databind_native_text") == 0) ||
+            (record->fields[j].ownership == DATABIND_NATIVE_OWNED_BYTES &&
+             record->fields[j].c_type != NULL &&
+             strcmp(record->fields[j].c_type, "databind_native_bytes") == 0)) ||
           native_field_collides(record, j))
         return -1; /* Renderer only accepts canonical lowered C types. */
   }
   out = fopen(path, "wb");
   if (out == NULL) return -1;
-  if (fprintf(out, "#pragma once\n#include <stdbool.h>\n#include <stdint.h>\n\n") < 0)
+  if (fprintf(out,
+      "#pragma once\n#include <stdbool.h>\n#include <stdint.h>\n"
+      "#include <stddef.h>\n#include <stdlib.h>\n#include <string.h>\n\n"
+      "typedef struct databind_native_text { char *data; size_t size; } databind_native_text;\n"
+      "typedef struct databind_native_bytes { unsigned char *data; size_t size; } databind_native_bytes;\n\n") < 0)
     failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
@@ -284,30 +296,83 @@ int databind_native_source_ir_write_header(
     if (!failed && fprintf(out, "} %s;\n", record->name) < 0)
       failed = 1;
     if (!failed && fprintf(out,
-        "static inline void %s_init(%s *value) {\n"
-        "    if (value) *value = (%s){0};\n"
-        "}\n"
+        "static inline void %s_init(%s *value) { if (value) *value = (%s){0}; }\n"
         "static inline void %s_clear(%s *value) {\n"
-        "    if (value) *value = (%s){0};\n"
-        "}\n"
+        "    if (!value) return;\n",
+        record->name, record->name, record->name,
+        record->name, record->name) < 0) failed = 1;
+    for (j = 0u; j < record->field_count && !failed; ++j) {
+      const databind_native_source_field *field = &record->fields[j];
+      if (field->ownership == DATABIND_NATIVE_OWNED_TEXT ||
+          field->ownership == DATABIND_NATIVE_OWNED_BYTES)
+        if (fprintf(out, "    free(value->%s.data);\n", field->name) < 0)
+          failed = 1;
+    }
+    if (!failed && fprintf(out,
+        "    *value = (%s){0};\n}\n"
         "static inline int %s_clone(%s *dst, const %s *src) {\n"
         "    if (!dst || !src) return -1;\n"
-        "    if (dst != src) *dst = *src;\n"
-        "    return 0;\n"
-        "}\n"
+        "    if (dst == src) return 0;\n"
+        "    %s tmp = *src;\n",
+        record->name, record->name, record->name, record->name,
+        record->name) < 0) failed = 1;
+    for (j = 0u; j < record->field_count && !failed; ++j) {
+      const databind_native_source_field *field = &record->fields[j];
+      if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
+          field->ownership != DATABIND_NATIVE_OWNED_BYTES) continue;
+      if (fprintf(out, "    tmp.%s.data = NULL; tmp.%s.size = 0;\n",
+                  field->name, field->name) < 0) failed = 1;
+    }
+    for (j = 0u; j < record->field_count && !failed; ++j) {
+      const databind_native_source_field *field = &record->fields[j];
+      if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
+          field->ownership != DATABIND_NATIVE_OWNED_BYTES) continue;
+      if (fprintf(out,
+          "    if (src->%s.size) {\n"
+          "        if (!src->%s.data) goto native_clone_fail;\n",
+          field->name, field->name) < 0) failed = 1;
+      if (field->ownership == DATABIND_NATIVE_OWNED_TEXT &&
+          fprintf(out,
+          "        if (src->%s.size == SIZE_MAX) goto native_clone_fail;\n",
+          field->name) < 0) failed = 1;
+      if (fprintf(out,
+          "        tmp.%s.data = malloc(src->%s.size%s);\n"
+          "        if (!tmp.%s.data) goto native_clone_fail;\n"
+          "        memcpy(tmp.%s.data, src->%s.data, src->%s.size);\n",
+          field->name, field->name,
+          field->ownership == DATABIND_NATIVE_OWNED_TEXT ? " + 1u" : "",
+          field->name, field->name, field->name, field->name) < 0) failed = 1;
+      if (field->ownership == DATABIND_NATIVE_OWNED_TEXT &&
+          fprintf(out, "        tmp.%s.data[src->%s.size] = '\\0';\n",
+                  field->name, field->name) < 0) failed = 1;
+      if (fprintf(out, "        tmp.%s.size = src->%s.size;\n    }\n",
+                  field->name, field->name) < 0) failed = 1;
+    }
+    if (!failed && fprintf(out,
+        "    %s_clear(dst); *dst = tmp; return 0;\n"
+        "native_clone_fail:\n"
+        "    %s_clear(&tmp); return -1;\n}\n"
         "static inline int %s_move(%s *dst, %s *src) {\n"
         "    if (!dst || !src) return -1;\n"
-        "    if (dst != src) { *dst = *src; *src = (%s){0}; }\n"
-        "    return 0;\n"
-        "}\n\n",
+        "    if (dst != src) { %s_clear(dst); *dst = *src; *src = (%s){0}; }\n"
+        "    return 0;\n}\n\n",
+        record->name, record->name,
         record->name, record->name, record->name,
-        record->name, record->name, record->name,
-        record->name, record->name, record->name,
-        record->name, record->name, record->name, record->name) < 0)
-      failed = 1;
+        record->name, record->name) < 0) failed = 1;
   }
   /* Reuse Salts CMeta descriptors without imposing a Salts dependency on
    * the standalone C11 source-only header unless reflection is requested. */
+  /* Owning CMeta field providers are not installed yet; reject their
+   * reflection opt-in instead of projecting fake scalar descriptors. */
+  { int has_owning = 0;
+    for (i = 0u; i < ir->record_count; ++i)
+      for (j = 0u; j < ir->records[i].field_count; ++j)
+        if (ir->records[i].fields[j].ownership != DATABIND_NATIVE_TRIVIAL)
+          has_owning = 1;
+    if (has_owning && !failed &&
+        fprintf(out, "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n#error Native owning CMeta reflection is not implemented\n#endif\n") < 0)
+      failed = 1;
+  }
   if (!failed && fprintf(out,
       "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n"
       "#include <cmeta_cmeta_data.h>\n") < 0)
