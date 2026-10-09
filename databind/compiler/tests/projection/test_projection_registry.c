@@ -1501,6 +1501,23 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("renders canonical CSTL map and set without Binary admission") {
+    static const char schema_path[] = "native_assoc.schema";
+    static const char output[] = "native_assoc.h";
+    static const char schema[] =
+        "schema NativeAssoc; message Item { "
+        "map<uint32,int32> lookup; set<uint32> unique; }";
+    (void)remove(schema_path); (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(schema_path, output), 0);
+    check_true(file_contains(output, "map_t lookup;"));
+    check_true(file_contains(output, "set_t unique;"));
+    check_true(file_contains(output, "map_raw_init(&tmp.lookup, &cmeta_type_uint32"));
+    check_true(file_contains(output, "set_raw_init(&tmp.unique, &cmeta_type_uint32"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output); (void)remove(schema_path);
+  }
+
   it("preserves IDL optional and nullable flags through Native header publication") {
     static const char schema_path[] = "native_source_presence.schema";
     static const char output[] = "native_source_presence.h";
@@ -1532,8 +1549,8 @@ describe("compiler integration") {
   it("rejects native presence flag collisions before changing a header") {
     static const char output[] = "native_presence_collision.h";
     databind_native_source_field fields[2] = {
-        {"count", "uint32_t", 1, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL},
-        {"has_count", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL}
+        {"count", "uint32_t", 1, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL},
+        {"has_count", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL}
     };
     databind_native_source_record record = {"Packet", 2u, fields};
     databind_native_source_ir ir = {1u, &record, "ManualFixture", NULL};
@@ -1551,7 +1568,7 @@ describe("compiler integration") {
 
   it("rejects empty records and lifecycle symbol collisions before publication") {
     static const char output[] = "native_invalid_symbols.h";
-    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL};
+    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL};
     databind_native_source_record records[2] = {
         {"Packet", 1u, &field}, {"Packet_init", 1u, &field}
     };
@@ -1572,7 +1589,7 @@ describe("compiler integration") {
 
   it("rejects reserved C record and field identifiers without publishing") {
     static const char output[] = "native_reserved_identifiers.h";
-    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL};
+    databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL};
     databind_native_source_record record = {"struct", 1u, &field};
     databind_native_source_ir ir = {1u, &record, "ManualFixture", NULL};
     (void)remove(output);

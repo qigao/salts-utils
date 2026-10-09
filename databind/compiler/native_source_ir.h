@@ -33,6 +33,10 @@ typedef struct databind_native_source_field {
   /* Canonical CMeta descriptor symbol for a scalar CSTL element. NULL
    * means provider admission is unresolved; never synthesize a descriptor. */
   const char *element_cmeta_symbol;
+  const char *key_type;
+  const char *value_type;
+  const char *key_cmeta_symbol;
+  const char *value_cmeta_symbol;
 } databind_native_source_field;
 
 typedef struct databind_native_source_record {

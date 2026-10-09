@@ -180,17 +180,30 @@ int databind_native_source_ir_build(
           (ownership == DATABIND_NATIVE_OWNED_TEXT ? "databind_native_text" :
            ownership == DATABIND_NATIVE_OWNED_BYTES ? "databind_native_bytes" :
            ownership == DATABIND_NATIVE_OWNED_RECORD ? field->type_name :
-           ownership == DATABIND_NATIVE_OWNED_SEQUENCE ? "vec_t" : NULL);
+           ownership == DATABIND_NATIVE_OWNED_SEQUENCE ? "vec_t" :
+           ownership == DATABIND_NATIVE_OWNED_MAP ? "map_t" :
+           ownership == DATABIND_NATIVE_OWNED_SET ? "set_t" : NULL);
       record->fields[j].optional = field->optional != 0;
       record->fields[j].nullable = field->nullable != 0;
       record->fields[j].ownership = (databind_native_source_ownership)ownership;
-      if (ownership == DATABIND_NATIVE_OWNED_SEQUENCE) {
+      if (ownership == DATABIND_NATIVE_OWNED_SEQUENCE ||
+          ownership == DATABIND_NATIVE_OWNED_SET) {
         const char *element = field->inner_type;
         if (element == NULL || element[0] == '\0') goto fail;
         record->fields[j].element_type = element;
         record->fields[j].element_is_trivial = native_scalar(element) != NULL;
         record->fields[j].element_cmeta_symbol =
             native_sequence_cmeta_symbol(element);
+      }
+      if (ownership == DATABIND_NATIVE_OWNED_MAP) {
+        record->fields[j].key_type = field->key_type;
+        record->fields[j].value_type = field->value_type;
+        record->fields[j].key_cmeta_symbol =
+            native_sequence_cmeta_symbol(field->key_type);
+        record->fields[j].value_cmeta_symbol =
+            native_sequence_cmeta_symbol(field->value_type);
+        if (field->key_type == NULL || field->value_type == NULL)
+          goto fail;
       }
     }
   }
@@ -355,7 +368,16 @@ int databind_native_source_ir_write_header(
              record->fields[j].c_type != NULL &&
              strcmp(record->fields[j].c_type, "vec_t") == 0) ||
             (record->fields[j].ownership == DATABIND_NATIVE_OWNED_RECORD &&
-             record->fields[j].c_type != NULL)) ||
+             record->fields[j].c_type != NULL) ||
+            (record->fields[j].ownership == DATABIND_NATIVE_OWNED_MAP &&
+             record->fields[j].key_cmeta_symbol != NULL &&
+             record->fields[j].value_cmeta_symbol != NULL &&
+             record->fields[j].c_type != NULL &&
+             strcmp(record->fields[j].c_type, "map_t") == 0) ||
+            (record->fields[j].ownership == DATABIND_NATIVE_OWNED_SET &&
+             record->fields[j].element_cmeta_symbol != NULL &&
+             record->fields[j].c_type != NULL &&
+             strcmp(record->fields[j].c_type, "set_t") == 0)) ||
           native_field_collides(record, j))
         return -1; /* Renderer only accepts canonical lowered C types. */
   }
@@ -375,6 +397,16 @@ int databind_native_source_ir_write_header(
   }
   if (i != ir->record_count &&
       fprintf(out, "#include <cstl/vec.h>\n\n") < 0) failed = 1;
+  for (i = 0u; i < ir->record_count; ++i) {
+    for (j = 0u; j < ir->records[i].field_count; ++j)
+      if (ir->records[i].fields[j].ownership == DATABIND_NATIVE_OWNED_MAP ||
+          ir->records[i].fields[j].ownership == DATABIND_NATIVE_OWNED_SET)
+        break;
+    if (j != ir->records[i].field_count) break;
+  }
+  if (i != ir->record_count &&
+      fprintf(out, "#include <cstl/map.h>\n#include <cstl/set.h>\n\n") < 0)
+    failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
     if (fprintf(out, "typedef struct %s {\n", record->name) < 0)
@@ -409,6 +441,12 @@ int databind_native_source_ir_write_header(
       if (field->ownership == DATABIND_NATIVE_OWNED_SEQUENCE)
         if (fprintf(out, "    if (value->%s.initialized) vec_destroy(&value->%s);\n",
                     field->name, field->name) < 0) failed = 1;
+      if (field->ownership == DATABIND_NATIVE_OWNED_MAP)
+        if (fprintf(out, "    if (value->%s.impl) map_destroy(&value->%s);\n",
+                    field->name, field->name) < 0) failed = 1;
+      if (field->ownership == DATABIND_NATIVE_OWNED_SET)
+        if (fprintf(out, "    if (value->%s.map.impl) set_destroy(&value->%s);\n",
+                    field->name, field->name) < 0) failed = 1;
     }
     if (!failed && fprintf(out,
         "    *value = (%s){0};\n}\n"
@@ -430,6 +468,12 @@ int databind_native_source_ir_write_header(
                     field->name) < 0) failed = 1;
         continue;
       }
+      if (field->ownership == DATABIND_NATIVE_OWNED_MAP ||
+          field->ownership == DATABIND_NATIVE_OWNED_SET) {
+        if (fprintf(out, "    tmp.%s = (%s){0};\n",
+                    field->name, field->c_type) < 0) failed = 1;
+        continue;
+      }
       if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
           field->ownership != DATABIND_NATIVE_OWNED_BYTES) continue;
       if (fprintf(out, "    tmp.%s.data = NULL; tmp.%s.size = 0;\n",
@@ -441,6 +485,44 @@ int databind_native_source_ir_write_header(
         if (fprintf(out,
             "    if (%s_clone(&tmp.%s, &src->%s) != 0) goto native_clone_fail;\n",
             field->c_type, field->name, field->name) < 0) failed = 1;
+        continue;
+      }
+      if (field->ownership == DATABIND_NATIVE_OWNED_MAP) {
+        if (fprintf(out,
+            "    if (src->%s.impl) {\n"
+            "      if (!cmeta_type_equal(src->%s.key_type, &%s) ||\n"
+            "          !cmeta_type_equal(src->%s.value_type, &%s)) goto native_clone_fail;\n"
+            "      if (map_raw_init(&tmp.%s, &%s, &%s, map_entry_limit(&src->%s)) != STL_OK) goto native_clone_fail;\n"
+            "      cmeta_range_cursor cursor_%s = {0};\n"
+            "      const void *key_%s = NULL, *value_%s = NULL;\n"
+            "      while (map_range_next(&src->%s, &cursor_%s, &key_%s, &value_%s)) {\n"
+            "        if (map_put(&tmp.%s, key_%s, value_%s) != STL_OK) goto native_clone_fail;\n"
+            "      }\n"
+            "    }\n",
+            field->name, field->name, field->key_cmeta_symbol,
+            field->name, field->value_cmeta_symbol,
+            field->name, field->key_cmeta_symbol, field->value_cmeta_symbol, field->name,
+            field->name, field->name, field->name,
+            field->name, field->name, field->name, field->name,
+            field->name, field->name, field->name) < 0) failed = 1;
+        continue;
+      }
+      if (field->ownership == DATABIND_NATIVE_OWNED_SET) {
+        if (fprintf(out,
+            "    if (src->%s.map.impl) {\n"
+            "      if (!cmeta_type_equal(src->%s.map.key_type, &%s)) goto native_clone_fail;\n"
+            "      if (set_raw_init(&tmp.%s, &%s, set_element_limit(&src->%s)) != STL_OK) goto native_clone_fail;\n"
+            "      cmeta_range_cursor cursor_%s = {0};\n"
+            "      const void *element_%s = NULL;\n"
+            "      while (set_range_next(&src->%s, &cursor_%s, &element_%s)) {\n"
+            "        if (set_add(&tmp.%s, element_%s) != STL_OK) goto native_clone_fail;\n"
+            "      }\n"
+            "    }\n",
+            field->name, field->name, field->element_cmeta_symbol,
+            field->name, field->element_cmeta_symbol, field->name,
+            field->name, field->name,
+            field->name, field->name, field->name,
+            field->name, field->name) < 0) failed = 1;
         continue;
       }
       if (field->ownership == DATABIND_NATIVE_OWNED_SEQUENCE) {
