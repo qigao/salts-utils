@@ -19,6 +19,38 @@ if(TARGET Salts::DataBindGeneratedABI)
           "removed Salts::DataBindGeneratedABI must not be exported")
 endif()
 
+# Qualify the installed public Contract-only NativeSourceIR entry independently
+# of Binary codec artifacts. The public INTERFACE target owns the C11/CSTL
+# include and link contract, not a generated *_native.c.
+salts_idl_target(
+  TARGET installed_contract_types
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/contract_types.schema"
+  ARTIFACT_NAME "contract_types"
+  ARTIFACTS TYPES)
+
+if(NOT TARGET installed_contract_types_types)
+  message(FATAL_ERROR "missing Contract-only C types target")
+endif()
+if(TARGET installed_contract_types_native)
+  message(FATAL_ERROR "Contract-only TYPES must not publish Binary native source")
+endif()
+get_target_property(
+  _installed_types_links installed_contract_types_types INTERFACE_LINK_LIBRARIES)
+if(NOT "Salts::CSTL" IN_LIST _installed_types_links)
+  message(FATAL_ERROR "NativeSourceIR TYPES must link canonical Salts::CSTL")
+endif()
+
+add_executable(installed_contract_types_consumer contract_types_consumer.c)
+target_compile_features(installed_contract_types_consumer PRIVATE c_std_11)
+set_target_properties(installed_contract_types_consumer PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(installed_contract_types_consumer PRIVATE
+  installed_contract_types_types)
+add_dependencies(installed_contract_types_consumer
+  installed_contract_types_idl_codegen)
+add_test(NAME installed_contract_types_consumer
+  COMMAND installed_contract_types_consumer)
+
 salts_idl_target(
   TARGET installed_image
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
@@ -77,6 +109,7 @@ target_link_libraries(installed_image_plugin_client_cpp
 set_target_properties(installed_image_plugin_client_cpp PROPERTIES
   CXX_EXTENSIONS NO)
 add_dependencies(installed_image installed_image_plugin_client_cpp)
+add_dependencies(installed_image installed_contract_types_consumer)
 
 
 salts_idl_target(
