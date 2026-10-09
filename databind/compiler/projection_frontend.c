@@ -235,6 +235,7 @@ static int add_native_service(
   out->native_service = (databind_compiler_native_service_config){
       .native_header = out->native_header,
       .header_output = out->native_service_header,
+      .binary_presentation = input->source_output_path != NULL,
   };
   out->requests[out->request_count++] =
       (databind_compiler_projection_request){

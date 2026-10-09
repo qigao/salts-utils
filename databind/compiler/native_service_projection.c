@@ -536,7 +536,7 @@ int databind_compiler_native_service_render_staged(
   if (databind_compiler_service_native_build(contract, &ir) != 0 ||
       ir.operations == NULL || ir.operation_count == 0u)
     goto cleanup;
-  if (input->binary_format == NULL &&
+  if (input->binary_format == NULL && !config->binary_presentation &&
       !native_service_contract_admitted(contract, &ir))
     goto cleanup;
 
@@ -548,7 +548,7 @@ int databind_compiler_native_service_render_staged(
   if (header_file == NULL) goto cleanup;
   source_file = fopen(source_stage, "wb");
   if (source_file == NULL) goto cleanup;
-  if (input->binary_format == NULL
+  if (input->binary_format == NULL && !config->binary_presentation
           ? (!native_service_write_contract_header(
                  header_file, contract, config, &ir) ||
              !native_service_write_contract_source(source_file, config, &ir))

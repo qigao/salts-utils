@@ -132,7 +132,8 @@ int main(int argc, char **argv) {
     char header_stage[4096];
     char source_stage[4096];
     databind_compiler_native_service_config config = {
-        .native_header = argv[4], .header_output = argv[2]};
+        .native_header = argv[4], .header_output = argv[2],
+        .binary_presentation = 1};
     databind_compiler_projection_input input = {.contract = contract};
     databind_compiler_projection_request request = {
         .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,

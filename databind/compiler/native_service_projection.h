@@ -12,6 +12,10 @@ typedef struct databind_compiler_native_service_config {
   const char *native_header;
   /* Full output path for the generated Service-native declaration header. */
   const char *header_output;
+  /* Explicitly selected Binary wire presentation (including historical
+   * stage-only fixtures). Absent means exact Contract-only NativeSourceIR ABI.
+   * A selected compiler BinaryFormatPlan independently requires Binary. */
+  int binary_presentation;
 } databind_compiler_native_service_config;
 
 /* Render into coordinator-reserved, initially absent staging destinations.
