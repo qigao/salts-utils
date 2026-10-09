@@ -573,6 +573,7 @@ static int add_plugin(
       .service_header_output = out->plugin_service_header,
       .client_header_output = out->plugin_client_header,
       .client_source_output = out->plugin_client_source,
+      .binary_presentation = input->source_output_path != NULL,
   };
 
   out->requests[out->request_count++] =
