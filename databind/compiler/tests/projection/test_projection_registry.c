@@ -1484,19 +1484,70 @@ describe("compiler integration") {
     (void)remove(path);
   }
 
-  it("rejects collection record elements without explicit CMeta traits") {
-    static const char schema_path[] = "native_unbound_record.schema";
-    static const char output[] = "native_unbound_record.h";
+  it("admits owning Record sequences and Map values from Contract only") {
+    static const char schema_path[] = "native_record_collections.schema";
+    static const char output[] = "native_record_collections.h";
     static const char schema[] =
-        "schema NativeUnbound; message Detail { uint32 id; } "
-        "message Parent { list<Detail> items; }";
+        "schema NativeRecordElements [version(2)]; "
+        "message Parent { list<Detail> items; map<string,Detail> lookup; } "
+        "message Detail { string label; bytes payload; }";
     (void)remove(schema_path);
     (void)remove(output);
     check_true(write_sentinel(schema_path, schema));
-    check_true(write_sentinel(output, "existing-output"));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "static const cmeta_type_desc Detail_native_element_cmeta_type;"));
+    check_true(file_contains(output, "Detail_native_element_copy"));
+    check_true(file_contains(output, "Detail_native_element_move"));
+    check_true(file_contains(output, "Detail_native_element_destroy"));
+    check_true(file_contains(output, "tbe.native.NativeRecordElements.v2.Detail"));
+    check_true(file_contains(output, "vec_t items;"));
+    check_true(file_contains(output, "map_t lookup;"));
+    check_true(file_contains(output, "&Detail_native_element_cmeta_type"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
+  it("rejects Record keys and Set elements without comparison traits") {
+    static const char schema_path[] = "native_record_key_reject.schema";
+    static const char output[] = "native_record_key_reject.h";
+    static const char record_decl[] = "message Detail { uint32 id; }";
+    static const char invalid_set[] =
+        "schema NativeRecordKeys; message Detail { uint32 id; } "
+        "message Parent { set<Detail> keys; }";
+    static const char invalid_map[] =
+        "schema NativeRecordKeys; message Detail { uint32 id; } "
+        "message Parent { map<Detail,uint32> lookup; }";
+    (void)record_decl;
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(output, "original-output"));
+    check_true(write_sentinel(schema_path, invalid_set));
     check_equal(databind_compiler_generate_contract_native_header(
                     schema_path, output), -1);
-    check_true(file_matches(output, "existing-output"));
+    check_true(file_matches(output, "original-output"));
+    check_true(write_sentinel(schema_path, invalid_map));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), -1);
+    check_true(file_matches(output, "original-output"));
+    (void)remove(schema_path);
+    (void)remove(output);
+  }
+
+  it("allows collection-recursive Record without inline value cycle") {
+    static const char schema_path[] = "native_record_recursive.schema";
+    static const char output[] = "native_record_recursive.h";
+    static const char schema[] =
+        "schema NativeRecursive; message Node { uint32 id; list<Node> children; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "Node_native_element_cmeta_type"));
+    check_true(file_contains(output, "vec_t children;"));
+    check_false(file_contains(output, "binary_wire"));
     (void)remove(output);
     (void)remove(schema_path);
   }
