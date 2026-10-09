@@ -499,14 +499,15 @@ int databind_native_source_ir_write_header(
             "      while (map_range_next(&src->%s, &cursor_%s, &key_%s, &value_%s)) {\n"
             "        if (map_put(&tmp.%s, key_%s, value_%s) != STL_OK) goto native_clone_fail;\n"
             "      }\n"
-            "    }\n",
+            "    } else if (src->%s.key_type || src->%s.value_type) goto native_clone_fail;\n",
             field->name, field->name, field->key_cmeta_symbol,
             field->name, field->value_cmeta_symbol,
             field->name, field->key_cmeta_symbol, field->name, field->value_cmeta_symbol,
             field->name, field->name,
             field->name, field->name, field->name,
             field->name, field->name, field->name, field->name,
-            field->name, field->name, field->name) < 0) failed = 1;
+            field->name, field->name, field->name,
+            field->name, field->name) < 0) failed = 1;
         continue;
       }
       if (field->ownership == DATABIND_NATIVE_OWNED_SET) {
@@ -520,11 +521,12 @@ int databind_native_source_ir_write_header(
             "      while (set_range_next(&src->%s, &cursor_%s, &element_%s)) {\n"
             "        if (set_add(&tmp.%s, element_%s) != STL_OK) goto native_clone_fail;\n"
             "      }\n"
-            "    }\n",
+            "    } else if (src->%s.element_type || src->%s.map.key_type) goto native_clone_fail;\n",
             field->name, field->name, field->element_cmeta_symbol,
             field->name, field->element_cmeta_symbol, field->name, field->name,
             field->name, field->name,
             field->name, field->name, field->name,
+            field->name, field->name,
             field->name, field->name) < 0) failed = 1;
         continue;
       }
