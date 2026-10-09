@@ -258,10 +258,16 @@ function(salts_idl_target)
     list(APPEND _normalized_transports "${transport_upper}")
   endforeach()
 
-  if((_has_message OR _has_plugin OR _has_wasm OR
-      _has_socket OR _has_flowmq) AND NOT DB_BINARY_CODEC)
+  if((_has_message OR _has_wasm OR _has_socket OR _has_flowmq) AND
+     NOT DB_BINARY_CODEC)
     message(FATAL_ERROR
             "Generated Binary codec/transport source requires explicit BINARY_CODEC")
+  endif()
+  if(_has_plugin AND NOT DB_BINARY_CODEC AND
+     (_has_native OR DB_TRANSPORTS))
+    message(FATAL_ERROR
+            "Contract-only PLUGIN requires an independent typed Function ABI; "
+            "mixed Native/transport generation is not admitted without explicit BINARY_CODEC")
   endif()
   if(_has_native AND NOT DB_BINARY_CODEC AND DB_TRANSPORTS)
     message(FATAL_ERROR
@@ -271,8 +277,8 @@ function(salts_idl_target)
   # Only an explicitly selected wire/codec execution output requires a Binary
   # companion. NATIVE alone is a typed Service ABI with CMeta VALUE records.
   set(_needs_native_source FALSE)
-  if(_has_message OR _has_plugin OR _has_wasm OR _has_socket OR _has_flowmq OR
-     (_has_native AND DB_BINARY_CODEC))
+  if(_has_message OR _has_wasm OR _has_socket OR _has_flowmq OR
+     ((_has_native OR _has_plugin) AND DB_BINARY_CODEC))
     set(_needs_native_source TRUE)
   endif()
 
@@ -624,11 +630,16 @@ function(salts_idl_target)
   endif()
 
   if(_has_plugin)
+    # The no-codec Plugin provider/client share the exact C11 NativeSourceIR
+    # Record header; neither links a Binary wire/serializer companion.
+    set(_plugin_type_sources "${_native_header}")
+    if(_needs_native_source)
+      list(APPEND _plugin_type_sources "${_native_source}")
+    endif()
     add_library("${DB_TARGET}_plugin" SHARED
       "${_plugin_source}"
       "${_plugin_header}"
-      "${_native_source}"
-      "${_native_header}"
+      ${_plugin_type_sources}
       ${DB_SOURCES})
     add_dependencies("${DB_TARGET}_plugin"
       "${DB_TARGET}_idl_codegen")
@@ -646,8 +657,7 @@ function(salts_idl_target)
     add_library("${DB_TARGET}_plugin_client" STATIC
       "${_plugin_client_source}"
       "${_plugin_client_header}"
-      "${_native_source}"
-      "${_native_header}")
+      ${_plugin_type_sources})
     add_dependencies("${DB_TARGET}_plugin_client"
       "${DB_TARGET}_idl_codegen")
     target_compile_features("${DB_TARGET}_plugin_client" PRIVATE c_std_11)
