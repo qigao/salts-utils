@@ -141,6 +141,24 @@ set_tests_properties(test_databind_native_header_c11 PROPERTIES
   LABELS "databind;compiler;native-source;c11")
 
 
+# Compile and execute generated C11 lifetime for owned native buffers.
+set(_native_owned_header "${CMAKE_CURRENT_BINARY_DIR}/native_owned_fixture.h")
+add_custom_command(OUTPUT "${_native_owned_header}"
+  COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
+          "${_native_owned_header}" owned
+  DEPENDS databind_native_header_fixture_generator
+  VERBATIM)
+add_executable(test_databind_native_owned_c11
+  native_header_owned_c11_consumer.c "${_native_owned_header}")
+target_include_directories(test_databind_native_owned_c11 PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
+set_target_properties(test_databind_native_owned_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_native_owned_c11
+  COMMAND $<TARGET_FILE:test_databind_native_owned_c11>)
+set_tests_properties(test_databind_native_owned_c11 PROPERTIES
+  LABELS "databind;compiler;native-source;ownership;c11")
+
 # Compile the same native C record in separate translation units. The CMeta
 # identity is Schema/Contract-version scoped, never inferred from C layout.
 set(_native_identity_objects)
