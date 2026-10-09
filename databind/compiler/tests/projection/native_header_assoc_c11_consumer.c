@@ -37,6 +37,18 @@ int main(void) {
     if (AssocPacket_clone(&b, &incorrect) == 0 ||
         b.lookup.impl || b.unique.map.impl) FAIL(5);
   }
+  /* A typed but unmaterialized associative handle is not an empty owned
+   * container: reject it instead of silently dropping declared bindings. */
+  {
+    AssocPacket malformed = {0};
+    malformed.lookup.key_type = &cmeta_type_uint32;
+    malformed.lookup.value_type = &cmeta_type_int32;
+    if (AssocPacket_clone(&b, &malformed) == 0) FAIL(28);
+    malformed.lookup = (map_t){0};
+    malformed.unique.element_type = &cmeta_type_uint32;
+    if (AssocPacket_clone(&b, &malformed) == 0) FAIL(29);
+    if (b.lookup.impl || b.unique.map.impl) FAIL(30);
+  }
   AssocPacket_clear(&a); AssocPacket_clear(&b); AssocPacket_clear(&moved);
   AssocPacket_clear(&moved);
   return a.lookup.impl || moved.unique.map.impl ? 6 : 0;
