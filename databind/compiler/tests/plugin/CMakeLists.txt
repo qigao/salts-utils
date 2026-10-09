@@ -1,3 +1,33 @@
+# Contract-only public Plugin DSO: compile the canonical Record header,
+# dynamically load the provider and exercise lease-safe client ABI. Binary
+# *_native.c is not generated or linked for either target.
+salts_idl_target(
+  TARGET databind_contract_plugin_lease_fixture
+  FOLDER "databind/compiler/generated/contract-plugin"
+  IDL "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/native_contract_service.schema"
+  COMPONENT "WasmRuntime.Calculator"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "contract_plugin"
+  ARTIFACTS PLUGIN
+  SOURCES "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_business.c")
+
+add_executable(test_databind_contract_plugin_lease_c11
+  "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_lease_consumer.c")
+target_compile_features(test_databind_contract_plugin_lease_c11 PRIVATE c_std_11)
+target_compile_definitions(test_databind_contract_plugin_lease_c11 PRIVATE
+  GENERATED_CONTRACT_PLUGIN_PATH="$<TARGET_FILE:databind_contract_plugin_lease_fixture_plugin>")
+target_link_libraries(test_databind_contract_plugin_lease_c11 PRIVATE
+  databind_contract_plugin_lease_fixture_plugin_client Salts::Plugin)
+add_dependencies(test_databind_contract_plugin_lease_c11
+  databind_contract_plugin_lease_fixture_plugin
+  databind_contract_plugin_lease_fixture_plugin_client)
+set_target_properties(test_databind_contract_plugin_lease_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME test_databind_contract_plugin_lease_c11
+  COMMAND $<TARGET_FILE:test_databind_contract_plugin_lease_c11>)
+set_tests_properties(test_databind_contract_plugin_lease_c11 PROPERTIES
+  LABELS "databind;compiler;plugin;contract-only;lease;no-binary;c11")
+
 # Generated PLUGIN backend qualification through the canonical public
 # salts_idl_target() -> salts_idlc projection frontend.
 

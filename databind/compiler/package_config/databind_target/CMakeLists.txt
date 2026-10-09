@@ -145,6 +145,23 @@ add_dependencies(installed_contract_plugin_consumer
 add_test(NAME installed_contract_plugin_consumer
   COMMAND installed_contract_plugin_consumer)
 
+# Load the generated Contract-only provider DSO with the public Plugin
+# registry and exercise a leased, typed client across real dynamic calls.
+# Do not link the provider DSO into this test executable.
+add_executable(installed_contract_plugin_lease_consumer
+  contract_plugin_lease_consumer.c)
+target_compile_features(installed_contract_plugin_lease_consumer
+  PRIVATE c_std_11)
+target_compile_definitions(installed_contract_plugin_lease_consumer PRIVATE
+  GENERATED_CONTRACT_PLUGIN_PATH="$<TARGET_FILE:installed_contract_plugin_plugin>")
+target_link_libraries(installed_contract_plugin_lease_consumer PRIVATE
+  installed_contract_plugin_plugin_client Salts::Plugin)
+add_dependencies(installed_contract_plugin_lease_consumer
+  installed_contract_plugin_plugin
+  installed_contract_plugin_plugin_client)
+add_test(NAME installed_contract_plugin_lease_consumer
+  COMMAND installed_contract_plugin_lease_consumer)
+
 salts_idl_target(
   TARGET installed_image
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
@@ -206,7 +223,7 @@ set_target_properties(installed_image_plugin_client_cpp PROPERTIES
 add_dependencies(installed_image installed_image_plugin_client_cpp)
 add_dependencies(installed_image installed_contract_types_consumer
   installed_contract_value_consumer installed_contract_service_consumer
-  installed_contract_plugin_consumer)
+  installed_contract_plugin_consumer installed_contract_plugin_lease_consumer)
 
 
 salts_idl_target(
