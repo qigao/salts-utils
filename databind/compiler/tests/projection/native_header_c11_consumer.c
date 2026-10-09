@@ -34,6 +34,17 @@ int main(void) {
       view.layout_fields[1].type != fields[1].value->storage_type ||
       view.layout_fields[2].type != fields[2].value->storage_type)
     return 4;
+  /* State flags are native storage companions, not logical CMeta values. */
+  if (strcmp(Packet_native_cmeta_states[0].name, view.data_fields[0].name) != 0 ||
+      Packet_native_cmeta_states[0].presence_offset != offsetof(Packet, has_count) ||
+      Packet_native_cmeta_states[0].null_offset != SIZE_MAX ||
+      strcmp(Packet_native_cmeta_states[1].name, view.data_fields[1].name) != 0 ||
+      Packet_native_cmeta_states[1].presence_offset != SIZE_MAX ||
+      Packet_native_cmeta_states[1].null_offset != offsetof(Packet, is_null_delta) ||
+      strcmp(Packet_native_cmeta_states[2].name, view.data_fields[2].name) != 0 ||
+      Packet_native_cmeta_states[2].presence_offset != offsetof(Packet, has_active) ||
+      Packet_native_cmeta_states[2].null_offset != offsetof(Packet, is_null_active))
+    return 6;
 #endif
   Packet packet;
 #ifdef DATABIND_NATIVE_ENABLE_CMETA
