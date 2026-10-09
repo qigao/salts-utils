@@ -522,7 +522,7 @@ int databind_native_source_ir_write_header(
             "      }\n"
             "    }\n",
             field->name, field->name, field->element_cmeta_symbol,
-            field->name, field->element_cmeta_symbol, field->name,
+            field->name, field->element_cmeta_symbol, field->name, field->name,
             field->name, field->name,
             field->name, field->name, field->name,
             field->name, field->name) < 0) failed = 1;
