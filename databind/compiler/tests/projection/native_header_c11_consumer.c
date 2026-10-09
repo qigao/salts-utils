@@ -5,6 +5,16 @@
 #endif
 
 int main(void) {
+#ifdef DATABIND_NATIVE_ENABLE_CMETA
+  cmeta_data_field_desc fields[3];
+  if (Packet_native_cmeta_data_fields(fields, 2u) == 0 ||
+      Packet_native_cmeta_data_fields(fields, 3u) != 0 ||
+      fields[0].data != &cmeta_data_uint32 ||
+      fields[1].data != &cmeta_data_int16 ||
+      fields[2].data != &cmeta_data_bool ||
+      fields[0].offset != offsetof(Packet, count))
+    return 3;
+#endif
   Packet packet;
 #ifdef DATABIND_NATIVE_ENABLE_CMETA
   if (Packet_native_cmeta_type.name == NULL ||
