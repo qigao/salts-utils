@@ -7,11 +7,25 @@
 /* Compiler-private, deliberately narrow Contract-only Native lowering.
  * No Binary offsets, wire byte order or ownership assumptions.
  * Unsupported fields fail closed; caller owns no copied contract storage. */
+/* Native ownership is independent of Binary layout. Keep ZERO/TRIVIAL as
+ * the default so existing scalar fixture initializers remain valid.
+ * No owning kind may enter the scalar-only renderer. */
+typedef enum databind_native_source_ownership {
+  DATABIND_NATIVE_TRIVIAL = 0,
+  DATABIND_NATIVE_OWNED_TEXT,
+  DATABIND_NATIVE_OWNED_BYTES,
+  DATABIND_NATIVE_OWNED_RECORD,
+  DATABIND_NATIVE_OWNED_SEQUENCE,
+  DATABIND_NATIVE_OWNED_MAP,
+  DATABIND_NATIVE_OWNED_SET
+} databind_native_source_ownership;
+
 typedef struct databind_native_source_field {
   const char *name;
   const char *c_type;
   int optional;
   int nullable;
+  databind_native_source_ownership ownership;
 } databind_native_source_field;
 
 typedef struct databind_native_source_record {
