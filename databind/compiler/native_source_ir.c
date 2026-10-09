@@ -27,6 +27,35 @@ static const char *native_scalar(const char *type) {
   return NULL;
 }
 
+/* Build an ownership plan even for types the current renderer cannot emit.
+ * Never confuse non-trivial fields with a trivially copied scalar. */
+static databind_native_source_ownership native_field_ownership(
+    const IdlContract *contract, const IdlField *field) {
+  size_t i;
+  if (field->collection_kind != IDL_COLLECTION_NONE) {
+    switch (field->collection_kind) {
+      case IDL_COLLECTION_ARRAY:
+      case IDL_COLLECTION_LIST: return DATABIND_NATIVE_OWNED_SEQUENCE;
+      case IDL_COLLECTION_SET: return DATABIND_NATIVE_OWNED_SET;
+      case IDL_COLLECTION_MAP: return DATABIND_NATIVE_OWNED_MAP;
+      default: return -1;
+    }
+  }
+  if (native_scalar(field->type_name) != NULL) return DATABIND_NATIVE_TRIVIAL;
+  if (field->type_name == NULL) return -1;
+  if (strcmp(field->type_name, "string") == 0)
+    return DATABIND_NATIVE_OWNED_TEXT;
+  if (strcmp(field->type_name, "bytes") == 0)
+    return DATABIND_NATIVE_OWNED_BYTES;
+  for (i = 0u; i < contract->data_count; ++i) {
+    const IdlDataDecl *decl = &contract->data[i];
+    if (decl->name != NULL && strcmp(decl->name, field->type_name) == 0 &&
+        (decl->kind == IDL_DATA_MESSAGE || decl->kind == IDL_DATA_COMPOSITE))
+      return DATABIND_NATIVE_OWNED_RECORD;
+  }
+  return -1;
+}
+
 void databind_native_source_ir_destroy(databind_native_source_ir *ir) {
   size_t i;
   if (ir == NULL) return;
@@ -72,16 +101,17 @@ int databind_native_source_ir_build(
     if (record->fields == NULL) goto fail;
     for (j = 0u; j < decl->field_count; ++j) {
       const IdlField *field = &decl->fields[j];
+      const databind_native_source_ownership ownership =
+          native_field_ownership(contract, field);
       const char *type = native_scalar(field->type_name);
-      if (field->name == NULL || field->name[0] == '\0' ||
-          field->collection_kind != IDL_COLLECTION_NONE ||
-          field->default_value != NULL || type == NULL)
+      if (field->name == NULL || field->name[0] == '\\0' ||
+          field->default_value != NULL || (int)ownership < 0)
         goto fail;
       record->fields[j].name = field->name;
       record->fields[j].c_type = type;
       record->fields[j].optional = field->optional != 0;
       record->fields[j].nullable = field->nullable != 0;
-      record->fields[j].ownership = DATABIND_NATIVE_TRIVIAL;
+      record->fields[j].ownership = ownership;
     }
   }
   *out = plan;
