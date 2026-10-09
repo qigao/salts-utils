@@ -4888,15 +4888,28 @@ done:
   return status;
 }
 
-/* Contract-only C + optional DSL and typed stage-safe artifact outputs
- * participate in the SAME rollback-aware transaction. Binary is not admitted
- * here, and a multi-output/self-publishing backend is never treated as a
- * single-file callback. The Contract is the only semantic authority. */
+/* All Contract-only artifacts use the same staged publication coordinator.
+ * Native/Plugin/Wasm declare *every* output before rendering. A stage-safe
+ * single-file artifact participates in the same transaction. None of these
+ * artifacts implies Binary wire admission.
+ *
+ * The backend configuration retains final paths for generated #include
+ * references; stage path pointers are owned by the transaction until commit. */
+typedef struct databind_contract_artifact_stage {
+  const databind_compiler_projection_backend *backend;
+  size_t first_stage;
+  size_t stage_count;
+  int native;
+  int plugin;
+  int wasm;
+} databind_contract_artifact_stage;
+
 static int databind_compiler_generate_contract_native_bundle(
     const tbe_compiler_options_t *options) {
   tbe_compiler_output_transaction txn = {0};
   databind_native_source_ir native = {0};
   databind_compiler_projection_request *staged = NULL;
+  databind_contract_artifact_stage *artifact_stages = NULL;
   databind_compiler_projection_input projection_input = {0};
   Node *tree = NULL;
   IdlContract *contract = NULL;
@@ -4908,20 +4921,56 @@ static int databind_compiler_generate_contract_native_bundle(
   int status = -1;
 
   if (options == NULL || options->schema_path == NULL ||
-      options->output_path == NULL || options->output_path[0] == '\0')
+      options->output_path == NULL || options->output_path[0] == '\0' ||
+      options->projection_count > TBE_COMPILER_TRANSACTION_OUTPUT_LIMIT)
     return -1;
+
   if (options->projection_count != 0u) {
-    if (!databind_compiler_projection_all_staged_single(
-            options->projection_requests, options->projection_count,
-            options->projection_backends, options->projection_backend_count))
+    if (options->projection_count > SIZE_MAX / sizeof(*staged) ||
+        options->projection_count > SIZE_MAX / sizeof(*artifact_stages))
       return -1;
-    for (i = 0u; i < options->projection_count; ++i)
-      if (options->projection_requests[i].id.axis !=
+    staged = (databind_compiler_projection_request *)calloc(
+        options->projection_count, sizeof(*staged));
+    artifact_stages = (databind_contract_artifact_stage *)calloc(
+        options->projection_count, sizeof(*artifact_stages));
+    if (staged == NULL || artifact_stages == NULL)
+      goto done;
+    for (i = 0u; i < options->projection_count; ++i) {
+      size_t j;
+      const databind_compiler_projection_request *request =
+          &options->projection_requests[i];
+      databind_contract_artifact_stage *entry = &artifact_stages[i];
+      if (request->id.axis !=
           DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT) {
-        fprintf(stderr,
-                "Contract-only Native C artifacts must be non-Binary and stage-safe\n");
-        return -1;
+        fprintf(stderr, "Contract-only C cannot select a Binary transport\n");
+        goto done;
       }
+      for (j = 0u; j < options->projection_backend_count; ++j)
+        if (databind_compiler_projection_id_equal(
+                request->id, options->projection_backends[j].id)) {
+          entry->backend = &options->projection_backends[j];
+          break;
+        }
+      if (entry->backend == NULL) goto done;
+      /* True multi-file backends must use their audited staged API.
+       * Other selected artifacts are admitted only with STAGED_SINGLE. */
+      entry->native =
+          entry->backend->generate == databind_compiler_native_service_generate &&
+          request->id.kind == DATABIND_COMPILER_ARTIFACT_NATIVE;
+      entry->plugin =
+          entry->backend->generate == databind_compiler_plugin_generate &&
+          request->id.kind == DATABIND_COMPILER_ARTIFACT_PLUGIN;
+      entry->wasm =
+          entry->backend->generate == databind_compiler_wasm_generate &&
+          request->id.kind == DATABIND_COMPILER_ARTIFACT_WASM;
+      if (!entry->native && !entry->plugin && !entry->wasm &&
+          entry->backend->output_policy !=
+              DATABIND_COMPILER_OUTPUT_STAGED_SINGLE) {
+        fprintf(stderr, "Artifact has no audited staged-output contract\n");
+        goto done;
+      }
+      staged[i] = *request;
+    }
   }
 
   if (databind_compiler_parse_contract_only_file(options->schema_path, &tree,
@@ -4938,18 +4987,50 @@ static int databind_compiler_generate_contract_native_bundle(
     dsl_stage = txn.items[txn.count - 1u].staging_path;
   }
 
-  if (options->projection_count != 0u) {
-    if (options->projection_count > SIZE_MAX / sizeof(*staged))
-      goto done;
-    staged = (databind_compiler_projection_request *)calloc(
-        options->projection_count, sizeof(*staged));
-    if (staged == NULL) goto done;
-    for (i = 0u; i < options->projection_count; ++i) {
-      staged[i] = options->projection_requests[i];
-      if (tbe_compiler_txn_add(&txn, staged[i].output) != 0)
-        goto done;
-      staged[i].output = txn.items[txn.count - 1u].staging_path;
+  /* Reserve *all* declared output paths before invoking any generator.
+   * The transaction's duplicate/alias detection applies across artifacts,
+   * DSL, primary header, and every secondary file. */
+  for (i = 0u; i < options->projection_count; ++i) {
+    const databind_compiler_projection_request *request =
+        &options->projection_requests[i];
+    databind_contract_artifact_stage *entry = &artifact_stages[i];
+    const char *final_paths[4] = {0};
+    size_t j;
+    if (entry->native) {
+      const databind_compiler_native_service_config *config =
+          (const databind_compiler_native_service_config *)request->config;
+      if (config == NULL) goto done;
+      final_paths[0] = config->header_output;
+      final_paths[1] = request->output;
+      entry->stage_count = 2u;
+    } else if (entry->plugin) {
+      const databind_compiler_plugin_config *config =
+          (const databind_compiler_plugin_config *)request->config;
+      if (config == NULL) goto done;
+      final_paths[0] = config->service_header_output;
+      final_paths[1] = request->output;
+      final_paths[2] = config->client_header_output;
+      final_paths[3] = config->client_source_output;
+      entry->stage_count = 4u;
+    } else if (entry->wasm) {
+      const databind_compiler_wasm_config *config =
+          (const databind_compiler_wasm_config *)request->config;
+      if (config == NULL) goto done;
+      final_paths[0] = request->output;
+      final_paths[1] = config->host_header_output;
+      final_paths[2] = config->host_source_output;
+      final_paths[3] = config->guest_header_output;
+      entry->stage_count = 4u;
+    } else {
+      final_paths[0] = request->output;
+      entry->stage_count = 1u;
     }
+    entry->first_stage = txn.count;
+    for (j = 0u; j < entry->stage_count; ++j)
+      if (tbe_compiler_txn_add(&txn, final_paths[j]) != 0)
+        goto done;
+    if (entry->stage_count == 1u)
+      staged[i].output = txn.items[entry->first_stage].staging_path;
   }
 
   if (databind_native_source_ir_write_header(
@@ -4968,14 +5049,40 @@ static int databind_compiler_generate_contract_native_bundle(
       goto done;
   }
 
-  if (staged != NULL) {
-    projection_input.contract = contract;
-    projection_input.binary_format = NULL; /* No implicit Binary plan. */
-    if (databind_compiler_projection_run(
-            &projection_input, staged, options->projection_count,
-            options->projection_backends, options->projection_backend_count) != 0)
+  projection_input.contract = contract;
+  projection_input.binary_format = NULL; /* No implicit Binary plan. */
+  for (i = 0u; i < options->projection_count; ++i) {
+    const databind_compiler_projection_request *request = &staged[i];
+    const databind_contract_artifact_stage *entry = &artifact_stages[i];
+    const size_t first = entry->first_stage;
+    if (entry->native) {
+      if (databind_compiler_native_service_render_staged(
+              &projection_input, request,
+              txn.items[first].staging_path,
+              txn.items[first + 1u].staging_path) != 0)
+        goto done;
+    } else if (entry->plugin) {
+      if (databind_compiler_plugin_render_staged(
+              &projection_input, request,
+              txn.items[first].staging_path,
+              txn.items[first + 1u].staging_path,
+              txn.items[first + 2u].staging_path,
+              txn.items[first + 3u].staging_path) != 0)
+        goto done;
+    } else if (entry->wasm) {
+      if (databind_compiler_wasm_render_staged(
+              &projection_input, request,
+              txn.items[first].staging_path,
+              txn.items[first + 1u].staging_path,
+              txn.items[first + 2u].staging_path,
+              txn.items[first + 3u].staging_path) != 0)
+        goto done;
+    } else if (entry->backend->generate(
+                   &projection_input, request,
+                   entry->backend->context) != 0)
       goto done;
   }
+
   if (tbe_compiler_txn_commit(&txn) != 0)
     goto done;
   status = 0;
@@ -4983,6 +5090,7 @@ static int databind_compiler_generate_contract_native_bundle(
 done:
   if (txn.count != 0u && tbe_compiler_txn_abort(&txn) != 0)
     status = -1;
+  free(artifact_stages);
   free(staged);
   databind_native_source_ir_destroy(&native);
   idl_contract_destroy(contract);
