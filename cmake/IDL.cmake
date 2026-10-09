@@ -258,11 +258,22 @@ function(salts_idl_target)
     list(APPEND _normalized_transports "${transport_upper}")
   endforeach()
 
-  if((_has_message OR _has_native OR _has_plugin OR _has_wasm OR
+  if((_has_message OR _has_plugin OR _has_wasm OR
       _has_socket OR _has_flowmq) AND NOT DB_BINARY_CODEC)
     message(FATAL_ERROR
-            "Generated native execution/codec source requires explicit BINARY_CODEC. "
-            "Use ARTIFACTS TYPES alone for Contract-only NativeSourceIR declarations.")
+            "Generated Binary codec/transport source requires explicit BINARY_CODEC")
+  endif()
+  if(_has_native AND NOT DB_BINARY_CODEC AND DB_TRANSPORTS)
+    message(FATAL_ERROR
+            "Contract-only NATIVE Service cannot select transport adapters; "
+            "choose explicit BINARY_CODEC for a wire transport")
+  endif()
+  # Only an explicitly selected wire/codec execution output requires a Binary
+  # companion. NATIVE alone is a typed Service ABI with CMeta VALUE records.
+  set(_needs_native_source FALSE)
+  if(_has_message OR _has_plugin OR _has_wasm OR _has_socket OR _has_flowmq OR
+     (_has_native AND DB_BINARY_CODEC))
+    set(_needs_native_source TRUE)
   endif()
 
   if(_has_openapi AND NOT _has_http)
@@ -475,7 +486,7 @@ function(salts_idl_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.flowmq.h")
 
   set(_generated_outputs "${_native_header}")
-  if(_has_message OR _has_native OR _has_plugin OR _has_wasm OR _has_socket OR _has_flowmq)
+  if(_needs_native_source)
     list(APPEND _generated_outputs "${_native_source}")
   endif()
   if(_has_native)
@@ -532,7 +543,7 @@ function(salts_idl_target)
     list(APPEND _compiler_args
       --transports "${_transport_csv}")
   endif()
-  if(_has_message OR _has_native OR _has_plugin OR _has_wasm OR _has_socket OR _has_flowmq)
+  if(_needs_native_source)
     list(APPEND _compiler_args
       --source-output "${_native_source}")
   endif()
@@ -588,9 +599,10 @@ function(salts_idl_target)
   endif()
 
   if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
-    set(_native_target_sources
-      "${_native_source}"
-      "${_native_header}")
+    set(_native_target_sources "${_native_header}")
+    if(_needs_native_source)
+      list(APPEND _native_target_sources "${_native_source}")
+    endif()
     if(_has_native)
       list(APPEND _native_target_sources
         "${_native_service_source}"
@@ -606,9 +618,8 @@ function(salts_idl_target)
     target_link_libraries("${DB_TARGET}_native" PUBLIC
       Salts::DataBind
       ${DB_LIBRARIES})
-    if(_has_native)
-      target_link_libraries("${DB_TARGET}_native" PUBLIC
-        Salts::CFlow)
+    if(_has_native AND DB_BINARY_CODEC)
+      target_link_libraries("${DB_TARGET}_native" PUBLIC Salts::CFlow)
     endif()
   endif()
 
