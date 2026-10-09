@@ -1414,6 +1414,26 @@ describe("compiler integration") {
     (void)remove(schema_path);
   }
 
+  it("rejects native presence flag collisions before changing a header") {
+    static const char output[] = "native_presence_collision.h";
+    databind_native_source_field fields[2] = {
+        {"count", "uint32_t", 1, 0},
+        {"has_count", "uint32_t", 0, 0}
+    };
+    databind_native_source_record record = {"Packet", 2u, fields};
+    databind_native_source_ir ir = {1u, &record};
+    (void)remove(output);
+    check_true(write_sentinel(output, "existing-presence-header"));
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "existing-presence-header"));
+    fields[0].optional = 0;
+    fields[0].nullable = 1;
+    fields[1].name = "is_null_count";
+    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
+    check_true(file_matches(output, "existing-presence-header"));
+    (void)remove(output);
+  }
+
   it("rejects empty records and lifecycle symbol collisions before publication") {
     static const char output[] = "native_invalid_symbols.h";
     databind_native_source_field field = {"value", "uint32_t", 0, 0};
