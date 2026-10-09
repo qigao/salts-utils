@@ -1518,6 +1518,31 @@ describe("compiler integration") {
     (void)remove(output); (void)remove(schema_path);
   }
 
+  it("lowers owning string and bytes CSTL collections through canonical CMeta") {
+    static const char schema_path[] = "native_owned_collections.schema";
+    static const char output[] = "native_owned_collections.h";
+    static const char schema[] =
+        "schema NativeOwnedCollections; message Entry { "
+        "list<string> labels; list<bytes> buffers; "
+        "map<string,bytes> attrs; set<string> tags; }";
+    (void)remove(schema_path);
+    (void)remove(output);
+    check_true(write_sentinel(schema_path, schema));
+    check_equal(databind_compiler_generate_contract_native_header(
+                    schema_path, output), 0);
+    check_true(file_contains(output, "vec_t labels;"));
+    check_true(file_contains(output, "vec_t buffers;"));
+    check_true(file_contains(output, "map_t attrs;"));
+    check_true(file_contains(output, "set_t tags;"));
+    check_true(file_contains(output, "databind_native_text_cmeta_type"));
+    check_true(file_contains(output, "databind_native_bytes_cmeta_type"));
+    check_true(file_contains(output, "CMETA_TRAIT_COPY"));
+    check_true(file_contains(output, "CMETA_TRAIT_DESTROY"));
+    check_false(file_contains(output, "binary_wire"));
+    (void)remove(output);
+    (void)remove(schema_path);
+  }
+
   it("preserves IDL optional and nullable flags through Native header publication") {
     static const char schema_path[] = "native_source_presence.schema";
     static const char output[] = "native_source_presence.h";
