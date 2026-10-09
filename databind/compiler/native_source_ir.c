@@ -81,6 +81,7 @@ int databind_native_source_ir_build(
       record->fields[j].c_type = type;
       record->fields[j].optional = field->optional != 0;
       record->fields[j].nullable = field->nullable != 0;
+      record->fields[j].ownership = DATABIND_NATIVE_TRIVIAL;
     }
   }
   *out = plan;
@@ -228,6 +229,7 @@ int databind_native_source_ir_write_header(
     }
     for (j = 0u; j < record->field_count; ++j)
       if (!native_identifier(record->fields[j].name) ||
+          record->fields[j].ownership != DATABIND_NATIVE_TRIVIAL ||
           !native_c_type(record->fields[j].c_type) ||
           native_field_collides(record, j))
         return -1; /* Renderer only accepts canonical lowered C types. */
