@@ -1315,6 +1315,38 @@ describe("compiler integration") {
     check_false(file_exists(service_source));
   }
 
+  it("rejects dishonest single-stage declaration for a multi-file Native artifact") {
+    static const char primary[] = "projection_native_dishonest.h";
+    static const char service_h[] = "projection_native_dishonest.service.h";
+    static const char service_c[] = "projection_native_dishonest.service.c";
+    databind_compiler_native_service_config config = {
+        .native_header = primary, .header_output = service_h};
+    databind_compiler_projection_request request = {
+        ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_NATIVE), service_c, &config};
+    databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_NATIVE_SERVICE_BACKEND;
+    tbe_compiler_options_t options = {
+        .schema_path = SCHEMA_NATIVE_SERVICE_FILE,
+        .output_path = primary,
+        .lang_enum = TBE_COMPILER_LANG_C,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .projection_requests = &request,
+        .projection_count = 1u,
+        .projection_backends = &backend,
+        .projection_backend_count = 1u
+    };
+    backend.output_policy = DATABIND_COMPILER_OUTPUT_STAGED_SINGLE;
+    (void)remove(primary);
+    (void)remove(service_h);
+    (void)remove(service_c);
+    check_true(write_sentinel(primary, "original-header"));
+    check_equal(tbe_compiler_run(&options), 1);
+    check_true(file_matches(primary, "original-header"));
+    check_false(file_exists(service_h));
+    check_false(file_exists(service_c));
+    (void)remove(primary);
+  }
+
   it("rolls back Contract-only Native Plugin Wasm DSL and typed artifact together") {
     static const char primary[] = "projection_native_contract_txn.h";
     static const char native_c[] = "projection_native_contract_txn.service.c";
