@@ -1,6 +1,7 @@
 #include "data_bind_xml_writer.h"
 
 #include <xml_parser/xml_parser.h>
+#include <tstr.h>
 
 #include <inttypes.h>
 #include <math.h>
@@ -8,15 +9,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct data_bind_xml_writer_frame {
+  salts_xml_node node;
+  tstr pending_key;
+  int sequence;
+} data_bind_xml_writer_frame;
+
 typedef struct data_bind_xml_writer_owner {
   cserde_writer writer;
   DataBindWriteFn write;
   void *write_user;
   salts_xml_document document;
   salts_xml_node root;
-  char *pending_key;
+  size_t depth;
+  size_t max_depth;
   int root_started;
   int complete;
+  data_bind_xml_writer_frame frames[];
 } data_bind_xml_writer_owner;
 
 static DataBindStatus xml_writer_error(
@@ -157,6 +166,7 @@ static cserde_status xml_root_writer_write(
   cserde_status status;
   salts_xml_status xml_status;
   char *text = NULL;
+  data_bind_xml_writer_frame *frame;
 
   if (owner == NULL || token == NULL) return CSERDE_INVALID_ARGUMENT;
   if (owner->complete) return CSERDE_UNSUPPORTED;
@@ -164,31 +174,59 @@ static cserde_status xml_root_writer_write(
   if (!owner->root_started) {
     if (token->kind != CSERDE_MAP_BEGIN) return CSERDE_UNSUPPORTED;
     owner->root_started = 1;
+    owner->frames[owner->depth++].node = owner->root;
     return CSERDE_OK;
   }
 
-  if (owner->pending_key == NULL) {
+  frame = &owner->frames[owner->depth - 1u];
+  if (frame->sequence && token->kind == CSERDE_ARRAY_END) {
+    tstr_freep(&frame->pending_key);
+    --owner->depth;
+    return CSERDE_OK;
+  }
+  if (!frame->sequence && frame->pending_key == NULL) {
     if (token->kind == CSERDE_MAP_END) {
-      owner->complete = 1;
+      --owner->depth;
+      owner->complete = owner->depth == 0u;
       return CSERDE_OK;
     }
     if (token->kind != CSERDE_STRING ||
         !xml_writer_name_valid_bytes(
             token->value.slice.data, token->value.slice.size))
       return CSERDE_UNSUPPORTED;
-    return xml_writer_copy_slice(token, &owner->pending_key);
+    frame->pending_key = tstr_dup_len(
+        (const char *)token->value.slice.data, token->value.slice.size);
+    return frame->pending_key != NULL ? CSERDE_OK : CSERDE_CALLBACK_ERROR;
+  }
+
+  if (token->kind == CSERDE_ARRAY_BEGIN) {
+    data_bind_xml_writer_frame *array;
+    if (frame->sequence) return CSERDE_UNSUPPORTED;
+    if (owner->depth == owner->max_depth) return CSERDE_LIMIT_EXCEEDED;
+    array = &owner->frames[owner->depth++];
+    *array = (data_bind_xml_writer_frame){frame->node, frame->pending_key, 1};
+    frame->pending_key = NULL;
+    return CSERDE_OK;
+  }
+  if (token->kind == CSERDE_MAP_BEGIN) {
+    if (owner->depth == owner->max_depth) return CSERDE_LIMIT_EXCEEDED;
+    xml_status = salts_xml_node_add_element(
+        frame->node, frame->pending_key, &child);
+    if (xml_status != SALTS_XML_OK) return xml_writer_status(xml_status);
+    if (!frame->sequence) tstr_freep(&frame->pending_key);
+    owner->frames[owner->depth++] = (data_bind_xml_writer_frame){child, NULL, 0};
+    return CSERDE_OK;
   }
 
   status = xml_writer_scalar_text(token, &text);
   if (status != CSERDE_OK) return status;
 
   xml_status = salts_xml_node_add_element(
-      owner->root, owner->pending_key, &child);
+      frame->node, frame->pending_key, &child);
   if (xml_status == SALTS_XML_OK)
     xml_status = salts_xml_node_set_text(child, text);
   free(text);
-  free(owner->pending_key);
-  owner->pending_key = NULL;
+  if (!frame->sequence) tstr_freep(&frame->pending_key);
   return xml_writer_status(xml_status);
 }
 
@@ -201,7 +239,7 @@ static cserde_status xml_root_writer_finish(void *opaque) {
 
   if (owner == NULL || owner->write == NULL ||
       !owner->root_started || !owner->complete ||
-      owner->pending_key != NULL)
+      owner->depth != 0u)
     return CSERDE_UNSUPPORTED;
 
   output = salts_xml_document_serialize(
@@ -230,7 +268,7 @@ static DataBindStatus xml_writer_result(
   case CSERDE_UNSUPPORTED:
     return xml_writer_error(
         error, DATA_BIND_ERR_TYPE_MISMATCH,
-        "Canonical token stream is not representable by the flat XML writer");
+        "Canonical token stream is not representable by the XML record writer");
   case CSERDE_SINK_ERROR:
     return xml_writer_error(
         error, DATA_BIND_ERR_IO,
@@ -269,18 +307,21 @@ DataBindStatus data_bind_xml_writer_open_root(
     return xml_writer_error(
         error, DATA_BIND_ERR_INVALID_ARG,
         "XML writer requires a valid namespace-free root name and byte sink");
-  if (max_depth < 1u)
+  if (max_depth < 1u ||
+      max_depth > (SIZE_MAX - sizeof(*owner)) / sizeof(owner->frames[0]))
     return xml_writer_error(
         error, DATA_BIND_ERR_LIMIT,
-        "Flat XML writer requires max_depth >= 1");
+        "XML writer depth is zero or exceeds addressable capacity");
 
-  owner = (data_bind_xml_writer_owner *)calloc(1u, sizeof(*owner));
+  owner = (data_bind_xml_writer_owner *)calloc(
+      1u, sizeof(*owner) + max_depth * sizeof(owner->frames[0]));
   if (owner == NULL)
     return xml_writer_error(
         error, DATA_BIND_ERR_OOM,
         "Unable to allocate XML writer lease");
 
   owner->write = write;
+  owner->max_depth = max_depth;
   owner->write_user = write_user;
   xml_status = salts_xml_document_create(&owner->document, root_name);
   if (xml_status != SALTS_XML_OK) {
@@ -335,7 +376,9 @@ DataBindStatus data_bind_xml_writer_close(
                : CSERDE_INVALID_ARGUMENT;
 
   if (owner != NULL) {
-    free(owner->pending_key);
+    size_t i;
+    for (i = 0u; i < owner->depth; ++i)
+      tstr_freep(&owner->frames[i].pending_key);
     salts_xml_document_destroy(&owner->document);
     free(owner);
   }

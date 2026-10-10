@@ -212,9 +212,66 @@ COPY/MOVE/DESTROY 委托给 Salts 的 data-traits bridge。生成代码不增加
 元素类型身份，也不授予含状态位 record 的整值复制权限。元数据参数引用在既有 once
 初始化中按内层到外层构建，发布后不可变，执行期间不做字符串解析或名称查找。
 
-首批嵌套 MessagePlan 支持 JSON 与 YAML 往返，包括空内层容器。XML、CSV 和 Binary
-的现有表示能力不扩展；无法表示该类型时明确返回 schema/FormatPlan 错误。
+首批嵌套容器 MessagePlan 支持 JSON 与 YAML 往返，包括空内层容器。CSV 和 Binary
+的集合表示能力不扩展；XML 的直接序列字段规则见下文。无法表示的组合明确返回 schema/FormatPlan 错误。
 带 optional/nullable 容器字段的记录可初始化和清理，尚未准入整值转换。
+
+XML 原生生成绑定支持已准入完整生命周期的嵌套 message/composite 对象。原先的
+flat-only 限制来自生成器准入和单层 writer，XML reader 本身已输出嵌套 MAP。
+现在复用 MessagePlan/native 的 staging、验证与回滚，不经过动态对象转换；
+BOOL/SINT/UINT/FLOAT 文本按嵌套字段的 CMeta 描述符转换，枚举支持名称、十进制整数
+及原生输出的无符号位模式，并由 provider 校验位宽和域。生成 Bool8 与 schema Bool
+在字段准入时使用既有的显式适配规则，其他类型仍按精确描述符校验。
+
+XML writer 将 MAP 值写为子元素，与动态对象的对象表示一致。lease 独占 DOM、
+有界 frame 栈和复制的字段名；`max_depth` 计入根 MAP 与序列 ARRAY，大小运算溢出或超深明确失败。
+输入 token 仅在同步调用期间借用，完整文档成功后才调用 sink；失败关闭释放所有
+未提交状态。必填 list/set 字段以重复同名元素表示，元素可以是 scalar 或完整生命周期
+record；空集合不输出元素，读取缺失的必填集合得到空集合。例如 `list<int32> values`
+输出 `<values>1</values><values>2</values>`。optional/nullable 集合、集合元素本身为集合、
+map/group/variant、显式 NULL、BYTES 和 namespace 映射仍不准入；含本地 optional/nullable
+overlay 的嵌套图保留原有生命周期与格式准入限制。
+
+新增 `data_bind_xml_format_reader_open_plan` 从不可变 FormatPlan 读取字段及元素类型，
+按 schema 字段顺序扫描 lease 独占的 DOM，将交错的同名/别名元素按文档顺序归组为 ARRAY。
+没有第二份动态值树或 token 缓冲；逻辑文本只借用到下一次读取，由 native 元素 owner
+及时复制。未知字段、重复 scalar 字段、把集合写成属性均拒绝，失败清理 staging 后目标不变。
+不含序列的合同沿用普通 XML provider；原始 provider/XPath 的重复 MAP key 行为不变。
+
+选择与动态 XML 非空序列一致的重复元素表示，而非新增 wrapper/item 协议。缺失与空序列
+在此必填集合 profile 中等价，因此 optional 集合保持拒绝，以免丢失 presence 状态。
+这只扩展原先不准入的生成绑定；动态对象 API 的缺失/default 规则不变。后续若要支持
+optional 集合，必须另行定义能区分 absent 与 present-empty 的显式表示。
+
+FormatPlan 为直接嵌套的 message/composite 编译各层 `name`/`alias` 表与 child 索引，
+XML/JSON/YAML 共用递归投影：输入接受 canonical、primary name 和 alias，输出只用
+primary name。scalar 的同层重复别名归一为同一个 canonical key，由 XML 归组 reader 或 native decoder
+拒绝重复字段并回滚 staging；序列别名归组为同一个数组。不同 record 的同名 alias 独立解析，字符串由不可变 plan 拥有，
+codec 可先于 plan 释放。执行不查询 schema、不分配内存；每个调用独占
+`DataBindFormatCursor`，最多同时打开 64 层 MAP/ARRAY，超深明确失败。
+
+选择新增 `*_init_recursive` 与独立 cursor，而非扩展现有 v1 wrapper 的布局或在
+共享 plan 中存放可变栈，保留旧二进制布局和并发隔离。代价是每个递归调用需要固定
+有界栈，编译时保存每个 record 的名称表。旧初始化入口遇到需要嵌套映射的 plan
+仍返回 schema 错误；新的生成代码自动使用递归入口。直接 list/set 的 record 元素也使用
+各自名称表；同时含其他未准入集合/variant 形状与嵌套名称映射的合同仍在编译时拒绝。
+
+Windows C DLL 消费者使用 Salts 的 `cstl_typed_import` 宏保留完整容器 facade。
+生成库导出容器、数据和方法描述符的查询函数，查询先完成原有 once 初始化；消费者
+在运行时借用同一份元数据，避免 record 元素的导入地址出现在静态初始化中触发 C2099。
+Vec/Set/Map 的方法、range、collector、反射及所有权语义保持一致，不扩展现有描述符 ABI。
+这些描述符及回调归生成库所有，库必须覆盖值和元数据借用的整个生命周期。
+不采用局部描述符副本或删除静态元素信息，因为它们会破坏类型一致性或对象无关查询。
+使用此路径需先安装包含新宏的 Salts SDK，再重新生成并编译库和消费者；Windows Release
+本地 preset 指向同级 Salts 的正式安装结果 `$PKG_ROOT/salts/release`。
+回退时同时回退生成头文件与生成库，再回退 SDK；旧 SDK 不支持新增宏。
+
+YAML Boolean 构造器现在保留显式 `!!bool` tag，避免 emitter 将其误写成字符串。
+`true`/`false` 字符串仍带引号；Boolean 类型在 YAML 往返中保持不变。
+
+已有 XML 扁平输出不变。使用新版生成器/runtime 重新生成并重编译即可启用，无数据迁移。
+回退时先停止使用新增的嵌套 XML/名称映射路径，使用旧生成器重新生成消费者，之后
+再回退 runtime；新生成代码引用新增入口，不能链接到缺少该符号的旧 runtime。
 
 相比私有容器或扁平化存储，该方案增加构建期递归 lowering 和启动时 plan 资格验证，
 保留原生存储、错误传播和单一生命周期归属。复制失败只清理未提交的内层 owner，

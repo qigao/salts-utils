@@ -647,7 +647,14 @@ CYAML_API cyaml_node_t* cyaml_new_float(cyaml_doc_t* doc, double val)
 
 CYAML_API cyaml_node_t* cyaml_new_bool(cyaml_doc_t* doc, bool val)
 {
-    return cyaml_new_str(doc, val ? S_TRUE : CYAML_S_FALSE, val ? L_TRUE : L_FALSE);
+    cyaml_node_t* node = cyaml_new_str(doc, val ? S_TRUE : CYAML_S_FALSE, val ? L_TRUE : L_FALSE);
+    uint32_t off;
+    /* Constructors must retain Boolean intent: an untagged scalar is quoted
+     * by the emitter to protect strings such as "true" from implicit typing. */
+    if (!node || !cyaml_doc_append(doc, "!!bool", 6u, &off))
+        return NULL;
+    node->tag = (cyaml_span_t){off, 6u};
+    return node;
 }
 
 CYAML_API cyaml_node_t* cyaml_new_seq(cyaml_doc_t* doc)

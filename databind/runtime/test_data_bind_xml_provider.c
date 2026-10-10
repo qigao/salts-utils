@@ -285,11 +285,23 @@ int main(void) {
     token = xml_string("nested");
     if (cserde_writer_write(native, &token) != CSERDE_OK) return 61;
     token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
-    if (cserde_writer_write(native, &token) != CSERDE_UNSUPPORTED)
-      return 62;
-    if (data_bind_xml_writer_close(&writer, &error) !=
-        DATA_BIND_ERR_TYPE_MISMATCH)
-      return 63;
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 62;
+    token = xml_string("text");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 81;
+    token = xml_string("a&b");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 82;
+    token = (cserde_token){.kind = CSERDE_MAP_END};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 83;
+    token = xml_string("sibling");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 84;
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 85;
+    token = (cserde_token){.kind = CSERDE_MAP_END};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 86;
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 87;
+    if (data_bind_xml_writer_close(&writer, &error) != DATA_BIND_OK) return 63;
+    if (strstr(output.data, "<nested><text>a&amp;b</text></nested>") == NULL ||
+        strstr(output.data, "<sibling") == NULL || output.calls != 1u) return 88;
   }
 
   {
@@ -326,5 +338,136 @@ int main(void) {
       return 80;
   }
 
+  /* The root consumes one frame. A limit failure never publishes bytes. */
+  {
+    DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
+    XmlOutput output = {{0}, 0u, 0u, 0};
+    cserde_writer *native;
+    cserde_token token = {.kind = CSERDE_MAP_BEGIN};
+    if (data_bind_xml_writer_open_root("Root", xml_output_write, &output,
+                                      SIZE_MAX, &writer, &error) != DATA_BIND_ERR_LIMIT)
+      return 89;
+    if (data_bind_xml_writer_open_root("Root", xml_output_write, &output,
+                                      1u, &writer, &error) != DATA_BIND_OK)
+      return 90;
+    native = data_bind_xml_writer_writer(&writer);
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 91;
+    token = xml_string("child");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 92;
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    if (cserde_writer_write(native, &token) != CSERDE_LIMIT_EXCEEDED) return 93;
+    if (data_bind_xml_writer_close(&writer, &error) != DATA_BIND_ERR_LIMIT) return 94;
+    if (output.calls != 0u || output.size != 0u) return 95;
+  }
+
+  /* Closing an unfinished nested record must release its pending key. */
+  {
+    DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
+    XmlOutput output = {{0}, 0u, 0u, 0};
+    cserde_writer *native;
+    cserde_token token = {.kind = CSERDE_MAP_BEGIN};
+    if (data_bind_xml_writer_open_root("Root", xml_output_write, &output,
+                                      2u, &writer, &error) != DATA_BIND_OK) return 96;
+    native = data_bind_xml_writer_writer(&writer);
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 97;
+    token = xml_string("child");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 98;
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 99;
+    token = xml_string("pending");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 100;
+    if (data_bind_xml_writer_close(&writer, &error) != DATA_BIND_ERR_TYPE_MISMATCH) return 101;
+    if (output.calls != 0u || output.size != 0u || writer.owner != NULL) return 102;
+  }
+
+  /* A complete nested document propagates a rejected sink without retrying. */
+  {
+    DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
+    XmlOutput output = {{0}, 0u, 0u, 1};
+    cserde_writer *native;
+    cserde_token token = {.kind = CSERDE_MAP_BEGIN};
+    if (data_bind_xml_writer_open_root("Root", xml_output_write, &output,
+                                      2u, &writer, &error) != DATA_BIND_OK) return 103;
+    native = data_bind_xml_writer_writer(&writer);
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 104;
+    token = xml_string("child");
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 105;
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    if (cserde_writer_write(native, &token) != CSERDE_OK) return 106;
+    token = (cserde_token){.kind = CSERDE_MAP_END};
+    if (cserde_writer_write(native, &token) != CSERDE_OK ||
+        cserde_writer_write(native, &token) != CSERDE_OK) return 107;
+    if (data_bind_xml_writer_close(&writer, &error) != DATA_BIND_ERR_IO) return 108;
+    if (output.calls != 1u || output.size != 0u) return 109;
+  }
+
+  /* Schema projection synthesizes empty required sequences, while the lease
+   * remains independent of the codec and includes ARRAY frames in its bound. */
+  {
+    static const char schema[] = "message Seq { [name(wire), alias(old)] list<int32> items; }";
+    static const char input[] = "<Seq/>";
+    DataBind *codec = NULL;
+    DataBindFormatPlan *plan = NULL;
+    size_t depth;
+    if (data_bind_create_from_text(schema, sizeof(schema) - 1u, &codec, &error) != DATA_BIND_OK)
+      return 110;
+    if (data_bind_format_plan_compile(codec, "Seq", DATA_BIND_FORMAT_XML, &plan, &error) != DATA_BIND_OK)
+      return 111;
+    data_bind_free(codec);
+    for (depth = 1u; depth <= 2u; ++depth) {
+      lease = (DataBindFormatReader)DATA_BIND_FORMAT_READER_INIT;
+      if (data_bind_xml_format_reader_open_plan(plan, input, sizeof(input) - 1u,
+                                              depth, &lease, &error) != DATA_BIND_OK) return 112;
+      if (!next_kind(lease.reader, CSERDE_MAP_BEGIN, &token) ||
+          !next_kind(lease.reader, CSERDE_STRING, &token) || !slice_equal(&token, "items")) return 113;
+      if (depth == 1u) {
+        if (cserde_reader_next(lease.reader, &token) != CSERDE_LIMIT_EXCEEDED) return 114;
+      } else {
+        if (!next_kind(lease.reader, CSERDE_ARRAY_BEGIN, &token) ||
+            !next_kind(lease.reader, CSERDE_ARRAY_END, &token) ||
+            !next_kind(lease.reader, CSERDE_MAP_END, &token) ||
+            cserde_reader_next(lease.reader, &token) != CSERDE_DONE) return 115;
+      }
+      if (data_bind_format_reader_close(&lease) != DATA_BIND_OK || lease.owner != NULL) return 116;
+    }
+    data_bind_format_plan_free(plan);
+  }
+
+  /* ARRAY names remain owned until the array closes, including error paths. */
+  {
+    size_t attempt;
+    for (attempt = 0u; attempt < 3u; ++attempt) {
+      DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
+      XmlOutput output = {{0}, 0u, 0u, attempt == 2u};
+      cserde_writer *native;
+      cserde_token token = {.kind = CSERDE_MAP_BEGIN};
+      if (data_bind_xml_writer_open_root("Seq", xml_output_write, &output,
+                                        attempt == 0u ? 1u : 2u, &writer, &error) != DATA_BIND_OK) return 117;
+      native = data_bind_xml_writer_writer(&writer);
+      if (cserde_writer_write(native, &token) != CSERDE_OK) return 118;
+      token = xml_string("items");
+      if (cserde_writer_write(native, &token) != CSERDE_OK) return 119;
+      token = (cserde_token){.kind = CSERDE_ARRAY_BEGIN};
+      if (attempt == 0u) {
+        if (cserde_writer_write(native, &token) != CSERDE_LIMIT_EXCEEDED ||
+            data_bind_xml_writer_close(&writer, &error) != DATA_BIND_ERR_LIMIT) return 120;
+      } else {
+        if (cserde_writer_write(native, &token) != CSERDE_OK) return 121;
+        token = xml_string("A&B");
+        if (cserde_writer_write(native, &token) != CSERDE_OK) return 122;
+        if (attempt == 1u) {
+          if (data_bind_xml_writer_close(&writer, &error) != DATA_BIND_ERR_TYPE_MISMATCH) return 123;
+        } else {
+          token = (cserde_token){.kind = CSERDE_ARRAY_END};
+          if (cserde_writer_write(native, &token) != CSERDE_OK) return 124;
+          token = (cserde_token){.kind = CSERDE_MAP_END};
+          if (cserde_writer_write(native, &token) != CSERDE_OK ||
+              data_bind_xml_writer_close(&writer, &error) != DATA_BIND_ERR_IO) return 125;
+        }
+      }
+      if (writer.owner != NULL || output.size != 0u || output.calls != (attempt == 2u ? 1u : 0u))
+        return 126;
+    }
+  }
   return 0;
 }

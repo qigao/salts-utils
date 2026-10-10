@@ -13,14 +13,48 @@
 #include "data_bind_message_plan.h"
 #include "data_bind_native.h"
 #include "data_bind_xml_writer.h"
+#include "data_bind_xml_provider.h"
 #include "data_bind_projection_plan.h"
+
+static void {{schema.schema_name}}_CMETA_INIT_ALL(void);
+
+/* The generated library owns all immutable container metadata. Queries finish
+ * graph publication before C DLL consumers borrow any descriptor or callback. */
+#define DATABIND_DEFINE_CONTAINER_EXPORTS(Type) \
+const cmeta_data_desc *Type##_databind_data(void) { \
+    {{schema.schema_name}}_CMETA_INIT_ALL(); \
+    return Type##_cmeta_data(); \
+} \
+const cmeta_container_desc *Type##_databind_container(void) { \
+    {{schema.schema_name}}_CMETA_INIT_ALL(); \
+    return &Type##_cmeta_container_desc; \
+} \
+const cmeta_receiver_operation_set *Type##_databind_methods(void) { \
+    {{schema.schema_name}}_CMETA_INIT_ALL(); \
+    return Type##_receiver_operation_set(); \
+}
+{{#composites}}{{#typed_source_enabled}}{{#fields}}
+{{#native_cstl_sequence}}{{#native_cstl_sequence_explicit_refs}}DATABIND_DEFINE_CONTAINER_EXPORTS({{typed_vector_type}}){{/native_cstl_sequence_explicit_refs}}{{/native_cstl_sequence}}
+{{#native_cstl_set}}{{#native_cstl_set_explicit_refs}}DATABIND_DEFINE_CONTAINER_EXPORTS({{typed_vector_type}}){{/native_cstl_set_explicit_refs}}{{/native_cstl_set}}
+{{#native_cstl_map}}DATABIND_DEFINE_CONTAINER_EXPORTS({{typed_vector_type}}){{/native_cstl_map}}
+{{/fields}}{{/typed_source_enabled}}{{/composites}}
+{{#groups}}{{#typed_source_enabled}}{{#fields}}
+{{#native_cstl_sequence}}{{#native_cstl_sequence_explicit_refs}}DATABIND_DEFINE_CONTAINER_EXPORTS({{typed_vector_type}}){{/native_cstl_sequence_explicit_refs}}{{/native_cstl_sequence}}
+{{#native_cstl_set}}{{#native_cstl_set_explicit_refs}}DATABIND_DEFINE_CONTAINER_EXPORTS({{typed_vector_type}}){{/native_cstl_set_explicit_refs}}{{/native_cstl_set}}
+{{#native_cstl_map}}DATABIND_DEFINE_CONTAINER_EXPORTS({{typed_vector_type}}){{/native_cstl_map}}
+{{/fields}}{{/typed_source_enabled}}{{/groups}}
+{{#messages}}{{#typed_source_enabled}}{{#fields}}
+{{#native_cstl_sequence}}{{#native_cstl_sequence_explicit_refs}}DATABIND_DEFINE_CONTAINER_EXPORTS({{typed_vector_type}}){{/native_cstl_sequence_explicit_refs}}{{/native_cstl_sequence}}
+{{#native_cstl_set}}{{#native_cstl_set_explicit_refs}}DATABIND_DEFINE_CONTAINER_EXPORTS({{typed_vector_type}}){{/native_cstl_set_explicit_refs}}{{/native_cstl_set}}
+{{#native_cstl_map}}DATABIND_DEFINE_CONTAINER_EXPORTS({{typed_vector_type}}){{/native_cstl_map}}
+{{/fields}}{{/typed_source_enabled}}{{/messages}}
+#undef DATABIND_DEFINE_CONTAINER_EXPORTS
 
 {{#messages}}{{#binary_reader_supported}}
 static inline const DataBindFormatProvider *{{name}}_binary_{{name}}_databind_binary_provider(void);
 {{/binary_reader_supported}}{{/messages}}
 
 static const char {{schema.schema_name}}_SCHEMA_TEXT[] = "{{schema_c_literal}}";
-static void {{schema.schema_name}}_CMETA_INIT_ALL(void);
 
 const char *{{schema.schema_name}}_schema_text(void) {
     return {{schema.schema_name}}_SCHEMA_TEXT;
@@ -588,6 +622,7 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
     DataBindFormatReader reader = DATA_BIND_FORMAT_READER_INIT;
     DataBindFormatPlan *format_plan = NULL;
+    DataBindFormatCursor cursor = DATA_BIND_FORMAT_CURSOR_INIT;
     DataBindFormatCanonicalReader canonical =
         DATA_BIND_FORMAT_CANONICAL_READER_INIT;
     cserde_reader *decode_reader = NULL;
@@ -681,7 +716,11 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
             format_plan) != CMETA_OK)
         abort();
 
-    if (provider->format == DATA_BIND_FORMAT_CSV) {
+    if (provider->format == DATA_BIND_FORMAT_XML) {
+        status = data_bind_xml_format_reader_open_plan(
+            format_plan, data, len, descriptor_depth, &reader, error);
+        if (status != DATA_BIND_OK) goto cleanup;
+    } else if (provider->format == DATA_BIND_FORMAT_CSV) {
         status = data_bind_builtin_format_reader_open_csv_row(
             data, len, csv_row, descriptor_depth, &reader, error);
         if (status != DATA_BIND_OK) goto cleanup;
@@ -692,8 +731,8 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     }
 
     if (format_plan != NULL) {
-        status = data_bind_format_canonical_reader_init(
-            format_plan, reader.reader, &canonical, error);
+        status = data_bind_format_canonical_reader_init_recursive(
+            format_plan, reader.reader, &canonical, &cursor, error);
         if (status != DATA_BIND_OK) goto cleanup;
         decode_reader = data_bind_format_canonical_reader_reader(&canonical);
         if (decode_reader == NULL) {
@@ -1008,6 +1047,7 @@ static DataBindStatus {{schema.schema_name}}_message_to_text(
         DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
     DataBindFormatPlan *format_plan = NULL;
     DataBindFormatWriter writer = DATA_BIND_FORMAT_WRITER_INIT;
+    DataBindFormatCursor cursor = DATA_BIND_FORMAT_CURSOR_INIT;
     DataBindFormatCanonicalWriter canonical_writer =
         DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
     {{schema.schema_name}}_message_workspace_t workspace = {0};
@@ -1055,8 +1095,8 @@ static DataBindStatus {{schema.schema_name}}_message_to_text(
         descriptor_depth, &writer, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
-    status = data_bind_format_canonical_writer_init(
-        format_plan, writer.writer, &canonical_writer, error);
+    status = data_bind_format_canonical_writer_init_recursive(
+        format_plan, writer.writer, &canonical_writer, &cursor, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
     status = data_bind_message_plan_encode_native(
@@ -1130,6 +1170,7 @@ static DataBindStatus {{schema.schema_name}}_message_to_xml(
         DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
     DataBindFormatPlan *format_plan = NULL;
     DataBindXmlWriter writer = DATA_BIND_XML_WRITER_INIT;
+    DataBindFormatCursor cursor = DATA_BIND_FORMAT_CURSOR_INIT;
     DataBindFormatCanonicalWriter canonical_writer =
         DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
     {{schema.schema_name}}_message_workspace_t workspace = {0};
@@ -1168,9 +1209,9 @@ static DataBindStatus {{schema.schema_name}}_message_to_xml(
         descriptor_depth, &writer, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
-    status = data_bind_format_canonical_writer_init(
+    status = data_bind_format_canonical_writer_init_recursive(
         format_plan, data_bind_xml_writer_writer(&writer),
-        &canonical_writer, error);
+        &canonical_writer, &cursor, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
     status = data_bind_message_plan_encode_native(
@@ -1561,10 +1602,10 @@ static DataBindStatus {{schema.schema_name}}_native_conversion_unavailable(
 {{/native_cstl_storage}}{{/cmeta_graph_supported}}{{/cmeta_member_lifecycle}}{{#cmeta_graph_supported}}{{#cmeta_lifecycle_supported}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
 {{/cmeta_member_lifecycle}}
 DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
-{{#cmeta_native_xml_flat_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
-{{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_XML({{name}})
+{{#cmeta_native_xml_record_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
+{{/cmeta_native_xml_record_supported}}{{^cmeta_native_xml_record_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_XML({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}DATABIND_DEFINE_RAW_MESSAGE_XML({{name}})
-{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}
+{{/native_cstl_storage}}{{/cmeta_native_xml_record_supported}}
 {{#cmeta_native_csv_flat_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_CSV({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 {{/cmeta_native_csv_flat_supported}}{{^cmeta_native_csv_flat_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_CSV({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
@@ -1579,14 +1620,14 @@ DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY({{name}}, {{cmeta_native_descriptor_dep
 {{/native_cstl_storage}}{{/cmeta_native_xml_output_supported}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#binary_overlay_supported}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
 {{/cmeta_member_lifecycle}}
 DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
-{{#cmeta_native_xml_flat_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
-{{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}DATABIND_DEFINE_RAW_MESSAGE_XML({{name}})
-{{/cmeta_native_xml_flat_supported}}
+{{#cmeta_native_xml_record_supported}}DATABIND_DEFINE_CANONICAL_MESSAGE_XML({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
+{{/cmeta_native_xml_record_supported}}{{^cmeta_native_xml_record_supported}}DATABIND_DEFINE_RAW_MESSAGE_XML({{name}})
+{{/cmeta_native_xml_record_supported}}
 DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
 DATABIND_DEFINE_UNAVAILABLE_MESSAGE_CSV_OUTPUT({{name}})
 DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
 DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
-{{/binary_overlay_supported}}{{^binary_overlay_supported}}{{#cmeta_native_xml_flat_supported}}{{#cmeta_local_overlay_lifecycle}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
+{{/binary_overlay_supported}}{{^binary_overlay_supported}}{{#cmeta_native_xml_record_supported}}{{#cmeta_local_overlay_lifecycle}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
 {{/cmeta_member_lifecycle}}
 {{/cmeta_local_overlay_lifecycle}}
 DATABIND_DEFINE_RAW_MESSAGE_TEXT({{name}})
@@ -1595,13 +1636,13 @@ DATABIND_DEFINE_RAW_MESSAGE_CSV({{name}})
 DATABIND_DEFINE_RAW_MESSAGE_YAML({{name}})
 DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
 DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT({{name}})
-{{/cmeta_native_xml_flat_supported}}{{^cmeta_native_xml_flat_supported}}{{#native_cstl_storage}}{{#cmeta_member_lifecycle}}DATABIND_DEFINE_UNAVAILABLE_CSTL_CONVERSIONS({{name}})
+{{/cmeta_native_xml_record_supported}}{{^cmeta_native_xml_record_supported}}{{#native_cstl_storage}}{{#cmeta_member_lifecycle}}DATABIND_DEFINE_UNAVAILABLE_CSTL_CONVERSIONS({{name}})
 {{/cmeta_member_lifecycle}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/cmeta_member_lifecycle}}{{/native_cstl_storage}}{{^native_cstl_storage}}{{#cmeta_local_overlay_lifecycle}}{{#cmeta_member_lifecycle}}DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS({{name}})
 {{/cmeta_member_lifecycle}}{{^cmeta_member_lifecycle}}DATABIND_DEFINE_LOCAL_OVERLAY_RAW_RECORD({{name}})
 {{/cmeta_member_lifecycle}}
 {{/cmeta_local_overlay_lifecycle}}
-{{/native_cstl_storage}}{{/cmeta_native_xml_flat_supported}}{{/binary_overlay_supported}}{{/cmeta_lifecycle_supported}}{{/cmeta_graph_supported}}{{^cmeta_graph_supported}}{{^cmeta_member_lifecycle}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
+{{/native_cstl_storage}}{{/cmeta_native_xml_record_supported}}{{/binary_overlay_supported}}{{/cmeta_lifecycle_supported}}{{/cmeta_graph_supported}}{{^cmeta_graph_supported}}{{^cmeta_member_lifecycle}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{/native_cstl_storage}}{{/cmeta_member_lifecycle}}{{/cmeta_graph_supported}}
 {{/messages}}

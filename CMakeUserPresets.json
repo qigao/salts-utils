@@ -378,7 +378,8 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/windows-x64",
+                "RE2C_ROOT": "${sourceDir}/stage/dependencies/re2c/windows-x64",
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts/release",
                 "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [

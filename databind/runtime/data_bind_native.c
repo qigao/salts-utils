@@ -1,5 +1,9 @@
 #include "data_bind_native.h"
 #include "data_bind_native_internal.h"
+#include "data_bind_internal.h"
+
+#include <errno.h>
+#include <math.h>
 
 #include <cmeta_cmeta_data.h>
 
@@ -41,6 +45,7 @@ typedef struct NativeDecode {
   size_t items;
   size_t owned_bytes;
   size_t max_buffer_bytes;
+  int xml_text;
 } NativeDecode;
 
 static void native_copy_text(char *destination, size_t capacity, const char *source) {
@@ -72,6 +77,119 @@ static DataBindStatus native_fail(DataBindNativeDiagnostic *diagnostic,
     native_copy_text(diagnostic->error.message, sizeof(diagnostic->error.message), message);
   }
   return status;
+}
+
+DataBindStatus data_bind_native_xml_token(
+    const cmeta_data_desc *data, void *workspace, size_t workspace_bytes,
+    const cserde_token *input,
+    cserde_token *output,
+    const char *path, DataBindNativeDiagnostic *diagnostic) {
+  const char *text;
+  size_t length;
+
+  if (data == NULL || input == NULL || output == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  *output = *input;
+  if (input->kind != CSERDE_STRING)
+    return DATA_BIND_OK;
+
+  text = (const char *)input->value.slice.data;
+  length = input->value.slice.size;
+  if (length != 0u && text == NULL)
+    return native_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+        "XML textual scalar has no source bytes");
+
+  switch (data->kind) {
+  case CMETA_DATA_BOOL:
+    output->kind = CSERDE_BOOL;
+    if ((length == 4u && memcmp(text, "true", 4u) == 0) ||
+        (length == 3u && memcmp(text, "yes", 3u) == 0) ||
+        (length == 1u && text[0] == '1')) {
+      output->value.boolean = true;
+      return DATA_BIND_OK;
+    }
+    if ((length == 5u && memcmp(text, "false", 5u) == 0) ||
+        (length == 2u && memcmp(text, "no", 2u) == 0) ||
+        (length == 1u && text[0] == '0')) {
+      output->value.boolean = false;
+      return DATA_BIND_OK;
+    }
+    return native_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+        "XML Boolean text does not match the canonical field type");
+
+  case CMETA_DATA_SINT: {
+    uint64_t magnitude = 0u;
+    int negative = 0;
+    int64_t value;
+    if (!data_bind_internal_parse_integer_magnitude(
+            text, length, (uint64_t)INT64_MAX + UINT64_C(1), 1,
+            &magnitude, &negative) ||
+        (!negative && magnitude > (uint64_t)INT64_MAX))
+      return native_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+          "XML signed integer text does not match the canonical field type");
+    value = negative
+                ? (magnitude == (uint64_t)INT64_MAX + UINT64_C(1)
+                       ? INT64_MIN
+                       : -(int64_t)magnitude)
+                : (int64_t)magnitude;
+    output->kind = CSERDE_SINT;
+    output->value.sint = value;
+    return DATA_BIND_OK;
+  }
+
+  case CMETA_DATA_UINT: {
+    uint64_t value = 0u;
+    int negative = 0;
+    if (!data_bind_internal_parse_integer_magnitude(
+            text, length, UINT64_MAX, 0, &value, &negative) ||
+        negative)
+      return native_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+          "XML unsigned integer text does not match the canonical field type");
+    output->kind = CSERDE_UINT;
+    output->value.uint = value;
+    return DATA_BIND_OK;
+  }
+
+  case CMETA_DATA_FLOAT: {
+    char *scratch;
+    char *end = NULL;
+    double value;
+    int valid;
+    if (workspace == NULL ||
+        length == SIZE_MAX ||
+        length + 1u > workspace_bytes)
+      return native_fail(
+          diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+          "Native workspace cannot hold XML floating-point text");
+
+    /*
+     * Only unused scratch is lent by the caller. No live native staging or
+     * field bitmap may overlap it. The text is dead after scalar conversion.
+     */
+    scratch = (char *)workspace + workspace_bytes - (length + 1u);
+    if (length != 0u) memcpy(scratch, text, length);
+    scratch[length] = '\0';
+    errno = 0;
+    value = strtod(scratch, &end);
+    valid = errno != ERANGE && end != scratch &&
+            end == scratch + length && isfinite(value);
+    memset(scratch, 0, length + 1u);
+    if (!valid)
+      return native_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+          "XML floating-point text does not match the canonical field type");
+    output->kind = CSERDE_FLOAT;
+    output->value.floating = value;
+    return DATA_BIND_OK;
+  }
+
+  default:
+    return DATA_BIND_OK;
+  }
 }
 
 static int native_size_add(size_t left, size_t right, size_t *out) {
@@ -1624,12 +1742,67 @@ static DataBindStatus native_decode_value_admitted(
                      "Unsupported native reader descriptor after preflight");
 }
 
+/* XML writes enums as decimal scalar text. Keep symbolic strings intact,
+ * and let the canonical enum provider enforce width and domain membership. */
+static DataBindStatus native_xml_enum_token(
+    const cmeta_data_desc *data, const cserde_token *input,
+    cserde_token *output, const char *path, DataBindNativeDiagnostic *diagnostic) {
+  const cmeta_data_enum_bits_ops *ops = cmeta_data_enum_bits_ops_of(data);
+  const char *text = (const char *)input->value.slice.data;
+  size_t length = input->value.slice.size;
+  size_t i;
+  uint64_t magnitude = 0u;
+  int negative = 0;
+  *output = *input;
+  if (ops == NULL || ops->domain == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                       "Canonical enum provider is unavailable");
+  for (i = 0u; i < ops->domain->count; ++i) {
+    const cmeta_enum_bits_item *item = &ops->domain->items[i];
+    if (native_enum_slice_equal(&input->value.slice, item->symbol) ||
+        native_enum_slice_equal(&input->value.slice, item->text))
+      return DATA_BIND_OK;
+  }
+  if (length == 0u || text == NULL ||
+      !((text[0] >= '0' && text[0] <= '9') || text[0] == '-' || text[0] == '+'))
+    return DATA_BIND_OK;
+  if (!data_bind_internal_parse_integer_magnitude(
+          text, length, UINT64_MAX,
+          ops->domain->signedness != CMETA_ENUM_UNSIGNED, &magnitude, &negative) ||
+      (negative && magnitude > (uint64_t)INT64_MAX + UINT64_C(1)))
+    return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+                       "XML enum integer text is out of range");
+  if (negative) {
+    output->kind = CSERDE_SINT;
+    output->value.sint = magnitude == (uint64_t)INT64_MAX + UINT64_C(1)
+        ? INT64_MIN : -(int64_t)magnitude;
+  } else {
+    /* Native enum egress uses canonical unsigned bit patterns, even for
+     * signed domains. Preserve all 64 bits for the provider's domain check. */
+    output->kind = CSERDE_UINT;
+    output->value.uint = magnitude;
+  }
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus native_decode_value_from_token(
     NativeDecode *decode, const cmeta_data_desc *data, void *storage,
     size_t depth, const char *path, NativeArena *scratch,
     const cserde_token *token) {
+  cserde_token converted;
   DataBindStatus status = native_decode_admit(decode, depth, path);
   if (status != DATA_BIND_OK) return status;
+  if (decode->xml_text) {
+    status = data_bind_native_xml_token(
+        data, scratch->base + scratch->offset, scratch->size - scratch->offset,
+        token, &converted, path, decode->diagnostic);
+    if (status != DATA_BIND_OK) return status;
+    if (data->kind == CMETA_DATA_ENUM && token->kind == CSERDE_STRING) {
+      status = native_xml_enum_token(data, token, &converted, path, decode->diagnostic);
+      if (status != DATA_BIND_OK) return status;
+    }
+    token = &converted;
+  }
   return native_decode_value_admitted(
       decode, data, storage, depth, path, scratch, token);
 }
@@ -2241,7 +2414,7 @@ static DataBindStatus native_decode_bounded(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     cserde_reader *reader, void *destination, size_t destination_bytes,
     size_t max_buffer_bytes, DataBindNativeDecodeUsage *usage,
-    DataBindNativeDiagnostic *diagnostic) {
+    int xml_text, DataBindNativeDiagnostic *diagnostic) {
   NativeArena arena;
   NativeArena scratch;
   NativePlan plan;
@@ -2353,6 +2526,7 @@ static DataBindStatus native_decode_bounded(
   decode.diagnostic = diagnostic;
   decode.reader = reader;
   decode.max_buffer_bytes = max_buffer_bytes;
+  decode.xml_text = xml_text;
   status = native_decode_value(&decode, shape, temporary, 1u, root_path, &scratch);
   if (status == DATA_BIND_OK) {
     status = native_publish_value(diagnostic, shape, destination, temporary, root_path);
@@ -2382,7 +2556,7 @@ DataBindStatus data_bind_native_decode(
     cserde_reader *reader, void *destination, size_t destination_bytes,
     DataBindNativeDiagnostic *diagnostic) {
   return native_decode_bounded(options, shape, reader, destination,
-                               destination_bytes, SIZE_MAX, NULL, diagnostic);
+                               destination_bytes, SIZE_MAX, NULL, 0, diagnostic);
 }
 
 DataBindStatus data_bind_native_decode_bounded(
@@ -2390,14 +2564,14 @@ DataBindStatus data_bind_native_decode_bounded(
     cserde_reader *reader, void *destination, size_t destination_bytes,
     size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic) {
   return native_decode_bounded(options, shape, reader, destination,
-                               destination_bytes, max_buffer_bytes, NULL,
+                               destination_bytes, max_buffer_bytes, NULL, 0,
                                diagnostic);
 }
 
 DataBindStatus data_bind_native_decode_usage(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     cserde_reader *reader, void *destination, size_t destination_bytes,
-    DataBindNativeDecodeUsage *usage,
+    DataBindNativeDecodeUsage *usage, int xml_text,
     DataBindNativeDiagnostic *diagnostic) {
   if (usage == NULL)
     return native_fail(
@@ -2405,7 +2579,7 @@ DataBindStatus data_bind_native_decode_usage(
         "Native decode usage output is required");
   return native_decode_bounded(
       options, shape, reader, destination, destination_bytes,
-      SIZE_MAX, usage, diagnostic);
+      SIZE_MAX, usage, xml_text, diagnostic);
 }
 
 

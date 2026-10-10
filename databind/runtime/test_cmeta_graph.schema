@@ -117,3 +117,20 @@ message OwnedDepth31 { OwnedDepth30 child; }
 message OwnedDepth32 { OwnedDepth31 child; }
 message OwnedDepth33 { OwnedDepth32 child; }
 message OwnedDepth34 { optional OwnedDepth33 child; nullable string note; }
+
+// XML native record projection exercises recursive scalar conversion and owners.
+message XmlLeaf { [name(wire_low), alias(old_low)] int64 low; uint64 high; bool enabled; double score; State state; Signed64Domain signed_value; WideDomain wide; Permission permissions; [name(wire_label), alias(old_label)] string label; }
+message XmlBody { [name(wire_leaf), alias(old_leaf)] XmlLeaf leaf; }
+message XmlEnvelope { XmlBody body; int32 tail; }
+message XmlNamedNumber { [name(wire_value), alias(old_value)] int32 value; }
+message XmlNamedPair { XmlNamedNumber first; XmlNamedNumber second; }
+
+message XmlSequenceItem { int32 id; [name(wire_text), alias(old_text)] string text; }
+message XmlSequences {
+  int32 marker;
+  [name(wire_values), alias(old_values)] list<int32> values;
+  list<XmlSequenceItem> items;
+  set<string> tags;
+  list<bool> switches;
+}
+message XmlSequenceEnvelope { XmlSequences data; string title; }

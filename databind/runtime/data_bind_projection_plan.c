@@ -1,4 +1,4 @@
-#include "data_bind_projection_plan.h"
+#include "data_bind_projection_plan_internal.h"
 #include "data_bind_internal.h"
 
 #include <vstr.h>
@@ -16,6 +16,8 @@ enum { DATA_BIND_PLAN_MAX_TYPES = 64u };
 typedef struct DataBindFormatNameMap {
   tstr external_name;
   tstr canonical_name;
+  uint32_t child;
+  uint32_t sequence;
 } DataBindFormatNameMap;
 
 #define PLAN_NAME_STABLE_ID "salts-utils.databind.format-name"
@@ -24,6 +26,10 @@ cmeta_reflect_value(DataBindFormatNameMap, PLAN_NAME_STABLE_ID,
         SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
     cmeta_data_field_id(tstr, canonical_name, PLAN_NAME_STABLE_ID ".canonical",
         SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+    cmeta_data_field_id(uint32_t, child, PLAN_NAME_STABLE_ID ".child",
+        &cmeta_data_uint32, &cmeta_type_uint32)
+    cmeta_data_field_id(uint32_t, sequence, PLAN_NAME_STABLE_ID ".sequence",
+        &cmeta_data_uint32, &cmeta_type_uint32)
 );
 CMETA_DEFINE_DATA_TRAITS(DataBindFormatNameMap, cmeta_reflected_data(DataBindFormatNameMap));
 /* CSTL needs a trait-bearing storage descriptor. Its lifecycle delegates to
@@ -38,6 +44,11 @@ cmeta_type(Vec, DataBindFormatNames, DataBindFormatNameMap,
            &PLAN_NAME_TYPE, cmeta_reflected_data(DataBindFormatNameMap));
 #undef PLAN_NAME_STABLE_ID
 
+typedef struct DataBindFormatRecord {
+  DataBindFormatNames names;
+  DataBindFormatNames outputs;
+} DataBindFormatRecord;
+
 struct DataBindFormatPlan {
   char *type_name;
   DataBindFormat format;
@@ -45,8 +56,10 @@ struct DataBindFormatPlan {
   DataBindSchemaKind root_kind;
   int has_optional;
   int has_nullable;
-  DataBindFormatNames names;
-  DataBindFormatNames outputs;
+  int has_nested_name_mapping;
+  int has_sequences;
+  size_t record_count;
+  DataBindFormatRecord records[DATA_BIND_PLAN_MAX_TYPES];
 };
 
 struct DataBindTransportPlan {
@@ -68,7 +81,6 @@ typedef struct DataBindPlanScan {
   int has_xml_unsupported_shape;
   const char *xml_unsupported_field;
   int has_nested_name_mapping;
-  const char *nested_name_mapping_type;
 } DataBindPlanScan;
 
 static size_t plan_out_size(size_t requested, size_t full) {
@@ -171,6 +183,16 @@ static int plan_xml_nested_kind_supported(DataBindSchemaKind kind) {
          kind == DATA_BIND_SCHEMA_SCALAR;
 }
 
+static int plan_xml_sequence_supported(DataBind *codec, const DataBindSchemaField *field) {
+  DataBindSchemaType element = DATA_BIND_SCHEMA_TYPE_INIT;
+  if (!field->is_collection || field->is_map || field->is_group ||
+      field->is_optional || field->is_nullable || field->inner_type == NULL ||
+      strchr(field->inner_type, '<') != NULL || strcmp(field->inner_type, "bytes") == 0)
+    return 0;
+  return !data_bind_schema_find_type(codec, field->inner_type, &element) ||
+         plan_xml_nested_kind_supported(element.kind);
+}
+
 static void plan_scan_reject_xml_field(
     DataBindPlanScan *scan,
     const DataBindSchemaField *field) {
@@ -222,7 +244,7 @@ static DataBindStatus plan_name_map_append(
     const char *external_name,
     const char *canonical_name,
     DataBindError *error) {
-  DataBindFormatNameMap empty = {0};
+  DataBindFormatNameMap empty = {NULL, NULL, UINT32_MAX, 0u};
   DataBindFormatNameMap *entry;
   stl_status status = DataBindFormatNames_push(names, empty);
   if (status != STL_OK)
@@ -240,7 +262,7 @@ static DataBindStatus plan_name_map_append(
 }
 
 static DataBindStatus plan_add_name_map(
-    DataBindFormatPlan *plan,
+    DataBindFormatRecord *plan,
     const char *external_name,
     const char *canonical_name,
     DataBindError *error) {
@@ -269,7 +291,7 @@ static DataBindStatus plan_add_name_map(
 
 
 static DataBindStatus plan_add_output_name(
-    DataBindFormatPlan *plan,
+    DataBindFormatRecord *plan,
     const char *external_name,
     const char *canonical_name,
     DataBindError *error) {
@@ -295,10 +317,10 @@ static DataBindStatus plan_add_output_name(
   return plan_name_map_append(&plan->outputs, external_name, canonical_name, error);
 }
 
-static DataBindStatus plan_compile_root_name_map(
+static DataBindStatus plan_compile_record_name_map(
     DataBind *codec,
     const char *type_name,
-    DataBindFormatPlan *plan,
+    DataBindFormatRecord *plan,
     DataBindError *error) {
   size_t field_count;
   size_t name_limit = 0u;
@@ -333,7 +355,7 @@ static DataBindStatus plan_compile_root_name_map(
         field.name == NULL)
       return plan_error(
           error, DATA_BIND_ERR_SCHEMA,
-          "FormatPlan could not reflect one root field name");
+          "FormatPlan could not reflect one record field name");
 
     {
       const char *output_name =
@@ -342,7 +364,7 @@ static DataBindStatus plan_compile_root_name_map(
       if (output_name == NULL || output_name[0] == '\0')
         return plan_error(
             error, DATA_BIND_ERR_SCHEMA,
-            "FormatPlan root field has no primary output name");
+            "FormatPlan record field has no primary output name");
       output_status = plan_add_output_name(
           plan, output_name, field.name, error);
       if (output_status != DATA_BIND_OK) return output_status;
@@ -353,7 +375,7 @@ static DataBindStatus plan_compile_root_name_map(
     if (input_count == 0u)
       return plan_error(
           error, DATA_BIND_ERR_SCHEMA,
-          "FormatPlan root field has no admitted input name");
+          "FormatPlan record field has no admitted input name");
 
     for (j = 0u; j < input_count; ++j) {
       const char *accepted =
@@ -369,7 +391,7 @@ static DataBindStatus plan_compile_root_name_map(
 }
 
 static const char *plan_canonical_name(
-    const DataBindFormatPlan *plan,
+    const DataBindFormatRecord *plan,
     const cserde_slice *external_name) {
   size_t i;
   if (plan == NULL || external_name == NULL) return NULL;
@@ -382,7 +404,7 @@ static const char *plan_canonical_name(
 }
 
 static const char *plan_external_name(
-    const DataBindFormatPlan *plan,
+    const DataBindFormatRecord *plan,
     const cserde_slice *canonical_name) {
   size_t i;
   if (plan == NULL || canonical_name == NULL) return NULL;
@@ -450,7 +472,7 @@ static cserde_status plan_canonical_reader_next(
     if (token.kind != CSERDE_STRING)
       return CSERDE_UNSUPPORTED;
     canonical = plan_canonical_name(
-        state->plan, &token.value.slice);
+        &state->plan->records[0], &token.value.slice);
     if (canonical == NULL) return CSERDE_UNSUPPORTED;
     token.value.slice.data =
         (const unsigned char *)canonical;
@@ -500,7 +522,12 @@ static DataBindStatus plan_scan_type(
     return plan_error(error, DATA_BIND_ERR_INVALID_ARG,
                       "Invalid FormatPlan schema scan");
 
-  if (plan_scan_seen(scan, type_name)) return DATA_BIND_OK;
+  if (plan_scan_seen(scan, type_name)) {
+    if (plan_type_requires_name_mapping(codec, type_name)) {
+      scan->has_nested_name_mapping = 1;
+    }
+    return DATA_BIND_OK;
+  }
   if (!data_bind_schema_find_type(codec, type_name, &type))
     return plan_error(error, DATA_BIND_ERR_TYPE_NOT_FOUND,
                       "FormatPlan type is not present in the DataBind schema");
@@ -513,8 +540,6 @@ static DataBindStatus plan_scan_type(
   } else if (plan_type_requires_name_mapping(codec, type_name) &&
              !scan->has_nested_name_mapping) {
     scan->has_nested_name_mapping = 1;
-    scan->nested_name_mapping_type =
-        type.name != NULL ? type.name : type_name;
   }
   scan->visited[scan->visited_count++] =
       type.name != NULL ? type.name : type_name;
@@ -540,7 +565,8 @@ static DataBindStatus plan_scan_type(
         plan_scan_reject_csv_field(scan, &field);
     }
 
-    if (field.is_collection || field.is_group || field.is_map) {
+    if (field.is_group || field.is_map ||
+        (field.is_collection && !plan_xml_sequence_supported(codec, &field))) {
       plan_scan_reject_xml_field(scan, &field);
     } else if (field.type != NULL && field.type[0] != '\0') {
       DataBindSchemaType field_type = DATA_BIND_SCHEMA_TYPE_INIT;
@@ -651,18 +677,69 @@ static DataBindStatus plan_format_populate(
   plan->has_nullable = scan->has_nullable;
 
   if (plan_format_uses_field_names(plan->format)) {
-    if (scan->has_nested_name_mapping) {
-      char message[sizeof(((DataBindError *)0)->message)];
-      snprintf(
-          message, sizeof(message),
-          "FormatPlan nested type '%s' requires field-name canonicalization "
-          "that is not admitted by the v1 root reader",
-          scan->nested_name_mapping_type != NULL
-              ? scan->nested_name_mapping_type
-              : "<unknown>");
-      return plan_error(error, DATA_BIND_ERR_SCHEMA, message);
+    size_t record;
+    plan->has_nested_name_mapping = scan->has_nested_name_mapping;
+    /* A direct record graph has unambiguous key positions. Collections and
+     * variants require their own element/branch projection before names below
+     * those boundaries can be admitted. Preserve fail-closed admission there. */
+    if (scan->has_nested_name_mapping &&
+        (scan->has_xml_unsupported_shape ||
+         !plan_csv_root_kind_supported(scan->root_kind)))
+      return plan_error(error, DATA_BIND_ERR_SCHEMA,
+          "Contracts combining nested names with collections/variants require projection mapping");
+    plan->record_count = scan->visited_count;
+    for (record = 0u; record < plan->record_count; ++record) {
+      DataBindSchemaType type = DATA_BIND_SCHEMA_TYPE_INIT;
+      DataBindFormatRecord *node = &plan->records[record];
+      DataBindStatus status;
+      size_t field_index;
+      if (!data_bind_schema_find_type(codec, scan->visited[record], &type))
+        return plan_error(error, DATA_BIND_ERR_SCHEMA, "Missing projection record");
+      if (type.kind != DATA_BIND_SCHEMA_MESSAGE &&
+          type.kind != DATA_BIND_SCHEMA_COMPOSITE &&
+          type.kind != DATA_BIND_SCHEMA_GROUP)
+        continue;
+      status = plan_compile_record_name_map(codec, scan->visited[record], node, error);
+      if (status != DATA_BIND_OK) return status;
+      for (field_index = 0u;
+           field_index < data_bind_schema_field_count(codec, scan->visited[record]);
+           ++field_index) {
+        DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
+        DataBindSchemaType child_type = DATA_BIND_SCHEMA_TYPE_INIT;
+        size_t child, i;
+        if (!data_bind_schema_field_at(codec, scan->visited[record], field_index, &field))
+          return plan_error(error, DATA_BIND_ERR_SCHEMA, "Missing projection field");
+        {
+          int sequence = field.is_collection && !field.is_map && !field.is_group;
+          if (sequence) plan->has_sequences = 1;
+          const char *child_name = sequence ? field.inner_type : field.type;
+          child = UINT32_MAX;
+          if (!field.is_group && !field.is_map && child_name != NULL &&
+              data_bind_schema_find_type(codec, child_name, &child_type) &&
+              (child_type.kind == DATA_BIND_SCHEMA_MESSAGE ||
+               child_type.kind == DATA_BIND_SCHEMA_COMPOSITE)) {
+            for (child = 0u; child < plan->record_count; ++child)
+              if (strcmp(scan->visited[child], child_type.name) == 0) break;
+            if (child == plan->record_count)
+              return plan_error(error, DATA_BIND_ERR_SCHEMA, "Unresolved projection child");
+          }
+          for (i = 0u; i < DataBindFormatNames_size(&node->names); ++i) {
+            DataBindFormatNameMap *entry = DataBindFormatNames_at(&node->names, i);
+            if (strcmp(entry->canonical_name, field.name) == 0) {
+              entry->child = (uint32_t)child;
+              entry->sequence = (uint32_t)sequence;
+            }
+          }
+          for (i = 0u; i < DataBindFormatNames_size(&node->outputs); ++i) {
+            DataBindFormatNameMap *entry = DataBindFormatNames_at(&node->outputs, i);
+            if (strcmp(entry->canonical_name, field.name) == 0) {
+              entry->child = (uint32_t)child;
+              entry->sequence = (uint32_t)sequence;
+            }
+          }
+        }
+      }
     }
-    return plan_compile_root_name_map(codec, type_name, plan, error);
   }
   return DATA_BIND_OK;
 }
@@ -723,9 +800,12 @@ DataBindStatus data_bind_format_plan_compile_reader(
 }
 
 void data_bind_format_plan_free(DataBindFormatPlan *plan) {
+  size_t i;
   if (plan == NULL) return;
-  DataBindFormatNames_destroy(&plan->names);
-  DataBindFormatNames_destroy(&plan->outputs);
+  for (i = 0u; i < plan->record_count; ++i) {
+    DataBindFormatNames_destroy(&plan->records[i].names);
+    DataBindFormatNames_destroy(&plan->records[i].outputs);
+  }
   free(plan->type_name);
   free(plan);
 }
@@ -752,10 +832,14 @@ int data_bind_format_plan_info(
   return 1;
 }
 
-DataBindStatus data_bind_format_canonical_reader_init(
+static const cserde_reader_ops PLAN_RECURSIVE_READER_OPS;
+static const cserde_writer_ops PLAN_RECURSIVE_WRITER_OPS;
+
+static DataBindStatus plan_canonical_reader_init(
     const DataBindFormatPlan *plan,
     cserde_reader *source,
     DataBindFormatCanonicalReader *out,
+    DataBindFormatCursor *cursor,
     DataBindError *error) {
   size_t size;
   DataBindFormatCanonicalReader initial =
@@ -778,6 +862,9 @@ DataBindStatus data_bind_format_canonical_reader_init(
         error, DATA_BIND_ERR_SCHEMA,
         "FormatPlan canonical reader requires a record root");
 
+  if (cursor == NULL && plan->has_nested_name_mapping)
+    return plan_error(error, DATA_BIND_ERR_SCHEMA,
+                      "Nested names require a recursive FormatPlan cursor");
   size = sizeof(*out);
   memset(out, 0, size);
   initial.size = size;
@@ -785,8 +872,13 @@ DataBindStatus data_bind_format_canonical_reader_init(
   initial.source = source;
   memcpy(out, &initial, size);
 
+  if (cursor != NULL) {
+    *cursor = (DataBindFormatCursor)DATA_BIND_FORMAT_CURSOR_INIT;
+    cursor->owner = out;
+  }
   reader_status = cserde_reader_init(
-      &out->reader, &PLAN_CANONICAL_READER_OPS, out);
+      &out->reader, cursor != NULL ? &PLAN_RECURSIVE_READER_OPS : &PLAN_CANONICAL_READER_OPS,
+      cursor != NULL ? (void *)cursor : (void *)out);
   if (reader_status != CSERDE_OK) {
     memset(out, 0, size);
     out->size = size;
@@ -863,7 +955,7 @@ static cserde_status plan_canonical_writer_write(
           cserde_writer_write(state->target, &token));
     }
     if (token.kind != CSERDE_STRING) return CSERDE_UNSUPPORTED;
-    external = plan_external_name(state->plan, &token.value.slice);
+    external = plan_external_name(&state->plan->records[0], &token.value.slice);
     if (external == NULL) return CSERDE_UNSUPPORTED;
     token.value.slice.data = (const unsigned char *)external;
     token.value.slice.size = strlen(external);
@@ -904,10 +996,11 @@ static const cserde_writer_ops PLAN_CANONICAL_WRITER_OPS = {
     plan_canonical_writer_write,
     plan_canonical_writer_finish};
 
-DataBindStatus data_bind_format_canonical_writer_init(
+static DataBindStatus plan_canonical_writer_init(
     const DataBindFormatPlan *plan,
     cserde_writer *target,
     DataBindFormatCanonicalWriter *out,
+    DataBindFormatCursor *cursor,
     DataBindError *error) {
   DataBindFormatCanonicalWriter initial =
       DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
@@ -931,6 +1024,9 @@ DataBindStatus data_bind_format_canonical_writer_init(
         error, DATA_BIND_ERR_SCHEMA,
         "FormatPlan canonical writer requires a record root");
 
+  if (cursor == NULL && plan->has_nested_name_mapping)
+    return plan_error(error, DATA_BIND_ERR_SCHEMA,
+                      "Nested names require a recursive FormatPlan cursor");
   size = sizeof(*out);
   memset(out, 0, size);
   initial.size = size;
@@ -938,8 +1034,13 @@ DataBindStatus data_bind_format_canonical_writer_init(
   initial.target = target;
   memcpy(out, &initial, size);
 
+  if (cursor != NULL) {
+    *cursor = (DataBindFormatCursor)DATA_BIND_FORMAT_CURSOR_INIT;
+    cursor->owner = out;
+  }
   writer_status = cserde_writer_init(
-      &out->writer, &PLAN_CANONICAL_WRITER_OPS, out);
+      &out->writer, cursor != NULL ? &PLAN_RECURSIVE_WRITER_OPS : &PLAN_CANONICAL_WRITER_OPS,
+      cursor != NULL ? (void *)cursor : (void *)out);
   if (writer_status != CSERDE_OK) {
     memset(out, 0, size);
     out->size = size;
@@ -959,6 +1060,183 @@ cserde_writer *data_bind_format_canonical_writer_writer(
       writer->writer.state == CSERDE_WRITER_ZERO)
     return NULL;
   return &writer->writer;
+}
+
+/* One cursor owns traversal state; immutable plan tables can be shared by any
+ * number of concurrent readers/writers. Only keys are retained (in the plan),
+ * never source token slices. Unknown container shapes pass through unchanged. */
+static cserde_status plan_cursor_token(
+    const DataBindFormatPlan *plan, DataBindFormatCursor *cursor,
+    cserde_token *token, int writing, int *started, int *complete) {
+  DataBindFormatCursorFrame *frame;
+  uint32_t child = UINT32_MAX;
+  if (!*started) {
+    if (token->kind != CSERDE_MAP_BEGIN) return CSERDE_UNSUPPORTED;
+    cursor->frames[0] = (DataBindFormatCursorFrame){0u, UINT32_MAX, CSERDE_MAP_BEGIN, 1};
+    cursor->depth = 1u;
+    *started = 1;
+    return CSERDE_OK;
+  }
+  if (*complete || cursor->depth == 0u) return CSERDE_UNSUPPORTED;
+  frame = &cursor->frames[cursor->depth - 1u];
+  if (plan_reader_container_end(token->kind)) {
+    if ((frame->kind == CSERDE_MAP_BEGIN &&
+         (token->kind != CSERDE_MAP_END || !frame->expect_key)) ||
+        (frame->kind == CSERDE_ARRAY_BEGIN && token->kind != CSERDE_ARRAY_END))
+      return CSERDE_UNSUPPORTED;
+    if (--cursor->depth == 0u) *complete = 1;
+    return CSERDE_OK;
+  }
+  if (frame->kind == CSERDE_MAP_BEGIN && frame->expect_key) {
+    if (plan_reader_container_begin(token->kind)) return CSERDE_UNSUPPORTED;
+    frame->child = UINT32_MAX;
+    if (frame->record != UINT32_MAX) {
+      const DataBindFormatRecord *record = &plan->records[frame->record];
+      const DataBindFormatNames *names = writing ? &record->outputs : &record->names;
+      const DataBindFormatNameMap *entry = NULL;
+      size_t i;
+      if (token->kind != CSERDE_STRING) return CSERDE_UNSUPPORTED;
+      for (i = 0u; i < DataBindFormatNames_size(names); ++i) {
+        const DataBindFormatNameMap *candidate = DataBindFormatNames_at_const(names, i);
+        if (plan_slice_equal_cstr(&token->value.slice,
+                writing ? candidate->canonical_name : candidate->external_name)) {
+          entry = candidate;
+          break;
+        }
+      }
+      if (entry == NULL) return CSERDE_UNSUPPORTED;
+      token->value.slice.data = (const unsigned char *)(
+          writing ? entry->external_name : entry->canonical_name);
+      token->value.slice.size = strlen((const char *)token->value.slice.data);
+      token->value.slice.lifetime = CSERDE_VIEW_STABLE;
+      frame->child = entry->child;
+    }
+    frame->expect_key = 0;
+    return CSERDE_OK;
+  }
+  if (plan_reader_container_begin(token->kind) &&
+      cursor->depth == DATA_BIND_FORMAT_CURSOR_MAX_DEPTH)
+    return CSERDE_LIMIT_EXCEEDED;
+  if (frame->kind == CSERDE_ARRAY_BEGIN) child = frame->record;
+  if (frame->kind == CSERDE_MAP_BEGIN) {
+    child = frame->child;
+    frame->expect_key = 1;
+    frame->child = UINT32_MAX;
+  }
+  if (plan_reader_container_begin(token->kind)) {
+    cursor->frames[cursor->depth++] = (DataBindFormatCursorFrame){
+        child, UINT32_MAX, token->kind, 1};
+  } else if (writing && cursor->depth == 1u &&
+             plan->format == DATA_BIND_FORMAT_JSON && token->kind == CSERDE_BYTES) {
+    if (!vstr_utf8_valid(vstr_from_buf(
+            (const char *)token->value.slice.data, token->value.slice.size)))
+      return CSERDE_UNSUPPORTED;
+    token->kind = CSERDE_STRING;
+  }
+  return CSERDE_OK;
+}
+
+static cserde_status plan_recursive_reader_next(void *context, cserde_token *out) {
+  DataBindFormatCursor *cursor = (DataBindFormatCursor *)context;
+  DataBindFormatCanonicalReader *state = (DataBindFormatCanonicalReader *)cursor->owner;
+  cserde_status status;
+  if (state->complete) return CSERDE_DONE;
+  status = cserde_reader_next(state->source, out);
+  if (status != CSERDE_OK) return status;
+  return plan_cursor_token(state->plan, cursor, out, 0,
+                           &state->root_started, &state->complete);
+}
+
+static const cserde_reader_ops PLAN_RECURSIVE_READER_OPS = {
+    sizeof(cserde_reader_ops), CSERDE_READER_OPS_ABI_VERSION,
+    plan_recursive_reader_next};
+
+static cserde_status plan_recursive_writer_write(void *context, const cserde_token *input) {
+  DataBindFormatCursor *cursor = (DataBindFormatCursor *)context;
+  DataBindFormatCanonicalWriter *state = (DataBindFormatCanonicalWriter *)cursor->owner;
+  cserde_token token = *input;
+  cserde_status status = plan_cursor_token(state->plan, cursor, &token, 1,
+                                          &state->root_started, &state->complete);
+  if (status != CSERDE_OK) return status;
+  return plan_canonical_writer_status(cserde_writer_write(state->target, &token));
+}
+
+static cserde_status plan_recursive_writer_finish(void *context) {
+  const DataBindFormatCursor *cursor = (const DataBindFormatCursor *)context;
+  const DataBindFormatCanonicalWriter *state =
+      (const DataBindFormatCanonicalWriter *)cursor->owner;
+  return state->complete && cursor->depth == 0u ? CSERDE_OK : CSERDE_UNSUPPORTED;
+}
+
+static const cserde_writer_ops PLAN_RECURSIVE_WRITER_OPS = {
+    sizeof(cserde_writer_ops), CSERDE_WRITER_OPS_ABI_VERSION,
+    plan_recursive_writer_write, plan_recursive_writer_finish};
+
+DataBindStatus data_bind_format_canonical_reader_init(
+    const DataBindFormatPlan *plan, cserde_reader *source,
+    DataBindFormatCanonicalReader *out, DataBindError *error) {
+  return plan_canonical_reader_init(plan, source, out, NULL, error);
+}
+
+DataBindStatus data_bind_format_canonical_writer_init(
+    const DataBindFormatPlan *plan, cserde_writer *target,
+    DataBindFormatCanonicalWriter *out, DataBindError *error) {
+  return plan_canonical_writer_init(plan, target, out, NULL, error);
+}
+
+DataBindStatus data_bind_format_canonical_reader_init_recursive(
+    const DataBindFormatPlan *plan, cserde_reader *source,
+    DataBindFormatCanonicalReader *out, DataBindFormatCursor *cursor,
+    DataBindError *error) {
+  if (cursor == NULL || cursor->size < sizeof(*cursor))
+    return plan_error(error, DATA_BIND_ERR_INVALID_ARG, "Invalid FormatPlan cursor");
+  return plan_canonical_reader_init(plan, source, out, cursor, error);
+}
+
+DataBindStatus data_bind_format_canonical_writer_init_recursive(
+    const DataBindFormatPlan *plan, cserde_writer *target,
+    DataBindFormatCanonicalWriter *out, DataBindFormatCursor *cursor,
+    DataBindError *error) {
+  if (cursor == NULL || cursor->size < sizeof(*cursor))
+    return plan_error(error, DATA_BIND_ERR_INVALID_ARG, "Invalid FormatPlan cursor");
+  return plan_canonical_writer_init(plan, target, out, cursor, error);
+}
+
+int data_bind_format_plan_xml_record(const DataBindFormatPlan *plan) {
+  return plan != NULL && plan->format == DATA_BIND_FORMAT_XML &&
+         plan_csv_root_kind_supported(plan->root_kind);
+}
+
+int data_bind_format_plan_has_sequences(const DataBindFormatPlan *plan) {
+  return plan != NULL && plan->has_sequences;
+}
+
+size_t data_bind_format_record_field_count(const DataBindFormatPlan *plan, uint32_t record) {
+  return plan != NULL && record < plan->record_count
+      ? DataBindFormatNames_size(&plan->records[record].outputs) : 0u;
+}
+
+int data_bind_format_record_field_at(const DataBindFormatPlan *plan, uint32_t record,
+                                    size_t index, DataBindXmlFieldPlan *out) {
+  const DataBindFormatNameMap *entry;
+  if (out == NULL || index >= data_bind_format_record_field_count(plan, record)) return 0;
+  entry = DataBindFormatNames_at_const(&plan->records[record].outputs, index);
+  *out = (DataBindXmlFieldPlan){entry->canonical_name, entry->child, (int)entry->sequence};
+  return 1;
+}
+
+size_t data_bind_format_record_field_find(const DataBindFormatPlan *plan, uint32_t record,
+                                        const char *name, size_t length) {
+  cserde_slice key = {(const unsigned char *)name, length, CSERDE_VIEW_STABLE};
+  const char *canonical;
+  size_t i;
+  if (plan == NULL || record >= plan->record_count) return SIZE_MAX;
+  canonical = plan_canonical_name(&plan->records[record], &key);
+  if (canonical == NULL) return SIZE_MAX;
+  for (i = 0u; i < DataBindFormatNames_size(&plan->records[record].outputs); ++i)
+    if (strcmp(DataBindFormatNames_at_const(&plan->records[record].outputs, i)->canonical_name,
+               canonical) == 0) return i;
+  return SIZE_MAX;
 }
 
 static int plan_transport_kind_valid(DataBindTransportKind kind) {

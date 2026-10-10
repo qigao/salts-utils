@@ -305,7 +305,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     data_bind_free(codec);
   }
 
-  it("routes only flat generated Message XML through canonical provider") {
+  it("routes flat and record-sequence generated XML through canonical providers") {
     static const char xml[] =
         "<NativeXmlFlat>"
         "<id>9</id><name>alice</name><score>41</score>"
@@ -366,12 +366,13 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         NativeHeaderPolicy_from_xml(
             codec, &collection, collection_xml, sizeof(collection_xml) - 1u,
             &error),
-        DATA_BIND_ERR_SCHEMA);
-    check_equal(collection.id, UINT32_C(0));
+        DATA_BIND_OK);
+    check_equal(collection.id, UINT32_C(7));
     check_equal(
         NativeHeaderPolicy_headers_vec_t_size(&collection.headers),
-        (size_t)0u);
+        (size_t)1u);
 
+    check_equal(NativeHeaderPolicy_headers_vec_t_at_const(&collection.headers, 0u)->value, "a");
     NativeHeaderPolicy_clear(&collection);
     NativeXmlFlat_clear(&unchanged);
     NativeXmlFlat_clear(&flat);

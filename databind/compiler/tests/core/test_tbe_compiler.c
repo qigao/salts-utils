@@ -2927,12 +2927,11 @@ spec("tbe_compiler") {
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(XmlOutputFlat,");
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(NullableFlat,") == NULL);
-        check(strstr(
-            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(Sample,") == NULL);
+        check_contains(source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(Sample,");
         check(strstr(
             source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML_OUTPUT(XmlBytes,") == NULL);
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT(NullableFlat)");
-        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT(Sample)");
+        check(strstr(source, "DATABIND_DEFINE_RAW_MESSAGE_XML_OUTPUT(Sample)") == NULL);
         check_contains(source, "data_bind_xml_writer_open_root(");
         check_contains(source, "_message_to_xml(");
         check_contains(source, "DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(NullableFlat)");
@@ -2940,9 +2939,8 @@ spec("tbe_compiler") {
         check_contains(source, "DATABIND_DEFINE_CANONICAL_MESSAGE_BINARY(NullableFlat,");
         check(strstr(source, "DATABIND_DEFINE_RAW_MESSAGE_TEXT(NullableFlat)") == NULL);
         check(strstr(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(NullableFlat)") == NULL);
-        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_XML(Sample)");
-        check(strstr(
-            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(Sample,") == NULL);
+        check(strstr(source, "DATABIND_DEFINE_RAW_MESSAGE_XML(Sample)") == NULL);
+        check_contains(source, "DATABIND_DEFINE_CANONICAL_MESSAGE_XML(Sample,");
         check(strstr(
             source, "DATABIND_DEFINE_RAW_MESSAGE_XML(LoginMessage)") == NULL);
         check(strstr(source, "DATABIND_DEFINE_CMETA_RAW_RECORD(LoginMessage)") == NULL);
@@ -2971,7 +2969,7 @@ spec("tbe_compiler") {
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_CSV(NullableFlat)");
         check_contains(source, "data_bind_builtin_format_reader_open_csv_row(");
         check_contains(source, "data_bind_format_plan_compile(");
-        check_contains(source, "data_bind_format_canonical_reader_init(");
+        check_contains(source, "data_bind_format_canonical_reader_init_recursive(");
         check_contains(source, "DATABIND_DEFINE_UNAVAILABLE_RAW_CONVERSIONS(name)");
       }
 

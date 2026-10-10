@@ -41,10 +41,8 @@ typedef struct DataBindTransportPlan DataBindTransportPlan;
  * from compiled external primary/alias names to canonical DataBind field names.
  * Value/container token streams are otherwise forwarded unchanged.
  *
- * This first v1 reader intentionally does not canonicalize nested-record field
- * names. FormatPlan compilation fails when nested declared records require a
- * non-identity name/alias mapping, rather than silently accepting partial
- * semantics.
+ * The v1 initializer rejects plans requiring nested name mapping. Use the
+ * recursive initializer with a caller-owned cursor for nested record names.
  */
 typedef struct DataBindFormatCanonicalReader {
   size_t size;
@@ -94,6 +92,32 @@ enum { DATA_BIND_FORMAT_CANONICAL_WRITER_ABI_VERSION = 1u };
     DATA_BIND_FORMAT_CANONICAL_WRITER_ABI_VERSION, \
     NULL, NULL, {0}, 0u, 0, 0, 0 }
 
+/* Execution storage for recursive record-name projection. These fields are
+ * private state: initialize with the macro and do not modify during execution.
+ * Plan, wrapper, source/target and cursor must all outlive the operation; none
+ * may move while active. Each concurrent operation needs its own cursor.
+ * No allocation or schema lookup occurs during execution. The fixed bound
+ * counts every open MAP/ARRAY, including root; excess depth returns
+ * CSERDE_LIMIT_EXCEEDED. Collection values retain their existing token shape;
+ * record elements in direct list/set fields also receive name projection.
+ * Contracts combining nested aliases with unsupported shapes remain rejected. */
+enum { DATA_BIND_FORMAT_CURSOR_MAX_DEPTH = 64u };
+typedef struct DataBindFormatCursorFrame {
+  uint32_t record;
+  uint32_t child;
+  cserde_token_kind kind;
+  int expect_key;
+} DataBindFormatCursorFrame;
+
+typedef struct DataBindFormatCursor {
+  size_t size;
+  void *owner;
+  size_t depth;
+  DataBindFormatCursorFrame frames[DATA_BIND_FORMAT_CURSOR_MAX_DEPTH];
+} DataBindFormatCursor;
+
+#define DATA_BIND_FORMAT_CURSOR_INIT { sizeof(DataBindFormatCursor), NULL, 0u, {{0}} }
+
 /** Size-prefixed immutable snapshot of one compiled FormatPlan. */
 typedef struct DataBindFormatPlanInfo {
   size_t size;
@@ -139,11 +163,12 @@ typedef struct DataBindTransportPlanInfo {
  * list/set/map fields fail closed until an explicit projection mapping is
  * compiled.
  *
- * XML admits nested object/scalar structure but has no implicit collection or
- * variant encoding. list/set/map/group fields and union/variant shapes fail
- * closed until an explicit XML projection policy is compiled. Element versus
- * attribute placement, namespaces and nil semantics are projection concerns;
- * none are inferred from canonical IDL.
+ * XML admits nested object/scalar structure and required list/set fields with
+ * scalar/record elements. Sequences repeat their field element; no elements
+ * means an empty required sequence. Use data_bind_xml_format_reader_open_plan
+ * for this schema-dependent grouping. Optional/nullable sequences, sequences
+ * of sequences, maps, groups and variants fail admission. Namespaces and nil
+ * semantics are not inferred from canonical IDL.
  *
  * No implicit flattening or transport-local fallback is performed.
  */
@@ -189,7 +214,7 @@ DATA_BIND_API int data_bind_format_plan_info(
  * or another canonical-field consumer. The wrapper consumes exactly the same
  * token stream as source except that admitted root MAP keys are replaced by
  * stable plan-owned canonical field-name slices. Unknown external names return
- * CSERDE_INVALID_TOKEN through the wrapper reader.
+ * CSERDE_UNSUPPORTED through the wrapper reader.
  */
 DATA_BIND_API DataBindStatus data_bind_format_canonical_reader_init(
     const DataBindFormatPlan *plan,
@@ -215,6 +240,27 @@ DATA_BIND_API DataBindStatus data_bind_format_canonical_writer_init(
 
 DATA_BIND_API cserde_writer *data_bind_format_canonical_writer_writer(
     DataBindFormatCanonicalWriter *writer);
+
+/** Recursive equivalents of the v1 initializers. On success, use the same
+ * reader/writer getters above. Names at every declared record level are
+ * projected; aliases are input-only. Unknown record keys fail with
+ * CSERDE_UNSUPPORTED. Duplicate logical keys are normalized and left to the
+ * native consumer to reject. The plan owns all returned name slices.
+ * Returns INVALID_ARG for invalid storage, SCHEMA for non-record/non-text
+ * plans, or OK. No cleanup is needed for the borrowed cursor or wrapper.
+ * Example: DataBindFormatCursor cursor = DATA_BIND_FORMAT_CURSOR_INIT;
+ * data_bind_format_canonical_reader_init_recursive(plan, source, &reader,
+ *                                                &cursor, &error);
+ * Writer finish validates completion and never finishes the borrowed target. */
+DATA_BIND_API DataBindStatus data_bind_format_canonical_reader_init_recursive(
+    const DataBindFormatPlan *plan, cserde_reader *source,
+    DataBindFormatCanonicalReader *out, DataBindFormatCursor *cursor,
+    DataBindError *error);
+
+DATA_BIND_API DataBindStatus data_bind_format_canonical_writer_init_recursive(
+    const DataBindFormatPlan *plan, cserde_writer *target,
+    DataBindFormatCanonicalWriter *out, DataBindFormatCursor *cursor,
+    DataBindError *error);
 
 /*
  * Compile the format-neutral transport shell for one Service operation.

@@ -2457,7 +2457,49 @@ static void tbe_compiler_annotate_schema_types(Node *root) {
   tbe_compiler_set_string(schema, "go_package_name", package_name);
 }
 
-static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
+/* XML record projection preserves child elements and required sequences as
+ * repeated field elements. Optional/nested sequences, variants and explicit
+ * NULL have no lossless representation in this profile. Inspect the whole graph
+ * before publishing generated entry points, not just the root fields. */
+static int tbe_compiler_xml_record_supported(
+    Node *root, Node *record, size_t depth, int *output_supported) {
+  Node *fields = tbe_compiler_find_child(record, "fields");
+  size_t i;
+  if (depth > TBE_COMPILER_CMETA_MAX_DEPTH ||
+      fields == NULL || fields->type != NODE_LIST)
+    return 0;
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    Node *field = fields->data.list.items[i];
+    const char *type = tbe_compiler_string_value(field, "type");
+    Node *child;
+    if (tbe_compiler_has_child(field, "is_collection")) {
+      type = tbe_compiler_string_value(field, "inner_type");
+      if (tbe_compiler_has_child(field, "is_optional") ||
+          tbe_compiler_has_child(field, "is_nullable") ||
+          tbe_compiler_has_child(field, "is_map") || type == NULL ||
+          strchr(type, '<') != NULL || strcmp(type, "bytes") == 0 ||
+          !tbe_compiler_has_child(record, "cmeta_lifecycle_supported"))
+        return 0;
+    }
+    child = type != NULL ? tbe_compiler_find_any_record(root, type) : NULL;
+    if (tbe_compiler_has_child(field, "is_group_field") ||
+        (type != NULL && tbe_compiler_find_record(root, "unions", type) != NULL))
+      return 0;
+    /* Keep the existing local-overlay lifecycle route for records whose
+     * complete native value graph is not published. */
+    if (child != NULL && !tbe_compiler_has_child(record, "cmeta_lifecycle_supported"))
+      return 0;
+    if (child != NULL &&
+        !tbe_compiler_xml_record_supported(root, child, depth + 1u, output_supported))
+      return 0;
+    if (tbe_compiler_has_child(field, "is_nullable") ||
+        tbe_compiler_has_child(field, "is_bytes"))
+      *output_supported = 0;
+  }
+  return 1;
+}
+
+static void tbe_compiler_annotate_xml_record_messages(Node *root) {
   Node *messages;
   size_t i;
 
@@ -2468,22 +2510,21 @@ static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
   for (i = 0u; i < messages->data.list.count; ++i) {
     Node *record = messages->data.list.items[i];
     Node *fields = tbe_compiler_find_child(record, "fields");
-    size_t j;
-    int supported = 1;
+    int supported;
     int output_supported = 0;
 
-    tbe_compiler_remove_children(record, "cmeta_native_xml_flat_supported");
+    tbe_compiler_remove_children(record, "cmeta_native_xml_record_supported");
     tbe_compiler_remove_children(record, "cmeta_native_xml_output_supported");
 
     /*
-     * Flat XML publication composes two authorities:
+     * XML record publication composes two authorities:
      *   - CMeta owns the reflected physical fields;
-     *   - DataBind MessagePlan ownss presence/null overlay state.
+     *   - DataBind MessagePlan owns presence/null overlay state.
      *
-     * Do not require whole-record cmeta_lifecycle_supported here: optional
-     * and nullable overlay bytes are intentionally not CMeta fields. The
-     * generated helper preflights physical move support at runtime and copies
-     * overlay state through the exact native binding.
+     * Scalar-only records retain their existing optional/nullable admission:
+     * overlay bytes are intentionally not CMeta fields. The generated helper
+     * preflights physical move support and copies the exact native state.
+     * Nested records additionally require the complete lifecycle graph above.
      */
     if (!tbe_compiler_has_child(record, "cmeta_graph_supported") ||
         tbe_compiler_string_value(
@@ -2496,26 +2537,12 @@ static void tbe_compiler_annotate_xml_flat_messages(Node *root) {
     output_supported =
         tbe_compiler_has_child(record, "cmeta_lifecycle_supported") ? 1 : 0;
 
-    for (j = 0u; j < fields->data.list.count; ++j) {
-      Node *field = fields->data.list.items[j];
-      const char *type = tbe_compiler_string_value(field, "type");
-      if (tbe_compiler_has_child(field, "is_collection") ||
-          tbe_compiler_has_child(field, "is_group_field") ||
-          (type != NULL &&
-           (tbe_compiler_find_any_record(root, type) != NULL ||
-            tbe_compiler_find_record(root, "unions", type) != NULL))) {
-        supported = 0;
-        output_supported = 0;
-        break;
-      }
-      if (tbe_compiler_has_child(field, "is_nullable") ||
-          tbe_compiler_has_child(field, "is_bytes"))
-        output_supported = 0;
-    }
+    supported = tbe_compiler_xml_record_supported(
+        root, record, 1u, &output_supported);
 
     if (supported)
       (void)tbe_compiler_set_string(
-          record, "cmeta_native_xml_flat_supported", "1");
+          record, "cmeta_native_xml_record_supported", "1");
     if (supported && output_supported)
       (void)tbe_compiler_set_string(
           record, "cmeta_native_xml_output_supported", "1");
@@ -2973,7 +3000,7 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_cmeta_support(root);
   tbe_compiler_annotate_local_overlay_lifecycle(root);
   tbe_compiler_annotate_member_lifecycle(root);
-  tbe_compiler_annotate_xml_flat_messages(root);
+  tbe_compiler_annotate_xml_record_messages(root);
   tbe_compiler_annotate_csv_flat_messages(root);
 }
 

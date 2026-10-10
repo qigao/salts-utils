@@ -1031,6 +1031,36 @@ void test_cyaml_new_float(void)
     cyaml_free(doc);
 }
 
+void test_cyaml_boolean_emit_roundtrip(void)
+{
+    for (int value = 0; value <= 1; ++value) {
+        cyaml_doc_t* doc = cyaml_doc_new();
+        cyaml_doc_t* parsed;
+        char* output;
+        size_t len = 0;
+        bool result = false;
+        cyaml_set_root(doc, cyaml_new_bool(doc, value != 0));
+        output = cyaml_emit(doc, NULL, &len);
+        check_not_null(output);
+        parsed = cyaml_parse(output, len, NULL, NULL);
+        check_not_null(parsed);
+        check_equal(cyaml_scalar_kind(parsed, cyaml_root(parsed)), CYAML_KIND_BOOL);
+        check_true(cyaml_as_bool(parsed, cyaml_root(parsed), &result));
+        check_equal(result, value != 0);
+        cyaml_free(parsed);
+        free(output);
+        cyaml_set_root(doc, cyaml_new_cstr(doc, value ? "true" : "false"));
+        output = cyaml_emit(doc, NULL, &len);
+        check_not_null(output);
+        parsed = cyaml_parse(output, len, NULL, NULL);
+        check_not_null(parsed);
+        check_equal(cyaml_scalar_kind(parsed, cyaml_root(parsed)), CYAML_KIND_STRING);
+        cyaml_free(parsed);
+        free(output);
+        cyaml_free(doc);
+    }
+}
+
 void test_cyaml_new_bool_true(void)
 {
     cyaml_doc_t* doc = cyaml_doc_new();
@@ -2517,6 +2547,7 @@ suite("cyaml API") {
         CYAML_CASE(cyaml_new_int);
         CYAML_CASE(cyaml_new_uint);
         CYAML_CASE(cyaml_new_float);
+        CYAML_CASE(cyaml_boolean_emit_roundtrip);
         CYAML_CASE(cyaml_new_bool_true);
         CYAML_CASE(cyaml_new_bool_false);
         CYAML_CASE(cyaml_new_seq);

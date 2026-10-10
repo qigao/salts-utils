@@ -226,9 +226,12 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native(
  * data_bind_message_plan_decode_native(). CSV and XML additionally admit
  * textual leaf scalar coercion through each field's canonical CMeta descriptor:
  * BOOL/SINT/UINT/FLOAT text becomes the corresponding CSerde scalar token
- * before native decode. Binary readers provide canonical scalar tokens directly.
- * Other string/bytes/enum/container semantics are unchanged; nested bytes do
- * not receive the root-field JSON projection.
+ * before native decode. XML applies this conversion recursively to admitted
+ * nested records; XML enum text also accepts decimal integers/canonical unsigned
+ * bit patterns, with width and membership enforced by the enum provider.
+ * Symbolic enum names remain valid. Binary readers supply scalar tokens directly.
+ * String/bytes/container semantics are unchanged; nested bytes do not receive
+ * the root-field JSON projection. JSON numeric strings remain invalid.
  * CSV row selection, empty-cell omission and header-name canonicalization are
  * provider/FormatPlan concerns and are not performed by this API.
  *

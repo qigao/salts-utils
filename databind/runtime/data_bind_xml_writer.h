@@ -15,13 +15,18 @@ extern "C" {
  * Explicit-root XML writer lease.
  *
  * XML output requires a document-root identity, which is deliberately not
- * hidden in the generic FormatProvider ABI. The first writer profile accepts
- * exactly one flat CSerde MAP:
+ * hidden in the generic FormatProvider ABI. The writer accepts one CSerde MAP
+ * with recursively nested MAP values and record-field ARRAY values:
  *
  *   STRING key -> XML element name
  *   STRING / BOOL / SINT / UINT / finite FLOAT -> escaped leaf text
  *
- * NULL, BYTES, ARRAY and nested MAP values fail closed.
+ * MAP values become nested elements. ARRAY items repeat the owning field name;
+ * an empty ARRAY emits no element. Items may be scalar or MAP, but not ARRAY.
+ * NULL and BYTES fail closed. max_depth bounds simultaneously open MAP/ARRAY
+ * frames, including the root. The lease
+ * owns its document, stack and copied keys; tokens are borrowed only during
+ * write(). Only a complete document is delivered to the sink on finish().
  */
 typedef struct DataBindXmlWriter {
   size_t size;

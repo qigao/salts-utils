@@ -47,6 +47,7 @@ add_library(
   data_bind_method_plan.c
   data_bind_method_plan.h
   data_bind_projection_plan.c
+  data_bind_projection_plan_internal.h
   data_bind_projection_plan.h
   data_bind_flowmq_plan.h
   data_bind_socket_plan.h
@@ -596,6 +597,30 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     SOURCES test_tbe_cmeta_acceptance.c
     LIBS tbe_cmeta_graph_public_fixture Salts::Schema Salts::TinyTest
     FOLDER "databind/runtime/tests")
+
+  # Exercise owning-value/format contracts across a generated DLL boundary.
+  # The producer exports generated functions/data; consumers import them.
+  add_library(tbe_cmeta_graph_shared_fixture SHARED
+    "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
+    "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h")
+  target_link_libraries(tbe_cmeta_graph_shared_fixture PUBLIC Salts::DataBind)
+  target_include_directories(tbe_cmeta_graph_shared_fixture PUBLIC "${TBE_CMETA_GRAPH_DIR}")
+  target_compile_definitions(tbe_cmeta_graph_shared_fixture
+    PRIVATE TBE_GENERATED_BUILD_SHARED
+    INTERFACE TBE_GENERATED_USE_SHARED)
+  add_dependencies(tbe_cmeta_graph_shared_fixture tbe_cmeta_graph_generation)
+  cmake_config_target(tbe_cmeta_graph_shared_fixture
+    FOLDER "databind/runtime/tests")
+  cmake_add_test(test_databind_generated_cmeta_graph_shared
+    SOURCES test_databind_generated_cmeta_graph.c
+    LIBS tbe_cmeta_graph_shared_fixture Salts::TinyTest
+    FOLDER "databind/runtime/tests")
+  cmake_add_test(test_databind_generated_xml_shared_cpp
+    SOURCES test_databind_generated_xml_shared_cpp.cpp
+    LIBS tbe_cmeta_graph_shared_fixture Salts::TinyTest
+    FOLDER "databind/runtime/tests")
+  set_target_properties(test_databind_generated_xml_shared_cpp PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
   add_test(NAME test_tbe_cmeta_cli_gates
     COMMAND ${CMAKE_COMMAND}
       "-DTBE_COMPILER=$<TARGET_FILE:salts_idlc>"

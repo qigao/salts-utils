@@ -673,6 +673,7 @@ CYAML_API cyaml_node_t* cyaml_new_float(cyaml_doc_t* doc, double val);
 //! @param doc  Document to allocate from
 //! @param val  Boolean value
 //! @return New scalar node or NULL on failure
+//! Creates a Boolean scalar with an explicit !!bool tag for lossless emission.
 CYAML_API cyaml_node_t* cyaml_new_bool(cyaml_doc_t* doc, bool val);
 
 //! Create empty sequence node

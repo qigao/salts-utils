@@ -681,7 +681,9 @@ static int message_schema_field_matches_native(
         codec, type_name, field_index, &schema_data, &error);
 
   if (schema_data != NULL)
-    return cmeta_data_desc_equal(schema_data, native_data);
+    return cmeta_data_desc_equal(schema_data, native_data) ||
+           (schema_data->kind == CMETA_DATA_BOOL &&
+            cmeta_data_desc_equal(native_data, &cmeta_bool8_cmeta_data));
 
   return message_logical_buffer_matches_native(schema_field, native_data);
 }
@@ -1632,6 +1634,7 @@ static DataBindStatus message_decode_value(
     const DataBindMessageFieldPlan *field,
     const DataBindNativeOptions *native_options,
     DataBindNativeDecodeUsage *usage,
+    int xml_text,
     cserde_reader *reader,
     unsigned char *destination,
     DataBindMessagePlanDiagnostic *diagnostic) {
@@ -1670,7 +1673,7 @@ static DataBindStatus message_decode_value(
   status = data_bind_native_decode_usage(
       &field_options, field->data, reader,
       field_destination, field->data->storage_type->size,
-      &field_usage, &native);
+      &field_usage, xml_text, &native);
   if (status != DATA_BIND_OK)
     return message_native_failure(
         diagnostic, status, field->name, &native,
@@ -1705,6 +1708,7 @@ static DataBindStatus message_decode_prefixed_value(
     const DataBindMessageFieldPlan *field,
     const DataBindNativeOptions *native_options,
     DataBindNativeDecodeUsage *usage,
+    int xml_text,
     cserde_reader *source,
     const cserde_token *first,
     unsigned char *destination,
@@ -1729,7 +1733,7 @@ static DataBindStatus message_decode_prefixed_value(
         "Could not initialize prefixed MessagePlan reader");
 
   return message_decode_value(
-      plan, field, native_options, usage, &reader,
+      plan, field, native_options, usage, xml_text, &reader,
       destination, diagnostic);
 }
 
@@ -1755,7 +1759,7 @@ static DataBindStatus message_decode_default(
         "Could not initialize compiled MessagePlan default reader");
 
   return message_decode_value(
-      plan, field, native_options, usage, &reader,
+      plan, field, native_options, usage, 0, &reader,
       destination, diagnostic);
 }
 
@@ -1942,7 +1946,8 @@ static DataBindStatus message_decode_native_impl(
         if (status != DATA_BIND_OK) goto fail;
       }
       status = message_decode_prefixed_value(
-          plan, field, &field_options, &usage, reader, &value_token,
+          plan, field, &field_options, &usage,
+          format_aware && format == DATA_BIND_FORMAT_XML, reader, &value_token,
           base, diagnostic);
       if (status != DATA_BIND_OK) goto fail;
     }
@@ -2363,116 +2368,19 @@ static DataBindStatus message_xml_text_coerce(
     const cserde_token *input,
     cserde_token *output,
     DataBindMessagePlanDiagnostic *diagnostic) {
-  const char *text;
-  size_t length;
-
-  if (field == NULL || native_options == NULL || input == NULL || output == NULL)
+  DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindStatus status;
+  if (field == NULL || native_options == NULL ||
+      native_options->workspace == NULL ||
+      workspace_prefix > native_options->workspace_bytes)
     return DATA_BIND_ERR_INVALID_ARG;
-  *output = *input;
-  if (input->kind != CSERDE_STRING || field->data == NULL)
-    return DATA_BIND_OK;
-
-  text = (const char *)input->value.slice.data;
-  length = input->value.slice.size;
-  if (length != 0u && text == NULL)
-    return message_fail(
-        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
-        "XML textual scalar has no source bytes");
-
-  switch (field->data->kind) {
-  case CMETA_DATA_BOOL:
-    output->kind = CSERDE_BOOL;
-    if ((length == 4u && memcmp(text, "true", 4u) == 0) ||
-        (length == 3u && memcmp(text, "yes", 3u) == 0) ||
-        (length == 1u && text[0] == '1')) {
-      output->value.boolean = true;
-      return DATA_BIND_OK;
-    }
-    if ((length == 5u && memcmp(text, "false", 5u) == 0) ||
-        (length == 2u && memcmp(text, "no", 2u) == 0) ||
-        (length == 1u && text[0] == '0')) {
-      output->value.boolean = false;
-      return DATA_BIND_OK;
-    }
-    return message_fail(
-        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
-        "XML Boolean text does not match the canonical field type");
-
-  case CMETA_DATA_SINT: {
-    uint64_t magnitude = 0u;
-    int negative = 0;
-    int64_t value;
-    if (!data_bind_internal_parse_integer_magnitude(
-            text, length, (uint64_t)INT64_MAX + UINT64_C(1), 1,
-            &magnitude, &negative) ||
-        (!negative && magnitude > (uint64_t)INT64_MAX))
-      return message_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
-          "XML signed integer text does not match the canonical field type");
-    value = negative
-                ? (magnitude == (uint64_t)INT64_MAX + UINT64_C(1)
-                       ? INT64_MIN
-                       : -(int64_t)magnitude)
-                : (int64_t)magnitude;
-    output->kind = CSERDE_SINT;
-    output->value.sint = value;
-    return DATA_BIND_OK;
-  }
-
-  case CMETA_DATA_UINT: {
-    uint64_t value = 0u;
-    int negative = 0;
-    if (!data_bind_internal_parse_integer_magnitude(
-            text, length, UINT64_MAX, 0, &value, &negative) ||
-        negative)
-      return message_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
-          "XML unsigned integer text does not match the canonical field type");
-    output->kind = CSERDE_UINT;
-    output->value.uint = value;
-    return DATA_BIND_OK;
-  }
-
-  case CMETA_DATA_FLOAT: {
-    char *scratch;
-    char *end = NULL;
-    double value;
-    int valid;
-    if (native_options->workspace == NULL ||
-        workspace_prefix > native_options->workspace_bytes ||
-        length == SIZE_MAX ||
-        length + 1u > native_options->workspace_bytes - workspace_prefix)
-      return message_fail(
-          diagnostic, DATA_BIND_ERR_LIMIT, field->name,
-          "Native workspace cannot hold XML floating-point text");
-
-    /*
-     * Use the tail, not the field-staging prefix. The staging address is
-     * alignment-dependent and may otherwise overlap this text on MSVC/Win64.
-     * The text is dead after conversion and is restored to zero before native
-     * decode so later staging may safely reuse the same bytes.
-     */
-    scratch = (char *)native_options->workspace +
-              native_options->workspace_bytes - (length + 1u);
-    if (length != 0u) memcpy(scratch, text, length);
-    scratch[length] = '\0';
-    errno = 0;
-    value = strtod(scratch, &end);
-    valid = errno != ERANGE && end != scratch &&
-            end == scratch + length && isfinite(value);
-    memset(scratch, 0, length + 1u);
-    if (!valid)
-      return message_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
-          "XML floating-point text does not match the canonical field type");
-    output->kind = CSERDE_FLOAT;
-    output->value.floating = value;
-    return DATA_BIND_OK;
-  }
-
-  default:
-    return DATA_BIND_OK;
-  }
+  status = data_bind_native_xml_token(
+      field->data,
+      (unsigned char *)native_options->workspace + workspace_prefix,
+      native_options->workspace_bytes - workspace_prefix,
+      input, output, field->name, &native);
+  return status == DATA_BIND_OK ? status : message_native_failure(
+      diagnostic, status, field->name, &native, "XML scalar conversion failed");
 }
 
 static DataBindStatus message_decode_object_impl(

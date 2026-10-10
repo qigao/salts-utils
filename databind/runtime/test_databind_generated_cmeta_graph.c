@@ -453,23 +453,310 @@ spec("generated native CMeta graph") {
     data_bind_free(codec);
   }
 
-  it("fails closed for nested Sample XML without canonical flat admission") {
+  it("round trips nested Sample XML with root aliases and defaults") {
     static const char xml[] =
         "<Sample><point><x>3</x><y>4.5</y></point><state>7</state>"
-        "<wire_count>7</wire_count></Sample>";
+        "<old_count>7</old_count></Sample>";
+    static const char missing_default[] =
+        "<Sample><point><x>-3</x><y>2.5</y></point><state>0</state></Sample>";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value, roundtrip;
+    char *output = NULL;
+    size_t length = 0u;
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    Sample_init(&value);
+    Sample_init(&roundtrip);
+    {
+      DataBindStatus status = Sample_from_xml(codec, &value, xml, sizeof(xml) - 1u, &error);
+      info("nested XML status=%d path=%s message=%s", status, error.path, error.message);
+      check_equal(status, DATA_BIND_OK);
+    }
+    check_equal(value.point.x, 3);
+    check_equal(value.point.y, 4.5);
+    check_equal(value.count, 7);
+    check_equal(Sample_to_xml(codec, &value, &output, &length, &error), DATA_BIND_OK);
+    check_contains(output, "<point><x>3</x><y>4.5</y></point>");
+    check_contains(output, "<wire_count>7</wire_count>");
+    check_equal(Sample_from_xml(codec, &roundtrip, output, length, &error), DATA_BIND_OK);
+    check_equal(roundtrip.point.x, value.point.x);
+    check_equal(roundtrip.point.y, value.point.y);
+    check_equal(roundtrip.state, value.state);
+    check_equal(roundtrip.count, value.count);
+    data_bind_serialized_free(output);
+    check_equal(Sample_from_xml(codec, &value, missing_default,
+                               sizeof(missing_default) - 1u, &error), DATA_BIND_OK);
+    check_equal(value.count, 9);
+    Sample_clear(&roundtrip);
+    Sample_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("rejects invalid nested XML without publishing partial fields") {
+    static const char *const invalid[] = {
+        "<Sample><point><x>3</x><y>bad</y></point><state>7</state></Sample>",
+        "<Sample><point><x>2147483648</x><y>1</y></point><state>7</state></Sample>",
+        "<Sample><point><x>3</x><x>4</x><y>1</y></point><state>7</state></Sample>",
+        "<Sample><point><x>3</x></point><state>7</state></Sample>",
+        "<Sample><point><x>3</x><y>1</y><unknown>1</unknown></point><state>7</state></Sample>"
+    };
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
     Sample_t value;
-
+    size_t i;
     check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
-    check_not_null(codec);
-    if (codec == NULL) return;
     Sample_init(&value);
-    check_equal(
-        Sample_from_xml(
-            codec, &value, xml, sizeof(xml) - 1u, &error),
-        DATA_BIND_ERR_SCHEMA);
+    value.point.x = 91;
+    value.point.y = 9.5;
+    value.count = 92;
+    for (i = 0u; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+      check_not_equal(Sample_from_xml(codec, &value, invalid[i], strlen(invalid[i]), &error), DATA_BIND_OK);
+      check_equal(value.point.x, 91);
+      check_equal(value.point.y, 9.5);
+      check_equal(value.count, 92);
+    }
     Sample_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("round trips three XML record levels with nested aliases exact integers and owned text") {
+    static const char xml[] =
+        "<XmlEnvelope><body><old_leaf><old_low>-9223372036854775808</old_low>"
+        "<high>18446744073709551615</high><enabled>yes</enabled><score>1.25</score>"
+        "<old_label>A&amp;B</old_label><state>Ready</state><signed_value>-9223372036854775808</signed_value>"
+        "<wide>18446744073709551615</wide><permissions>3</permissions>"
+        "</old_leaf></body><tail>17</tail></XmlEnvelope>";
+    static const char invalid[] =
+        "<XmlEnvelope><body><leaf><low>-1</low><high>2</high><enabled>true</enabled>"
+        "<score>2.5</score><label>temporary</label><state>Ready</state>"
+        "<signed_value>-9223372036854775808</signed_value><wide>0</wide><permissions>1</permissions>"
+        "</leaf></body><tail>bad</tail></XmlEnvelope>";
+    static const char duplicate[] =
+        "<XmlEnvelope><body><old_leaf><wire_label>temporary</wire_label>"
+        "<old_label>duplicate</old_label></old_leaf></body><tail>0</tail></XmlEnvelope>";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    XmlEnvelope_t value, roundtrip;
+    char *output = NULL;
+    size_t length = 0u;
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    XmlEnvelope_init(&value);
+    XmlEnvelope_init(&roundtrip);
+    {
+      DataBindStatus status = XmlEnvelope_from_xml(codec, &value, xml, sizeof(xml) - 1u, &error);
+      info("nested XML status=%d path=%s message=%s", status, error.path, error.message);
+      check_equal(status, DATA_BIND_OK);
+    }
+    check_equal(value.body.leaf.low, INT64_MIN);
+    check_equal(value.body.leaf.high, UINT64_MAX);
+    check(value.body.leaf.enabled);
+    check_equal(value.body.leaf.score, 1.25);
+    check_equal(value.body.leaf.label, "A&B");
+    check_equal(XmlEnvelope_to_xml(codec, &value, &output, &length, &error), DATA_BIND_OK);
+    check_contains(output, "<wire_label>A&amp;B</wire_label>");
+    check_contains(output, "<wire_leaf>");
+    check_contains(output, "<wire_low>-9223372036854775808</wire_low>");
+    check_null(strstr(output, "old_"));
+    check_equal(XmlEnvelope_from_xml(codec, &roundtrip, output, length, &error), DATA_BIND_OK);
+    check_equal(roundtrip.body.leaf.low, INT64_MIN);
+    check_equal(roundtrip.body.leaf.high, UINT64_MAX);
+    check_equal(roundtrip.body.leaf.label, "A&B");
+    check_equal(roundtrip.tail, 17);
+    check_equal(roundtrip.body.leaf.enabled, (uint8_t)1u);
+    check_equal(roundtrip.body.leaf.score, 1.25);
+    check_equal(roundtrip.body.leaf.state, (int16_t)7);
+    check_equal(roundtrip.body.leaf.signed_value, INT64_MIN);
+    check_equal(roundtrip.body.leaf.wide, UINT64_MAX);
+    check_equal(roundtrip.body.leaf.permissions, (uint8_t)3u);
+    check_equal(XmlEnvelope_from_xml(codec, &value, invalid, sizeof(invalid) - 1u, &error), DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(value.body.leaf.low, INT64_MIN);
+    check_equal(value.body.leaf.label, "A&B");
+    check_equal(value.tail, 17);
+    check_equal(XmlEnvelope_from_xml(codec, &value, duplicate, sizeof(duplicate) - 1u, &error),
+                DATA_BIND_ERR_PARSE);
+    check_equal(error.path, "body");
+    check_contains(error.message, "Duplicate native Struct field");
+    check_equal(value.body.leaf.label, "A&B");
+    check_equal(value.tail, 17);
+    data_bind_serialized_free(output);
+    output = NULL;
+    check_equal(XmlEnvelope_to_json(codec, &value, &output, &length, &error), DATA_BIND_OK);
+    check_contains(output, "\"wire_leaf\"");
+    check_contains(output, "\"wire_label\"");
+    check_equal(XmlEnvelope_from_json(codec, &roundtrip, output, length, &error), DATA_BIND_OK);
+    check_equal(roundtrip.body.leaf.label, "A&B");
+    data_bind_serialized_free(output);
+    output = NULL;
+    check_equal(XmlEnvelope_to_yaml(codec, &value, &output, &length, &error), DATA_BIND_OK);
+    check_equal(XmlEnvelope_from_yaml(codec, &roundtrip, output, length, &error), DATA_BIND_OK);
+    check_equal(roundtrip.body.leaf.enabled, (uint8_t)1u);
+    check_equal(roundtrip.body.leaf.high, UINT64_MAX);
+    check_equal(roundtrip.body.leaf.label, "A&B");
+    data_bind_serialized_free(output);
+    XmlEnvelope_clear(&roundtrip);
+    XmlEnvelope_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("round trips nested YAML field names and input aliases") {
+    static const char yaml[] = "first:\n  old_value: 7\nsecond:\n  value: -9\n";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    XmlNamedPair_t value, roundtrip;
+    char *output = NULL;
+    size_t length = 0u;
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    XmlNamedPair_init(&value);
+    XmlNamedPair_init(&roundtrip);
+    check_equal(XmlNamedPair_from_yaml(codec, &value, yaml, sizeof(yaml) - 1u, &error), DATA_BIND_OK);
+    check_equal(value.first.value, 7);
+    check_equal(value.second.value, -9);
+    check_equal(XmlNamedPair_to_yaml(codec, &value, &output, &length, &error), DATA_BIND_OK);
+    check_contains(output, "wire_value: 7");
+    check_contains(output, "wire_value: -9");
+    check_null(strstr(output, "old_value"));
+    check_equal(XmlNamedPair_from_yaml(codec, &roundtrip, output, length, &error), DATA_BIND_OK);
+    check_equal(roundtrip.first.value, 7);
+    check_equal(roundtrip.second.value, -9);
+    data_bind_serialized_free(output);
+    XmlNamedPair_clear(&roundtrip);
+    XmlNamedPair_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("preserves record collection reflection and independent owners through the C facade") {
+    static const char xml[] =
+        "<XmlSequenceItem><id>7</id><wire_text>A&amp;B</wire_text></XmlSequenceItem>";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    XmlSequenceItem_t source, copied;
+    XmlSequences_items_vec_t items = {0};
+    const cmeta_data_desc *data = XmlSequences_items_vec_t_cmeta_data();
+    const XmlSequenceItem_t *stored;
+    cmeta_range range;
+    cmeta_range_cursor cursor = {0};
+    cmeta_collector collector = XmlSequences_items_vec_t_collector(&items, 1u);
+
+    /* Object-independent metadata is required before a collection exists. */
+    check(cmeta_data_desc_equal(cmeta_data_collection_element_data(data),
+                                &XmlSequenceItem_CMETA_DATA));
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    if (codec == NULL) return;
+    XmlSequenceItem_init(&source);
+    XmlSequenceItem_init(&copied);
+    check_equal(XmlSequenceItem_from_xml(codec, &source, xml, sizeof(xml) - 1u,
+                                         &error), DATA_BIND_OK);
+    check_equal(cmeta_collector_begin(&collector), CMETA_OK);
+    check_equal(cmeta_collector_accept(&collector, &XmlSequenceItem_CMETA_TYPE,
+                                       &source), CMETA_OK);
+    check_equal(cmeta_collector_finish(&collector), CMETA_OK);
+    stored = XmlSequences_items_vec_t_at_const(&items, 0u);
+    check_not_null(stored);
+    if (stored != NULL) {
+      check(stored->text != source.text);
+      check_equal(stored->text, "A&B");
+    }
+    XmlSequenceItem_clear(&source);
+    data_bind_free(codec);
+
+    range = XmlSequences_items_vec_t_range(&items);
+    check(range.flags & CMETA_RANGE_CONSTRUCTS_VALUES);
+    check_equal(cmeta_range_next(&range, &cursor, &copied), CMETA_GEN_VALUE_AND_DONE);
+    check_equal(copied.id, 7);
+    check_equal(copied.text, "A&B");
+    if (stored != NULL) check(copied.text != stored->text);
+    XmlSequences_items_vec_t_destroy(&items);
+    /* Range materialization owns its copy after the source container dies. */
+    check_equal(copied.text, "A&B");
+    XmlSequenceItem_clear(&copied);
+  }
+
+  it("round trips repeated XML sequences with interleaved aliases and nested owned records") {
+    static const char xml[] =
+        "<XmlSequenceEnvelope><data><old_values>1</old_values>"
+        "<items><id>7</id><old_text>A&amp;B</old_text></items><marker>9</marker>"
+        "<values>-2</values><tags>x</tags><switches>true</switches>"
+        "<wire_values>3</wire_values><items><id>8</id><text>second</text></items>"
+        "<tags>y</tags><switches>false</switches></data><title>ok</title></XmlSequenceEnvelope>";
+    static const char empty[] =
+        "<XmlSequenceEnvelope><data><marker>0</marker></data><title>empty</title></XmlSequenceEnvelope>";
+    static const char invalid[] =
+        "<XmlSequenceEnvelope><data><marker>2</marker>"
+        "<items><id>1</id><text>temporary</text></items>"
+        "<items><id>bad</id><text>bad</text></items></data><title>bad</title></XmlSequenceEnvelope>";
+    static const char *const rejected[] = {
+        "<XmlSequenceEnvelope><data><marker>1</marker><unknown>2</unknown></data><title>x</title></XmlSequenceEnvelope>",
+        "<XmlSequenceEnvelope><data><marker>1</marker><marker>2</marker></data><title>x</title></XmlSequenceEnvelope>",
+        "<XmlSequenceEnvelope><data><marker>1</marker><items><id>1</id><wire_text>x</wire_text><old_text>y</old_text></items></data><title>x</title></XmlSequenceEnvelope>",
+        "<XmlSequenceEnvelope><data><marker>1</marker><old_values>2147483648</old_values></data><title>x</title></XmlSequenceEnvelope>",
+        "<XmlSequenceEnvelope><data old_values=\"1\"><marker>1</marker></data><title>x</title></XmlSequenceEnvelope>"
+    };
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    XmlSequenceEnvelope_t value, decoded;
+    char *output = NULL;
+    size_t length = 0u;
+    size_t i;
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    XmlSequenceEnvelope_init(&value);
+    XmlSequenceEnvelope_init(&decoded);
+    {
+      DataBindStatus status = XmlSequenceEnvelope_from_xml(codec, &value, xml, sizeof(xml) - 1u, &error);
+      info("XML sequences status=%d path=%s message=%s", status, error.path, error.message);
+      check_equal(status, DATA_BIND_OK);
+    }
+    check_equal(XmlSequences_values_vec_t_size(&value.data.values), (size_t)3u);
+    check_equal(*XmlSequences_values_vec_t_at_const(&value.data.values, 1u), -2);
+    check_equal(XmlSequences_items_vec_t_size(&value.data.items), (size_t)2u);
+    check_equal(XmlSequences_items_vec_t_at_const(&value.data.items, 0u)->text, "A&B");
+    check_equal(XmlSequences_switches_vec_t_size(&value.data.switches), (size_t)2u);
+    check_equal(XmlSequences_tags_set_t_size(&value.data.tags), (size_t)2u);
+    check_equal(*XmlSequences_switches_vec_t_at_const(&value.data.switches, 1u), (uint8_t)0u);
+    check_equal(XmlSequenceEnvelope_to_xml(codec, &value, &output, &length, &error), DATA_BIND_OK);
+    check_contains(output, "<wire_values>1</wire_values><wire_values>-2</wire_values><wire_values>3</wire_values>");
+    check_contains(output, "<wire_text>A&amp;B</wire_text>");
+    check_contains(output, "<tags>x</tags>");
+    check_contains(output, "<tags>y</tags>");
+    check_equal(XmlSequenceEnvelope_from_xml(codec, &decoded, output, length, &error), DATA_BIND_OK);
+    check_equal(XmlSequences_items_vec_t_at_const(&decoded.data.items, 1u)->text, "second");
+    check_equal(decoded.title, "ok");
+    data_bind_serialized_free(output);
+    output = NULL;
+    check_equal(XmlSequenceEnvelope_to_json(codec, &value, &output, &length, &error), DATA_BIND_OK);
+    check_contains(output, "\"wire_values\"");
+    check_contains(output, "\"wire_text\"");
+    check_equal(XmlSequenceEnvelope_from_json(codec, &decoded, output, length, &error), DATA_BIND_OK);
+    check_equal(XmlSequences_items_vec_t_at_const(&decoded.data.items, 0u)->text, "A&B");
+    data_bind_serialized_free(output);
+    output = NULL;
+    check_equal(XmlSequenceEnvelope_to_yaml(codec, &value, &output, &length, &error), DATA_BIND_OK);
+    check_equal(XmlSequenceEnvelope_from_yaml(codec, &decoded, output, length, &error), DATA_BIND_OK);
+    check_equal(*XmlSequences_switches_vec_t_at_const(&decoded.data.switches, 0u), (uint8_t)1u);
+    check_equal(*XmlSequences_switches_vec_t_at_const(&decoded.data.switches, 1u), (uint8_t)0u);
+    data_bind_serialized_free(output);
+    output = NULL;
+    check_not_equal(XmlSequenceEnvelope_from_xml(codec, &value, invalid, sizeof(invalid) - 1u, &error), DATA_BIND_OK);
+    check_equal(value.data.marker, 9);
+    check_equal(XmlSequences_items_vec_t_at_const(&value.data.items, 0u)->text, "A&B");
+    check_equal(value.title, "ok");
+    for (i = 0u; i < sizeof(rejected) / sizeof(rejected[0]); ++i) {
+      check_not_equal(XmlSequenceEnvelope_from_xml(codec, &value, rejected[i], strlen(rejected[i]), &error), DATA_BIND_OK);
+      check_equal(value.data.marker, 9);
+      check_equal(XmlSequences_items_vec_t_at_const(&value.data.items, 0u)->text, "A&B");
+      check_equal(value.title, "ok");
+    }
+    check_equal(XmlSequenceEnvelope_from_xml(codec, &value, empty, sizeof(empty) - 1u, &error), DATA_BIND_OK);
+    check_equal(XmlSequences_values_vec_t_size(&value.data.values), (size_t)0u);
+    check_equal(XmlSequences_items_vec_t_size(&value.data.items), (size_t)0u);
+    check_equal(XmlSequenceEnvelope_to_xml(codec, &value, &output, &length, &error), DATA_BIND_OK);
+    check_null(strstr(output, "wire_values"));
+    check_equal(XmlSequenceEnvelope_from_xml(codec, &decoded, output, length, &error), DATA_BIND_OK);
+    check_equal(XmlSequences_values_vec_t_size(&decoded.data.values), (size_t)0u);
+    check_equal(decoded.title, "empty");
+    data_bind_serialized_free(output);
+    XmlSequenceEnvelope_clear(&decoded);
+    XmlSequenceEnvelope_clear(&value);
     data_bind_free(codec);
   }
 
@@ -560,14 +847,14 @@ spec("generated native CMeta graph") {
     check_equal(count, 0);
   }
 
-  it("rejects unsupported nested native XML with an invalid scalar") {
+  it("rejects nested native XML with an invalid scalar") {
     static const char xml[] =
         "<Sample><point><x>3</x><y>4.5</y></point><state>7</state>"
         "<wire_count>garbage</wire_count></Sample>";
     int32_t count = 0;
     check_equal(parse_sample_count(DATA_BIND_FORMAT_XML, xml,
                                    sizeof(xml) - 1u, &count),
-                DATA_BIND_ERR_SCHEMA);
+                DATA_BIND_ERR_TYPE_MISMATCH);
     check_equal(count, 0);
   }
 
@@ -709,7 +996,7 @@ spec("generated native CMeta graph") {
                             cmeta_data_bool.storage_type));
   }
 
-  it("publishes exact fixed-value providers and rejects unsupported conversions") {
+  it("admits generated Bool8 input while preserving fixed-value output limits") {
     static const char json[] =
         "{\"enabled\":true,\"id\":\"00000000-0000-0000-0000-000000000000\","
         "\"digest\":\"0123456789abcdef\"}";
@@ -763,23 +1050,21 @@ spec("generated native CMeta graph") {
     if (!codec) return;
     FixedValues_init(&destination);
     check_equal(FixedValues_from_json(
-                    codec, &destination, json, strlen(json), &error),
-                DATA_BIND_ERR_TYPE_MISMATCH);
-    check(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)) == 0);
-    check_equal(FixedValues_to_json(
-                    codec, &destination, &encoded, &encoded_len, &error),
-                DATA_BIND_ERR_TYPE_MISMATCH);
-    check_null(encoded);
-    check_equal(encoded_len, (size_t)0u);
-
-    /* Binary layout admits UUID bytes; the neighboring Bool8 storage still
-     * fails native schema admission, before any wire output is published. */
-    error = (DataBindError)DATA_BIND_ERROR_INIT;
-    DataBindStatus binary_status = FixedValues_to_bin(
-        codec, &destination, &wire, &wire_len, &error);
-    info("fixed-value Binary encode: %s (%s)", error.message, error.path);
-    check_equal(binary_status, DATA_BIND_ERR_TYPE_MISMATCH);
-    check_equal(error.path, "enabled");
+                    codec, &destination, json, strlen(json), &error), DATA_BIND_OK);
+    check_equal(destination.enabled, (uint8_t)1u);
+    check(memcmp(destination.digest, "0123456789abcdef", sizeof(destination.digest)) == 0);
+    {
+      DataBindStatus status = FixedValues_to_json(
+          codec, &destination, &encoded, &encoded_len, &error);
+      info("fixed-value JSON output: %s (%s)", error.message, error.path);
+      check_equal(status, DATA_BIND_ERR_SCHEMA);
+      check_null(encoded);
+      check_equal(encoded_len, (size_t)0u);
+    }
+    /* Bool8 now admits, while unsupported fixed-value egress still fails
+     * before publishing an output buffer. */
+    check_equal(FixedValues_to_bin(
+                    codec, &destination, &wire, &wire_len, &error), DATA_BIND_ERR_SCHEMA);
     check_null(wire);
     check_equal(wire_len, (size_t)0u);
 

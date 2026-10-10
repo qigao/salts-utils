@@ -26,6 +26,8 @@ static DataBind *projection_plan_codec(void) {
       "message CsvNested { CsvPoint point; }"
       "message CsvList { list<uint32> values; }"
       "message CsvSet { set<uint32> values; }"
+      "message XmlOptionalList { optional list<uint32> values; }"
+      "message XmlNestedList { list<list<uint32>> values; }"
       "message CsvMap { map<string,int32> attrs; }"
       "union CsvChoice { CsvPoint point; }"
       "message CsvUnion { CsvChoice choice; }"
@@ -37,13 +39,16 @@ static DataBind *projection_plan_codec(void) {
       " [name(childValue), alias(legacyChild)] uint32 value;"
       "}"
       "message NamedNested { NamedChild child; }"
+      "message OtherNamedChild { [name(childValue), alias(legacyChild)] uint32 other; }"
+      "message NamedBranches { NamedChild child; OtherNamedChild other; uint32 qty; }"
+      "message NamedList { list<NamedChild> children; }"
       "service Store {"
       " Read: Request -> Response;"
       "}"
       "service ShapeStore {"
       " Nested: CsvNested -> Response;"
       " List: CsvList -> Response;"
-      " ReadNames: NamedRoot -> CsvList;"
+      " ReadNames: NamedRoot -> CsvMap;"
       "}";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
@@ -151,6 +156,181 @@ static DataBindStatus projection_collision_codec(
 }
 
 spec("DataBind FormatPlan and TransportPlan") {
+  it("projects nested names by record scope with independent cursors after codec destruction") {
+    const DataBindFormat formats[] = {
+        DATA_BIND_FORMAT_XML, DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_YAML};
+    const cserde_token tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN}, plan_key("child"),
+        {.kind = CSERDE_MAP_BEGIN}, plan_key("legacyChild"),
+        {.kind = CSERDE_UINT, .value.uint = 7u}, {.kind = CSERDE_MAP_END},
+        plan_key("other"), {.kind = CSERDE_MAP_BEGIN}, plan_key("legacyChild"),
+        {.kind = CSERDE_UINT, .value.uint = 9u}, {.kind = CSERDE_MAP_END},
+        plan_key("qty"), {.kind = CSERDE_UINT, .value.uint = 2u},
+        {.kind = CSERDE_MAP_END}};
+    size_t f;
+    for (f = 0u; f < sizeof(formats) / sizeof(formats[0]); ++f) {
+      DataBind *codec = projection_plan_codec();
+      DataBindFormatPlan *plan = NULL;
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      DataBindFormatCanonicalReader ingress = DATA_BIND_FORMAT_CANONICAL_READER_INIT;
+      DataBindFormatCanonicalWriter egress = DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
+      DataBindFormatCursor read_cursor = DATA_BIND_FORMAT_CURSOR_INIT;
+      DataBindFormatCursor write_cursor = DATA_BIND_FORMAT_CURSOR_INIT;
+      PlanTokenReader source = {0};
+      PlanTokenWriter sink = {0};
+      cserde_reader raw = {0};
+      cserde_writer target = {0};
+      cserde_token token = {0};
+      cserde_slice retained_key = {0};
+      size_t i;
+      check_not_null(codec);
+      check_equal(data_bind_format_plan_compile(codec, "NamedBranches", formats[f], &plan, &error),
+                  DATA_BIND_OK);
+      data_bind_free(codec);
+      check_true(plan_reader_init(&raw, &source, tokens, sizeof(tokens) / sizeof(tokens[0])));
+      check_true(plan_writer_init(&target, &sink));
+      check_equal(data_bind_format_canonical_writer_init(plan, &target, &egress, &error),
+                  DATA_BIND_ERR_SCHEMA);
+      check_equal(sink.count, (size_t)0u);
+      check_equal(data_bind_format_canonical_reader_init_recursive(
+                      plan, &raw, &ingress, &read_cursor, &error), DATA_BIND_OK);
+      check_equal(data_bind_format_canonical_writer_init_recursive(
+                      plan, &target, &egress, &write_cursor, &error), DATA_BIND_OK);
+      for (i = 0u; i < sizeof(tokens) / sizeof(tokens[0]); ++i) {
+        check_equal(cserde_reader_next(&ingress.reader, &token), CSERDE_OK);
+        if (i == 3u) {
+          check_true(token_key_equal(&token, "value"));
+          retained_key = token.value.slice;
+        }
+        if (i == 8u) check_true(token_key_equal(&token, "other"));
+        check_equal(cserde_writer_write(&egress.writer, &token), CSERDE_OK);
+      }
+      check_equal(cserde_reader_next(&ingress.reader, &token), CSERDE_DONE);
+      check_equal(cserde_writer_finish(&egress.writer), CSERDE_OK);
+      check_equal(target.state, CSERDE_WRITER_READY);
+      check_true(token_key_equal(&sink.tokens[3], "childValue"));
+      check_true(token_key_equal(&sink.tokens[8], "childValue"));
+      check_true(token_key_equal(&sink.tokens[11], "qty"));
+      check_equal(retained_key.size, (size_t)5u);
+      check_equal(memcmp(retained_key.data, "value", 5u), 0);
+      data_bind_format_plan_free(plan);
+    }
+  }
+
+  it("normalizes nested duplicates and rejects unknown keys and malformed container ends") {
+    DataBind *codec = projection_plan_codec();
+    DataBindFormatPlan *plan = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    const char *keys[] = {"legacyChild", "childValue", "value", "unknown"};
+    size_t k;
+    check_equal(data_bind_format_plan_compile(codec, "NamedNested", DATA_BIND_FORMAT_XML, &plan, &error),
+                DATA_BIND_OK);
+    for (k = 0u; k < sizeof(keys) / sizeof(keys[0]); ++k) {
+      const cserde_token tokens[] = {
+          {.kind = CSERDE_MAP_BEGIN}, plan_key("child"), {.kind = CSERDE_MAP_BEGIN},
+          plan_key("childValue"), {.kind = CSERDE_UINT, .value.uint = 1u},
+          plan_key(keys[k]), {.kind = CSERDE_UINT, .value.uint = 2u},
+          {.kind = CSERDE_ARRAY_END}};
+      DataBindFormatCanonicalReader ingress = DATA_BIND_FORMAT_CANONICAL_READER_INIT;
+      DataBindFormatCursor cursor = DATA_BIND_FORMAT_CURSOR_INIT;
+      PlanTokenReader source = {0};
+      cserde_reader raw = {0};
+      cserde_token token = {0};
+      size_t i;
+      check_true(plan_reader_init(&raw, &source, tokens, sizeof(tokens) / sizeof(tokens[0])));
+      check_equal(data_bind_format_canonical_reader_init_recursive(
+                      plan, &raw, &ingress, &cursor, &error), DATA_BIND_OK);
+      for (i = 0u; i < 5u; ++i)
+        check_equal(cserde_reader_next(&ingress.reader, &token), CSERDE_OK);
+      if (k == 3u) {
+        check_equal(cserde_reader_next(&ingress.reader, &token), CSERDE_UNSUPPORTED);
+      } else {
+        check_equal(cserde_reader_next(&ingress.reader, &token), CSERDE_OK);
+        check_true(token_key_equal(&token, "value"));
+        check_equal(cserde_reader_next(&ingress.reader, &token), CSERDE_OK);
+        check_equal(cserde_reader_next(&ingress.reader, &token), CSERDE_UNSUPPORTED);
+      }
+    }
+    data_bind_format_plan_free(plan);
+    plan = NULL;
+    check_equal(data_bind_format_plan_compile(codec, "NamedList", DATA_BIND_FORMAT_JSON, &plan, &error),
+                DATA_BIND_OK);
+    data_bind_format_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("bounds recursive cursor depth including forwarded collection containers") {
+    DataBind *codec = projection_plan_codec();
+    DataBindFormatPlan *plan = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    cserde_token tokens[2u * DATA_BIND_FORMAT_CURSOR_MAX_DEPTH + 2u] = {{0}};
+    size_t excessive;
+    check_equal(data_bind_format_plan_compile(codec, "CsvList", DATA_BIND_FORMAT_JSON, &plan, &error),
+                DATA_BIND_OK);
+    for (excessive = 0u; excessive <= 1u; ++excessive) {
+      DataBindFormatCanonicalReader ingress = DATA_BIND_FORMAT_CANONICAL_READER_INIT;
+      DataBindFormatCursor cursor = DATA_BIND_FORMAT_CURSOR_INIT;
+      PlanTokenReader source = {0};
+      cserde_reader raw = {0};
+      cserde_token token = {0};
+      size_t count = 0u, i;
+      tokens[count++].kind = CSERDE_MAP_BEGIN;
+      tokens[count++] = plan_key("values");
+      for (i = 1u; i < DATA_BIND_FORMAT_CURSOR_MAX_DEPTH + excessive; ++i)
+        tokens[count++].kind = CSERDE_ARRAY_BEGIN;
+      for (i = 1u; i < DATA_BIND_FORMAT_CURSOR_MAX_DEPTH + excessive; ++i)
+        tokens[count++].kind = CSERDE_ARRAY_END;
+      tokens[count++].kind = CSERDE_MAP_END;
+      check_true(plan_reader_init(&raw, &source, tokens, count));
+      check_equal(data_bind_format_canonical_reader_init_recursive(
+                      plan, &raw, &ingress, &cursor, &error), DATA_BIND_OK);
+      for (i = 0u; i < (excessive ? DATA_BIND_FORMAT_CURSOR_MAX_DEPTH + 1u : count); ++i)
+        check_equal(cserde_reader_next(&ingress.reader, &token), CSERDE_OK);
+      check_equal(cserde_reader_next(&ingress.reader, &token),
+                  excessive ? CSERDE_LIMIT_EXCEEDED : CSERDE_DONE);
+    }
+    data_bind_format_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("rejects incomplete recursive output and input-only aliases without finishing the target") {
+    DataBind *codec = projection_plan_codec();
+    DataBindFormatPlan *plan = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    const cserde_token prefix[] = {
+        {.kind = CSERDE_MAP_BEGIN}, plan_key("child"), {.kind = CSERDE_MAP_BEGIN}};
+    size_t attempt;
+    check_equal(data_bind_format_plan_compile(codec, "NamedNested", DATA_BIND_FORMAT_XML, &plan, &error),
+                DATA_BIND_OK);
+    for (attempt = 0u; attempt < 3u; ++attempt) {
+      DataBindFormatCanonicalWriter egress = DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
+      DataBindFormatCursor cursor = DATA_BIND_FORMAT_CURSOR_INIT;
+      PlanTokenWriter sink = {0};
+      cserde_writer target = {0};
+      cserde_token key = plan_key(attempt == 1u ? "legacyChild" : "value");
+      size_t i;
+      check_true(plan_writer_init(&target, &sink));
+      check_equal(data_bind_format_canonical_writer_init_recursive(
+                      plan, &target, &egress, &cursor, &error), DATA_BIND_OK);
+      for (i = 0u; i < sizeof(prefix) / sizeof(prefix[0]); ++i)
+        check_equal(cserde_writer_write(&egress.writer, &prefix[i]), CSERDE_OK);
+      if (attempt == 2u) {
+        /* A failing borrowed sink must propagate its limit without a retry. */
+        sink.count = sizeof(sink.tokens) / sizeof(sink.tokens[0]);
+        check_equal(cserde_writer_write(&egress.writer, &key), CSERDE_LIMIT_EXCEEDED);
+        check_equal(cserde_writer_finish(&egress.writer), CSERDE_LIMIT_EXCEEDED);
+      } else {
+        check_equal(cserde_writer_write(&egress.writer, &key),
+                    attempt == 1u ? CSERDE_UNSUPPORTED : CSERDE_OK);
+        check_equal(cserde_writer_finish(&egress.writer), CSERDE_UNSUPPORTED);
+        check_equal(target.state, CSERDE_WRITER_READY);
+        check_equal(sink.count, attempt == 1u ? (size_t)3u : (size_t)4u);
+      }
+    }
+    data_bind_format_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("freezes format state-space facts without runtime schema lookup") {
     DataBind *codec = projection_plan_codec();
     DataBindFormatPlan *json = NULL;
@@ -470,7 +650,7 @@ spec("DataBind FormatPlan and TransportPlan") {
     data_bind_free(codec);
   }
 
-  it("rejects unknown root names nested alias gaps and cross-field collisions") {
+  it("rejects unknown names legacy nested cursors and cross-field collisions") {
     DataBind *codec = projection_plan_codec();
     DataBindFormatPlan *plan = NULL;
     DataBindFormatCanonicalReader canonical =
@@ -514,9 +694,12 @@ spec("DataBind FormatPlan and TransportPlan") {
     check_equal(
         data_bind_format_plan_compile(
             codec, "NamedNested", DATA_BIND_FORMAT_JSON, &plan, &error),
-        DATA_BIND_ERR_SCHEMA);
-    check_null(plan);
-    check_contains(error.message, "nested type");
+        DATA_BIND_OK);
+    check_equal(data_bind_format_canonical_reader_init(plan, &raw, &canonical, &error),
+                DATA_BIND_ERR_SCHEMA);
+    check_contains(error.message, "recursive");
+    data_bind_format_plan_free(plan);
+    plan = NULL;
 
     /* Text naming is orthogonal to Binary layout and does not gate Binary. */
     error = (DataBindError)DATA_BIND_ERROR_INIT;
@@ -644,13 +827,13 @@ spec("DataBind FormatPlan and TransportPlan") {
     data_bind_free(codec);
   }
 
-  it("admits nested XML objects but rejects collection and variant shapes") {
+  it("admits XML records and required sequences while rejecting ambiguous collection shapes") {
     DataBind *codec = projection_plan_codec();
     DataBindFormatPlan *plan = NULL;
     DataBindTransportPlan *transport = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     static const char *const rejected[] = {
-        "CsvList", "CsvSet", "CsvMap", "CsvUnion", "CsvChoice"};
+        "CsvMap", "CsvUnion", "CsvChoice", "XmlOptionalList", "XmlNestedList"};
     size_t i;
 
     check_not_null(codec);
@@ -698,9 +881,8 @@ spec("DataBind FormatPlan and TransportPlan") {
             codec, "ShapeStore", "List", DATA_BIND_TRANSPORT_RPC,
             DATA_BIND_FORMAT_XML, DATA_BIND_FORMAT_XML,
             &transport, &error),
-        DATA_BIND_ERR_SCHEMA);
-    check_null(transport);
-    check_contains(error.message, "XML FormatPlan");
+        DATA_BIND_OK);
+    data_bind_transport_plan_free(transport);
 
     data_bind_free(codec);
   }
@@ -743,7 +925,7 @@ spec("DataBind FormatPlan and TransportPlan") {
     check_equal(info.service_name, "ShapeStore");
     check_equal(info.operation_name, "ReadNames");
     check_true(data_bind_format_plan_info(info.egress, &egress));
-    check_equal(egress.type_name, "CsvList");
+    check_equal(egress.type_name, "CsvMap");
     check_equal(egress.format, DATA_BIND_FORMAT_JSON);
     check_true(plan_reader_init(&raw, &source, tokens,
         sizeof(tokens) / sizeof(tokens[0])));

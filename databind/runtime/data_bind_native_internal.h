@@ -35,13 +35,21 @@ typedef struct DataBindNativeDecodeUsage {
  * Decode one canonical native value and publish exact runtime budget usage.
  *
  * This is an internal composition seam for MessagePlan. Public native decode
- * ABI remains unchanged. usage is written only on success.
+ * ABI remains unchanged. usage is written only on success. xml_text enables
+ * schema-directed textual scalar conversion throughout this value subtree.
  */
 DataBindStatus data_bind_native_decode_usage(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     cserde_reader *reader, void *destination, size_t destination_bytes,
-    DataBindNativeDecodeUsage *usage,
+    DataBindNativeDecodeUsage *usage, int xml_text,
     DataBindNativeDiagnostic *diagnostic);
+
+/* Convert XML scalar text using admitted physical type semantics. workspace is
+ * exclusively borrowed unused scratch, never live native values or bitmaps. */
+DataBindStatus data_bind_native_xml_token(
+    const cmeta_data_desc *data, void *workspace, size_t workspace_bytes,
+    const cserde_token *input, cserde_token *output,
+    const char *path, DataBindNativeDiagnostic *diagnostic);
 
 #ifdef __cplusplus
 }

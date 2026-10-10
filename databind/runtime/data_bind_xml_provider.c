@@ -1,4 +1,5 @@
 #include "data_bind_xml_provider.h"
+#include "data_bind_projection_plan_internal.h"
 
 #include <xml_parser/xml_parser.h>
 
@@ -12,7 +13,10 @@ typedef enum data_bind_xml_phase {
   DATA_BIND_XML_CHILD_VALUE,
   DATA_BIND_XML_ATTRIBUTE_KEY,
   DATA_BIND_XML_ATTRIBUTE_VALUE,
-  DATA_BIND_XML_END
+  DATA_BIND_XML_END,
+  DATA_BIND_XML_PLAN_KEY,
+  DATA_BIND_XML_PLAN_VALUE,
+  DATA_BIND_XML_PLAN_ITEMS
 } data_bind_xml_phase;
 
 typedef struct data_bind_xml_frame {
@@ -22,10 +26,14 @@ typedef struct data_bind_xml_frame {
   salts_xml_node pending_child;
   salts_xml_attribute pending_attribute;
   data_bind_xml_phase phase;
+  uint32_t record;
+  size_t field_index;
+  DataBindXmlFieldPlan field;
 } data_bind_xml_frame;
 
 typedef struct data_bind_xml_reader {
   cserde_reader reader;
+  const DataBindFormatPlan *plan;
   salts_xml_document document;
   salts_xml_node root;
   salts_xml_node_list selected;
@@ -392,10 +400,130 @@ static cserde_status xml_emit_node(
   return CSERDE_OK;
 }
 
+static size_t xml_plan_field_index(
+    const data_bind_xml_reader *context, uint32_t record, salts_xml_string_view name) {
+  return data_bind_format_record_field_find(context->plan, record, name.data, name.size);
+}
+
+static cserde_status xml_plan_emit_record(
+    data_bind_xml_reader *context, salts_xml_node node, uint32_t record, cserde_token *out) {
+  size_t i;
+  data_bind_xml_frame *frame;
+  if (context->depth == context->max_depth) return CSERDE_LIMIT_EXCEEDED;
+  /* Validate the complete namespace before enumerating schema fields, so
+   * schema-order grouping cannot silently discard unknown document keys. */
+  for (i = 0u; i < salts_xml_node_child_count(node); ++i) {
+    salts_xml_node child = salts_xml_node_child_at(node, i);
+    if (salts_xml_node_type(child) == SALTS_XML_ELEMENT &&
+        xml_plan_field_index(context, record, salts_xml_node_display_name(child)) == SIZE_MAX)
+      return CSERDE_UNSUPPORTED;
+  }
+  for (i = 0u; i < salts_xml_node_attribute_count(node); ++i) {
+    salts_xml_attribute attr = salts_xml_node_attribute_at(node, i);
+    if (!xml_attribute_shadowed_by_child(node, attr) &&
+        xml_plan_field_index(context, record, salts_xml_attribute_qualified_name(attr)) == SIZE_MAX)
+      return CSERDE_UNSUPPORTED;
+  }
+  frame = &context->frames[context->depth++];
+  memset(frame, 0, sizeof(*frame));
+  frame->node = node;
+  frame->record = record;
+  frame->phase = DATA_BIND_XML_PLAN_KEY;
+  *out = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+  return CSERDE_OK;
+}
+
+/* Search directly in the lease-owned DOM. No token buffering or retained
+ * transient text is needed, even when repeated fields are interleaved. */
+static int xml_plan_next_match(data_bind_xml_reader *context, data_bind_xml_frame *frame) {
+  while (xml_find_next_child(frame, &frame->pending_child)) {
+    if (xml_plan_field_index(context, frame->record,
+            salts_xml_node_display_name(frame->pending_child)) == frame->field_index)
+      return 1;
+  }
+  frame->pending_child = (salts_xml_node){0};
+  while (xml_find_next_attribute(frame, &frame->pending_attribute)) {
+    if (xml_plan_field_index(context, frame->record,
+            salts_xml_attribute_qualified_name(frame->pending_attribute)) == frame->field_index)
+      return 2;
+  }
+  frame->pending_attribute = (salts_xml_attribute){0};
+  return 0;
+}
+
+static cserde_status xml_plan_emit_match(
+    data_bind_xml_reader *context, const data_bind_xml_frame *frame, cserde_token *out) {
+  if (frame->pending_child.impl != NULL) {
+    if (frame->field.child != UINT32_MAX)
+      return xml_plan_emit_record(context, frame->pending_child, frame->field.child, out);
+    return xml_emit_node(context, frame->pending_child, out);
+  }
+  if (frame->field.child != UINT32_MAX || frame->field.sequence)
+    return CSERDE_UNSUPPORTED;
+  return xml_emit_logical_slice(context, out,
+      salts_xml_attribute_value(frame->pending_attribute), 1);
+}
+
+static cserde_status xml_plan_next(data_bind_xml_reader *context, cserde_token *out) {
+  if (context->root_pending) {
+    context->root_pending = 0;
+    return xml_plan_emit_record(context, context->root, 0u, out);
+  }
+  while (context->depth != 0u) {
+    data_bind_xml_frame *frame = &context->frames[context->depth - 1u];
+    if (frame->phase == DATA_BIND_XML_PLAN_ITEMS) {
+      if (xml_plan_next_match(context, frame))
+        return xml_plan_emit_match(context, frame, out);
+      --context->depth;
+      *out = (cserde_token){.kind = CSERDE_ARRAY_END};
+      return CSERDE_OK;
+    }
+    if (frame->phase == DATA_BIND_XML_PLAN_VALUE) {
+      frame->phase = DATA_BIND_XML_PLAN_KEY;
+      if (frame->field.sequence) {
+        data_bind_xml_frame *array;
+        if (context->depth == context->max_depth) return CSERDE_LIMIT_EXCEEDED;
+        array = &context->frames[context->depth++];
+        *array = *frame;
+        array->phase = DATA_BIND_XML_PLAN_ITEMS;
+        array->child_index = array->attribute_index = 0u;
+        ++frame->field_index;
+        *out = (cserde_token){.kind = CSERDE_ARRAY_BEGIN};
+        return CSERDE_OK;
+      }
+      {
+        data_bind_xml_frame match = *frame;
+        /* Scalar duplicate detection uses the same canonical identity as
+         * arrays, including collisions between different alias spellings. */
+        if (xml_plan_next_match(context, frame)) return CSERDE_UNSUPPORTED;
+        ++frame->field_index;
+        return xml_plan_emit_match(context, &match, out);
+      }
+    }
+    if (frame->phase != DATA_BIND_XML_PLAN_KEY) return CSERDE_UNSUPPORTED;
+    if (!data_bind_format_record_field_at(context->plan, frame->record,
+                                         frame->field_index, &frame->field)) {
+      --context->depth;
+      *out = (cserde_token){.kind = CSERDE_MAP_END};
+      return CSERDE_OK;
+    }
+    frame->child_index = frame->attribute_index = 0u;
+    if (!xml_plan_next_match(context, frame) && !frame->field.sequence) {
+      ++frame->field_index;
+      continue;
+    }
+    frame->phase = DATA_BIND_XML_PLAN_VALUE;
+    xml_emit_slice(out, (salts_xml_string_view){frame->field.name, strlen(frame->field.name)});
+    return CSERDE_OK;
+  }
+  return CSERDE_DONE;
+}
+
 static cserde_status xml_provider_next(void *opaque, cserde_token *out) {
   data_bind_xml_reader *context = (data_bind_xml_reader *)opaque;
 
   if (context == NULL || out == NULL) return CSERDE_INVALID_ARGUMENT;
+  if (context->plan != NULL) return xml_plan_next(context, out);
 
   if (context->selected_array && context->depth == 0u) {
     if (!context->array_started) {
@@ -698,4 +826,16 @@ static const DataBindFormatProvider XML_PROVIDER =
 
 const DataBindFormatProvider *data_bind_xml_format_provider(void) {
   return &XML_PROVIDER;
+}
+
+DataBindStatus data_bind_xml_format_reader_open_plan(
+    const DataBindFormatPlan *plan, const char *data, size_t len,
+    size_t max_depth, DataBindFormatReader *out_reader, DataBindError *error) {
+  DataBindStatus status;
+  if (!data_bind_format_plan_xml_record(plan))
+    return xml_provider_error(error, DATA_BIND_ERR_SCHEMA, "XML record FormatPlan required");
+  status = data_bind_format_reader_open(&XML_PROVIDER, data, len, max_depth, out_reader, error);
+  if (status == DATA_BIND_OK && data_bind_format_plan_has_sequences(plan))
+    ((data_bind_xml_reader *)out_reader->owner)->plan = plan;
+  return status;
 }

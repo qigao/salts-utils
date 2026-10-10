@@ -2357,7 +2357,7 @@ static DataBindStatus plan_client_decode_value(
 
   status = data_bind_native_decode_usage(
       &field_options, entry->data, reader, destination, destination_bytes,
-      &field_usage, &native);
+      &field_usage, 0, &native);
   if (status != DATA_BIND_OK)
     return plan_diag_fail(
         diagnostic, status, entry->schema_field, entry->function_param,

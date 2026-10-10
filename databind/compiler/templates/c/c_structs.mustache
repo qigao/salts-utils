@@ -348,20 +348,34 @@ typedef struct {{typed_map_entry_type}} {
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
 {{#native_cstl_map}}
+TBE_GENERATED_API const cmeta_data_desc *{{typed_vector_type}}_databind_data(void);
+TBE_GENERATED_API const cmeta_container_desc *{{typed_vector_type}}_databind_container(void);
+TBE_GENERATED_API const cmeta_receiver_operation_set *{{typed_vector_type}}_databind_methods(void);
 #ifdef __cplusplus
 typedef struct {{typed_vector_type}} {
   cmeta_container_header cmeta;
   map_t raw;
 } {{typed_vector_type}};
 #else
+#if defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED) && !defined(TBE_GENERATED_BUILD_SHARED)
+cstl_typed_import(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
+      {{typed_vector_type}}_databind_container(), {{typed_vector_type}}_databind_data(),
+      {{typed_vector_type}}_databind_methods());
+#else
 cmeta_type(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
       {{native_map_key_type_ref}}, {{native_map_key_data_ref}},
       {{native_map_value_type_ref}}, {{native_map_value_data_ref}});
+#endif
 #endif
 {{/native_cstl_map}}
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
+{{#native_cstl_sequence_explicit_refs}}
+TBE_GENERATED_API const cmeta_data_desc *{{typed_vector_type}}_databind_data(void);
+TBE_GENERATED_API const cmeta_container_desc *{{typed_vector_type}}_databind_container(void);
+TBE_GENERATED_API const cmeta_receiver_operation_set *{{typed_vector_type}}_databind_methods(void);
+{{/native_cstl_sequence_explicit_refs}}
 #ifdef __cplusplus
 typedef struct {{typed_vector_type}} {
   cmeta_container_header cmeta;
@@ -369,8 +383,14 @@ typedef struct {{typed_vector_type}} {
 } {{typed_vector_type}};
 #else
 {{#native_cstl_sequence_explicit_refs}}
+#if defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED) && !defined(TBE_GENERATED_BUILD_SHARED)
+cstl_typed_import(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
+      {{typed_vector_type}}_databind_container(), {{typed_vector_type}}_databind_data(),
+      {{typed_vector_type}}_databind_methods());
+#else
 cmeta_type(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
       {{native_element_type_ref}}, {{native_element_data_ref}});
+#endif
 {{/native_cstl_sequence_explicit_refs}}
 {{^native_cstl_sequence_explicit_refs}}
 cmeta_type(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
@@ -378,6 +398,11 @@ cmeta_type(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
 #endif
 {{/native_cstl_sequence}}
 {{#native_cstl_set}}
+{{#native_cstl_set_explicit_refs}}
+TBE_GENERATED_API const cmeta_data_desc *{{typed_vector_type}}_databind_data(void);
+TBE_GENERATED_API const cmeta_container_desc *{{typed_vector_type}}_databind_container(void);
+TBE_GENERATED_API const cmeta_receiver_operation_set *{{typed_vector_type}}_databind_methods(void);
+{{/native_cstl_set_explicit_refs}}
 #ifdef __cplusplus
 typedef struct {{typed_vector_type}} {
   cmeta_container_header cmeta;
@@ -385,8 +410,14 @@ typedef struct {{typed_vector_type}} {
 } {{typed_vector_type}};
 #else
 {{#native_cstl_set_explicit_refs}}
+#if defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED) && !defined(TBE_GENERATED_BUILD_SHARED)
+cstl_typed_import(Set, {{typed_vector_type}}, {{typed_element_c_type}},
+      {{typed_vector_type}}_databind_container(), {{typed_vector_type}}_databind_data(),
+      {{typed_vector_type}}_databind_methods());
+#else
 cmeta_type(Set, {{typed_vector_type}}, {{typed_element_c_type}},
       {{native_element_type_ref}}, {{native_element_data_ref}});
+#endif
 {{/native_cstl_set_explicit_refs}}
 {{^native_cstl_set_explicit_refs}}
 cmeta_type(Set, {{typed_vector_type}}, {{typed_element_c_type}});
@@ -748,20 +779,34 @@ typedef struct {{typed_map_entry_type}} {
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
 {{#native_cstl_map}}
+TBE_GENERATED_API const cmeta_data_desc *{{typed_vector_type}}_databind_data(void);
+TBE_GENERATED_API const cmeta_container_desc *{{typed_vector_type}}_databind_container(void);
+TBE_GENERATED_API const cmeta_receiver_operation_set *{{typed_vector_type}}_databind_methods(void);
 #ifdef __cplusplus
 typedef struct {{typed_vector_type}} {
   cmeta_container_header cmeta;
   map_t raw;
 } {{typed_vector_type}};
 #else
+#if defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED) && !defined(TBE_GENERATED_BUILD_SHARED)
+cstl_typed_import(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
+      {{typed_vector_type}}_databind_container(), {{typed_vector_type}}_databind_data(),
+      {{typed_vector_type}}_databind_methods());
+#else
 cmeta_type(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
       {{native_map_key_type_ref}}, {{native_map_key_data_ref}},
       {{native_map_value_type_ref}}, {{native_map_value_data_ref}});
+#endif
 #endif
 {{/native_cstl_map}}
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
+{{#native_cstl_sequence_explicit_refs}}
+TBE_GENERATED_API const cmeta_data_desc *{{typed_vector_type}}_databind_data(void);
+TBE_GENERATED_API const cmeta_container_desc *{{typed_vector_type}}_databind_container(void);
+TBE_GENERATED_API const cmeta_receiver_operation_set *{{typed_vector_type}}_databind_methods(void);
+{{/native_cstl_sequence_explicit_refs}}
 #ifdef __cplusplus
 typedef struct {{typed_vector_type}} {
   cmeta_container_header cmeta;
@@ -769,8 +814,14 @@ typedef struct {{typed_vector_type}} {
 } {{typed_vector_type}};
 #else
 {{#native_cstl_sequence_explicit_refs}}
+#if defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED) && !defined(TBE_GENERATED_BUILD_SHARED)
+cstl_typed_import(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
+      {{typed_vector_type}}_databind_container(), {{typed_vector_type}}_databind_data(),
+      {{typed_vector_type}}_databind_methods());
+#else
 cmeta_type(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
       {{native_element_type_ref}}, {{native_element_data_ref}});
+#endif
 {{/native_cstl_sequence_explicit_refs}}
 {{^native_cstl_sequence_explicit_refs}}
 cmeta_type(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
@@ -778,6 +829,11 @@ cmeta_type(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
 #endif
 {{/native_cstl_sequence}}
 {{#native_cstl_set}}
+{{#native_cstl_set_explicit_refs}}
+TBE_GENERATED_API const cmeta_data_desc *{{typed_vector_type}}_databind_data(void);
+TBE_GENERATED_API const cmeta_container_desc *{{typed_vector_type}}_databind_container(void);
+TBE_GENERATED_API const cmeta_receiver_operation_set *{{typed_vector_type}}_databind_methods(void);
+{{/native_cstl_set_explicit_refs}}
 #ifdef __cplusplus
 typedef struct {{typed_vector_type}} {
   cmeta_container_header cmeta;
@@ -785,8 +841,14 @@ typedef struct {{typed_vector_type}} {
 } {{typed_vector_type}};
 #else
 {{#native_cstl_set_explicit_refs}}
+#if defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED) && !defined(TBE_GENERATED_BUILD_SHARED)
+cstl_typed_import(Set, {{typed_vector_type}}, {{typed_element_c_type}},
+      {{typed_vector_type}}_databind_container(), {{typed_vector_type}}_databind_data(),
+      {{typed_vector_type}}_databind_methods());
+#else
 cmeta_type(Set, {{typed_vector_type}}, {{typed_element_c_type}},
       {{native_element_type_ref}}, {{native_element_data_ref}});
+#endif
 {{/native_cstl_set_explicit_refs}}
 {{^native_cstl_set_explicit_refs}}
 cmeta_type(Set, {{typed_vector_type}}, {{typed_element_c_type}});
@@ -1380,20 +1442,34 @@ typedef struct {{typed_map_entry_type}} {
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
 {{#native_cstl_map}}
+TBE_GENERATED_API const cmeta_data_desc *{{typed_vector_type}}_databind_data(void);
+TBE_GENERATED_API const cmeta_container_desc *{{typed_vector_type}}_databind_container(void);
+TBE_GENERATED_API const cmeta_receiver_operation_set *{{typed_vector_type}}_databind_methods(void);
 #ifdef __cplusplus
 typedef struct {{typed_vector_type}} {
   cmeta_container_header cmeta;
   map_t raw;
 } {{typed_vector_type}};
 #else
+#if defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED) && !defined(TBE_GENERATED_BUILD_SHARED)
+cstl_typed_import(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
+      {{typed_vector_type}}_databind_container(), {{typed_vector_type}}_databind_data(),
+      {{typed_vector_type}}_databind_methods());
+#else
 cmeta_type(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
       {{native_map_key_type_ref}}, {{native_map_key_data_ref}},
       {{native_map_value_type_ref}}, {{native_map_value_data_ref}});
+#endif
 #endif
 {{/native_cstl_map}}
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
+{{#native_cstl_sequence_explicit_refs}}
+TBE_GENERATED_API const cmeta_data_desc *{{typed_vector_type}}_databind_data(void);
+TBE_GENERATED_API const cmeta_container_desc *{{typed_vector_type}}_databind_container(void);
+TBE_GENERATED_API const cmeta_receiver_operation_set *{{typed_vector_type}}_databind_methods(void);
+{{/native_cstl_sequence_explicit_refs}}
 #ifdef __cplusplus
 typedef struct {{typed_vector_type}} {
   cmeta_container_header cmeta;
@@ -1401,8 +1477,14 @@ typedef struct {{typed_vector_type}} {
 } {{typed_vector_type}};
 #else
 {{#native_cstl_sequence_explicit_refs}}
+#if defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED) && !defined(TBE_GENERATED_BUILD_SHARED)
+cstl_typed_import(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
+      {{typed_vector_type}}_databind_container(), {{typed_vector_type}}_databind_data(),
+      {{typed_vector_type}}_databind_methods());
+#else
 cmeta_type(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
       {{native_element_type_ref}}, {{native_element_data_ref}});
+#endif
 {{/native_cstl_sequence_explicit_refs}}
 {{^native_cstl_sequence_explicit_refs}}
 cmeta_type(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
@@ -1410,6 +1492,11 @@ cmeta_type(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
 #endif
 {{/native_cstl_sequence}}
 {{#native_cstl_set}}
+{{#native_cstl_set_explicit_refs}}
+TBE_GENERATED_API const cmeta_data_desc *{{typed_vector_type}}_databind_data(void);
+TBE_GENERATED_API const cmeta_container_desc *{{typed_vector_type}}_databind_container(void);
+TBE_GENERATED_API const cmeta_receiver_operation_set *{{typed_vector_type}}_databind_methods(void);
+{{/native_cstl_set_explicit_refs}}
 #ifdef __cplusplus
 typedef struct {{typed_vector_type}} {
   cmeta_container_header cmeta;
@@ -1417,8 +1504,14 @@ typedef struct {{typed_vector_type}} {
 } {{typed_vector_type}};
 #else
 {{#native_cstl_set_explicit_refs}}
+#if defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED) && !defined(TBE_GENERATED_BUILD_SHARED)
+cstl_typed_import(Set, {{typed_vector_type}}, {{typed_element_c_type}},
+      {{typed_vector_type}}_databind_container(), {{typed_vector_type}}_databind_data(),
+      {{typed_vector_type}}_databind_methods());
+#else
 cmeta_type(Set, {{typed_vector_type}}, {{typed_element_c_type}},
       {{native_element_type_ref}}, {{native_element_data_ref}});
+#endif
 {{/native_cstl_set_explicit_refs}}
 {{^native_cstl_set_explicit_refs}}
 cmeta_type(Set, {{typed_vector_type}}, {{typed_element_c_type}});
