@@ -2,6 +2,7 @@
   "name": "salts-utils",
   "version-semver": "4.3.0",
   "dependencies": [
+    "gmssl",
     {
       "name": "pkgconf",
       "host": true

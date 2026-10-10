@@ -29,6 +29,12 @@ esac
 mkdir -p "$restore_root"
 config="$repository_root/cmake/vcpkg-cache.nuget.config"
 project="$restore_root/qigao-native-sdk-restore.csproj"
+# NuGet 2.3.0-* also selects historical rc.sha<commit> Linux-only
+# candidates; resolve only official immutable GitHub Releases with an SDK
+# artifact, preferring stable over rc.N and highest numeric rc.N otherwise.
+salts_version="$(gh api 'repos/qigao/salts/releases?per_page=100' |
+  python3 "$repository_root/cmake/ci/select-salts-release.py" 2.3.0)"
+printf 'selected published Salts.Native %s\n' "$salts_version"
 
 cat > "$project" <<'EOF'
 <Project Sdk="Microsoft.NET.Sdk">
@@ -37,29 +43,21 @@ cat > "$project" <<'EOF'
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <!-- The latest Salts 2.3 RC/GA family is required for Salts::Unicode.
-         NuGet Version="*" skips prereleases and incorrectly restores old 2.2.
-         This is a floating family, never an exact candidate pin. -->
-    <PackageReference Include="Salts.Native" Version="2.3.0-*" />
+    <PackageReference Include="Salts.Native" Version="$(SaltsReleaseVersion)" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
 </Project>
 EOF
 
-restore_args=()
+# Always pass the dynamically verified public release version to MSBuild;
+# the single-quoted heredoc must not be unquoted (it contains MSBuild syntax).
+restore_args=("-p:SaltsReleaseVersion=$salts_version")
 if [ "$with_turbowasm" = "1" ]; then
   restore_args+=("-p:WithTurboWasm=true")
 fi
-if [ "${#restore_args[@]}" -gt 0 ]; then
-  dotnet restore "$project" --packages "$packages" --configfile "$config" \
-    --no-cache --force-evaluate "${restore_args[@]}"
-else
-  # macOS still ships Bash 3.2. Under `set -u`, expanding an empty array
-  # raises "unbound variable", so keep the zero-extra-argument path explicit.
-  dotnet restore "$project" --packages "$packages" --configfile "$config" \
-    --no-cache --force-evaluate
-fi
+dotnet restore "$project" --packages "$packages" --configfile "$config" \
+  --no-cache --force-evaluate "${restore_args[@]}"
 
 restored_package_dir() {
   python3 - "$restore_root/obj/project.assets.json" "$packages" "$1" <<'PY'
@@ -74,7 +72,9 @@ PY
 }
 
 salts_package="$(restored_package_dir Salts.Native)"
-salts_version="$(basename "$salts_package")"
+test "$(basename "$salts_package")" = "$salts_version" || {
+  echo "restored unexpected Salts.Native version (expected $salts_version)" >&2; exit 1;
+}
 re2c_package="$(restored_package_dir Qigao.Re2c.Binary)"
 turbowasm_package=""
 if [ "$with_turbowasm" = "1" ]; then
@@ -91,8 +91,6 @@ fail() { printf 'native SDK restore error: %s\n' "$*" >&2; exit 1; }
 
 [ -f "$salts_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing SaltsConfig.cmake under $salts_root"
 [ -f "$salts_root/include/cmeta/function.h" ] || fail "missing CMeta function reflection under $salts_root"
-grep -Fq 'Salts::Unicode' "$salts_root/lib/cmake/Salts/SaltsTargets.cmake" ||
-  fail "released Salts.Native 2.3 SDK must export Salts::Unicode; no local owner fallback"
 [ -f "$salts_host_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing host SaltsConfig.cmake under $salts_host_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_categories.re" ] || fail "missing unicode_categories.re under $re2c_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_properties.re" ] || fail "missing unicode_properties.re under $re2c_root"

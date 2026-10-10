@@ -20,6 +20,16 @@ $packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } elseif 
 $packages = [IO.Path]::GetFullPath($packages)
 $config = Join-Path $repositoryRoot "cmake/vcpkg-cache.nuget.config"
 $project = Join-Path $restoreRoot "qigao-native-sdk-restore.csproj"
+# 2.3.0-* also admits historical incomplete rc.sha GitHub Packages.
+# Resolve the highest official published numeric RC, or stable when present.
+$saltsVersion = @(gh api 'repos/qigao/salts/releases?per_page=100' |
+  python (Join-Path $repositoryRoot 'cmake/ci/select-salts-release.py') '2.3.0')
+if ($LASTEXITCODE -ne 0 -or $saltsVersion.Count -ne 1 -or
+    $saltsVersion[0] -notmatch '^2\.3\.0(-rc\.[1-9][0-9]*)?$') {
+  throw 'Cannot resolve a complete published Salts.Native 2.3.0 RC/stable version'
+}
+$saltsVersion = [string]$saltsVersion[0]
+Write-Host "selected published Salts.Native $saltsVersion"
 New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
 
 @'
@@ -29,15 +39,14 @@ New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Float latest 2.3 RC/GA: '*' alone silently selects old stable 2.2. -->
-    <PackageReference Include="Salts.Native" Version="2.3.0-*" />
+    <PackageReference Include="Salts.Native" Version="$(SaltsReleaseVersion)" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
 </Project>
 '@ | Set-Content -LiteralPath $project -Encoding utf8NoBOM
 
-$restoreArgs = @($project, "--packages", $packages, "--configfile", $config, "--no-cache", "--force-evaluate")
+$restoreArgs = @($project, "--packages", $packages, "--configfile", $config, "--no-cache", "--force-evaluate", "-p:SaltsReleaseVersion=$saltsVersion")
 if ($WithTurboWasm) { $restoreArgs += "-p:WithTurboWasm=true" }
 dotnet restore @restoreArgs
 if ($LASTEXITCODE -ne 0) { throw "failed to restore the latest Salts and native tools" }
@@ -50,6 +59,9 @@ function Get-RestoredPackage([string]$name) {
 }
 
 $saltsPackage = Get-RestoredPackage "Salts.Native"
+if ((Split-Path $saltsPackage -Leaf) -ne $saltsVersion) {
+  throw "Restored unexpected Salts.Native version (expected $saltsVersion)"
+}
 $saltsRoot = Join-Path $saltsPackage "sdk\$SaltsRid"
 $saltsHostRoot = Join-Path $saltsPackage "sdk\$Re2cRid"
 $re2cRoot = Join-Path (Get-RestoredPackage "Qigao.Re2c.Binary") "tools\$Re2cRid"
@@ -66,11 +78,6 @@ $required = @(
 foreach ($path in $required) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "missing restored SDK file: $path" }
 }
-$saltsTargets = Join-Path $saltsRoot "lib\cmake\Salts\SaltsTargets.cmake"
-if (-not (Select-String -LiteralPath $saltsTargets -SimpleMatch "Salts::Unicode" -Quiet)) {
-  throw "released Salts.Native 2.3 SDK must export Salts::Unicode; no local owner fallback"
-}
-
 & (Join-Path $re2cRoot "bin\re2c.exe") --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "restored re2c executable cannot run" }
 

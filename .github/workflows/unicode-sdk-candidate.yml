@@ -70,7 +70,7 @@ jobs:
       - name: Restore shared re2c tool and Unicode property data
         uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@master
       - name: Configure shared vcpkg cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@0dc254695917bc180504d916240292e9096e9da5
         with:
           mode: read
       - name: Prepare Salts native build host
