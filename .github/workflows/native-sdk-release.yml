@@ -140,9 +140,19 @@ jobs:
         expected_rids = {'linux-x64', 'linux-arm64', 'windows-x64', 'macos-arm64',
                          'android-arm64-v8a', 'ios-arm64'}
         with zipfile.ZipFile(package) as archive:
-            manifests = [name for name in archive.namelist() if name.endswith('/salts-utils-sdk-manifest.txt')]
+            names = set(archive.namelist())
+            manifests = [name for name in names if name.endswith('/salts-utils-sdk-manifest.txt')]
             if {name.split('/')[1] for name in manifests} != expected_rids or len(manifests) != len(expected_rids):
                 raise SystemExit('Incomplete or unexpected SDK platform set')
+            required_host_tools = {
+                'sdk/linux-x64/bin/salts-idlc',
+                'sdk/linux-arm64/bin/salts-idlc',
+                'sdk/windows-x64/bin/salts-idlc.exe',
+                'sdk/macos-arm64/bin/salts-idlc',
+            }
+            missing = sorted(required_host_tools - names)
+            if missing:
+                raise SystemExit(f'Missing packaged host IDL compiler(s): {missing}')
             for name in manifests:
                 values = dict(line.split('=', 1) for line in archive.read(name).decode('utf-8-sig').splitlines() if '=' in line)
                 for key, expected in [('version', version), ('commit', os.environ['RELEASE_SHA']), ('profile', 'release')]:
@@ -195,9 +205,42 @@ jobs:
         RELEASE_SHA: ${{ needs.metadata.outputs.release_sha }}
       run: |
         set -euo pipefail
+        package="dist/SaltsUtils.Native.$VERSION.nupkg"
+        test -f "$package"
+        prepared_sha="$(sha256sum "$package" | awk '{print $1}')"
+        asset_name="SaltsUtils.Native.$VERSION.nupkg"
+
         if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-          echo "release $TAG already exists; package publish was idempotent"
+          asset_count="$(
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+              --jq "[.assets[] | select(.name == \"$asset_name\")] | length"
+          )"
+          if [ "$asset_count" != "1" ]; then
+            echo "release $TAG must contain exactly one $asset_name asset; got $asset_count" >&2
+            echo "bump the SaltsUtils project/package version before publishing a changed SDK" >&2
+            exit 1
+          fi
+
+          existing_dir="$RUNNER_TEMP/existing-release"
+          rm -rf "$existing_dir"
+          mkdir -p "$existing_dir"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$asset_name" --dir "$existing_dir"
+          existing_package="$existing_dir/$asset_name"
+          test -f "$existing_package"
+          existing_sha="$(sha256sum "$existing_package" | awk '{print $1}')"
+
+          if [ "$existing_sha" != "$prepared_sha" ]; then
+            echo "immutable release asset mismatch for $TAG/$asset_name" >&2
+            echo "prepared sha256: $prepared_sha" >&2
+            echo "existing sha256: $existing_sha" >&2
+            echo "do not overwrite the existing release; bump the SaltsUtils project/package version" >&2
+            exit 1
+          fi
+
+          echo "release $TAG already contains the exact prepared package: $prepared_sha"
           exit 0
         fi
-        gh release create "$TAG" dist/*.nupkg --repo "$GITHUB_REPOSITORY" \
+
+        gh release create "$TAG" "$package" --repo "$GITHUB_REPOSITORY" \
           --verify-tag --title "SaltsUtils $VERSION" --generate-notes
