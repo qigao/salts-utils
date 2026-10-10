@@ -19,6 +19,10 @@ typedef struct databind_compiler_native_service_config {
   int binary_presentation;
 } databind_compiler_native_service_config;
 
+/* Service-local inject(member, Interface, header), maximum 16 distinct
+ * requirements. Header/interface tokens are build inputs, never runtime lookup. */
+int databind_compiler_native_injection_valid(const IdlService *service);
+
 /* Render into coordinator-reserved, initially absent staging destinations.
  * request->output and config->header_output identify final semantic paths;
  * neither final file is published here. On failure, the coordinator must

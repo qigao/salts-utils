@@ -6,6 +6,13 @@
 #include <type_traits>
 #include "service_call_fixture.h"
 
+#define CATALOG_SYMBOL(service, operation, symbol, request, response) + 1
+static_assert(0 databind_installed_service_native_SERVICES(CATALOG_SYMBOL) == 1,
+    "producer catalog must enumerate the installed native operations");
+#undef CATALOG_SYMBOL
+static_assert(std::is_same<decltype(&databind_installed_service_native_CODEC),
+    DataBindStatus (*)(DataBind **, DataBindError *)>::value, "embedded codec factory ABI");
+
 static_assert(std::is_standard_layout<DataBindServiceNativeBinding>::value,
               "installed Service binding must be C-compatible");
 static_assert(std::is_standard_layout<DataBindBindingCallLifetime>::value,

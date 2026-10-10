@@ -1,6 +1,9 @@
 include_guard(GLOBAL)
 include(CMakeParseArguments)
 
+# Native operation catalog and schema-declared HTTP policies.
+set(SaltsUtils_IDL_APPLICATION_VERSION 2)
+
 set(SaltsUtils_IDLC_EXECUTABLE ""
     CACHE FILEPATH
     "Host salts-idlc executable used by salts_idl_target()")
@@ -151,7 +154,7 @@ function(_saltsutils_idl_host_command
 endfunction()
 
 function(salts_idl_target)
-  set(options BINARY_CODEC)
+  set(options BINARY_CODEC SCHEMA_PROJECTION)
   set(one_value_args
       TARGET
       FOLDER
@@ -421,6 +424,12 @@ function(salts_idl_target)
   endif()
 
   set(_projection_config)
+  if(DB_SCHEMA_PROJECTION)
+    if(DB_PROJECTION_CONFIG OR NOT _normalized_transports OR _has_socket OR _has_flowmq)
+      message(FATAL_ERROR
+        "SCHEMA_PROJECTION requires HTTP and/or RPC and cannot use PROJECTION_CONFIG")
+    endif()
+  endif()
   if(DB_PROJECTION_CONFIG)
     if(NOT _has_http AND NOT _has_rpc AND
        NOT _has_socket AND NOT _has_flowmq)
@@ -472,6 +481,19 @@ function(salts_idl_target)
 
   set(_generated_dir
       "${CMAKE_CURRENT_BINARY_DIR}/${DB_TARGET}.idl")
+  if(DB_SCHEMA_PROJECTION)
+    set(_projection_config "${_generated_dir}/${DB_ARTIFACT_NAME}.projection.json")
+    add_custom_command(
+      OUTPUT "${_projection_config}"
+      COMMAND "${CMAKE_COMMAND}" -E make_directory "${_generated_dir}"
+      COMMAND ${_idlc_command} "${_idl}"
+        --transports "${_transport_csv}"
+        --projection-config-output "${_projection_config}"
+      DEPENDS "${_idl}" ${_idlc_dependency}
+      VERBATIM
+      COMMENT "Generating IDL ${DB_TARGET} JSON projection from schema annotations")
+    set_source_files_properties("${_projection_config}" PROPERTIES GENERATED TRUE)
+  endif()
   set(_native_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}_native.h")
   set(_native_source
@@ -734,6 +756,7 @@ function(salts_idl_target)
   if(_projection_config)
     set_property(TARGET "${DB_TARGET}" PROPERTY
       DATABIND_PROJECTION_CONFIG "${_projection_config}")
+    set("${DB_TARGET}_PROJECTION_CONFIG" "${_projection_config}" PARENT_SCOPE)
   endif()
 
   if(_has_plugin)

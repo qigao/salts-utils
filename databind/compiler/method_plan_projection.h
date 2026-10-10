@@ -22,6 +22,9 @@ typedef enum databind_compiler_http_field_location {
   DATABIND_COMPILER_HTTP_RESPONSE_BODY
 } databind_compiler_http_field_location;
 
+/* Build-only policy declarations: ordered, unique names, at most 16 per method. */
+int databind_compiler_http_policies_valid(const IdlOperation *operation);
+
 typedef enum databind_compiler_projection_direction {
   DATABIND_COMPILER_PROJECTION_INGRESS = 1,
   DATABIND_COMPILER_PROJECTION_EGRESS = 2
@@ -107,6 +110,13 @@ databind_compiler_http_method_plan_backend(void);
 
 databind_compiler_projection_backend
 databind_compiler_rpc_method_plan_backend(void);
+
+/* Shared schema-aware admission for application annotations before JSON export.
+ * The caller supplies named operations from this Contract; no output is written. */
+int databind_compiler_method_plan_configs_valid(
+    const IdlContract *contract,
+    const databind_compiler_http_projection_config *http,
+    const databind_compiler_rpc_projection_config *rpc);
 
 #ifdef __cplusplus
 }

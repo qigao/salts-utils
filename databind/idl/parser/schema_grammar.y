@@ -1249,7 +1249,15 @@ schema_decl ::= SCHEMA idl_ident(N) attribute_list(A) SEMI. {
     }
 }
 
-service_decl ::= service_header service_body RBRACE. {
+service_decl ::= attribute_list(A) service_header service_body RBRACE. {
+    if (A && ctx->cur_service != NULL) {
+        if (map_add(ctx->cur_service, A) != 0) {
+            node_free(A);
+            grammar_oom(ctx);
+        }
+    } else if (A) {
+        node_free(A);
+    }
     ctx->cur_service = NULL;
     ctx->cur_operations = NULL;
 }

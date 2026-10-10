@@ -946,14 +946,14 @@ void databind_compiler_projection_config_dispose(
   memset(config, 0, sizeof(*config));
 }
 
-int databind_compiler_projection_config_load(
-    const char *path,
+int databind_compiler_projection_config_from_json(
+    void *owned_root,
     databind_compiler_projection_config *out,
     char *error,
     size_t error_size) {
   static const char *const root_keys[] = {
       "version", "opaque", "http", "rpc", "socket", "flowmq"};
-  json_value_t *root;
+  json_value_t *root = owned_root;
   json_value_t *version;
   uint64_t version_number;
   json_value_t *opaque;
@@ -963,19 +963,11 @@ int databind_compiler_projection_config_load(
   json_value_t *flowmq;
 
   if (error != NULL && error_size != 0u) error[0] = '\0';
-  if (path == NULL || path[0] == '\0' || out == NULL)
-    return config_error(error, error_size,
-                        "Projection config path/output is invalid");
-  memset(out, 0, sizeof(*out));
-
-  root = json_parse_file(path);
-  if (root == NULL) {
-    const char *parser_error = json_get_error();
-    return config_errorf(
-        error, error_size,
-        "Could not parse projection config JSON: %s",
-        parser_error != NULL ? parser_error : "unknown JSON error");
+  if (root == NULL || out == NULL) {
+    json_free(root);
+    return config_error(error, error_size, "Projection config root/output is invalid");
   }
+  memset(out, 0, sizeof(*out));
   out->json_root = root;
 
   if (json_type(root) != JSON_OBJECT ||
@@ -1059,4 +1051,19 @@ int databind_compiler_projection_config_load(
 fail:
   databind_compiler_projection_config_dispose(out);
   return -1;
+}
+
+int databind_compiler_projection_config_load(
+    const char *path, databind_compiler_projection_config *out,
+    char *error, size_t error_size) {
+  json_value_t *root;
+  if (error != NULL && error_size != 0u) error[0] = '\0';
+  if (path == NULL || path[0] == '\0' || out == NULL)
+    return config_error(error, error_size, "Projection config path/output is invalid");
+  memset(out, 0, sizeof(*out));
+  root = json_parse_file(path);
+  if (root == NULL)
+    return config_errorf(error, error_size, "Could not parse projection config JSON: %s",
+        json_get_error() != NULL ? json_get_error() : "unknown JSON error");
+  return databind_compiler_projection_config_from_json(root, out, error, error_size);
 }

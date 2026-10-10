@@ -4,8 +4,35 @@
 #include "public_calc.rpc.h"
 #include "configured_calc.http.h"
 #include "configured_calc.rpc.h"
+#include "schema_app.http.h"
+#include "schema_app.rpc.h"
 
 spec("DataBind public MethodPlan projection frontend") {
+  it("retains ordered policy declarations in HTTP metadata without changing v1 projection JSON") {
+    check_equal(databind_schema_app_http_policy_at("Users", "Get", 0u), "no_store");
+    check_equal(databind_schema_app_http_policy_at("Users", "Get", 1u), "auth");
+    check_null(databind_schema_app_http_policy_at("Users", "Get", 2u));
+    check_null(databind_schema_app_http_policy_at("Users", "Create", 0u));
+    check_null(databind_schema_app_http_policy_at(NULL, "Get", 0u));
+  }
+  it("compiles multi-service projections generated entirely from schema annotations") {
+    const DataBindHttpProjectionConfig *get = data_bind_http_projection_artifact_find(
+        &databind_schema_app_http_projection, "Users", "Get");
+    const DataBindHttpProjectionConfig *create = data_bind_http_projection_artifact_find(
+        &databind_schema_app_http_projection, "Users", "Create");
+    const DataBindRpcProjectionConfig *health = data_bind_rpc_projection_artifact_find(
+        &databind_schema_app_rpc_projection, "System", "Check");
+    check_not_null(get);
+    check_equal(get->route, "/users/{id}");
+    check_equal(get->method, "GET");
+    check_equal(get->fields[0].location, DATA_BIND_HTTP_PATH);
+    check_not_null(create);
+    check_equal(create->route, "/users");
+    check_equal(create->success_status, 201);
+    check_equal(create->egress_format, DATA_BIND_FORMAT_XML);
+    check_not_null(health);
+    check_equal(health->wire_method, "system.health");
+  }
   it("publishes convention HTTP projection through databind_target") {
     const DataBindHttpProjectionConfig *config =
         data_bind_http_projection_artifact_find(

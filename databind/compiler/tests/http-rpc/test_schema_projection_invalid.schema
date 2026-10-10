@@ -1,0 +1,7 @@
+message Request { uint32 id; }
+service Users {
+  [http("GET", "/users/{id}"),
+   app_http_field("ingress", "missing", "path", "id"),
+   app_rpc("users.get")]
+  Get: Request -> Request;
+}

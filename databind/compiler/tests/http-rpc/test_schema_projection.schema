@@ -1,0 +1,21 @@
+schema App;
+
+message Lookup { uint32 id; }
+message User { uint32 id; string name; }
+message Health { bool ready; }
+
+service Users {
+  [http("GET", "/users/{id}"),
+   app_http_field("ingress", "id", "path", "id"),
+   app_rpc("users.get"), app_http_policy("no_store"), app_http_policy("auth")]
+  Get: Lookup -> User;
+
+  [http("POST", "/users"), app_http_status(201),
+   app_http_formats("json", "xml"), app_rpc("users.create")]
+  Create: User -> User;
+}
+
+service System {
+  [http("GET", "/health"), app_rpc("system.health")]
+  Check: Lookup -> Health;
+}

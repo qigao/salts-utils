@@ -13,6 +13,8 @@
  *              [--dsl-output <file>]
  *              [--artifacts plugin] [--transports http,rpc]
  *              [--projection-config <file.json>]
+ *   salts-idlc <file.schema> --transports http,rpc
+ *              --projection-config-output <file.json>
  *              [--component <Schema.Component>]
  *              [--artifact-name <name>] [--artifact-version M.m.p]
  * Database DDL languages require explicit --output. Auxiliary source, guest,
@@ -25,6 +27,7 @@
 #include <string.h>
 #include "cmd_arger.h"
 #include "compiler_core.h"
+#include "schema_projection.h"
 #include "projection_frontend.h"
 #include "cmeta_fs.h"
 
@@ -82,6 +85,7 @@ int main(int argc, char **argv) {
     char    *source_output_path = NULL;
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
+    char    *projection_output_path = NULL;
     CmdArgerBool binary_codec = cmd_arger_false;
     char    *artifact_names = NULL;
     char    *transport_names = NULL;
@@ -131,6 +135,9 @@ int main(int argc, char **argv) {
             &projection_config_path, "projection-config",
             "External JSON transport projection config"),
         cmd_arger_desc_string(
+            &projection_output_path, "projection-config-output",
+            "Export schema application annotations as JSON (requires --transports http and/or rpc)"),
+        cmd_arger_desc_string(
             &wasm_core_module_path, "wasm-core-module",
             "Prebuilt Core Wasm implementation module for WASM artifact"),
         cmd_arger_desc_string(
@@ -155,6 +162,22 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Unsupported --lang '%s'. Expected one of: %s\n",
                 lang_name, TBE_COMPILER_LANG_OPTION_LIST);
         return 1;
+    }
+
+    if (projection_output_path != NULL) {
+        if (artifact_names != NULL || component_id != NULL || artifact_name != NULL ||
+            artifact_version != NULL || projection_config_path != NULL ||
+            wasm_core_module_path != NULL || output_path != NULL || source_output_path != NULL ||
+            guest_output_path != NULL || dsl_output_path != NULL || template_path != NULL ||
+            lang_name != NULL || binary_codec != cmd_arger_false) {
+            fprintf(stderr, "--projection-config-output is a standalone export; select only schema and transports\n");
+            return 1;
+        }
+        int status = databind_compiler_schema_projection_export(
+            schema_path, projection_output_path, transport_names,
+            projection_error, sizeof(projection_error));
+        if (status != 0) fprintf(stderr, "Schema projection failed: %s\n", projection_error);
+        return status == 0 ? 0 : 1;
     }
 
     if (artifact_names == NULL && transport_names == NULL &&

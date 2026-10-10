@@ -10,5 +10,6 @@ message AddResponse {
 }
 
 service Calc {
+  [http("POST", "/calc/add"), app_rpc("calc.add")]
   Add: AddRequest -> AddResponse;
 }

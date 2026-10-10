@@ -9,6 +9,55 @@
 #include <stdlib.h>
 #include <string.h>
 
+int databind_compiler_http_policies_valid(const IdlOperation *operation) {
+  size_t count = 0u;
+  if (operation == NULL) return 0;
+  for (size_t i = 0u; i < operation->annotation_count; ++i) {
+    const IdlAnnotation *a = &operation->annotations[i];
+    if (strcmp(a->name, "app_http_policy") != 0) continue;
+    if (++count > 16u || a->bare || a->argument_count != 1u ||
+        a->arguments[0] == NULL || a->arguments[0][0] == '\0') return 0;
+    for (const char *p = a->arguments[0]; *p != '\0'; ++p)
+      if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+            (*p >= '0' && *p <= '9') || *p == '_' || *p == '.' || *p == '-')) return 0;
+    for (size_t j = 0u; j < i; ++j) {
+      const IdlAnnotation *previous = &operation->annotations[j];
+      if (strcmp(previous->name, "app_http_policy") == 0 &&
+          strcmp(previous->arguments[0], a->arguments[0]) == 0) return 0;
+    }
+  }
+  return 1;
+}
+
+static int http_write_policies(FILE *file, const IdlContract *contract, const char *prefix) {
+  if (fprintf(file,
+      "static inline const char *%s_http_policy_at(\n"
+      "    const char *service, const char *operation, size_t index) {\n"
+      "  if (service == NULL || operation == NULL) return NULL;\n"
+      "  (void)index;\n", prefix) < 0) return 0;
+  for (size_t i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    for (size_t j = 0u; j < service->operation_count; ++j) {
+      const IdlOperation *operation = &service->operations[j];
+      if (!databind_compiler_http_policies_valid(operation)) return 0;
+      size_t count = idl_annotation_count(operation->annotations,
+          operation->annotation_count, "app_http_policy");
+      if (count == 0u) continue;
+      /* Service and operation identifiers are admitted by the IDL frontend;
+       * policy names above deliberately exclude C string escape characters. */
+      if (fprintf(file, "  if (strcmp(service, \"%s\") == 0 && strcmp(operation, \"%s\") == 0) {\n"
+          "    static const char *const names[] = {\n", service->name, operation->name) < 0) return 0;
+      for (size_t k = 0u; k < count; ++k) {
+        const IdlAnnotation *a = idl_annotation_find(operation->annotations,
+            operation->annotation_count, "app_http_policy", k);
+        if (fprintf(file, "      \"%s\",\n", a->arguments[0]) < 0) return 0;
+      }
+      if (fprintf(file, "    };\n    return index < %zuu ? names[index] : NULL;\n  }\n", count) < 0) return 0;
+    }
+  }
+  return fputs("  return NULL;\n}\n\n", file) != EOF;
+}
+
 static int projection_type_has_field(
     const IdlContract *contract,
     const char *type_name, const char *field_name) {
@@ -626,6 +675,26 @@ static int rpc_operation_config_valid(
   return 1;
 }
 
+int databind_compiler_method_plan_configs_valid(
+    const IdlContract *contract,
+    const databind_compiler_http_projection_config *http,
+    const databind_compiler_rpc_projection_config *rpc) {
+  if (contract == NULL || !http_config_shape_valid(http) || !rpc_config_shape_valid(rpc))
+    return 0;
+  for (size_t i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    for (size_t j = 0u; j < service->operation_count; ++j) {
+      const IdlOperation *operation = &service->operations[j];
+      if ((http != NULL && !http_operation_config_valid(contract, NULL, operation,
+              http, service->name, operation->name)) ||
+          (rpc != NULL && !rpc_operation_config_valid(contract, NULL, operation,
+              rpc, service->name, operation->name)))
+        return 0;
+    }
+  }
+  return 1;
+}
+
 static size_t projection_operation_count(
     const IdlContract *contract) {
   size_t count = 0u;
@@ -845,7 +914,7 @@ static int http_generate(
   if (fprintf(file,
               "#ifndef DATABIND_GENERATED_%s_HTTP_PROJECTION_H\n"
               "#define DATABIND_GENERATED_%s_HTTP_PROJECTION_H\n\n"
-              "#include <data_bind_method_plan.h>\n\n",
+              "#include <data_bind_method_plan.h>\n#include <string.h>\n\n",
               prefix, prefix) < 0)
     goto cleanup;
 
@@ -1012,9 +1081,10 @@ static int http_generate(
           file,
           "static const DataBindHttpProjectionArtifact %s_http_projection = {\n"
           "  sizeof(DataBindHttpProjectionArtifact), DATA_BIND_METHOD_PLAN_ABI_VERSION,\n"
-          "  %s_http_entries, %zuu\n};\n\n"
-          "#endif /* DATABIND_GENERATED_%s_HTTP_PROJECTION_H */\n",
-          prefix, prefix, total_operations, prefix) < 0)
+          "  %s_http_entries, %zuu\n};\n\n",
+          prefix, prefix, total_operations) < 0 ||
+      !http_write_policies(file, contract, prefix) ||
+      fprintf(file, "#endif /* DATABIND_GENERATED_%s_HTTP_PROJECTION_H */\n", prefix) < 0)
     goto cleanup;
 
   for (i = 0u; config != NULL && i < config->operation_count; ++i)

@@ -60,6 +60,8 @@ set_target_properties(test_databind_projection_registry PROPERTIES
 cmake_add_test(test_databind_projection_frontend
   SOURCES
     test_projection_frontend.c
+    "${DATABIND_COMPILER_TEST_SOURCE_DIR}/http-rpc/test_schema_projection.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/schema_projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/projection_frontend.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/projection_config.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/projection.c"
@@ -83,6 +85,9 @@ cmake_add_test(test_databind_projection_frontend
   DEFS
     WASM_CORE_FIXTURE_FILE="${DATABIND_PROJECTION_WASM_CORE}"
     DATABIND_PROJECTION_CONFIG_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/http-rpc/test_method_plan_projection_config.json"
+    SCHEMA_PROJECTION_INPUT="${DATABIND_COMPILER_TEST_SOURCE_DIR}/http-rpc/test_schema_projection.schema"
+    SCHEMA_PROJECTION_INVALID="${DATABIND_COMPILER_TEST_SOURCE_DIR}/http-rpc/test_schema_projection_invalid.schema"
+    SCHEMA_PROJECTION_OUTPUT="${CMAKE_CURRENT_BINARY_DIR}/schema-projection-export.json"
     DATABIND_PROJECTION_CONFIG_INVALID_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/http-rpc/test_method_plan_projection_config_invalid.json"
     DATABIND_SOCKET_PROJECTION_CONFIG_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/socket/test_socket_plan_projection_config.json"
     DATABIND_FLOWMQ_PROJECTION_CONFIG_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/flowmq/test_flowmq_plan_projection_config.json"

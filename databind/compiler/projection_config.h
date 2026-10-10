@@ -49,6 +49,12 @@ int databind_compiler_projection_config_load(
     char *error,
     size_t error_size);
 
+/* Compiler-private owned DOM entry. Consumes root on success or failure;
+ * applies exactly the same validation as the external JSON configuration. */
+int databind_compiler_projection_config_from_json(
+    void *root, databind_compiler_projection_config *out,
+    char *error, size_t error_size);
+
 void databind_compiler_projection_config_dispose(
     databind_compiler_projection_config *config);
 

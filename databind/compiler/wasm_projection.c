@@ -1362,6 +1362,14 @@ static int wasm_generate_impl(
   if (component == NULL)
     return -1;
 
+  /* A native borrowed Interface has no representation in the Wasm ABI. */
+  for (size_t i = 0u; i < input->contract->service_count; ++i) {
+    const IdlService *service = &input->contract->services[i];
+    if (wasm_component_has_service(component, service->name) &&
+        idl_annotation_count(service->annotations, service->annotation_count, "inject") != 0u)
+      return -1;
+  }
+
   if (databind_compiler_service_native_build_selected(
           input->contract, wasm_select_component_service,
           (void *)component, &ir) != 0)

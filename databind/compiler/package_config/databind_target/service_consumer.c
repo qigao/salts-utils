@@ -93,8 +93,8 @@ int main(void) {
   if (failed) goto cleanup;
 
   if (strcmp(data_bind_http_method_plan_method(http), "POST") != 0 ||
-      strcmp(data_bind_http_method_plan_route(http), "/Calc/Add") != 0 ||
-      strcmp(data_bind_rpc_method_plan_wire_method(rpc), "Calc.Add") != 0) {
+      strcmp(data_bind_http_method_plan_route(http), "/calc/add") != 0 ||
+      strcmp(data_bind_rpc_method_plan_wire_method(rpc), "calc.add") != 0) {
     failed = 6;
     goto cleanup;
   }

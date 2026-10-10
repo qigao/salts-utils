@@ -3,6 +3,7 @@
 #include "service_native.h"
 #include "native_source_ir.h"
 #include "cmeta_fs.h"
+#include <fmt.h>
 
 #include <ctype.h>
 #include <stdio.h>
@@ -423,6 +424,198 @@ static int native_service_write_contract_source(
   return 1;
 }
 
+static size_t injection_count(const IdlService *service) {
+  return idl_annotation_count(service->annotations, service->annotation_count, "inject");
+}
+
+static int injection_identifier(const char *s) {
+  if (s == NULL || !((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') || *s == '_')) return 0;
+  for (++s; *s != '\0'; ++s)
+    if (!((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') ||
+          (*s >= '0' && *s <= '9') || *s == '_')) return 0;
+  return 1;
+}
+
+int databind_compiler_native_injection_valid(const IdlService *service) {
+  if (service == NULL || injection_count(service) > 16u) return 0;
+  for (size_t i = 0u; i < service->annotation_count; ++i) {
+    const IdlAnnotation *a = &service->annotations[i];
+    if (strcmp(a->name, "inject") != 0 && strcmp(a->name, "http") != 0 &&
+        strncmp(a->name, "app_", 4u) != 0) continue;
+    if (strcmp(a->name, "inject") != 0 || a->bare || a->argument_count != 3u ||
+        !injection_identifier(a->arguments[0]) || !injection_identifier(a->arguments[1]) ||
+        a->arguments[2] == NULL || a->arguments[2][0] == '\0') return 0;
+    for (const char *p = a->arguments[2]; *p != '\0'; ++p)
+      if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+          (*p >= '0' && *p <= '9') || *p == '_' || *p == '-' || *p == '.' || *p == '/')) return 0;
+    for (size_t j = 0u; j < i; ++j) {
+      const IdlAnnotation *b = &service->annotations[j];
+      if (strcmp(b->name, "inject") == 0 &&
+          (strcmp(a->arguments[0], b->arguments[0]) == 0 ||
+           strcmp(a->arguments[1], b->arguments[1]) == 0)) return 0;
+    }
+  }
+  if (injection_count(service) != 0u)
+    for (size_t i = 0u; i < service->operation_count; ++i)
+      if (service->operations[i].error_count != 0u) return 0;
+  return 1;
+}
+
+static tstr injection_type(const IdlContract *contract, const IdlService *service) {
+  return tstr_format("databind_{}_{}_{}_{}_dependencies",
+      strlen(contract->name), contract->name, strlen(service->name), service->name);
+}
+
+static int injection_header(FILE *file, const IdlService *service, const char *type) {
+  size_t count = injection_count(service);
+  for (size_t i = 0u; i < count; ++i) {
+    const IdlAnnotation *a = idl_annotation_find(service->annotations, service->annotation_count, "inject", i);
+    if (fputs("#include ", file) == EOF || !native_service_write_include(file, a->arguments[2]) ||
+        fputc('\n', file) == EOF) return 0;
+  }
+  if (fprintf(file, "\n/* Borrowed interfaces, valid for this application's lifetime. */\n"
+      "typedef struct %s {\n", type) < 0) return 0;
+  for (size_t i = 0u; i < count; ++i) {
+    const IdlAnnotation *a = idl_annotation_find(service->annotations, service->annotation_count, "inject", i);
+    if (fprintf(file, "  %s %s;\n", a->arguments[1], a->arguments[0]) < 0) return 0;
+  }
+  return fprintf(file, "} %s;\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n"
+      "const salts_component_provider_binding *%s_component(void);\n"
+      "#ifdef __cplusplus\n}\n#endif\n\n", type, type) >= 0;
+}
+
+static int injection_source(FILE *file, const IdlService *service, const char *type) {
+  size_t count = injection_count(service);
+  /* The dependency record is opaque to data reflection: no field access or
+   * value lifecycle is granted. The component's ObjectRef alone owns it. */
+  if (fprintf(file,
+      "static const cmeta_type_identity %s_id = CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
+      "static const cmeta_type_desc %s_type = {\"%s\", sizeof(%s), _Alignof(%s), CMETA_T_OBJECT, NULL, NULL, &%s_id};\n"
+      "static const cmeta_type_desc %s_pointer = {\"const %s *\", sizeof(const %s *), _Alignof(const %s *), CMETA_T_POINTER, &%s_type, NULL, NULL};\n"
+      "static const cmeta_struct_desc %s_layout = {\"%s\", sizeof(%s), _Alignof(%s), NULL, 0u};\n"
+      "static const cmeta_data_struct_shape %s_shape = {&%s_layout, NULL, 0u};\n"
+      "static const cmeta_data_desc %s_data = {\n"
+      "  .struct_size = sizeof(cmeta_data_desc), .abi_version = CMETA_DATA_DESC_ABI_VERSION,\n"
+      "  .stable_id = \"%s\", .display_name = \"%s\", .kind = CMETA_DATA_STRUCT,\n"
+      "  .storage_type = &%s_type, .shape = &%s_shape};\n",
+      type,type, type,type,type,type,type, type,type,type,type,type,
+      type,type,type,type, type,type, type,type,type,type,type) < 0) return 0;
+  if (fprintf(file, "cmeta_component(%s", type) < 0) return 0;
+  for (size_t i = 0u; i < count; ++i) {
+    const IdlAnnotation *a = idl_annotation_find(service->annotations, service->annotation_count, "inject", i);
+    if (fprintf(file, "%s cmeta_requires(%s)", i == 0u ? "," : "", a->arguments[1]) < 0) return 0;
+  }
+  if (fprintf(file, ");\nstatic void %s_destroy(void *context, void *object) { (void)context; free(object); }\n"
+      "static const cmeta_object_lifecycle %s_lifecycle = {sizeof(cmeta_object_lifecycle), NULL, NULL, NULL, %s_destroy};\n"
+      "static cmeta_status SALTS_COMPONENT_CALL %s_create(void *context, const cmeta_data_desc *config_data,\n"
+      "    const void *config, const salts_component_dependency *dependencies, size_t count, cmeta_object_ref *out) {\n"
+      "  (void)context;\n  if (config_data != NULL || config != NULL || count != %zuu) return CMETA_INVALID_ARGUMENT;\n"
+      "  %s *instance = calloc(1u, sizeof(*instance));\n"
+      "  if (instance == NULL) return CMETA_OUT_OF_MEMORY;\n"
+      "  cmeta_status status = CMETA_OK;\n"
+      "  const salts_component_dependency *dependency = NULL;\n"
+      "  cmeta_interface_projection projection = CMETA_INTERFACE_PROJECTION_INIT;\n",
+      type,type,type,type,count,type) < 0) return 0;
+  for (size_t i = 0u; i < count; ++i) {
+    const IdlAnnotation *a = idl_annotation_find(service->annotations, service->annotation_count, "inject", i);
+    const char *member = a->arguments[0], *interface_name = a->arguments[1];
+    if (fprintf(file,
+        "  if (salts_component_dependency_find(dependencies, count, %s_interface(), &dependency) != SALTS_COMPONENT_OK) {\n"
+        "    status = CMETA_TRAIT_MISSING; goto fail;\n  }\n"
+        "  status = cmeta_object_interface_project_borrowed(dependency->provider_instance,\n"
+        "      dependency->provider_interfaces, %s_interface(), &projection);\n"
+        "  if (status != CMETA_OK) goto fail;\n"
+        "  instance->%s = %s_bind(projection.self, (const %s_vtable *)projection.dispatch);\n"
+        "  if (!%s_valid(&instance->%s)) { status = CMETA_TYPE_MISMATCH; goto fail; }\n",
+        interface_name,interface_name,member,interface_name,interface_name,interface_name,member) < 0) return 0;
+  }
+  return fprintf(file,
+      "  status = cmeta_object_borrow(out, instance, &%s_data, NULL);\n"
+      "  if (status != CMETA_OK) goto fail;\n"
+      "  status = cmeta_object_take(out, &%s_lifecycle);\n"
+      "  if (status == CMETA_OK) return status;\n"
+      "  cmeta_object_release(out);\n"
+      "fail:\n  free(instance);\n  return status;\n}\n"
+      "const salts_component_provider_binding *%s_component(void) {\n"
+      "  static const salts_component_provider_binding provider = {sizeof(salts_component_provider_binding),\n"
+      "      SALTS_COMPONENT_PROVIDER_BINDING_ABI_VERSION, cmeta_component_meta(%s),\n"
+      "      NULL, NULL, %s_create, NULL, NULL};\n  return &provider;\n}\n\n",
+      type,type,type,type,type) >= 0;
+}
+
+static int injection_execution(FILE *file, const databind_compiler_service_native_operation *op, const char *type) {
+  const char *s = op->symbol;
+  if (fprintf(file,
+      "typedef int (*%s_receiver_fn)(const %s *, const %s_t *, %s_t *);\n"
+      "CMETA_STATIC_ASSERT(CMETA_TYPE_MATCHES(&%s, %s_receiver_fn), \"injected native signature mismatch\");\n"
+      "CMETA_FUNCTION_METADATA_AS_ABI_RESULT(%s_receiver, \"%s.receiver\", unknown,\n"
+      "    &cmeta_type_int, CMETA_ABI_SCALAR, CMETA_RESULT_VALUE,\n"
+      "    (const %s *, self, CMETA_PARAM_IN | CMETA_PARAM_BORROWED | CMETA_PARAM_RECEIVER, &%s_pointer, CMETA_ABI_OBJECT_POINTER),\n"
+      "    (const %s_t *, request, CMETA_PARAM_IN | CMETA_PARAM_BORROWED, &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
+      "    (%s_t *, response, CMETA_PARAM_OUT | CMETA_PARAM_BORROWED, &%s__response_ptr_type, CMETA_ABI_OBJECT_POINTER));\n"
+      "static bool DATA_BIND_NATIVE_CALL %s_injected_invoke(void *context, void *result, void *const *params, size_t count) {\n"
+      "  if (context == NULL || result == NULL || params == NULL || count != 2u || params[0] == NULL || params[1] == NULL) return false;\n"
+      "  *(int *)result = %s((const %s *)context, (const %s_t *)params[0], (%s_t *)params[1]);\n"
+      "  return true;\n}\n",
+      s,type,op->request_type,op->response_type,s,s,s,op->qualified_operation,type,type,
+      op->request_type,s,op->response_type,s,s,s,type,op->request_type,op->response_type) < 0) return 0;
+  return fprintf(file,
+      "cmeta_status %s__databind_bind_execution(const cmeta_object_ref *instance, DataBindNativeExecution *out) {\n"
+      "  static const bool bound[] = {true, false, false};\n"
+      "  if (out == NULL) return CMETA_INVALID_ARGUMENT;\n"
+      "  *out = (DataBindNativeExecution)DATA_BIND_NATIVE_EXECUTION_INIT;\n"
+      "  if (!cmeta_object_ref_valid(instance) || !cmeta_data_desc_equal(instance->data, &%s_data)) return CMETA_TYPE_MISMATCH;\n"
+      "  if (!cmeta_function_receiver_projection_valid(&%s_receiver__function_meta, &%s__function_meta) ||\n"
+      "      !cmeta_function_projection_valid(&%s_receiver__function_abi_meta, &%s__function_abi_meta, bound, 3u)) return CMETA_TYPE_MISMATCH;\n"
+      "  *out = (DataBindNativeExecution){sizeof(*out), DATA_BIND_NATIVE_EXECUTION_ABI_VERSION,\n"
+      "      &%s__function_meta, &%s__function_abi_meta, instance->object, %s_injected_invoke};\n"
+      "  return CMETA_OK;\n}\n\n", s,type,s,s,s,s,s,s,s) >= 0;
+}
+
+static int native_service_catalog_prefix(FILE *file, const char *header) {
+  const char *name = native_service_basename(header);
+  const char *end = strrchr(name, '.');
+  if (end == NULL) end = name + strlen(name);
+  if (fputs("databind_", file) == EOF) return 0;
+  for (const char *p = name; p < end; ++p) {
+    int ch = ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+              (*p >= '0' && *p <= '9')) ? *p : '_';
+    if (fputc(ch, file) == EOF) return 0;
+  }
+  return 1;
+}
+
+static int native_service_write_catalog(FILE *file, const IdlContract *contract,
+    const databind_compiler_native_service_config *config,
+    const databind_compiler_service_native_ir *ir) {
+  if (fputs("/* Producer-owned operation enumeration; X receives service, operation,\n"
+      " * exact symbol, request type and response type. */\n#define ", file) == EOF ||
+      !native_service_catalog_prefix(file, config->native_header) ||
+      fputs("_SERVICES(X)", file) == EOF) return 0;
+  for (size_t i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    if (fprintf(file, " \\\n  X(\"%s\", \"%s\", %s, %s, %s)",
+        op->service_name, op->operation_name, op->symbol, op->request_type, op->response_type) < 0) return 0;
+  }
+  if (fputs("\n#define ", file) == EOF ||
+      !native_service_catalog_prefix(file, config->native_header) ||
+      fputs("_APPLICATION_SERVICES(X)", file) == EOF) return 0;
+  for (size_t i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    const IdlService *service = idl_contract_find_service(contract, op->service_name);
+    tstr type = injection_count(service) != 0u ? injection_type(contract, service) : NULL;
+    if (injection_count(service) != 0u && type == NULL) return 0;
+    int ok = fprintf(file, " \\\n  X(\"%s\", \"%s\", %s, %s, %s, %s%s)", op->service_name,
+        op->operation_name, op->symbol, op->request_type, op->response_type,
+        type != NULL ? type : "NULL", type != NULL ? "_component" : "") >= 0;
+    tstr_free(type);
+    if (!ok) return 0;
+  }
+  return fputs("\n#define ", file) != EOF &&
+      native_service_catalog_prefix(file, config->native_header) &&
+      fprintf(file, "_CODEC %s_codec_create\n\n", contract->name) >= 0;
+}
+
 static int native_service_write_header(
     FILE *file,
     const IdlContract *contract,
@@ -442,23 +635,42 @@ static int native_service_write_header(
       fputs(
           "\n#include <data_bind_binding_plan.h>\n"
           "#include <cmeta/function.h>\n"
-          "#include <cflow/function_projection.h>\n\n"
-          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
+          "#include <salts/component_abi.h>\n"
+          "#include <cflow/function_projection.h>\n\n",
           file) == EOF)
     return 0;
 
+  for (i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    if (injection_count(service) == 0u) continue;
+    tstr type = injection_type(contract, service);
+    if (type == NULL) return 0;
+    int ok = injection_header(file, service, type);
+    tstr_free(type);
+    if (!ok) return 0;
+  }
+  if (fputs("#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n", file) == EOF) return 0;
   for (i = 0u; i < ir->operation_count; ++i) {
     const databind_compiler_service_native_operation *operation =
         &ir->operations[i];
-    if (databind_compiler_service_native_emit_prototype(
-            file, operation) != 0 ||
+    const IdlService *service = idl_contract_find_service(contract, operation->service_name);
+    if (injection_count(service) != 0u) {
+      tstr type = injection_type(contract, service);
+      if (type == NULL) return 0;
+      int ok = fprintf(file, "int %s(const %s *dependencies, const %s_t *request, %s_t *response);\n",
+          operation->symbol, type, operation->request_type, operation->response_type) >= 0;
+      tstr_free(type);
+      if (!ok) return 0;
+    } else if (databind_compiler_service_native_emit_prototype(file, operation) != 0 ||
+        fprintf(file, "const DataBindNativeExecution *%s__databind_execution(void);\n"
+            "cflow_function_projection_status %s__databind_cflow_projection(cflow_function_typed_adapter_projection *out);\n",
+            operation->symbol, operation->symbol) < 0) return 0;
+    if (
         fprintf(
             file,
             "const cmeta_function_desc *%s__databind_function(void);\n"
             "const cmeta_function_abi_desc *%s__databind_function_abi(void);\n"
-            "const DataBindNativeExecution *%s__databind_execution(void);\n"
-            "cflow_function_projection_status %s__databind_cflow_projection(\n"
-            "    cflow_function_typed_adapter_projection *out);\n"
+            "cmeta_status %s__databind_bind_execution(const cmeta_object_ref *instance, DataBindNativeExecution *out);\n"
             "DataBindStatus %s__databind_native_binding(\n"
             "    DataBindNativeTypeBinding *request_out,\n"
             "    DataBindNativeTypeBinding *response_out,\n"
@@ -467,10 +679,11 @@ static int native_service_write_header(
             operation->symbol,
             operation->symbol,
             operation->symbol,
-            operation->symbol,
             operation->symbol) < 0)
       return 0;
   }
+
+  if (!native_service_write_catalog(file, contract, config, ir)) return 0;
 
   return fprintf(
              file,
@@ -481,6 +694,7 @@ static int native_service_write_header(
 
 static int native_service_write_source(
     FILE *file,
+    const IdlContract *contract,
     const databind_compiler_native_service_config *config,
     const databind_compiler_service_native_ir *ir) {
   const char *header;
@@ -491,21 +705,42 @@ static int native_service_write_source(
   if (!native_service_text_valid(header) ||
       fputs("#include ", file) == EOF ||
       !native_service_write_include(file, header) ||
-      fputs("\n#include <string.h>\n\n", file) == EOF)
+      fputs("\n#include <string.h>\n#include <stdlib.h>\n\n", file) == EOF)
     return 0;
 
+  for (i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    if (injection_count(service) == 0u) continue;
+    tstr type = injection_type(contract, service);
+    if (type == NULL) return 0;
+    int ok = injection_source(file, service, type);
+    tstr_free(type);
+    if (!ok) return 0;
+  }
   for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    const IdlService *service = idl_contract_find_service(contract, op->service_name);
+    int injected = injection_count(service) != 0u;
     if (databind_compiler_service_native_emit_reflection(
-            file, &ir->operations[i], 1) != 0 ||
-        fputc('\n', file) == EOF ||
-        databind_compiler_service_native_emit_execution(
-            file, &ir->operations[i], 1) != 0 ||
-        databind_compiler_service_native_emit_binding(
-            file, &ir->operations[i]) != 0 ||
-        databind_compiler_service_native_emit_cflow_projection(
-            file, &ir->operations[i]) != 0 ||
-        fputc('\n', file) == EOF)
+            file, op, 1) != 0 ||
+        databind_compiler_service_native_emit_binding(file, op) != 0)
       return 0;
+    if (injected) {
+      tstr type = injection_type(contract, service);
+      if (type == NULL) return 0;
+      int ok = injection_execution(file, op, type);
+      tstr_free(type);
+      if (!ok) return 0;
+    } else {
+      if (databind_compiler_service_native_emit_execution(file, op, 1) != 0 ||
+          databind_compiler_service_native_emit_cflow_projection(file, op) != 0 ||
+          fprintf(file, "cmeta_status %s__databind_bind_execution(const cmeta_object_ref *instance, DataBindNativeExecution *out) {\n"
+              "  if (out == NULL) return CMETA_INVALID_ARGUMENT;\n"
+              "  *out = (DataBindNativeExecution)DATA_BIND_NATIVE_EXECUTION_INIT;\n"
+              "  if (instance != NULL) return CMETA_INVALID_ARGUMENT;\n"
+              "  *out = *%s__databind_execution();\n  return CMETA_OK;\n}\n",
+              op->symbol, op->symbol) < 0) return 0;
+    }
   }
   return 1;
 }
@@ -563,6 +798,11 @@ int databind_compiler_native_service_render_staged(
   if (databind_compiler_service_native_build(contract, &ir) != 0 ||
       ir.operations == NULL || ir.operation_count == 0u)
     goto cleanup;
+  for (size_t i = 0u; i < contract->service_count; ++i) {
+    if (!databind_compiler_native_injection_valid(&contract->services[i]) ||
+        (injection_count(&contract->services[i]) != 0u &&
+         input->binary_format == NULL && !config->binary_presentation)) goto cleanup;
+  }
   if (input->binary_format == NULL && !config->binary_presentation &&
       !databind_compiler_native_contract_admitted(contract, &ir))
     goto cleanup;
@@ -580,7 +820,7 @@ int databind_compiler_native_service_render_staged(
                  header_file, contract, config, &ir) ||
              !native_service_write_contract_source(source_file, config, &ir))
           : (!native_service_write_header(header_file, contract, config, &ir) ||
-             !native_service_write_source(source_file, config, &ir)))
+             !native_service_write_source(source_file, contract, config, &ir)))
     goto cleanup;
   if (!native_service_close(&header_file) ||
       !native_service_close(&source_file))
@@ -625,6 +865,11 @@ int databind_compiler_native_service_generate(
       ir.operations == NULL || ir.operation_count == 0u)
     goto cleanup;
 
+  for (size_t i = 0u; i < contract->service_count; ++i)
+    if (!databind_compiler_native_injection_valid(&contract->services[i]) ||
+        (injection_count(&contract->services[i]) != 0u &&
+         input->binary_format == NULL && !config->binary_presentation)) goto cleanup;
+
   header_file = native_service_open_staging(
       config->header_output, &header_staging);
   if (header_file == NULL) goto cleanup;
@@ -634,7 +879,7 @@ int databind_compiler_native_service_generate(
 
   if (!native_service_write_header(
           header_file, contract, config, &ir) ||
-      !native_service_write_source(source_file, config, &ir))
+      !native_service_write_source(source_file, contract, config, &ir))
     goto cleanup;
 
   if (!native_service_close(&header_file) ||

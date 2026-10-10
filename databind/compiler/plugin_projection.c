@@ -1453,6 +1453,14 @@ static int plugin_generate_impl(
   if (component == NULL)
     return -1;
 
+  /* Instance-bound application methods cannot be published as free Functions. */
+  for (size_t i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    if (plugin_component_has_service(component, service->name) &&
+        idl_annotation_count(service->annotations, service->annotation_count, "inject") != 0u)
+      return -1;
+  }
+
   if (databind_compiler_service_native_build_selected(
           contract,
           plugin_select_component_service,

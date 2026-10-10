@@ -84,13 +84,24 @@ salts_idl_target(
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config.json")
 
+salts_idl_target(
+  TARGET databind_schema_projection_fixture
+  FOLDER "databind/compiler/generated/http-rpc"
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_schema_projection.schema"
+  ARTIFACT_NAME "schema_app"
+  TRANSPORTS HTTP RPC
+  SCHEMA_PROJECTION)
+
 cmake_add_test(test_databind_method_plan_public_frontend
   SOURCES test_public_method_plan_frontend.c
   LIBS Salts::DataBind Salts::TinyTest
   INCLUDES
     "${databind_method_plan_public_fixture_GENERATED_DIR}"
     "${databind_method_plan_configured_fixture_GENERATED_DIR}"
+    "${databind_schema_projection_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler/tests/http-rpc")
 add_dependencies(test_databind_method_plan_public_frontend
   databind_method_plan_public_fixture_idl_codegen
   databind_method_plan_configured_fixture_idl_codegen)
+add_dependencies(test_databind_method_plan_public_frontend
+  databind_schema_projection_fixture_idl_codegen)

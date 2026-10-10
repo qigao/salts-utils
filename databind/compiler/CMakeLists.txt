@@ -32,6 +32,7 @@ set_target_properties(salts_idlc PROPERTIES
   MACOSX_BUNDLE FALSE)
 
 add_subdirectory(templates)
+target_sources(salts_idlc PRIVATE schema_projection.c)
 get_target_property(TBE_COMPILER_TEMPLATE_FILES salts_idlc SOURCES)
 list(FILTER TBE_COMPILER_TEMPLATE_FILES INCLUDE REGEX "\\.mustache$")
 set_property(TARGET salts_idlc APPEND PROPERTY LINK_DEPENDS

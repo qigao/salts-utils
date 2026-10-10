@@ -76,6 +76,170 @@ salts-idlc <schema_file> [options]
     schema registration, sandbox policy, quotas, and provider errors
   - Example: `--output order.h --guest-output order_guest.c`
 
+### Schema application annotations to JSON
+
+Application mappings can live on service operations as structured IDL attributes.
+Ordinary `//` and `/* */` comments remain documentation. Enable this path with
+`SCHEMA_PROJECTION`; the generated JSON is a build artifact, not a second file
+to maintain:
+
+```text
+schema App;
+message Lookup { uint32 id; }
+message User { uint32 id; string name; }
+
+service Users {
+  [http("GET", "/users/{id}"),
+   app_http_field("ingress", "id", "path", "id"),
+   app_rpc("users.get")]
+  Get: Lookup -> User;
+
+  [http("POST", "/users"), app_http_status(201),
+   app_http_formats("json", "xml"), app_rpc("users.create")]
+  Create: User -> User;
+}
+```
+
+```cmake
+salts_idl_target(
+  TARGET app_contract
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/app.schema"
+  ARTIFACT_NAME app
+  TRANSPORTS HTTP RPC
+  SCHEMA_PROJECTION)
+```
+
+The existing SaltsUtils package import provides `salts_idl_target`. During the
+build it first exports `app_contract.idl/app.projection.json`, then feeds that
+file through the existing HTTP/RPC generator. Schema and compiler changes
+invalidate both steps. `${app_contract_PROJECTION_CONFIG}` and target property
+`DATABIND_PROJECTION_CONFIG` expose the JSON path. Generated headers are
+`app.http.h`, `app.rpc.h` and `app_native.h`; this selection supplies projection
+metadata and C types. To also generate native service bindings, select
+`ARTIFACTS NATIVE BINARY_CODEC` using the existing native service contract.
+Application startup, dependency ownership and middleware installation remain
+with the application/CHttp host; this option does not generate a complete web
+application or implement authentication policies.
+
+The same export is available separately:
+
+```bash
+salts-idlc app.schema --transports http,rpc --projection-config-output app.projection.json
+```
+
+This command requires `.schema` input, `.json` output, and `http`, `rpc` or
+`http,rpc` (`rpc,http` also works). It cannot be combined with other artifact,
+language, template or output options. The output parent directory must exist.
+All mappings are validated before an exclusive staging file is created next to
+the destination. Publication replaces one JSON file; pre-publication failure
+preserves an existing destination. A filesystem durability failure after rename
+is reported explicitly as already published. The subsequent code-generation
+step is a separate transaction; a failed build must not be deployed.
+
+| Operation attribute | Meaning |
+| --- | --- |
+| `http(method, route)` | Required once per operation when HTTP is selected; explicit verb and route. |
+| `app_http_field(direction, field, location, name)` | Repeatable mapping using the existing projection vocabulary: `ingress`/`egress` and `path`, `query`, `header`, `cookie`, `body`, `response_header`, `response_body`. Unmapped fields retain producer defaults. |
+| `app_http_status(status)` | Optional success status, 100–599; defaults to 200. |
+| `app_http_formats(ingress, egress)` | Optional request/response format, each `json` or `xml`; defaults to JSON. This does not enable runtime content negotiation. |
+| `app_rpc(wire_method)` | Required once per operation when RPC is selected; JSON-RPC uses JSON. |
+| `app_http_policy(name)` | Repeatable ordered HTTP policy name; at most 16 unique names per operation. Names use ASCII letters, digits, `_`, `.` or `-`. Generated HTTP metadata retains names; the host must resolve implementations. |
+
+The HTTP header exposes `<symbol_prefix>_http_policy_at(service, operation, index)`.
+It returns a borrowed static name or NULL for unknown operations/out-of-range
+indices; NULL service/operation arguments also return NULL. Policy syntax is
+checked before header publication. Policy declarations do not extend the existing
+version-1 projection JSON schema: exporting JSON alone does not export policies.
+The original annotated schema remains required for complete application generation.
+
+With `ARTIFACTS NATIVE BINARY_CODEC`, the service header also emits
+`databind_<native_header_stem>_SERVICES(X)` and
+`databind_<native_header_stem>_CODEC`. For `ARTIFACT_NAME app`, these are
+`databind_app_native_SERVICES(X)` and `databind_app_native_CODEC`. Catalog rows
+pass `(service_string, operation_string, exact_native_symbol, request_type,
+response_type)` to X. Type tokens omit `_t`. The codec macro names the existing
+embedded factory. This finite enumeration derives from the canonical native IR;
+it does not create another reflection table or erase function signatures.
+For CLI-specified header names the stem excludes the last extension and replaces
+non-ASCII-alphanumeric characters with `_`; keep stems unique within a consumer.
+Contract-only native output does not emit this binary-codec catalog.
+The installed CMake helper advertises `SaltsUtils_IDL_APPLICATION_VERSION = 2`.
+
+The canonical annotation names are `http` and `inject`; the earlier experimental
+spellings `app_http` and `app_inject` are rejected. Update existing schemas and
+regenerate their artifacts. Companion annotations such as `app_http_policy`,
+`app_http_field` and `app_rpc` retain their names.
+
+Service-level `[inject("member", "Interface", "interface_header.h")]`
+opts into native application dependency injection. Repeat it for at most 16
+distinct member and Interface tokens. The header must declare that existing
+CMeta Interface; declaration alone does not select a provider or configuration.
+For schema `App`, service `Users`, the generated dependency record is
+`databind_3_App_5_Users_dependencies`, with a typed Interface field per annotation.
+Each business prototype gains `const <dependencies_type> *dependencies` as its
+first argument. Its request/response schema and logical MethodPlan signature
+remain unchanged. Services without annotations retain their original prototypes.
+
+The generated `<dependencies_type>_component()` returns a provider binding for
+the service consumer, with CMeta `requires` metadata. Host/deployment providers
+must supply borrowed Interface projections; the generated factory binds them
+once. `<method_symbol>__databind_bind_execution(instance, out)` validates the
+receiver DataDesc and CMeta Function ABI projection, then creates an execution
+borrowing that instance. It returns `CMETA_INVALID_ARGUMENT` for a NULL output,
+`CMETA_TYPE_MISMATCH` for a missing/wrong receiver, and `CMETA_OK` on success.
+Non-NULL output is reset on failure. Keep the graph alive through all calls;
+destroy executions/transports before stopping providers. A stateless binder
+requires a NULL instance. Injected methods do not emit an unbound execution or
+CFlow projection getter.
+
+`databind_<stem>_APPLICATION_SERVICES(X)` adds a sixth catalog argument: the
+generated consumer's provider getter, or NULL for a stateless method. The original
+five-argument `SERVICES(X)` enumeration is retained. Application hosts can append
+consumers, resolve/start one Component graph, bind executions, then mount methods
+without parsing schema metadata themselves. All generated declarations support
+C11/C++17 consumers; the native implementations remain C11.
+
+Injection currently requires `ARTIFACTS NATIVE BINARY_CODEC` and methods without
+typed errors. Contract-only generation and selected Plugin/Wasm services with
+`inject` are rejected before publishing outputs; their ABIs do not carry a
+native borrowed receiver. This annotation is a build-time dependency contract,
+not part of the version-1 route JSON or a network payload. It may only occur on
+services. Header arguments use ASCII letters/digits, `_`, `-`, `.`, `/`; member
+and Interface arguments must be C identifiers. Duplicate requirements, wrong
+arity and unsupported application annotations fail generation.
+
+Selected transports require complete mappings for every service operation;
+there is no implicit public route or RPC name. A contract may contain both sets
+of annotations and build only HTTP or only RPC. Only selected mappings are
+materialized and schema-validated. Unknown `app_*` names, wrong scopes, arity,
+empty arguments and duplicate singleton attributes are always rejected.
+Repeated HTTP verb/route patterns (including renamed path parameters), repeated
+RPC method names, unknown fields and missing path bindings fail generation.
+At most 1024 operations are admitted. Generated data uses the existing version-1
+projection JSON format; this path adds no runtime parser or reflection system.
+
+The schema is the source of truth in this mode. For deployment-specific
+mappings, continue to use the existing external `PROJECTION_CONFIG`; the two
+modes are mutually exclusive. Migrating back means exporting the JSON once,
+removing `SCHEMA_PROJECTION` and selecting that file explicitly.
+
+Design choice: reuse generic IDL attributes as opt-in build metadata, then lower
+through the existing JSON reader and MethodPlan admission rules. This keeps the
+canonical service/type model and runtime ABI unchanged. Direct `@GET`/`@POST`
+transport annotations remain rejected by the canonical frontend. Parsing prose
+comments would hide errors; raw Mustache substitution would not provide JSON
+escaping or schema-aware route validation. A separate runtime annotation scanner
+would duplicate the compiler and host lifetime responsibilities. Structured
+schema metadata avoids these problems while preserving the external-config
+workflow. This feature requires the updated compiler and CMake helper together;
+it is not available in the previously released SaltsUtils 4.3.0-rc.7 SDK.
+
+The executable regression fixture is
+[`test_schema_projection.schema`](tests/http-rpc/test_schema_projection.schema),
+with two services and three endpoints. Its generated headers are compiled and
+inspected by `test_databind_method_plan_public_frontend`; export, ownership and
+rejection cases run in `test_databind_projection_frontend`.
+
 ### Built-in C multi-output publication
 
 When the built-in compiler receives a **named** `--output` together with

@@ -365,7 +365,8 @@ salts_idl_target(
   ARTIFACT_NAME "installed_service"
   BINARY_CODEC
   ARTIFACTS NATIVE
-  TRANSPORTS HTTP RPC)
+  TRANSPORTS HTTP RPC
+  SCHEMA_PROJECTION)
 
 target_sources(${installed_service_NATIVE_TARGET}
   PRIVATE service_business.c)
