@@ -154,14 +154,15 @@ static DataBindStatus cleanup_reader_close(DataBindFormatReader *reader) {
   return status;
 }
 
-static DataBindStatus cleanup_canonical_reader_init(
+static DataBindStatus cleanup_canonical_reader_init_recursive(
     const DataBindFormatPlan *plan, cserde_reader *reader,
-    DataBindFormatCanonicalReader *out, DataBindError *error) {
+    DataBindFormatCanonicalReader *out, DataBindFormatCursor *cursor,
+    DataBindError *error) {
   if (cleanup_observation.active &&
       (cleanup_observation.fault == CLEANUP_CANONICAL_READER_FAILURE ||
        cleanup_observation.fault == CLEANUP_CANONICAL_AND_CLOSE_FAILURE))
     return DATA_BIND_ERR_RUNTIME;
-  return data_bind_format_canonical_reader_init(plan, reader, out, error);
+  return data_bind_format_canonical_reader_init_recursive(plan, reader, out, cursor, error);
 }
 
 static DataBindStatus cleanup_decode(
@@ -205,7 +206,7 @@ static cmeta_status cleanup_move(const cmeta_data_desc *data, void *destination,
 #define data_bind_format_plan_free cleanup_format_free
 #define data_bind_format_reader_open cleanup_reader_open
 #define data_bind_format_reader_close cleanup_reader_close
-#define data_bind_format_canonical_reader_init cleanup_canonical_reader_init
+#define data_bind_format_canonical_reader_init_recursive cleanup_canonical_reader_init_recursive
 #define data_bind_message_plan_decode_native_format cleanup_decode
 #define cmeta_data_value_restore_zero cleanup_restore
 #define cmeta_data_value_move cleanup_move
@@ -213,7 +214,7 @@ static cmeta_status cleanup_move(const cmeta_data_desc *data, void *destination,
 #undef cmeta_data_value_move
 #undef cmeta_data_value_restore_zero
 #undef data_bind_message_plan_decode_native_format
-#undef data_bind_format_canonical_reader_init
+#undef data_bind_format_canonical_reader_init_recursive
 #undef data_bind_format_reader_close
 #undef data_bind_format_reader_open
 #undef data_bind_format_plan_free
