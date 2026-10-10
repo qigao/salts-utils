@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.27)
 
 project(databind_package_config_adapters LANGUAGES C CXX)
 
+# Unlike a mere package import, the JSON DataBind writer below must compile
+# and LINK without discovering the unrelated static Crypto provider.
+# The installed Salts::DataBind dependency closure is mandatory and must
+# remain independent of GmSSL in a clean SDK-only consumer environment.
+set(CMAKE_DISABLE_FIND_PACKAGE_GmSSL TRUE)
+
 if(NOT IS_DIRECTORY "${SALTS_UTILS_PACKAGE_DIR}")
   message(FATAL_ERROR
     "SALTS_UTILS_PACKAGE_DIR is not a directory: ${SALTS_UTILS_PACKAGE_DIR}")
