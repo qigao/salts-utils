@@ -15,3 +15,12 @@ set_target_properties(cflow_process_header_cpp_test PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON
   CXX_EXTENSIONS OFF)
+
+cmake_add_test(cflow_shell_test
+  SOURCES cflow_shell_test.c
+  LIBS Salts::Process Salts::TinyTest
+  FOLDER "cflow-process/tests")
+set_tests_properties(cflow_shell_test PROPERTIES
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  ENVIRONMENT "CFLOW_SHELL_PARENT_SENTINEL=parent-value"
+  TIMEOUT 60)

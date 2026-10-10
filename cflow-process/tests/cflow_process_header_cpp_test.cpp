@@ -1,4 +1,5 @@
 #include <salts/process.h>
+#include <salts/shell.h>
 
 #include "tinytest.h"
 
@@ -12,6 +13,10 @@ static_assert(std::is_standard_layout<cflow_process_submit_result>::value,
               "process submit result must remain C-compatible");
 static_assert(std::is_standard_layout<cflow_process_stats>::value,
               "process stats must remain C-compatible");
+static_assert(std::is_standard_layout<cflow_shell_options>::value,
+              "shell options must remain C-compatible");
+static_assert(std::is_standard_layout<cflow_shell_result>::value,
+              "shell results must remain C-compatible");
 
 spec("CFlow process C++ header") {
   it("preserves the public C enum ordering") {

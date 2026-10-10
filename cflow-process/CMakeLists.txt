@@ -1,4 +1,4 @@
-add_library(salts_cflow_process STATIC src/process.c)
+add_library(salts_cflow_process STATIC src/process.c src/shell.c)
 cmake_config_target(
   salts_cflow_process
   ALIAS Salts::Process
@@ -16,4 +16,8 @@ install(DIRECTORY include/salts DESTINATION include FILES_MATCHING PATTERN "*.h"
 
 if(BUILD_TESTS)
   add_subdirectory(tests)
+endif()
+
+if(BUILD_EXAMPLES)
+  add_subdirectory(examples)
 endif()
