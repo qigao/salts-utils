@@ -7,6 +7,14 @@ on:
       - release/salts-utils-4.3-idlc-606
   workflow_dispatch:
     inputs:
+      salts_candidate_run:
+        description: Optional successful Salts CI run containing unpublished SDK artifacts
+        type: string
+        default: ''
+      salts_candidate_commit:
+        description: Full Salts source SHA for the selected candidate run
+        type: string
+        default: ''
       prepare_release:
         description: Validate six-RID SDK for Release, publication through Actions UI
         type: boolean
@@ -68,6 +76,8 @@ jobs:
     with:
       builds: ${{ needs.scope.outputs.builds }}
       version: ${{ needs.scope.outputs.version }}
+      salts_candidate_run: ${{ inputs.salts_candidate_run || '' }}
+      salts_candidate_commit: ${{ inputs.salts_candidate_commit || '' }}
     secrets: inherit
   tests:
     needs: [scope, native]

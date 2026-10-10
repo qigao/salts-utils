@@ -2,6 +2,12 @@ name: Compile SaltsUtils native builds
 on:
   workflow_call:
     inputs:
+      salts_candidate_run:
+        type: string
+        default: ''
+      salts_candidate_commit:
+        type: string
+        default: ''
       builds:
         type: string
         required: true
@@ -66,6 +72,37 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
+      - name: Restore explicitly selected Salts target candidate
+        if: inputs.salts_candidate_run != ''
+        uses: qigao/salts/.github/actions/restore-candidate-sdk@652bd2bdcbb7801a1d1b735d23979cae04fe7562
+        with:
+          run-id: ${{ inputs.salts_candidate_run }}
+          commit: ${{ inputs.salts_candidate_commit }}
+          rid: ${{ matrix.rid }}
+          token: ${{ github.token }}
+      - name: Retain target candidate with compiled test dependencies
+        if: inputs.salts_candidate_run != ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = "$env:GITHUB_WORKSPACE/stage/salts-candidate/${{ matrix.rid }}"
+          New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
+          Copy-Item -LiteralPath $env:SALTS_CANDIDATE_ROOT -Destination $target -Recurse
+          "SALTS_ROOT=$target" >> $env:GITHUB_ENV
+          "SALTS_HOST_ROOT=$target" >> $env:GITHUB_ENV
+          "SALTS_VERSION=candidate-${{ inputs.salts_candidate_commit }}" >> $env:GITHUB_ENV
+      - name: Restore explicitly selected Salts host candidate
+        if: inputs.salts_candidate_run != '' && matrix.cross
+        uses: qigao/salts/.github/actions/restore-candidate-sdk@652bd2bdcbb7801a1d1b735d23979cae04fe7562
+        with:
+          run-id: ${{ inputs.salts_candidate_run }}
+          commit: ${{ inputs.salts_candidate_commit }}
+          rid: ${{ matrix.host }}
+          token: ${{ github.token }}
+      - name: Select cross compilation host candidate
+        if: inputs.salts_candidate_run != '' && matrix.cross
+        shell: pwsh
+        run: '"SALTS_HOST_ROOT=$env:SALTS_CANDIDATE_ROOT" >> $env:GITHUB_ENV'
       - name: Build host tools for cross compilation
         if: matrix.cross
         shell: bash
