@@ -10,7 +10,6 @@ The components and data sets below retain their upstream license terms.
 | cyaml | `parser/cyaml/` | MIT | See `parser/cyaml/LICENSE`. |
 | cxml | `parser/xml_parser/vendor/cxml/` | MIT | See `parser/xml_parser/vendor/cxml/LICENSE.txt`. |
 | Monocypher | `databind/vendor/monocypher/` | BSD-2-Clause OR CC0-1.0 | License notices are embedded in the upstream source. |
-| Unicode Character Database | `unicode/data/` and generated Unicode tables | Unicode-3.0 | See `unicode/data/LICENSE.txt`; generated tables retain the data-license attribution. |
 | SQLite Lemon parser generator | `tools/lemon/` | Public-domain dedication | The source headers explicitly disclaim copyright. Local patch: skip sorting an empty preprocessor define list to avoid passing NULL to `qsort`. |
 
 Dependencies downloaded by vcpkg or another package manager are not relicensed
