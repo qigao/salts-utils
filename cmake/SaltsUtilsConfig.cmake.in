@@ -30,6 +30,11 @@ endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
 
+# Preserve the 4.x spelling for existing consumers after the canonical rename.
+if(NOT TARGET Salts::CYaml)
+  add_library(Salts::CYaml ALIAS Salts::YamlParser)
+endif()
+
 set(SaltsUtils_IDLC_HINT "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@")
 include("${CMAKE_CURRENT_LIST_DIR}/IDL.cmake")
 check_required_components(SaltsUtils)

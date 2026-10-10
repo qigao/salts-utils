@@ -35,9 +35,11 @@ add_dependencies(${TARGET_NAME}
   ${CYAML_YPATH_GRAMMAR_TARGET})
 
 cmake_config_target(${TARGET_NAME}
-  ALIAS Salts::CYaml
-  EXPORT_NAME CYaml
+  ALIAS Salts::YamlParser
+  EXPORT_NAME YamlParser
   FOLDER "${TARGET_FOLDER}")
+# Keep the published 4.x target spelling as an alias of the same library.
+add_library(Salts::CYaml ALIAS ${TARGET_NAME})
 add_library(cyaml::cyaml ALIAS ${TARGET_NAME})
 target_link_libraries(${TARGET_NAME} PRIVATE Salts::Core PUBLIC Salts::QueryVM)
 
@@ -76,12 +78,12 @@ cmake_config_target(cyaml_json_adapter
 if(BUILD_TESTS)
   cmake_add_test(test_api
     SOURCES tests/test_api.c
-    LIBS ${TARGET_NAME} Salts::TinyTest
+    LIBS Salts::YamlParser Salts::TinyTest
     FOLDER "${TARGET_FOLDER}/tests")
 
   cmake_add_test(test_sax
     SOURCES tests/test_sax.c
-    LIBS ${TARGET_NAME} Salts::TinyTest
+    LIBS Salts::CYaml Salts::TinyTest
     FOLDER "${TARGET_FOLDER}/tests")
 
   cmake_add_test(test_ypath_lexer

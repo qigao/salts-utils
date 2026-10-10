@@ -42,6 +42,18 @@ setting and benchmarks follow `BUILD_BENCHMARKS`.
 
 ## Usage
 
+Link the parser through the public `Salts::YamlParser` CMake target:
+
+```cmake
+find_package(SaltsUtils CONFIG REQUIRED)
+target_link_libraries(my_application PRIVATE Salts::YamlParser)
+```
+
+`Salts::CYaml` remains a compatibility alias for existing 4.x consumers, both
+in source builds and installed packages. Both names refer to the same library;
+the `cyaml` library filename, `cyaml.h`, C API and YAML behavior are unchanged.
+The optional JSON adapter remains `Salts::CYamlJsonAdapter`.
+
 ### Parsing
 
 ```c
