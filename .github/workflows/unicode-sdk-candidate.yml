@@ -1,0 +1,149 @@
+name: Unicode SDK candidate integration
+# Temporary qualification gate for Salts #1088 / SaltsUtils #610.
+# Build the Salts Unicode branch from source; never publish or pin a package.
+'on':
+  pull_request:
+    paths:
+      - .github/workflows/unicode-sdk-candidate.yml
+      - CMakeLists.txt
+      - CMakeUserPresets.json
+      - .github/actions/setup-build-host/**
+      - cmake/SaltsUtilsConfig.cmake.in
+      - cmake/ci/unicode-installed-consumer/**
+      - jinja/**
+      - unicode/**
+  workflow_dispatch:
+    inputs:
+      salts_ref:
+        description: Salts candidate commit SHA to qualify (recorded with the SDK)
+        required: true
+        type: string
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: unicode-sdk-candidate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux:
+    if: >-
+      github.repository == 'qigao/salts-utils' &&
+      ((github.event_name == 'pull_request' &&
+        github.head_ref == 'feature/unicode17-salts-cutover-1088') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/feature/unicode17-salts-cutover-1088'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      QIGAO_SDK_RID: linux-x64
+      QIGAO_TARGET_TRIPLET: x64-linux
+      QIGAO_HOST_TRIPLET: x64-linux
+      QIGAO_NUGET_PACKAGES: ${{ github.workspace }}/stage/nuget
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_MAXSIZE: 512M
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-unicode-candidate-linux
+    steps:
+      - name: Require immutable manual qualification inputs
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          SALTS_REF: ${{ inputs.salts_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SALTS_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo 'Manual qualification requires a full Salts commit SHA.' >&2
+            exit 1
+          fi
+      - name: Checkout SaltsUtils cutover PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Checkout candidate Salts Unicode owner
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.salts_ref || 'feature/unicode17-core-1088' }}
+          path: candidate/salts-source
+          persist-credentials: false
+      - name: Restore shared re2c tool and Unicode property data
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@master
+      - name: Configure shared vcpkg cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - name: Prepare Salts native build host
+        uses: ./candidate/salts-source/.github/actions/setup-build-host
+      - name: Restore Salts compiler cache
+        uses: ./candidate/salts-source/.github/actions/setup-compiler-cache
+        with:
+          profile: unicode-cutover-linux
+      - name: Prepare SaltsUtils build host
+        uses: ./.github/actions/setup-build-host
+      - name: Build exact candidate Salts SDK from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git -C candidate/salts-source rev-parse HEAD)"
+          pushd candidate/salts-source
+          cmake --preset linux-release-ci
+          cmake --build --preset linux-release-ci --parallel 2
+          cmake --build --preset install-linux-release-ci --parallel 2
+          popd
+          prefix="$GITHUB_WORKSPACE/candidate/salts-source/stage/sdk/linux-x64"
+          printf 'source_sha=%s\nprofile=linux-release-ci\n' "$source_sha" \
+            > "$prefix/unicode-candidate-manifest.txt"
+          echo "SALTS_ROOT=$prefix" >> "$GITHUB_ENV"
+          echo "SALTS_HOST_ROOT=$prefix" >> "$GITHUB_ENV"
+          echo "SALTS_UNICODE_CANDIDATE_SHA=$source_sha" >> "$GITHUB_ENV"
+      - name: Build SaltsUtils against candidate SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset ci-unicode-candidate-user
+          cmake --build --preset ci-unicode-candidate-user --parallel 2
+      - name: Run full SaltsUtils CTest graph against candidate SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctest --preset ci-unicode-candidate-user --no-tests=error \
+            --output-on-failure --timeout 180 --parallel 2
+      - name: Install SaltsUtils beside the isolated Salts candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build --preset install-ci-unicode-candidate-user --parallel 2
+          echo "SALTS_UTILS_CANDIDATE_ROOT=$SALTS_ROOT" >> "$GITHUB_ENV"
+      - name: Run SaltsUtils installed C11 and C++17 tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          pushd cmake/ci/unicode-installed-consumer
+          cmake --preset installed-candidate
+          cmake --build --preset installed-candidate --parallel 2
+          ctest --preset installed-candidate
+          popd
+          {
+            echo '### Unicode #1088 candidate integration'
+            echo "- Salts source SHA: $SALTS_UNICODE_CANDIDATE_SHA"
+            echo "- SaltsUtils source SHA: $(git rev-parse HEAD)"
+            echo '- Full SaltsUtils CTest graph and installed C11/C++17 tests'
+            echo '- Scope: Salts and SaltsUtils only'
+            echo '- No public package, stable tag, or RC branch changes'
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            printf 'salts_sha=%s\n' "$SALTS_UNICODE_CANDIDATE_SHA"
+            printf 'salts_utils_sha=%s\n' "$(git rev-parse HEAD)"
+            printf 'run_id=%s\nrun_attempt=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf 'scope=linux-x64-source-integration\nrelease_qualified=false\n'
+          } > candidate/unicode-cutover-manifest.txt
+      - name: Retain exact combined candidate SDK for downstream inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: unicode-cutover-candidate-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            candidate/unicode-cutover-manifest.txt
+            candidate/salts-source/stage/sdk/linux-x64/
+          if-no-files-found: error
+          retention-days: 7

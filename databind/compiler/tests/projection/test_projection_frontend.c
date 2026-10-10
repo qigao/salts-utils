@@ -1,5 +1,12 @@
 #include "projection_frontend.h"
 
+/* The Wasm Core file is a generated canonical CMake fixture. WASM_CORE_FIXTURE_FILE can be
+ * compiler-relative and fails at CTest runtime from another working directory.
+ * Never use the source .c file as a fake Wasm core module admission. */
+#ifndef WASM_CORE_FIXTURE_FILE
+#error "WASM_CORE_FIXTURE_FILE must name the canonical configured Wasm Core"
+#endif
+
 #include "cmeta_fs.h"
 #include "tinytest.h"
 
@@ -457,7 +464,7 @@ spec("DataBind public typed generation frontend") {
                 -1);
     check_not_null(strstr(error, "--wasm-core-module"));
 
-    input.wasm_core_module_path = __FILE__;
+    input.wasm_core_module_path = WASM_CORE_FIXTURE_FILE;
     check_equal(databind_compiler_projection_frontend_build(
                     &input, &plan, error, sizeof(error)),
                 0);
@@ -545,7 +552,7 @@ spec("DataBind public typed generation frontend") {
         .component_id = "Image.ImageProcessor",
         .artifact_name = "image",
         .artifact_version = "1.2.3",
-        .wasm_core_module_path = __FILE__,
+        .wasm_core_module_path = WASM_CORE_FIXTURE_FILE,
         .output_path = "generated/image_native.h",
     };
     databind_compiler_projection_frontend_plan plan;

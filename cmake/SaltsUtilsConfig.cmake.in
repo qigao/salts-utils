@@ -11,6 +11,17 @@ unset(Salts_DIR)
 find_dependency(Salts CONFIG REQUIRED PATHS "${_salts_utils_salts_root}"
                 NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
+# Jinja and installed consumers require Salts' one canonical Unicode target.
+# Never recreate the removed SaltsUtils export or fall back to ICU.
+if(NOT TARGET Salts::Unicode)
+  message(FATAL_ERROR "SaltsUtils requires a Salts SDK exporting Salts::Unicode")
+endif()
+get_target_property(_salts_utils_unicode_imported Salts::Unicode IMPORTED)
+if(NOT _salts_utils_unicode_imported)
+  message(FATAL_ERROR "Salts::Unicode must be imported from the Salts SDK")
+endif()
+unset(_salts_utils_unicode_imported)
+
 # Runtime packages are selected explicitly by consumers of the VM bindings.
 if(NOT TARGET Lua::Lua)
   add_library(Lua::Lua INTERFACE IMPORTED)

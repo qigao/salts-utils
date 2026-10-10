@@ -1,4 +1,29 @@
-# re2c Unicode 模块架构决策
+# re2c Unicode 模块架构决策（历史）
+
+> 本候选分支将 Unicode 17 所有权迁移至 [Salts #1088](https://github.com/qigao/salts/issues/1088)，不代表稳定 SDK 已完成切换。本文件记录原 SaltsUtils 模块的历史设计；本分支不再构建或导出 Unicode，以 Salts 的 `unicode/` 为源码与测试事实源。
+
+## #1088 候选验证与稳定切换
+
+`unicode-sdk-candidate.yml` 的 PR 事件用于持续源码集成；手动事件仅在迁移分支执行，
+要求 Salts 的完整提交 SHA。SaltsUtils 使用触发事件的准确提交。SDK 对随制品
+保留两个源码 SHA、run/attempt 和实际范围，制品名包含 run/attempt；手动重跑不得用
+移动分支名冒充不可变输入。此流程仍是 Linux 源码集成，不是发布资格门禁。
+
+候选分支已同步包含 `v4.3.0-rc.1` 的 master。源码生产者使用正式 configure/build/install
+preset；SaltsUtils 执行完整 CTest 图，包含 Jinja 与新主线的 IDL 回归。两个 SDK 安装到
+同一隔离前缀，SaltsUtils 仓库内现有 C11/C++17 安装测试通过消费工程 preset 执行。
+消费测试复用 SaltsUtils 的 vcpkg manifest 和安装依赖，不向共享 SDK 路径写入。
+本轮验证范围仅限 Salts 与 SaltsUtils，不检出或执行其他工程的测试。候选制品保存
+组合安装树及两个来源 SHA；Release 验证不能代替 sanitizer 验证。
+
+稳定晋级必须遵循 Salts `unicode/README.md` 中的成对发布和回滚约束。新 Salts 加旧
+SaltsUtils 会发生重复 target，新 SaltsUtils 加旧 Salts 会缺 target；先发布任意一方
+都不能解决混合窗口。未完成全平台候选 SDK 配对验收、消费方协调及发布方案前，保持
+Draft，不发布稳定包，不修改最新发布包的正常解析规则或引入 shim/EXACT pin。
+
+候选 artifact 的保留期限不等于长期发布证据。制品到期或任意待发布源码改变后，需要
+重新验收并保留对应 SDK；不能将过去一次源码分支 CI 的成功用于另一组提交或包。
+
 
 ## 背景
 
@@ -104,7 +129,7 @@ writer不得保留它。原样区间仍借用原始存储；repr不额外复制�
 经用户确认新增 `salts_unicode_name_lookup(vstr name, uint32_t *out_scalar)`，无既有结构体布局变更。
 官方 Unicode 17 DerivedName/NameAliases 是唯一名称事实源；离线生成只读排序表及派生范围，
 与 re2c 属性 DFA 并存。名称生成头随源码分发，属性 DFA 仍生成到 build tree。
-数据许可、版本、hash、再生成及完整验证命令见 [数据说明](../../unicode/data/README.md)。
+数据许可、版本、hash、再生成及完整验证命令见 [数据说明](https://github.com/qigao/salts/blob/master/unicode/data/README.md)。
 
 输入是显式长度借用 ASCII 名称，最长 88 字节；不保留输入，不分配内存，不修改全局状态。
 普通名称二分查询，派生名称检查固定范围；时间 O(L log N + R L)、栈空间 O(89)，N/R 为固定表规模。
