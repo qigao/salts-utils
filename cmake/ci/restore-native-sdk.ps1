@@ -122,3 +122,8 @@ if (-not $Local) {
   (Join-Path $re2cRoot "bin") >> $env:GITHUB_PATH
 }
 Write-Host "restored Salts.Native $(Split-Path $saltsPackage -Leaf) for $SaltsRid"
+Get-Content -LiteralPath (Join-Path $saltsRoot 'salts-sdk-manifest.txt') | Write-Host
+if (-not $Local -and $env:GITHUB_STEP_SUMMARY) {
+  "### Resolved Salts SDK ($SaltsRid)" >> $env:GITHUB_STEP_SUMMARY
+  Get-Content -LiteralPath (Join-Path $saltsRoot 'salts-sdk-manifest.txt') >> $env:GITHUB_STEP_SUMMARY
+}

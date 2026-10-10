@@ -154,7 +154,7 @@ DDL 生成不会成为部署后二进制的运行时依赖。
 ## 构建与发布
 
 配置时必须设置与 profile 对应的 `SALTS_ROOT`。根构建和安装后的
-`SaltsUtilsConfig.cmake` 都只在该根下执行 `find_package(Salts CONFIG REQUIRED ... NO_DEFAULT_PATH)`，
+`SaltsUtilsConfig.cmake` 都只在该根下要求 Salts 3.x（`find_package`/`find_dependency` 的版本参数为 `3`，并使用 `NO_DEFAULT_PATH`），
 避免 Debug/Release 或不同安装树被隐式混用。缺失/无效的 `SALTS_ROOT`，或缺失
 `Salts::Platform` / `Salts::Core` / `Salts::CFlow` / `Salts::CSTL` / `Salts::CSerde` /
 `Salts::UriParser` 都直接 `FATAL_ERROR`。

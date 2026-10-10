@@ -709,7 +709,7 @@ spec("generated native CMeta graph") {
                             cmeta_data_bool.storage_type));
   }
 
-  it("publishes exact fixed-value providers and rejects unsupported conversions") {
+  it("admits Bool8 fixed-value reads while rejecting unsupported buffer writes") {
     static const char json[] =
         "{\"enabled\":true,\"id\":\"00000000-0000-0000-0000-000000000000\","
         "\"digest\":\"0123456789abcdef\"}";
@@ -764,25 +764,26 @@ spec("generated native CMeta graph") {
     FixedValues_init(&destination);
     check_equal(FixedValues_from_json(
                     codec, &destination, json, strlen(json), &error),
-                DATA_BIND_ERR_TYPE_MISMATCH);
-    check(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)) == 0);
+                DATA_BIND_OK);
+    check_equal(destination.enabled, (uint8_t)1u);
+    /* Canonical fixed UUID/bytes storage is not an owned-buffer text writer
+     * contract. Bool8 admission does not add that separate conversion. */
     check_equal(FixedValues_to_json(
                     codec, &destination, &encoded, &encoded_len, &error),
-                DATA_BIND_ERR_TYPE_MISMATCH);
+                DATA_BIND_ERR_SCHEMA);
     check_null(encoded);
     check_equal(encoded_len, (size_t)0u);
 
-    /* Binary layout admits UUID bytes; the neighboring Bool8 storage still
-     * fails native schema admission, before any wire output is published. */
+    /* Fixed UUID/bytes do not yet expose the canonical buffer read capability
+     * required by either writer. Keep that unfinished boundary explicit. */
     error = (DataBindError)DATA_BIND_ERROR_INIT;
-    DataBindStatus binary_status = FixedValues_to_bin(
-        codec, &destination, &wire, &wire_len, &error);
-    info("fixed-value Binary encode: %s (%s)", error.message, error.path);
-    check_equal(binary_status, DATA_BIND_ERR_TYPE_MISMATCH);
-    check_equal(error.path, "enabled");
+    check_equal(FixedValues_to_bin(
+                    codec, &destination, &wire, &wire_len, &error),
+                DATA_BIND_ERR_SCHEMA);
     check_null(wire);
     check_equal(wire_len, (size_t)0u);
 
+    data_bind_binary_free(wire);
     data_bind_serialized_free(encoded);
     FixedValues_clear(&destination);
     check(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)) == 0);
