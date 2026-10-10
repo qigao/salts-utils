@@ -6,6 +6,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 if(NOT IS_DIRECTORY "$ENV{SALTS_UTILS_ROOT}")
   message(FATAL_ERROR "SALTS_UTILS_ROOT must name the installed SaltsUtils SDK")
 endif()
+# Deliberately make the crypto build provider undiscoverable. The installed
+# package MUST still import and execute Salts::DataBind, without relying on
+# the CI machine's vcpkg GmSSL. This catches unconditional find_dependency()
+# exported by SaltsUtilsConfig.cmake; do not use a fake GmSSL imported target.
+set(CMAKE_DISABLE_FIND_PACKAGE_GmSSL TRUE)
 unset(SaltsUtils_DIR CACHE)
 file(TO_CMAKE_PATH "$ENV{SALTS_UTILS_ROOT}" SALTS_UTILS_SDK_PATH)
 find_package(SaltsUtils CONFIG REQUIRED PATHS "${SALTS_UTILS_SDK_PATH}"

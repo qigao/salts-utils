@@ -3,7 +3,17 @@
 # Older CMake dependency configs can overwrite PACKAGE_PREFIX_DIR.
 set(SaltsUtils_IDLC_HINT "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@")
 include(CMakeFindDependencyMacro)
-find_dependency(GmSSL CONFIG REQUIRED)
+
+# The public SDK is a multi-module package. GmSSL is needed for the static
+# Salts::Crypto link closure, NOT to import unrelated Salts::DataBind,
+# Salts::Process, Jinja, IDL, or other public targets. A clean installed
+# consumer must not depend on the build host's vcpkg GmSSL just to configure.
+# Explicit Crypto component consumers still fail fast if that provider is
+# unavailable: never fabricate a GmSSL::GmSSL target or silently drop a link.
+if("Crypto" IN_LIST SaltsUtils_FIND_COMPONENTS)
+  find_dependency(GmSSL CONFIG REQUIRED)
+  set(SaltsUtils_Crypto_FOUND TRUE)
+endif()
 
 if(NOT DEFINED ENV{SALTS_ROOT} OR NOT IS_DIRECTORY "$ENV{SALTS_ROOT}")
   message(FATAL_ERROR "SALTS_ROOT must name the restored Salts SDK")
