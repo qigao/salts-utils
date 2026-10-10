@@ -1,3 +1,12 @@
+# Qualify the exact host compiler environment invocation used by installed
+# salts_idl_target(), particularly Windows semicolon-separated PATH entries.
+add_test(NAME test_idl_host_command
+  COMMAND "${CMAKE_COMMAND}"
+    "-DDATABIND_SOURCE_ROOT=${DATABIND_SOURCE_ROOT}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_idl_host_command.cmake")
+set_tests_properties(test_idl_host_command PROPERTIES
+  LABELS "databind;installed;compiler;cmake;windows")
+
 add_test(NAME test_databind_compiler_tooling_boundary
   COMMAND "${CMAKE_COMMAND}"
     "-DDATABIND_SOURCE_ROOT=${DATABIND_SOURCE_ROOT}"

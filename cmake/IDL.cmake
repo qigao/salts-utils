@@ -117,11 +117,23 @@ endfunction()
 function(_saltsutils_idl_host_command
          out_command executable runtime_root salts_root)
   if(WIN32)
-    set(_runtime_path
-        "${runtime_root}/bin;${runtime_root}/lib;${salts_root}/bin;$ENV{PATH}")
-    string(REPLACE ";" "\\;" _runtime_path "${_runtime_path}")
+    # Never interpolate the inherited Windows PATH (a semicolon-delimited
+    # string) into a CMake COMMAND list. The Visual Studio/MSBuild generator
+    # otherwise quotes each segment separately, producing several commands
+    # instead of one PATH environment assignment.
+    #
+    # CMake >= 3.25 supports environment path-list modifications natively.
+    # These are separate argv entries, leaving the full host PATH untouched.
     set(${out_command}
-        "${CMAKE_COMMAND};-E;env;PATH=${_runtime_path};${executable}"
+        "${CMAKE_COMMAND};-E;env"
+        "--modify"
+        "PATH=path_list_prepend:${salts_root}/bin"
+        "--modify"
+        "PATH=path_list_prepend:${runtime_root}/lib"
+        "--modify"
+        "PATH=path_list_prepend:${runtime_root}/bin"
+        "--"
+        "${executable}"
         PARENT_SCOPE)
   elseif(APPLE)
     set(_runtime_path
