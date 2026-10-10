@@ -263,7 +263,8 @@ spec("DataBind FormatPlan and TransportPlan") {
     DataBind *codec = projection_plan_codec();
     DataBindFormatPlan *plan = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
-    cserde_token tokens[2u * DATA_BIND_FORMAT_CURSOR_MAX_DEPTH + 2u] = {{0}};
+    /* The over-depth case has MAX_DEPTH array pairs plus root begin/key/end. */
+    cserde_token tokens[2u * DATA_BIND_FORMAT_CURSOR_MAX_DEPTH + 3u] = {{0}};
     size_t excessive;
     check_equal(data_bind_format_plan_compile(codec, "CsvList", DATA_BIND_FORMAT_JSON, &plan, &error),
                 DATA_BIND_OK);
