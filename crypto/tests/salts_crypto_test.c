@@ -1,5 +1,7 @@
 #include <salts/crypto.h>
 #include <tinytest.h>
+#include <gmssl/digest.h>
+#include "crypto_test_hex.h"
 
 #include <string.h>
 
@@ -26,6 +28,26 @@ static const uint8_t rfc8032_signature[SALTS_CRYPTO_ED448_SIGNATURE_SIZE] = {
     0x71, 0xd9, 0x58, 0x08, 0xff, 0x2e, 0x65, 0x26, 0x00};
 
 spec("Salts crypto Ed448") {
+  it("links GmSSL and libecc digest implementations without context ABI collisions") {
+    uint8_t expected[64], actual[64], from_libecc[32];
+    size_t size = 0;
+    check_equal(salts_crypto_sha256("abc", 3, from_libecc), SALTS_CRYPTO_OK);
+    check_equal(digest(DIGEST_sha256(), (const uint8_t *)"abc", 3, actual, &size), 1);
+    check_equal(size, 32U);
+    check_equal(actual, from_libecc, sizeof(from_libecc));
+    unhex("cb00753f45a35e8bb5a03d699ac65007272c32ab0eded163"
+          "1a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7", expected);
+    check_equal(digest(DIGEST_sha384(), (const uint8_t *)"abc", 3, actual, &size), 1);
+    check_equal(size, 48U);
+    check_equal(actual, expected, 48U);
+    unhex("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea2"
+          "0a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd"
+          "454d4423643ce80e2a9ac94fa54ca49f", expected);
+    check_equal(digest(DIGEST_sha512(), (const uint8_t *)"abc", 3, actual, &size), 1);
+    check_equal(size, 64U);
+    check_equal(actual, expected, 64U);
+  }
+
   it("computes SHA-256 one-shot and streaming digests") {
     static const uint8_t expected[SALTS_CRYPTO_SHA256_DIGEST_SIZE] = {
         0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40,

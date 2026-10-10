@@ -1,6 +1,9 @@
 @PACKAGE_INIT@
 
+# Older CMake dependency configs can overwrite PACKAGE_PREFIX_DIR.
+set(SaltsUtils_IDLC_HINT "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@")
 include(CMakeFindDependencyMacro)
+find_dependency(GmSSL CONFIG REQUIRED)
 
 if(NOT DEFINED ENV{SALTS_ROOT} OR NOT IS_DIRECTORY "$ENV{SALTS_ROOT}")
   message(FATAL_ERROR "SALTS_ROOT must name the restored Salts SDK")
@@ -30,6 +33,5 @@ endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
 
-set(SaltsUtils_IDLC_HINT "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@")
 include("${CMAKE_CURRENT_LIST_DIR}/IDL.cmake")
 check_required_components(SaltsUtils)
