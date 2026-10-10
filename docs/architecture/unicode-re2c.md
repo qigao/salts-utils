@@ -4,6 +4,14 @@
 
 ## #1088 候选验证与稳定切换
 
+`4.3.0-rc.2` 在发布分支纳入本迁移，与已发布的 Salts `2.3.0-rc.2`
+配对验收。RC 恢复沿用发布分支的官方 `2.3.0` release 选择器，每轮选择
+最新数字 RC（存在稳定版则优先稳定版），排除历史 `rc.sha` 非完整包。
+macOS 正式 preset 使用 AppleClang，与 Salts 的 native TLS ABI 保持一致。
+发布要求同一 SaltsUtils SHA 的六 RID 安装包和 Linux/Windows/macOS 完整 CTest
+通过；Android/iOS 仅编译和安装。此范围不构成下游或稳定版晋级验收。
+回滚必须同时恢复旧 Salts/SaltsUtils 配对，不能恢复重复 Unicode 导出的混合状态。
+
 `unicode-sdk-candidate.yml` 的 PR 事件用于持续源码集成；手动事件仅在迁移分支执行，
 要求 Salts 的完整提交 SHA。SaltsUtils 使用触发事件的准确提交。SDK 对随制品
 保留两个源码 SHA、run/attempt 和实际范围，制品名包含 run/attempt；手动重跑不得用
