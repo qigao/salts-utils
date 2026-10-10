@@ -81,6 +81,7 @@ cmake_add_test(test_databind_projection_frontend
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
   DEFS
+    WASM_CORE_FIXTURE_FILE="${DATABIND_PROJECTION_WASM_CORE}"
     DATABIND_PROJECTION_CONFIG_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/http-rpc/test_method_plan_projection_config.json"
     DATABIND_PROJECTION_CONFIG_INVALID_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/http-rpc/test_method_plan_projection_config_invalid.json"
     DATABIND_SOCKET_PROJECTION_CONFIG_FILE="${DATABIND_COMPILER_TEST_SOURCE_DIR}/socket/test_socket_plan_projection_config.json"

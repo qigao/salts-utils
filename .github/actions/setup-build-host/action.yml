@@ -22,10 +22,17 @@ runs:
     shell: bash
     run: |
       set -euo pipefail
-      brew install ccache ninja nasm autoconf automake autoconf-archive libtool gcc@15
-      echo "$(brew --prefix gcc@15)/bin" >> "$GITHUB_PATH"
+      # Published macOS Salts::TinyTest uses AppleClang native TLS.
+      # Homebrew GCC's emulated TLS ABI is incompatible (___emutls_v.*
+      # undefined at link). Keep every native installed SDK consumer on
+      # one canonical AppleClang toolchain, not a mixed compiler/linker graph.
+      brew install ccache ninja nasm autoconf automake autoconf-archive libtool
       apple_clang="$(xcrun --find clang)"
+      apple_clangxx="$(xcrun --find clang++)"
+      test -x "$apple_clang"
+      test -x "$apple_clangxx"
       echo "QIGAO_APPLE_CLANG=$apple_clang" >> "$GITHUB_ENV"
+      echo "QIGAO_APPLE_CLANGXX=$apple_clangxx" >> "$GITHUB_ENV"
   - name: Prepare Windows dependencies
     if: runner.os == 'Windows'
     shell: pwsh
