@@ -17,6 +17,20 @@ find_package(SaltsUtils CONFIG REQUIRED
   PATHS "${SALTS_UTILS_PACKAGE_DIR}" NO_DEFAULT_PATH)
 find_package(SaltsUtils CONFIG REQUIRED)
 
+# GmSSL is still the real static Crypto provider when that component is
+# chosen. A clean non-Crypto consumer may import this exact exported target
+# without loading the provider, but must not silently unlink/fake it.
+if(NOT TARGET Salts::Crypto)
+  message(FATAL_ERROR "SaltsUtils package lost public Salts::Crypto")
+endif()
+get_target_property(_salts_utils_crypto_links Salts::Crypto
+                    INTERFACE_LINK_LIBRARIES)
+if(NOT "${_salts_utils_crypto_links}" MATCHES "GmSSL::GmSSL")
+  message(FATAL_ERROR
+    "Salts::Crypto must preserve real GmSSL link dependency")
+endif()
+unset(_salts_utils_crypto_links)
+
 foreach(required_target IN ITEMS
     Salts::IDL
     Salts::Schema
