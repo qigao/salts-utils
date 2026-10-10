@@ -36,6 +36,28 @@ Use the matching RID on Linux arm64:
 
     find_package(SaltsUtils CONFIG REQUIRED PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
 
+## Crypto-only provider dependency
+
+The installed SDK may be imported for DataBind, Process, Jinja, and other
+non-cryptographic targets **without** a GmSSL CMake package. This is an
+out-of-tree native SDK contract; it must not depend on the CI build host's
+vcpkg directories.
+
+The static `Salts::Crypto` target is different: consumers that require it
+must explicitly request the crypto component and supply its **real** GmSSL
+development/CMake package in their build toolchain:
+
+```cmake
+find_package(SaltsUtils CONFIG REQUIRED COMPONENTS Crypto)
+target_link_libraries(my_crypto_app PRIVATE Salts::Crypto)
+```
+
+This fails fast when GmSSL is unavailable. The SDK neither invents a
+`GmSSL::GmSSL` target nor drops the actual static link requirement. A
+separate future provider-closure change would be required to make static
+Crypto consumers independent of GmSSL; it is **not** implied by the
+DataBind/Process installed-SDK import guarantee.
+
 ## Upgrading to 4.2
 
 This release updates DataBind and Jinja to the Salts 2.1 CMeta reflection and
