@@ -163,25 +163,34 @@ static int process_pipe_pair_create(cflow_process_pipe_pair *pair, bool parent_w
   int parent_index = parent_writes ? 1 : 0;
   int child_index = parent_writes ? 0 : 1;
   int flags;
+  int status;
   (void)discriminator;
   if (pipe(handles) != 0) return -errno;
   if (fcntl(handles[0], F_SETFD, FD_CLOEXEC) != 0 || fcntl(handles[1], F_SETFD, FD_CLOEXEC) != 0) {
-    int status = -errno;
-    (void)close(handles[0]);
-    (void)close(handles[1]);
-    return status;
+    status = -errno;
+    goto failed;
   }
+#if defined(__APPLE__)
+  /* Darwin directs pipe SIGPIPE at the process, so a writer thread's signal mask is insufficient. */
+  if (parent_writes && fcntl(handles[parent_index], F_SETNOSIGPIPE, 1) != 0) {
+    status = -errno;
+    goto failed;
+  }
+#endif
   flags = fcntl(handles[parent_index], F_GETFL, 0);
   if (flags < 0 || fcntl(handles[parent_index], F_SETFL, flags | O_NONBLOCK) != 0) {
-    int status = -errno;
-    (void)close(handles[0]);
-    (void)close(handles[1]);
-    return status;
+    status = -errno;
+    goto failed;
   }
   pair->parent.handle = (uintptr_t)handles[parent_index];
   pair->parent.flags = NATIVE_IO_PIPE_ENDPOINT_ASYNC_CAPABLE;
   pair->child = (uintptr_t)handles[child_index];
   return SALTS_OK;
+
+failed:
+  (void)close(handles[0]);
+  (void)close(handles[1]);
+  return status;
 }
 
 #endif
