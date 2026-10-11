@@ -21,8 +21,10 @@ endif()
 file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _salts_utils_salts_root)
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-find_dependency(Salts CONFIG REQUIRED PATHS "${_salts_utils_salts_root}"
-                NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+# Cache invalidation requires a real lookup, even after another package has
+# resolved this same dependency in the current directory.
+find_package(Salts CONFIG REQUIRED PATHS "${_salts_utils_salts_root}"
+             NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 # Jinja and installed consumers require Salts' one canonical Unicode target.
 # Never recreate the removed SaltsUtils export or fall back to ICU.
