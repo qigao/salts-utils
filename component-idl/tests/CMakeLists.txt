@@ -190,3 +190,74 @@ add_test(NAME component_idl_candidate_negative_dso_admission
   COMMAND $<TARGET_FILE:component_idl_candidate_negative_dso_host>)
 set_tests_properties(component_idl_candidate_negative_dso_admission
   PROPERTIES LABELS "component-idl;candidate;negative-dso" TIMEOUT 90)
+
+
+# P3.0: explicit pilot consumer of the NEW Salts-owned copied runtime.
+# The candidate's OWN sources/CMake target are sourced from a sparse checkout
+# of one immutable upstream Salts commit. No copied runtime implementation,
+# installed candidate target, or compatibility alias in SaltsUtils.
+set(SALTS_COMPONENT_RUNTIME_CANDIDATE_ROOT "" CACHE PATH
+    "Exact checked-out Salts component-runtime source, private P3.0 test only")
+if(SALTS_COMPONENT_RUNTIME_CANDIDATE_ROOT)
+  set(_cidlc_candidate_commit
+      "540e1da7c2448f15f04aeaaee1106f73a2fbcc7e")
+  get_filename_component(_cidlc_candidate_root
+    "${SALTS_COMPONENT_RUNTIME_CANDIDATE_ROOT}" ABSOLUTE)
+  get_filename_component(_cidlc_candidate_checkout
+    "${_cidlc_candidate_root}/.." ABSOLUTE)
+  if(NOT EXISTS "${_cidlc_candidate_root}/CMakeLists.txt" OR
+     NOT EXISTS "${_cidlc_candidate_root}/include/salts/service_host.h")
+    message(FATAL_ERROR
+      "P3.0 requires a real Salts candidate component-runtime checkout")
+  endif()
+  execute_process(
+    COMMAND git -C "${_cidlc_candidate_checkout}" rev-parse HEAD
+    RESULT_VARIABLE _cidlc_git_result
+    OUTPUT_VARIABLE _cidlc_actual_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  if(NOT _cidlc_git_result EQUAL 0 OR
+     NOT _cidlc_actual_commit STREQUAL _cidlc_candidate_commit)
+    message(FATAL_ERROR
+      "Salts ComponentRuntime source provenance mismatch: expected "
+      "${_cidlc_candidate_commit}, got ${_cidlc_actual_commit}")
+  endif()
+
+  # Only suppress the separately copied runtime's own test subdirectory.
+  # Our main candidate CTests stay ON; target definitions/CMake remain owned
+  # entirely by exact Salts source at its immutable pinned commit.
+  set(_cidlc_original_build_tests "${BUILD_TESTS}")
+  set(BUILD_TESTS OFF)
+  add_subdirectory("${_cidlc_candidate_root}"
+    "${CMAKE_CURRENT_BINARY_DIR}/salts-candidate-runtime-exact")
+  set(BUILD_TESTS "${_cidlc_original_build_tests}")
+  if(NOT TARGET Salts::ConfiguratorCandidate OR
+     NOT TARGET Salts::ServiceHostCandidate)
+    message(FATAL_ERROR
+      "Exact Salts runtime checkout did not define candidate targets")
+  endif()
+
+  add_executable(component_idl_candidate_new_servicehost_dso
+    dso/idl_component_servicehost_candidate.c)
+  set_target_properties(component_idl_candidate_new_servicehost_dso
+    PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    FOLDER "component-idl/tests/pilot-candidate")
+  target_include_directories(component_idl_candidate_new_servicehost_dso
+    PRIVATE "${_cidlc_outdir}")
+  target_compile_definitions(component_idl_candidate_new_servicehost_dso
+    PRIVATE
+    "COMPONENT_IDL_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_provider_dso>\"")
+  target_link_libraries(component_idl_candidate_new_servicehost_dso
+    PRIVATE component_idl_candidate_types_types
+    Salts::ServiceHostCandidate Salts::Plugin)
+  add_dependencies(component_idl_candidate_new_servicehost_dso
+    component_idl_candidate_codegen
+    component_idl_candidate_provider_export_codegen
+    component_idl_candidate_types_idl_codegen
+    component_idl_candidate_provider_dso)
+  add_test(NAME component_idl_candidate_new_servicehost_dso
+    COMMAND $<TARGET_FILE:component_idl_candidate_new_servicehost_dso>)
+  set_tests_properties(component_idl_candidate_new_servicehost_dso
+    PROPERTIES LABELS "component-idl;candidate;real-dso;new-servicehost"
+    TIMEOUT 90)
+endif()

@@ -40,11 +40,16 @@ $componentIdlSanitizer = $EventName -eq 'pull_request' -and
   $HeadBranch -eq 'feature/component-idl-sanitizer' -and -not $PrepareRelease
 $componentIdlSdkIsolation = $EventName -eq 'pull_request' -and
   $HeadBranch -eq 'feature/component-idl-sdk-isolation' -and -not $PrepareRelease
+# P3.0 pilot runs the exact-SHA Salts source-backed ServiceHost candidate
+# on native Linux first. The parent CI already qualified other platforms.
+$componentIdlNewServiceHost = $EventName -eq 'pull_request' -and
+  $HeadBranch -eq 'feature/component-idl-servicehost-candidate' -and -not $PrepareRelease
 $builds = @()
 $tests = @()
 if ($native) {
   foreach ($profile in $profiles) {
     if ($componentIdlSanitizer -and $profile.id -ne 'linux-release') { continue }
+    if ($componentIdlNewServiceHost -and $profile.id -ne 'linux-release') { continue }
     if ($componentIdlSdkIsolation -and $profile.id -notin @(
         'linux-release','windows-release','macos-release')) { continue }
     $profile.cross = $profile.family -in @('android', 'ios')

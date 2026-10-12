@@ -89,3 +89,25 @@ Coverage boundary: this instruments SaltsUtils candidate source/Host/DSOs and fi
 ## P2.4 Installed SDK non-regression gate
 
 An independent native-host CI check installs the opt-in candidate-enabled SaltsUtils graph only into a scratch prefix. A separate CMake project imports the installed SaltsUtils package, rejects candidate Component-IDL targets/headers/libraries, and executes unchanged public C11 DataBind, Contract-only TYPES and real PLUGIN FUNCTION lease consumers, plus a C++17 native ABI smoke. The current source build never changes its default artifact outputs or publishes these candidate targets.
+
+
+## P3.0 pilot: new Salts ServiceHostCandidate consumes the same IDL Provider
+
+`feature/component-idl-servicehost-candidate` is deliberately stacked on
+the completed P2.4 installed SDK gate. It sparse-checks out the **exact**
+Salts `540e1da7c2448f15f04aeaaee1106f73a2fbcc7e` commit containing
+the separately copied `component-runtime/` ConfiguratorCandidate and
+ServiceHostCandidate. Before building, CMake verifies the *actual git SHA*,
+then imports **that module's own CMakeLists.txt and source** as private
+build-tree targets; it does not copy the implementation or install/export
+candidate headers or libraries.
+
+One new C11 host consumes the unchanged real `calc_component_plugin.h`
+generated Provider DSO, using only new ServiceHostCandidate scopes and
+ConfiguratorCandidate's typed service view. It performs the same N→N+1,
+BUSY drain, live old/N+1 typed calls, Plugin lease 2→1→0 and explicit
+unload checks as the old-Host CTest. The old Host and all negative DSO
+tests remain independent and unchanged. One provider Generation has
+exactly **one** authoritative Host; this is a migration test, not fallback.
+The first qualification is Linux-only; macOS/Windows are later separate
+gates, and the installed Salts SDK remains the original public ABI.
