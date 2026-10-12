@@ -21,7 +21,7 @@ jobs:
       matrix: ${{ fromJSON(inputs.builds) }}
     env:
       # Candidate-only exact native SDK: old restore and release profiles untouched.
-      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || github.head_ref == 'feature/component-idl-servicehost-candidate')))))) && '2.3.0-rc.14' || '' }}
+      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || (github.head_ref == 'feature/component-idl-servicehost-candidate' || github.head_ref == 'feature/component-idl-servicehost-platforms'))))))) && '2.3.0-rc.14' || '' }}
       QIGAO_SDK_RID: ${{ matrix.rid }}
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
@@ -39,7 +39,7 @@ jobs:
       # Exact Salts-owned runtime source, sparse and immutable. Do not use
       # the SaltsUtils-local runtime copy or a moving branch ref.
       - uses: actions/checkout@v4
-        if: ${{ github.head_ref == 'feature/component-idl-servicehost-candidate' && matrix.id == 'linux-release' }}
+        if: ${{ (github.head_ref == 'feature/component-idl-servicehost-candidate' && matrix.id == 'linux-release') || (github.head_ref == 'feature/component-idl-servicehost-platforms' && !matrix.cross) }}
         with:
           repository: qigao/salts
           ref: 540e1da7c2448f15f04aeaaee1106f73a2fbcc7e
@@ -98,19 +98,20 @@ jobs:
                [ "${{ github.head_ref }}" = 'feature/component-idl-dso-provider' ] || \
                [ "${{ github.head_ref }}" = 'feature/component-idl-generated-provider-export' ] || \
                [ "${{ github.head_ref }}" = 'feature/component-idl-negative-admission' ] || \
-               [ "${{ github.head_ref }}" = 'feature/component-idl-sdk-isolation' ]; }; then
+               [ "${{ github.head_ref }}" = 'feature/component-idl-sdk-isolation' ] || \
+               [ "${{ github.head_ref }}" = 'feature/component-idl-servicehost-platforms' ]; }; then
             : "${QIGAO_APPLE_CLANG:?AppleClang path is required}"
             set -- "-DCMAKE_C_COMPILER=$QIGAO_APPLE_CLANG" \
                    "-DCMAKE_CXX_COMPILER=$(xcrun --find clang++)"
           fi
-          if [ "${{ github.head_ref }}" = 'feature/component-idl-servicehost-candidate' ]; then
-            test '${{ matrix.id }}' = 'linux-release'
+          if [ "${{ github.head_ref }}" = 'feature/component-idl-servicehost-candidate' ] || \
+             [ "${{ github.head_ref }}" = 'feature/component-idl-servicehost-platforms' ]; then
             candidate_repo="$PWD/third_party/salts-component-runtime-exact"
             test "$(git -C "$candidate_repo" rev-parse HEAD)" = \
               '540e1da7c2448f15f04aeaaee1106f73a2fbcc7e'
             set -- "$@" "-DSALTS_COMPONENT_RUNTIME_CANDIDATE_ROOT=$candidate_repo/component-runtime"
           fi
-          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || github.head_ref == 'feature/component-idl-servicehost-candidate')))))) && !matrix.cross) && 'ON' || 'OFF' }} "$@"
+          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || (github.head_ref == 'feature/component-idl-servicehost-candidate' || github.head_ref == 'feature/component-idl-servicehost-platforms'))))))) && !matrix.cross) && 'ON' || 'OFF' }} "$@"
           cmake --build --preset '${{ matrix.preset }}' --parallel 2
       - name: Configure and build complete Windows graph
         if: matrix.family == 'windows'
@@ -119,7 +120,13 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || github.head_ref == 'feature/component-idl-servicehost-candidate')))))) && 'ON' || 'OFF' }}
+          if "%GITHUB_HEAD_REF%"=="feature/component-idl-servicehost-platforms" (
+            rem Candidate SHA and file provenance are strictly checked by CMake.
+            cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=ON ^
+              "-DSALTS_COMPONENT_RUNTIME_CANDIDATE_ROOT=%CD%\third_party\salts-component-runtime-exact\component-runtime"
+          ) else (
+          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || (github.head_ref == 'feature/component-idl-servicehost-candidate' || github.head_ref == 'feature/component-idl-servicehost-platforms'))))))) && 'ON' || 'OFF' }}
+          )
           if errorlevel 1 exit /b 1
           cmake --build --preset "${{ matrix.preset }}" --parallel 2
           if errorlevel 1 exit /b 1

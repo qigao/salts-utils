@@ -111,3 +111,17 @@ tests remain independent and unchanged. One provider Generation has
 exactly **one** authoritative Host; this is a migration test, not fallback.
 The first qualification is Linux-only; macOS/Windows are later separate
 gates, and the installed Salts SDK remains the original public ABI.
+
+## P3.1 macOS / Windows independent candidate qualification
+
+`feature/component-idl-servicehost-platforms` adds only the two native host
+platforms to the already-qualified P3.0 Linux pilot. Native CI checks out
+the **same immutable Salts commit** `540e1da7c2448f15f04aeaaee1106f73a2fbcc7e`
+via sparse checkout, and the existing P3.0 CMake SHA gate compiles the
+**Salts-owned** ConfiguratorCandidate/ServiceHostCandidate sources against
+their exact platform's pinned public Salts.Native 2.3.0-rc.14 SDK. The old
+Host, generated Provider DSO, negative admission and public SDK tests
+remain unchanged; only the new Host uses the source-backed candidate.
+macOS uses AppleClang to match the prebuilt Salts/TinyTest ABI, Windows
+MSVC uses the original source and exact exported C11 Provider ABI. No
+candidate install/export, fallback or general consumer migration.
