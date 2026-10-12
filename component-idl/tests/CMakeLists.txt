@@ -138,3 +138,55 @@ add_dependencies(component_idl_candidate_dso_host
   component_idl_candidate_provider_export_codegen)
 add_dependencies(component_idl_candidate_static_cpp17
   component_idl_candidate_provider_export_codegen)
+
+
+# P2.2 real Plugin DSO negative-admission suite. Three wrong provider
+# variants use the canonical generated ComponentDesc and Plugin export ID;
+# they never link the host/runtime or change existing Salts artifacts.
+foreach(mode IN ITEMS contract binding kind)
+  string(TOUPPER "${mode}" mode_upper)
+  add_library(component_idl_candidate_bad_${mode}_dso SHARED
+    dso/idl_component_negative_provider.c)
+  target_compile_features(component_idl_candidate_bad_${mode}_dso
+    PRIVATE c_std_11)
+  set_target_properties(component_idl_candidate_bad_${mode}_dso PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    FOLDER "component-idl/tests/negative-dso")
+  target_compile_definitions(component_idl_candidate_bad_${mode}_dso
+    PRIVATE "COMPONENT_IDL_NEGATIVE_${mode_upper}=1")
+  target_include_directories(component_idl_candidate_bad_${mode}_dso
+    PRIVATE "${_cidlc_outdir}")
+  target_link_libraries(component_idl_candidate_bad_${mode}_dso PRIVATE
+    component_idl_candidate_types_types
+    Salts::ComponentPluginABI Salts::PluginABI)
+  add_dependencies(component_idl_candidate_bad_${mode}_dso
+    component_idl_candidate_provider_export_codegen
+    component_idl_candidate_types_idl_codegen)
+endforeach()
+
+add_executable(component_idl_candidate_negative_dso_host
+  dso/idl_component_negative_host.c)
+set_target_properties(component_idl_candidate_negative_dso_host PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  FOLDER "component-idl/tests/negative-dso")
+target_include_directories(component_idl_candidate_negative_dso_host
+  PRIVATE "${_cidlc_outdir}")
+target_compile_definitions(component_idl_candidate_negative_dso_host PRIVATE
+  "COMPONENT_IDL_GOOD_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_provider_dso>\""
+  "COMPONENT_IDL_BAD_CONTRACT_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_bad_contract_dso>\""
+  "COMPONENT_IDL_BAD_BINDING_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_bad_binding_dso>\""
+  "COMPONENT_IDL_BAD_KIND_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_bad_kind_dso>\"")
+target_link_libraries(component_idl_candidate_negative_dso_host PRIVATE
+  component_idl_candidate_types_types
+  Salts::ComponentPlugin Salts::Plugin)
+add_dependencies(component_idl_candidate_negative_dso_host
+  component_idl_candidate_provider_export_codegen
+  component_idl_candidate_types_idl_codegen
+  component_idl_candidate_provider_dso
+  component_idl_candidate_bad_contract_dso
+  component_idl_candidate_bad_binding_dso
+  component_idl_candidate_bad_kind_dso)
+add_test(NAME component_idl_candidate_negative_dso_admission
+  COMMAND $<TARGET_FILE:component_idl_candidate_negative_dso_host>)
+set_tests_properties(component_idl_candidate_negative_dso_admission
+  PROPERTIES LABELS "component-idl;candidate;negative-dso" TIMEOUT 90)
