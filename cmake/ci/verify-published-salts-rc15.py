@@ -18,6 +18,17 @@ HOSTS = {"linux-x64": "linux-x64", "linux-arm64": "linux-arm64",
          "windows-x64": "windows-x64", "macos-arm64": "macos-arm64",
          "android-arm64-v8a": "linux-x64", "ios-arm64": "macos-arm64"}
 
+# Salts 2.3.0-rc.15 canonical package format uses os/arch/abi for most
+# platforms; only some cross builds include an explicit rid manifest field.
+PROFILES = {
+    "linux-x64": {"os": "linux", "arch": "x64"},
+    "linux-arm64": {"os": "linux", "arch": "arm64", "rid": "linux-arm64"},
+    "windows-x64": {"os": "windows", "arch": "x64"},
+    "macos-arm64": {"os": "macos", "arch": "ARM64"},
+    "android-arm64-v8a": {"os": "android", "abi": "arm64-v8a", "api": "android-24"},
+    "ios-arm64": {"os": "ios", "rid": "ios-arm64"},
+}
+
 
 def verify_release(release, commit):
     tag = "v" + VERSION
@@ -66,10 +77,13 @@ def verify_archive(package, target, host, expected_digest=SHA256):
             fields = dict(line.split("=", 1) for line in
                           z.read(prefix + "salts-sdk-manifest.txt")
                           .decode("utf-8-sig").splitlines() if "=" in line)
-            for key, want in (("version", VERSION), ("commit", SOURCE),
-                              ("profile", "release"), ("rid", rid)):
+            required = {"version": VERSION, "commit": SOURCE,
+                        "profile": "release", **PROFILES[rid]}
+            for key, want in required.items():
                 if fields.get(key) != want:
                     raise ValueError(f"{rid}: {key} provenance mismatch")
+            if "rid" not in PROFILES[rid] and fields.get("rid") not in (None, rid):
+                raise ValueError(f"{rid}: unexpected mismatched RID")
             header = z.read(prefix + "include/salts/thread.h")
             if rid == "windows-x64":
                 if b"volatile int state;" not in header or b"SALTS_ONCE_INIT {0}" not in header:

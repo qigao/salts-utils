@@ -48,9 +48,13 @@ class SaltsOfficialRc15Test(unittest.TestCase):
         with zipfile.ZipFile(package, "w") as z:
             for rid in module.RIDS:
                 prefix = f"sdk/{rid}/"
-                actual_rid = "wrong" if rid == bad_rid else rid
+                props = {"version": module.VERSION, "commit": module.SOURCE,
+                         "profile": "release", **module.PROFILES[rid]}
+                if rid == bad_rid:
+                    first = next(iter(module.PROFILES[rid]))
+                    props[first] = "wrong"
                 z.writestr(prefix + "salts-sdk-manifest.txt",
-                           f"version={module.VERSION}\\ncommit={module.SOURCE}\\nprofile=release\\nrid={actual_rid}\\n".replace("\\n","\n"))
+                           "".join(f"{k}={value}\\n" for k, value in props.items()).replace("\\n", "\n"))
                 header = ("volatile int state; SALTS_ONCE_INIT {0}"
                           if rid == "windows-x64" else "pthread_once_t native;")
                 if bad_header == rid:
