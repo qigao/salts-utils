@@ -5,6 +5,9 @@ on:
       salts_candidate_run:
         type: string
         default: ''
+      salts_candidate_pr_run:
+        type: string
+        default: ''
       salts_candidate_commit:
         type: string
         default: ''
@@ -40,6 +43,18 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Validate unambiguous candidate selection
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ('${{ inputs.salts_candidate_run }}' -ne '' -and
+              '${{ inputs.salts_candidate_pr_run }}' -ne '') {
+            throw 'Cannot mix release-dispatch and Draft PR candidate SDKs'
+          }
+          if ('${{ inputs.salts_candidate_pr_run }}' -ne '' -and
+              '${{ inputs.salts_candidate_commit }}' -notmatch '^[0-9a-f]{40}$') {
+            throw 'Draft PR candidate requires its immutable Salts commit'
+          }
       - name: Select iOS cache namespace
         if: matrix.family == 'ios'
         shell: bash
@@ -80,8 +95,18 @@ jobs:
           commit: ${{ inputs.salts_candidate_commit }}
           rid: ${{ matrix.rid }}
           token: ${{ github.token }}
+      - name: Restore exact CNet once Draft PR Salts target candidate
+        if: inputs.salts_candidate_pr_run != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./cmake/ci/restore-cnet-once-pr-sdk.ps1 `
+            -RunId '${{ inputs.salts_candidate_pr_run }}' `
+            -Commit '${{ inputs.salts_candidate_commit }}' `
+            -Rid '${{ matrix.rid }}'
       - name: Retain target candidate with compiled test dependencies
-        if: inputs.salts_candidate_run != ''
+        if: inputs.salts_candidate_run != '' || inputs.salts_candidate_pr_run != ''
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -99,8 +124,18 @@ jobs:
           commit: ${{ inputs.salts_candidate_commit }}
           rid: ${{ matrix.host }}
           token: ${{ github.token }}
+      - name: Restore exact CNet once Draft PR Salts host candidate
+        if: inputs.salts_candidate_pr_run != '' && matrix.cross
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./cmake/ci/restore-cnet-once-pr-sdk.ps1 `
+            -RunId '${{ inputs.salts_candidate_pr_run }}' `
+            -Commit '${{ inputs.salts_candidate_commit }}' `
+            -Rid '${{ matrix.host }}'
       - name: Select cross compilation host candidate
-        if: inputs.salts_candidate_run != '' && matrix.cross
+        if: (inputs.salts_candidate_run != '' || inputs.salts_candidate_pr_run != '') && matrix.cross
         shell: pwsh
         run: '"SALTS_HOST_ROOT=$env:SALTS_CANDIDATE_ROOT" >> $env:GITHUB_ENV'
       - name: Build host tools for cross compilation
