@@ -79,3 +79,9 @@ preserve an already published N plus its stable, borrowed service scope.
 Explicit close/drain must return BUSY before scope release; final stop,
 quiescence and unload are performed by the **existing** Salts::Plugin
 registry. No second loader, retry, provider ABI or default IDL artifact path.
+
+## P2.3 independent Linux sanitizer qualification
+
+The feature/component-idl-sanitizer stacked branch executes all five candidate CTests, including actual valid and rejected Provider DSOs, five times under ASan+UBSan and TSan. It builds independent instrumented graphs using the existing Linux CI CMake preset and CTest, without modifying SaltsUtils runtime or shipping another artifact.
+
+Coverage boundary: this instruments SaltsUtils candidate source/Host/DSOs and first-party SaltsUtils dependencies compiled here, but consumes prebuilt Salts.Native 2.3.0-rc.14. It is NOT a full-source Salts/Plugin TSan proof; that needs separate Salts source instrumentation before downstream runtime migration.
