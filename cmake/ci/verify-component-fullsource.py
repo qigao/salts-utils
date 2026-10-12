@@ -142,8 +142,19 @@ def main():
             continue
         cmd = entry.get("arguments") or shlex.split(entry["command"])
         check_flags(cmd, args.mode, f"compile {rel}")
+        # A compile database describes planned commands, not executed ones.
+        # Require a genuine, nonempty object produced by this exact command.
+        outputs = [cmd[i + 1] for i in range(len(cmd) - 1) if cmd[i] == "-o"]
+        if len(outputs) != 1:
+            fail(f"compile {rel}: expected one -o object output")
+        obj = (Path(entry["directory"]) / outputs[0]).resolve()
+        if not obj.is_file() or obj.stat().st_size == 0:
+            # Some CMake tests/profile targets are configured but not built.
+            # At least one built object is still mandatory for each source.
+            continue
         units[module].setdefault(rel, []).append(
-            hashlib.sha256(" ".join(cmd).encode()).hexdigest()
+            {"command_sha256": hashlib.sha256(" ".join(cmd).encode()).hexdigest(),
+             "object": str(obj.relative_to(build))}
         )
     for module, mandatory in MODULES.items():
         missing = sorted(set(mandatory) - set(units[module]))
@@ -169,7 +180,14 @@ def main():
         for lib in libs:
             if lib not in fragment:
                 fail(f"link {name}: missing first-party {lib}")
-        linked[name] = hashlib.sha256(fragment.encode()).hexdigest()
+        artifacts = [build / artifact["path"] for artifact in detail.get("artifacts", [])]
+        if not artifacts or not any(p.is_file() and p.stat().st_size
+                                    for p in artifacts):
+            fail(f"link {name}: no physically built executable or DSO")
+        linked[name] = {
+            "command_sha256": hashlib.sha256(fragment.encode()).hexdigest(),
+            "artifacts": [str(p.relative_to(build)) for p in artifacts],
+        }
         print(f"link instrumented: {name} ({args.mode})")
 
     # A File API view describes intended compilation/linking. The CI job
