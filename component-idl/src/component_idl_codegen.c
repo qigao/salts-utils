@@ -192,8 +192,29 @@ int salts_component_idl_candidate_render(
           "#include <salts/component_abi.h>\n"
           "#include <cmeta/interface.h>\n"
           "#include <cmeta/object_interface.h>\n"
-          "#include \"%s\"\n\n",
-          component_symbol, component_symbol, native_record_header) < 0)
+          "/* C++ exposes exact opaque request/response pointer carriers.\n"
+          " * The existing NativeSourceIR TYPES header uses C11-only\n"
+          " * object-lifecycle expressions and is included only by C. */\n"
+          "#ifdef __cplusplus\n",
+          component_symbol, component_symbol) < 0)
+        return -1;
+    /* Every declaration comes from the already-admitted canonical Service IR.
+     * No independently inferred or copied native record layout is generated. */
+    for (i = 0u; i < component->capability_count; ++i) {
+        const IdlService *service = idl_contract_find_service(
+            contract, component->capabilities[i].name);
+        size_t op;
+        if (service == NULL) return -1;
+        for (op = 0u; op < service->operation_count; ++op) {
+            const IdlOperation *operation = &service->operations[op];
+            if (fprintf(out, "struct %s;\nstruct %s;\n",
+                        operation->request_type,
+                        operation->response_type) < 0)
+                return -1;
+        }
+    }
+    if (fprintf(out, "#else\n#include \"%s\"\n#endif\n\n",
+                native_record_header) < 0)
         return -1;
 
     for (i = 0u; i < component->capability_count; ++i) {

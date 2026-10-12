@@ -9,3 +9,20 @@ P1 explicitly admits Components containing 1–16 Services, each with 1–16 syn
 Generated types come from the **existing** `salts_idl_target(ARTIFACTS TYPES)` frontend. The P1 fixture calls the canonical Salts::IDL parser rather than implementing a second language. Once this path is qualified, #620 can extend exact reflected execution and real Plugin Provider export in a separate increment.
 
 **DO NOT MERGE / DO NOT PUBLISH** before executable CI evidence.
+
+
+## P1 C++17 carrier boundary
+
+The candidate generates a C++17-safe **opaque** request/response pointer
+declaration using the same admitted `IdlContract` (not a second record
+layout). The original `salts-idlc ARTIFACTS TYPES` header is included only
+by C11 consumers: its C11-only compound-literal init/clear/move helpers are
+**not** rewritten or silently adjusted for MSVC C++. C++17 can include and
+type-check the generated Interface/Provider ABI, but a native C11 business
+module remains the owner of concrete record storage/lifecycle in this P1
+slice. Direct C++17 construction of IDL records is **not yet supported**
+and must be separately qualified before claiming a full C++ Service client.
+
+The candidate macOS CI matches the AppleClang-compiled Salts.Native /
+TinyTest SDK on this one branch, rather than compiling with GCC 15's
+incompatible emulated thread-local storage representation.
