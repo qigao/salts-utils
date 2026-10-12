@@ -1,0 +1,104 @@
+param(
+  [Parameter(Mandatory=$true)][string]$RunId,
+  [Parameter(Mandatory=$true)][string]$Commit,
+  [Parameter(Mandatory=$true)][string]$Rid
+)
+$ErrorActionPreference = 'Stop'
+if ($RunId -notmatch '^[1-9][0-9]*$' -or $Commit -cnotmatch '^[0-9a-f]{40}$') {
+  throw 'CNet once candidate requires an exact Actions run and immutable source SHA'
+}
+$expectedRids = @('linux-x64', 'linux-arm64', 'windows-x64', 'macos-arm64',
+                  'android-arm64-v8a', 'ios-arm64')
+if ($Rid -cnotin $expectedRids) {
+  throw "Unexpected candidate RID $Rid"
+}
+if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN) -or
+    [string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
+  throw 'Missing authorized Actions artifact token / environment'
+}
+# GitHub artifact APIs can transiently return 502/503/504. Retry only
+# transport failures, never a rejected origin/manifest or authorization error.
+$runJson = $null
+for ($attempt = 1; $attempt -le 3; ++$attempt) {
+  $reply = @(gh api "repos/qigao/salts/actions/runs/$RunId" 2>&1)
+  $status = $LASTEXITCODE
+  if ($status -eq 0) {
+    $runJson = $reply -join "`n"
+    break
+  }
+  $diagnostic = $reply -join ' '
+  if ($attempt -eq 3 -or $diagnostic -notmatch 'HTTP (502|503|504)') {
+    throw "Failed to read candidate producer run $RunId (status=$status): $diagnostic"
+  }
+  Start-Sleep -Seconds (2 * $attempt)
+}
+if ([string]::IsNullOrWhiteSpace($runJson)) {
+  throw 'Cannot inspect exact Salts candidate producer'
+}
+$run = $runJson | ConvertFrom-Json
+if ($run.repository.full_name -cne 'qigao/salts' -or
+    $run.path -cne '.github/workflows/cnet-once-six-rid-candidate.yml' -or
+    $run.event -cne 'pull_request' -or
+    $run.head_branch -cne 'test/cnet-module-once-tsan-1143' -or
+    $run.head_sha -cne $Commit -or
+    $run.status -cne 'completed' -or $run.conclusion -cne 'success') {
+  throw 'Wrong candidate origin, exact source or incomplete six-RID qualification'
+}
+$matchingPRs = @($run.pull_requests | Where-Object {
+  $_.number -eq 1150 -and $_.head.sha -eq $Commit
+})
+if ($matchingPRs.Count -ne 1) {
+  throw 'Candidate is not the expected Salts Draft PR #1150 head'
+}
+$artifact = if ($Rid -eq 'macos-arm64') { 'salts-sdk-macos' }
+            else { "salts-sdk-$Rid" }
+$destination = Join-Path $env:RUNNER_TEMP "salts-cnet-once-pr-$RunId-$Rid"
+if (Test-Path -LiteralPath $destination) {
+  throw "Refusing existing SDK restoration directory $destination"
+}
+$downloaded = $false
+for ($attempt = 1; $attempt -le 3; ++$attempt) {
+  if (Test-Path -LiteralPath $destination) {
+    Remove-Item -LiteralPath $destination -Recurse -Force
+  }
+  $reply = @(gh run download $RunId --repo qigao/salts --name $artifact --dir $destination 2>&1)
+  $status = $LASTEXITCODE
+  if ($status -eq 0) {
+    $downloaded = $true
+    break
+  }
+  $diagnostic = $reply -join ' '
+  if ($attempt -eq 3 -or $diagnostic -notmatch 'HTTP (502|503|504)') {
+    throw "Cannot download $artifact from $RunId (status=$status): $diagnostic"
+  }
+  Start-Sleep -Seconds (2 * $attempt)
+}
+if (-not $downloaded) { throw "Candidate artifact download incomplete: $artifact" }
+$root = Join-Path $destination $Rid
+$manifestPath = Join-Path $root 'salts-sdk-manifest.txt'
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+  throw "Missing exact candidate SDK manifest: $manifestPath"
+}
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-StringData
+$expectedVersion = "2.3.0-cnet.once.sha$Commit"
+if ($manifest.commit -cne $Commit -or
+    $manifest.version -cne $expectedVersion -or
+    $manifest.profile -cne 'release') {
+  throw "Candidate manifest mismatch at $Rid"
+}
+$required = @(
+  (Join-Path $root 'lib/cmake/Salts/SaltsConfig.cmake'),
+  (Join-Path $root 'include/salts/thread.h'),
+  (Join-Path $root 'include/cmeta/function.h')
+)
+foreach ($item in $required) {
+  if (-not (Test-Path -LiteralPath $item -PathType Leaf)) {
+    throw "Incomplete candidate SDK $Rid : $item"
+  }
+}
+$header = Get-Content -LiteralPath (Join-Path $root 'include/salts/thread.h') -Raw
+if ($Rid -ne 'windows-x64' -and $header -cnotmatch 'pthread_once_t native;') {
+  throw "Candidate POSIX once ABI mismatch for $Rid"
+}
+"SALTS_CANDIDATE_ROOT=$root" >> $env:GITHUB_ENV
+Write-Host "Selected exact candidate SDK $Rid, source $Commit, run $RunId"
