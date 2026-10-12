@@ -46,6 +46,8 @@ $componentIdlNewServiceHost = $EventName -eq 'pull_request' -and
   $HeadBranch -eq 'feature/component-idl-servicehost-candidate' -and -not $PrepareRelease
 $componentIdlServiceHostPlatforms = $EventName -eq 'pull_request' -and
   $HeadBranch -eq 'feature/component-idl-servicehost-platforms' -and -not $PrepareRelease
+$componentIdlServiceHostNegative = $EventName -eq 'pull_request' -and
+  $HeadBranch -eq 'feature/component-idl-servicehost-negative' -and -not $PrepareRelease
 $builds = @()
 $tests = @()
 if ($native) {
@@ -53,6 +55,8 @@ if ($native) {
     if ($componentIdlSanitizer -and $profile.id -ne 'linux-release') { continue }
     if ($componentIdlNewServiceHost -and $profile.id -ne 'linux-release') { continue }
     if ($componentIdlServiceHostPlatforms -and $profile.id -notin @(
+        'linux-release','macos-release','windows-release')) { continue }
+    if ($componentIdlServiceHostNegative -and $profile.id -notin @(
         'linux-release','macos-release','windows-release')) { continue }
     if ($componentIdlSdkIsolation -and $profile.id -notin @(
         'linux-release','windows-release','macos-release')) { continue }
