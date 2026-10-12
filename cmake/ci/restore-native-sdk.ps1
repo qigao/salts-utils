@@ -20,16 +20,9 @@ $packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } elseif 
 $packages = [IO.Path]::GetFullPath($packages)
 $config = Join-Path $repositoryRoot "cmake/vcpkg-cache.nuget.config"
 $project = Join-Path $restoreRoot "qigao-native-sdk-restore.csproj"
-# 2.3.0-* also admits historical incomplete rc.sha GitHub Packages.
-# Resolve the highest official published numeric RC, or stable when present.
-$saltsVersion = @(gh api 'repos/qigao/salts/releases?per_page=100' |
-  python (Join-Path $repositoryRoot 'cmake/ci/select-salts-release.py') '2.3.0')
-if ($LASTEXITCODE -ne 0 -or $saltsVersion.Count -ne 1 -or
-    $saltsVersion[0] -notmatch '^2\.3\.0(-rc\.[1-9][0-9]*)?$') {
-  throw 'Cannot resolve a complete published Salts.Native 2.3.0 RC/stable version'
-}
-$saltsVersion = [string]$saltsVersion[0]
-Write-Host "selected published Salts.Native $saltsVersion"
+# Immutable Salts.Native rc.15 is the only acceptable CNet once ABI source.
+$saltsVersion = '2.3.0-rc.15'
+Write-Host "selected exact published Salts.Native $saltsVersion"
 New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
 
 @'
@@ -39,7 +32,7 @@ New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="$(SaltsReleaseVersion)" />
+    <PackageReference Include="Salts.Native" Version="[$(SaltsReleaseVersion)]" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -62,6 +55,8 @@ $saltsPackage = Get-RestoredPackage "Salts.Native"
 if ((Split-Path $saltsPackage -Leaf) -ne $saltsVersion) {
   throw "Restored unexpected Salts.Native version (expected $saltsVersion)"
 }
+& python (Join-Path $repositoryRoot "cmake/ci/verify-published-salts-rc15.py") --package $saltsPackage --target-rid $SaltsRid --host-rid $Re2cRid
+if ($LASTEXITCODE -ne 0) { throw "Salts.Native rc.15 immutable Release/once ABI verification failed" }
 $saltsRoot = Join-Path $saltsPackage "sdk\$SaltsRid"
 $saltsHostRoot = Join-Path $saltsPackage "sdk\$Re2cRid"
 $re2cRoot = Join-Path (Get-RestoredPackage "Qigao.Re2c.Binary") "tools\$Re2cRid"
