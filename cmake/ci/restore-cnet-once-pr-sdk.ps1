@@ -16,8 +16,25 @@ if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN) -or
     [string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
   throw 'Missing authorized Actions artifact token / environment'
 }
-$runJson = gh api "repos/qigao/salts/actions/runs/$RunId"
-if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect exact Salts candidate producer' }
+# GitHub artifact APIs can transiently return 502/503/504. Retry only
+# transport failures, never a rejected origin/manifest or authorization error.
+$runJson = $null
+for ($attempt = 1; $attempt -le 3; ++$attempt) {
+  $reply = @(gh api "repos/qigao/salts/actions/runs/$RunId" 2>&1)
+  $status = $LASTEXITCODE
+  if ($status -eq 0) {
+    $runJson = $reply -join "`n"
+    break
+  }
+  $diagnostic = $reply -join ' '
+  if ($attempt -eq 3 -or $diagnostic -notmatch 'HTTP (502|503|504)') {
+    throw "Failed to read candidate producer run $RunId (status=$status): $diagnostic"
+  }
+  Start-Sleep -Seconds (2 * $attempt)
+}
+if ([string]::IsNullOrWhiteSpace($runJson)) {
+  throw 'Cannot inspect exact Salts candidate producer'
+}
 $run = $runJson | ConvertFrom-Json
 if ($run.repository.full_name -cne 'qigao/salts' -or
     $run.path -cne '.github/workflows/cnet-once-six-rid-candidate.yml' -or
@@ -39,8 +56,24 @@ $destination = Join-Path $env:RUNNER_TEMP "salts-cnet-once-pr-$RunId-$Rid"
 if (Test-Path -LiteralPath $destination) {
   throw "Refusing existing SDK restoration directory $destination"
 }
-gh run download $RunId --repo qigao/salts --name $artifact --dir $destination
-if ($LASTEXITCODE -ne 0) { throw "Unable to download $artifact from $RunId" }
+$downloaded = $false
+for ($attempt = 1; $attempt -le 3; ++$attempt) {
+  if (Test-Path -LiteralPath $destination) {
+    Remove-Item -LiteralPath $destination -Recurse -Force
+  }
+  $reply = @(gh run download $RunId --repo qigao/salts --name $artifact --dir $destination 2>&1)
+  $status = $LASTEXITCODE
+  if ($status -eq 0) {
+    $downloaded = $true
+    break
+  }
+  $diagnostic = $reply -join ' '
+  if ($attempt -eq 3 -or $diagnostic -notmatch 'HTTP (502|503|504)') {
+    throw "Cannot download $artifact from $RunId (status=$status): $diagnostic"
+  }
+  Start-Sleep -Seconds (2 * $attempt)
+}
+if (-not $downloaded) { throw "Candidate artifact download incomplete: $artifact" }
 $root = Join-Path $destination $Rid
 $manifestPath = Join-Path $root 'salts-sdk-manifest.txt'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
