@@ -21,7 +21,7 @@ jobs:
       matrix: ${{ fromJSON(inputs.builds) }}
     env:
       # Candidate-only exact native SDK: old restore and release profiles untouched.
-      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || github.head_ref == 'feature/component-idl-negative-admission'))) && '2.3.0-rc.14' || '' }}
+      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || github.head_ref == 'feature/component-idl-sanitizer')))) && '2.3.0-rc.14' || '' }}
       QIGAO_SDK_RID: ${{ matrix.rid }}
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
@@ -92,7 +92,7 @@ jobs:
             set -- "-DCMAKE_C_COMPILER=$QIGAO_APPLE_CLANG" \
                    "-DCMAKE_CXX_COMPILER=$(xcrun --find clang++)"
           fi
-          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || github.head_ref == 'feature/component-idl-negative-admission'))) && !matrix.cross) && 'ON' || 'OFF' }} "$@"
+          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || github.head_ref == 'feature/component-idl-sanitizer')))) && !matrix.cross) && 'ON' || 'OFF' }} "$@"
           cmake --build --preset '${{ matrix.preset }}' --parallel 2
       - name: Configure and build complete Windows graph
         if: matrix.family == 'windows'
@@ -101,10 +101,52 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || github.head_ref == 'feature/component-idl-negative-admission'))) && 'ON' || 'OFF' }}
+          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || github.head_ref == 'feature/component-idl-sanitizer')))) && 'ON' || 'OFF' }}
           if errorlevel 1 exit /b 1
           cmake --build --preset "${{ matrix.preset }}" --parallel 2
           if errorlevel 1 exit /b 1
+      # Prebuilt Salts.Native is exact-pinned but NOT source-instrumented.
+      # This qualifies instrumented SaltsUtils first-party Provider/Host.
+      - name: Qualify Component IDL (ASan/UBSan and TSan, Linux)
+        if: ${{ github.head_ref == 'feature/component-idl-sanitizer' && matrix.id == 'linux-release' }}
+        timeout-minutes: 40
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          TSAN_OPTIONS: halt_on_error=1:report_bugs=1
+        run: |
+          set -euo pipefail
+          for sanitizer in asan-ubsan tsan; do
+            build_dir="build/ci-component-idl-${sanitizer}"
+            if [ "$sanitizer" = asan-ubsan ]; then
+              cmake --preset '${{ matrix.preset }}' -B "$build_dir" \
+                -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=ON \
+                -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DENABLE_SANITIZER_ADDRESS=ON \
+                -DENABLE_SANITIZER_UNDEFINED=ON \
+                -DENABLE_SANITIZER_THREAD=OFF
+            else
+              cmake --preset '${{ matrix.preset }}' -B "$build_dir" \
+                -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=ON \
+                -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DENABLE_SANITIZER_ADDRESS=OFF \
+                -DENABLE_SANITIZER_UNDEFINED=OFF \
+                -DENABLE_SANITIZER_THREAD=ON
+            fi
+            cmake --build "$build_dir" --parallel 2 --target \
+              component_idl_candidate_static_c11 \
+              component_idl_candidate_static_cpp17 \
+              component_idl_candidate_negative \
+              component_idl_candidate_dso_host \
+              component_idl_candidate_negative_dso_host
+            export LD_LIBRARY_PATH="$PWD/$build_dir/bin:${SALTS_ROOT}/lib:${LD_LIBRARY_PATH:-}"
+            ctest --test-dir "$build_dir" --no-tests=error \
+              --output-on-failure --timeout 120 \
+              --repeat until-fail:5 -R '^component_idl_candidate_'
+          done
       - name: Install Unix release SDK
         if: matrix.package && matrix.family != 'windows'
         shell: bash

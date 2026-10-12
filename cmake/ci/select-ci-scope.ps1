@@ -34,10 +34,15 @@ $profiles = @(
 if ($releaseQualification) {
   $profiles += @{ id='linux-arm64-release'; runner='ubuntu-24.04-arm'; family='linux'; rid='linux-arm64'; host='linux-arm64'; triplet='arm64-linux'; host_triplet='arm64-linux'; preset='ci-native-minimal-release-user' }
 }
+# This stacked sanitizer slice is native Linux only; the parent branch
+# already qualified all native hosts and cross RIDs.
+$componentIdlSanitizer = $EventName -eq 'pull_request' -and
+  $HeadBranch -eq 'feature/component-idl-sanitizer' -and -not $PrepareRelease
 $builds = @()
 $tests = @()
 if ($native) {
   foreach ($profile in $profiles) {
+    if ($componentIdlSanitizer -and $profile.id -ne 'linux-release') { continue }
     $profile.cross = $profile.family -in @('android', 'ios')
     $profile.package = $releaseQualification
     $profile.build_dir = switch ($profile.id) {
