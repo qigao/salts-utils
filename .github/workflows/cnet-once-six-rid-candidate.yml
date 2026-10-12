@@ -1,0 +1,141 @@
+name: SaltsUtils six-RID exact CNet once candidate (no publish)
+
+'on':
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+    paths:
+      - ".github/workflows/cnet-once-six-rid-candidate.yml"
+      - ".github/workflows/native-build.yml"
+      - "cmake/ci/restore-cnet-once-pr-sdk.ps1"
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+concurrency:
+  group: saltsutils-cnet-once-candidate-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: false
+
+jobs:
+  six-rid-native:
+    if: >-
+      github.repository == 'qigao/salts-utils' &&
+      github.event.pull_request.head.repo.full_name == 'qigao/salts-utils' &&
+      github.event.pull_request.head.ref == 'test/cnet-once-six-rid-sdk-1143' &&
+      github.event.pull_request.base.ref == 'release/salts-utils-4.3-idlc-606' &&
+      github.event.pull_request.draft
+    uses: ./.github/workflows/native-build.yml
+    with:
+      version: 4.3.0-cnet.once.sha${{ github.event.pull_request.head.sha }}.salts.sha21bdb1145fbb2b39ee3fa644173ec037adba7b87
+      salts_candidate_pr_run: '38248972051'
+      salts_candidate_commit: '21bdb1145fbb2b39ee3fa644173ec037adba7b87'
+      builds: >-
+        {"include":[{"id":"linux-release","runner":"ubuntu-24.04","family":"linux","rid":"linux-x64","host":"linux-x64","triplet":"x64-linux","host_triplet":"x64-linux","preset":"ci-native-release-user","cross":false,"package":true,"build_dir":"build/ci-sdk/linux-x64","sysroot":""},{"id":"linux-arm64-release","runner":"ubuntu-24.04-arm","family":"linux","rid":"linux-arm64","host":"linux-arm64","triplet":"arm64-linux","host_triplet":"arm64-linux","preset":"ci-native-minimal-release-user","cross":false,"package":true,"build_dir":"build/ci-sdk/linux-arm64","sysroot":""},{"id":"windows-release","runner":"windows-2025","family":"windows","rid":"windows-x64","host":"windows-x64","triplet":"","host_triplet":"","preset":"ci-win-release-user","cross":false,"package":true,"build_dir":"build/ci-win-release","sysroot":""},{"id":"macos-release","runner":"macos-15","family":"mac","rid":"macos-arm64","host":"macos-arm64","triplet":"arm64-osx","host_triplet":"arm64-osx","preset":"ci-macos-release-user","cross":false,"package":true,"build_dir":"build/ci-sdk/macos-arm64","sysroot":""},{"id":"android-release","runner":"ubuntu-24.04","family":"android","rid":"android-arm64-v8a","host":"linux-x64","triplet":"arm64-android","host_triplet":"x64-linux","preset":"ci-android-sdk-release-user","cross":true,"package":true,"build_dir":"build/ci-sdk/android-arm64-v8a","sysroot":""},{"id":"ios-release","runner":"macos-15","family":"ios","rid":"ios-arm64","host":"macos-arm64","triplet":"arm64-ios","host_triplet":"arm64-osx","preset":"ci-ios-sdk-release-user","cross":true,"package":true,"build_dir":"build/ci-sdk/ios-arm64","sysroot":"iphoneos"}]}
+    secrets: inherit
+
+  host-tests:
+    needs: six-rid-native
+    uses: ./.github/workflows/native-tests.yml
+    with:
+      tests: >-
+        {"include":[{"id":"linux-release","runner":"ubuntu-24.04","family":"linux","rid":"linux-x64","host":"linux-x64","triplet":"x64-linux","host_triplet":"x64-linux","preset":"ci-native-release-user","cross":false,"package":true,"build_dir":"build/ci-sdk/linux-x64","sysroot":""},{"id":"windows-release","runner":"windows-2025","family":"windows","rid":"windows-x64","host":"windows-x64","triplet":"","host_triplet":"","preset":"ci-win-release-user","cross":false,"package":true,"build_dir":"build/ci-win-release","sysroot":""},{"id":"macos-release","runner":"macos-15","family":"mac","rid":"macos-arm64","host":"macos-arm64","triplet":"arm64-osx","host_triplet":"arm64-osx","preset":"ci-macos-release-user","cross":false,"package":true,"build_dir":"build/ci-sdk/macos-arm64","sysroot":""}]}
+    secrets: inherit
+
+  pack:
+    needs: [six-rid-native, host-tests]
+    uses: ./.github/workflows/sdk-package.yml
+    with:
+      version: 4.3.0-cnet.once.sha${{ github.event.pull_request.head.sha }}.salts.sha21bdb1145fbb2b39ee3fa644173ec037adba7b87
+    secrets: inherit
+
+  attest:
+    name: Check exact candidate NuGet identities, ABI, RID coverage
+    needs: [six-rid-native, host-tests, pack]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: salts-utils-native-nuget
+          path: build/cnet-once-candidate/dist
+      - name: Attest unpackable six-RID SaltsUtils binary graph
+        shell: bash
+        env:
+          EXPECTED_SALTS_SHA: 21bdb1145fbb2b39ee3fa644173ec037adba7b87
+          EXPECTED_UTILS_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_UTILS_SHA"
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          import zipfile
+          from xml.etree import ElementTree
+          utils_sha = os.environ["EXPECTED_UTILS_SHA"]
+          salts_sha = os.environ["EXPECTED_SALTS_SHA"]
+          version = "4.3.0-cnet.once.sha" + utils_sha + ".salts.sha" + salts_sha
+          pkg = Path("build/cnet-once-candidate/dist") / f"SaltsUtils.Native.{version}.nupkg"
+          rids = ("linux-x64", "linux-arm64", "windows-x64", "macos-arm64",
+                  "android-arm64-v8a", "ios-arm64")
+          if not pkg.is_file():
+              raise SystemExit(f"Missing exact unpublished NuGet package: {pkg}")
+          with zipfile.ZipFile(pkg) as archive:
+              names = set(archive.namelist())
+              manifests = {name for name in names
+                           if name.endswith("/salts-utils-sdk-manifest.txt")}
+              expected = {f"sdk/{rid}/salts-utils-sdk-manifest.txt" for rid in rids}
+              if manifests != expected:
+                  raise SystemExit(f"Wrong six-RID candidate manifest set: {manifests ^ expected}")
+              spec = [name for name in names if name.endswith(".nuspec")]
+              if len(spec) != 1:
+                  raise SystemExit("Unqualified NuGet metadata")
+              metadata = {node.tag.rsplit("}", 1)[-1]: node.text
+                          for node in ElementTree.fromstring(archive.read(spec[0])).iter()
+                          if node.tag.rsplit("}", 1)[-1] in ("id", "version")}
+              if (metadata.get("id"), metadata.get("version")) != ("SaltsUtils.Native", version):
+                  raise SystemExit(f"Wrong package identity/version: {metadata}")
+              for rid in rids:
+                  prefix = f"sdk/{rid}/"
+                  manifest = dict(line.split("=", 1) for line in
+                                  archive.read(prefix + "salts-utils-sdk-manifest.txt")
+                                    .decode("utf-8-sig").splitlines()
+                                  if "=" in line)
+                  for key, expected_value in (
+                      ("version", version),
+                      ("commit", utils_sha),
+                      ("profile", "release"),
+                      ("salts_version", "candidate-" + salts_sha),
+                  ):
+                      if manifest.get(key) != expected_value:
+                          raise SystemExit(f"{rid}: incorrect {key}: {manifest.get(key)!r}")
+                  for member in ("lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake",
+                                 "include/data_bind_binding_plan.h",
+                                 "include/data_bind_native_binding.h"):
+                      if prefix + member not in names:
+                          raise SystemExit(f"{rid}: missing installed SDK member {member}")
+              for rid in ("linux-x64", "linux-arm64", "macos-arm64"):
+                  name = f"sdk/{rid}/bin/salts-idlc"
+                  mode = (archive.getinfo(name).external_attr >> 16) & 0o777
+                  if mode & 0o111 != 0o111:
+                      raise SystemExit(f"{rid}: salts-idlc not executable ({oct(mode)})")
+          digest = hashlib.sha256(pkg.read_bytes()).hexdigest()
+          facts = (f"salts_source={salts_sha}\nutils_source={utils_sha}\n"
+                   f"utils_version={version}\nrids={','.join(rids)}\n"
+                   f"sha256={digest}\npublished=false\n")
+          (pkg.parent / "candidate-provenance.txt").write_text(facts)
+          print(facts)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: salts-utils-cnet-once-six-rid-attestation
+          path: build/cnet-once-candidate/dist/candidate-provenance.txt
+          retention-days: 14
+          if-no-files-found: error
+      - name: Verify source unchanged
+        run: test -z "$(git status --porcelain --untracked-files=no)"
