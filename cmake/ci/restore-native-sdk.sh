@@ -44,6 +44,26 @@ cat > "$project" <<'EOF'
 </Project>
 EOF
 
+# Opt-in pinned SDK for the static Component adapter. Default "*" is unchanged.
+if [ -n "${SALTS_UTILS_COMPONENT_IDL_SALTS_PIN:-}" ]; then
+  case "$SALTS_UTILS_COMPONENT_IDL_SALTS_PIN" in
+    2.3.0-rc.[1-9]|2.3.0-rc.[1-9][0-9]) ;;
+    *) echo "unsupported candidate Salts SDK pin" >&2; exit 1 ;;
+  esac
+  python3 - "$project" "$SALTS_UTILS_COMPONENT_IDL_SALTS_PIN" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+old = '<PackageReference Include="Salts.Native" Version="*" />'
+s = p.read_text()
+if s.count(old) != 1:
+    raise SystemExit("expected unique Salts.Native reference")
+p.write_text(s.replace(old,
+    '<PackageReference Include="Salts.Native" Version="' +
+    sys.argv[2] + '" />'))
+PY
+fi
+
 restore_args=()
 if [ "$with_turbowasm" = "1" ]; then
   restore_args+=("-p:WithTurboWasm=true")

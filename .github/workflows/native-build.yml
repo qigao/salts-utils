@@ -20,6 +20,8 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.builds) }}
     env:
+      # Candidate-only exact native SDK: old restore and release profiles untouched.
+      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' && !matrix.cross) && '2.3.0-rc.14' || '' }}
       QIGAO_SDK_RID: ${{ matrix.rid }}
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
