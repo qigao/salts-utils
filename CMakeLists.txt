@@ -79,6 +79,9 @@ add_subdirectory(mustache)
 add_subdirectory(unicode)
 add_subdirectory(jinja)
 add_subdirectory(databind)
+if(SALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE)
+  add_subdirectory(component-idl)
+endif()
 
 # Package Configuration
 include(CMakePackageConfigHelpers)
