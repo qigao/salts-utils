@@ -85,3 +85,7 @@ registry. No second loader, retry, provider ABI or default IDL artifact path.
 The feature/component-idl-sanitizer stacked branch executes all five candidate CTests, including actual valid and rejected Provider DSOs, five times under ASan+UBSan and TSan. It builds independent instrumented graphs using the existing Linux CI CMake preset and CTest, without modifying SaltsUtils runtime or shipping another artifact.
 
 Coverage boundary: this instruments SaltsUtils candidate source/Host/DSOs and first-party SaltsUtils dependencies compiled here, but consumes prebuilt Salts.Native 2.3.0-rc.14. It is NOT a full-source Salts/Plugin TSan proof; that needs separate Salts source instrumentation before downstream runtime migration.
+
+## P2.4 Installed SDK non-regression gate
+
+An independent native-host CI check installs the opt-in candidate-enabled SaltsUtils graph only into a scratch prefix. A separate CMake project imports the installed SaltsUtils package, rejects candidate Component-IDL targets/headers/libraries, and executes unchanged public C11 DataBind, Contract-only TYPES and real PLUGIN FUNCTION lease consumers, plus a C++17 native ABI smoke. The current source build never changes its default artifact outputs or publishes these candidate targets.
