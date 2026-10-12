@@ -112,3 +112,29 @@ add_test(NAME component_idl_candidate_dso_runtime
   COMMAND $<TARGET_FILE:component_idl_candidate_dso_host>)
 set_tests_properties(component_idl_candidate_dso_runtime PROPERTIES
   LABELS "component-idl;candidate;dso" TIMEOUT 90)
+
+
+# P2.1: explicitly generate a SEPARATE canonical Component Provider INTERFACE
+# export header from exactly the same admitted IdlContract as the static
+# Component and original TYPES. No change to NATIVE/PLUGIN FUNCTION artifacts.
+set(_cidlc_plugin_header "${_cidlc_outdir}/calc_component_plugin.h")
+add_custom_command(
+  OUTPUT "${_cidlc_plugin_header}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${_cidlc_outdir}"
+  COMMAND $<TARGET_FILE:component_idl_candidate_render>
+    "${_cidlc_schema}"
+    "WasmRuntime.Calculator"
+    "calc_component.h"
+    "${_cidlc_plugin_header}"
+    "--provider-plugin"
+  DEPENDS component_idl_candidate_render
+          "${_cidlc_schema}" "${_cidlc_header}"
+  VERBATIM)
+add_custom_target(component_idl_candidate_provider_export_codegen
+  DEPENDS "${_cidlc_plugin_header}")
+add_dependencies(component_idl_candidate_provider_dso
+  component_idl_candidate_provider_export_codegen)
+add_dependencies(component_idl_candidate_dso_host
+  component_idl_candidate_provider_export_codegen)
+add_dependencies(component_idl_candidate_static_cpp17
+  component_idl_candidate_provider_export_codegen)

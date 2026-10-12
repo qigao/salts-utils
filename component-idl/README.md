@@ -43,3 +43,21 @@ N still callable while N+1 is published, BUSY drain, exact lease count 2→1→0
 explicit stop/quiescence and final unload. Provider DSO never links the host
 registry/ServiceHost runtime. The original P1 branch remains unchanged and
 no candidate header/target is installed or published.
+
+## P2.1 explicit IDL-first Component Provider INTERFACE export
+
+An explicitly selected `--provider-plugin` codegen output produces a
+**separate** `calc_component_plugin.h` from the already-admitted canonical
+`IdlContract`. This does not modify `salts-idlc ARTIFACTS TYPES/NATIVE/PLUGIN/WASM`
+or reinterpret Plugin FUNCTION exports.
+
+The business C11 DSO still provides real typed Service implementation,
+ObjectRef creation, immutable Salts Provider Binding and borrowed Interface
+projection. Instead of handwritten `get_binding` vtable, Plugin INTERFACE
+export X-list and `CMETA_PLUGIN_DECLARE`, it invokes the generated
+`sidlc_..._DECLARE_PROVIDER_PLUGIN(name,(1,0,0),binding)` exactly once.
+The generated `PROVIDER_EXPORT_ID` is the canonical qualified Component
+identity; ServiceHost uses it to admit the real DSO under an existing Plugin
+lease. No candidate SDK target is installed, and no loader/registry/GC or
+automatic ownership is added. Multiple provider TUs must use distinct plugin
+DSOs; a Plugin query is defined once per DSO.

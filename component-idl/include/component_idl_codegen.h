@@ -18,6 +18,14 @@ int salts_component_idl_candidate_render(
     FILE *output, const IdlContract *contract,
     const char *qualified_component_id, const char *native_record_header);
 
+
+/* Separate, opt-in Component Provider INTERFACE export projection.
+ * The existing IdlContract is the only semantic authority. No loader,
+ * runtime state, ownership or Plugin FUNCTION ABI is created here. */
+int salts_component_idl_candidate_render_provider_plugin(
+    FILE *output, const IdlContract *contract,
+    const char *qualified_component_id, const char *component_header);
+
 #ifdef __cplusplus
 }
 #endif

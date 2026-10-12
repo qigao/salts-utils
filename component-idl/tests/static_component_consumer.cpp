@@ -1,4 +1,4 @@
-#include "calc_component.h"
+#include "calc_component_plugin.h"
 #include <salts/component.h>
 #include <cstring>
 #include <type_traits>

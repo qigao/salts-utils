@@ -1,6 +1,6 @@
 /* P2.0: actual .so/.dll/.dylib loaded by the existing Salts Plugin
  * registry; no host linkage to the provider DSO and no duplicate loader. */
-#include "calc_component.h"
+#include "calc_component_plugin.h"
 #include <salts/component_plugin.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,7 +8,6 @@
 #ifndef COMPONENT_IDL_DSO_PATH
 #error "The provider DSO path is required"
 #endif
-#define COMPONENT_IDL_PROVIDER_EXPORT "idl-calculator-provider"
 
 #define REQUIRE(condition) \
     do { \
@@ -39,7 +38,7 @@ static salts_component_plugin_status build_generation(
         fixture->modules, 1u
     };
     const salts_component_plugin_source source = {
-        provider_ref, COMPONENT_IDL_PROVIDER_EXPORT, NULL, NULL
+        provider_ref, sidlc_11_WasmRuntime_10_Calculator_PROVIDER_EXPORT_ID, NULL, NULL
     };
     return salts_component_plugin_generation_build(
         &fixture->generation, generation_id, registry,

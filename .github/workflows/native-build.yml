@@ -21,7 +21,7 @@ jobs:
       matrix: ${{ fromJSON(inputs.builds) }}
     env:
       # Candidate-only exact native SDK: old restore and release profiles untouched.
-      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || github.head_ref == 'feature/component-idl-dso-provider') && '2.3.0-rc.14' || '' }}
+      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || github.head_ref == 'feature/component-idl-generated-provider-export')) && '2.3.0-rc.14' || '' }}
       QIGAO_SDK_RID: ${{ matrix.rid }}
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
@@ -85,12 +85,13 @@ jobs:
           set --
           if [ "${{ matrix.family }}" = 'mac' ] && \
              { [ "${{ github.head_ref }}" = 'feature/component-idl-static-adapter' ] || \
-               [ "${{ github.head_ref }}" = 'feature/component-idl-dso-provider' ]; }; then
+               [ "${{ github.head_ref }}" = 'feature/component-idl-dso-provider' ] || \
+               [ "${{ github.head_ref }}" = 'feature/component-idl-generated-provider-export' ]; }; then
             : "${QIGAO_APPLE_CLANG:?AppleClang path is required}"
             set -- "-DCMAKE_C_COMPILER=$QIGAO_APPLE_CLANG" \
                    "-DCMAKE_CXX_COMPILER=$(xcrun --find clang++)"
           fi
-          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || github.head_ref == 'feature/component-idl-dso-provider') && !matrix.cross) && 'ON' || 'OFF' }} "$@"
+          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || github.head_ref == 'feature/component-idl-generated-provider-export')) && !matrix.cross) && 'ON' || 'OFF' }} "$@"
           cmake --build --preset '${{ matrix.preset }}' --parallel 2
       - name: Configure and build complete Windows graph
         if: matrix.family == 'windows'
@@ -99,7 +100,7 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || github.head_ref == 'feature/component-idl-dso-provider') && 'ON' || 'OFF' }}
+          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || github.head_ref == 'feature/component-idl-generated-provider-export')) && 'ON' || 'OFF' }}
           if errorlevel 1 exit /b 1
           cmake --build --preset "${{ matrix.preset }}" --parallel 2
           if errorlevel 1 exit /b 1
