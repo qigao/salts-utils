@@ -43,7 +43,7 @@ static cmeta_status create(
     const void *config_value, const salts_component_dependency *deps,
     size_t count, cmeta_object_ref *out) {
     calculator_state *state = (calculator_state *)context;
-    if (!state || !out || config_data || config_value || deps || count)
+    if (!state || !out || config_data || config_value || count)
         return CMETA_INVALID_ARGUMENT;
     return cmeta_object_borrow(out, &state->object, &cmeta_data_int, NULL);
 }
