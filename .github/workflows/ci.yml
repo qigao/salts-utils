@@ -23,6 +23,7 @@ on:
 permissions:
   contents: read
   packages: read
+  actions: read
 concurrency:
   group: salts-utils-ci-${{ inputs.prepare_release && github.run_id || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ !inputs.prepare_release }}
