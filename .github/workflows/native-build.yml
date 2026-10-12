@@ -21,7 +21,7 @@ jobs:
       matrix: ${{ fromJSON(inputs.builds) }}
     env:
       # Candidate-only exact native SDK: old restore and release profiles untouched.
-      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || github.head_ref == 'feature/component-idl-sanitizer')))) && '2.3.0-rc.14' || '' }}
+      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || github.head_ref == 'feature/component-idl-sdk-isolation'))))) && '2.3.0-rc.14' || '' }}
       QIGAO_SDK_RID: ${{ matrix.rid }}
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
@@ -87,12 +87,13 @@ jobs:
              { [ "${{ github.head_ref }}" = 'feature/component-idl-static-adapter' ] || \
                [ "${{ github.head_ref }}" = 'feature/component-idl-dso-provider' ] || \
                [ "${{ github.head_ref }}" = 'feature/component-idl-generated-provider-export' ] || \
-               [ "${{ github.head_ref }}" = 'feature/component-idl-negative-admission' ]; }; then
+               [ "${{ github.head_ref }}" = 'feature/component-idl-negative-admission' ] || \
+               [ "${{ github.head_ref }}" = 'feature/component-idl-sdk-isolation' ]; }; then
             : "${QIGAO_APPLE_CLANG:?AppleClang path is required}"
             set -- "-DCMAKE_C_COMPILER=$QIGAO_APPLE_CLANG" \
                    "-DCMAKE_CXX_COMPILER=$(xcrun --find clang++)"
           fi
-          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || github.head_ref == 'feature/component-idl-sanitizer')))) && !matrix.cross) && 'ON' || 'OFF' }} "$@"
+          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || github.head_ref == 'feature/component-idl-sdk-isolation'))))) && !matrix.cross) && 'ON' || 'OFF' }} "$@"
           cmake --build --preset '${{ matrix.preset }}' --parallel 2
       - name: Configure and build complete Windows graph
         if: matrix.family == 'windows'
@@ -101,14 +102,14 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || github.head_ref == 'feature/component-idl-sanitizer')))) && 'ON' || 'OFF' }}
+          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || github.head_ref == 'feature/component-idl-sdk-isolation'))))) && 'ON' || 'OFF' }}
           if errorlevel 1 exit /b 1
           cmake --build --preset "${{ matrix.preset }}" --parallel 2
           if errorlevel 1 exit /b 1
       # Prebuilt Salts.Native is exact-pinned but NOT source-instrumented.
       # This qualifies instrumented SaltsUtils first-party Provider/Host.
       - name: Qualify Component IDL (ASan/UBSan and TSan, Linux)
-        if: ${{ github.head_ref == 'feature/component-idl-sanitizer' && matrix.id == 'linux-release' }}
+        if: ${{ (github.head_ref == 'feature/component-idl-sanitizer' || github.head_ref == 'feature/component-idl-sdk-isolation') && matrix.id == 'linux-release' }}
         timeout-minutes: 40
         shell: bash
         env:
@@ -147,6 +148,60 @@ jobs:
               --output-on-failure --timeout 120 \
               --repeat until-fail:5 -R '^component_idl_candidate_'
           done
+      # Build-tree candidate is ON. The independently installed SDK MUST NOT
+      # export candidate headers, targets or libraries, and old clients run.
+      - name: Qualify unchanged installed SaltsUtils SDK (Unix)
+        if: ${{ github.head_ref == 'feature/component-idl-sdk-isolation' && (matrix.id == 'linux-release' || matrix.id == 'macos-release') }}
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="$PWD/build/component-idl-installed-sdk-${{ matrix.id }}"
+          cmake --install '${{ matrix.build_dir }}' --prefix "$sdk_root"
+          export SALTS_UTILS_ROOT="$sdk_root"
+          export LD_LIBRARY_PATH="$sdk_root/lib:${SALTS_ROOT}/lib:${LD_LIBRARY_PATH:-}"
+          export DYLD_LIBRARY_PATH="$sdk_root/lib:${SALTS_ROOT}/lib:${DYLD_LIBRARY_PATH:-}"
+          consumer_build="$PWD/build/component-idl-installed-consumer-${{ matrix.id }}"
+          set --
+          if [ '${{ matrix.id }}' = 'macos-release' ]; then
+            set -- "-DCMAKE_C_COMPILER=$QIGAO_APPLE_CLANG" \
+                   "-DCMAKE_CXX_COMPILER=$(xcrun --find clang++)"
+          fi
+          cmake -S component-idl/tests/package_config/sdk-isolation \
+            -B "$consumer_build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_CACHE_REPOSITORY_ROOT/cmake/QigaoVcpkgToolchain.cmake" \
+            "-DVCPKG_INSTALLED_DIR=$PWD/vcpkg_installed" \
+            "-DVCPKG_TARGET_TRIPLET=$QIGAO_TARGET_TRIPLET" \
+            -DVCPKG_MANIFEST_MODE=OFF "$@"
+          cmake --build "$consumer_build" --parallel 2
+          ctest --test-dir "$consumer_build" --no-tests=error \
+            --output-on-failure --timeout 120
+      - name: Qualify unchanged installed SaltsUtils SDK (Windows)
+        if: ${{ github.head_ref == 'feature/component-idl-sdk-isolation' && matrix.id == 'windows-release' }}
+        timeout-minutes: 30
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "SDK_PREFIX=%CD%\build\component-idl-installed-sdk-windows-x64"
+          cmake --install "${{ matrix.build_dir }}" --prefix "%SDK_PREFIX%"
+          if errorlevel 1 exit /b 1
+          set "SALTS_UTILS_ROOT=%SDK_PREFIX%"
+          set "PATH=%SDK_PREFIX%\bin;%SALTS_ROOT%\bin;%PATH%"
+          cmake -S component-idl/tests/package_config/sdk-isolation ^
+            -B build\component-idl-installed-consumer-win -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            "-DCMAKE_TOOLCHAIN_FILE=%VCPKG_CACHE_REPOSITORY_ROOT%\cmake\QigaoVcpkgToolchain.cmake" ^
+            "-DVCPKG_INSTALLED_DIR=%CD%\vcpkg_installed" ^
+            "-DVCPKG_TARGET_TRIPLET=%QIGAO_TARGET_TRIPLET%" ^
+            -DVCPKG_MANIFEST_MODE=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build build\component-idl-installed-consumer-win --parallel 2
+          if errorlevel 1 exit /b 1
+          ctest --test-dir build\component-idl-installed-consumer-win ^
+            --no-tests=error --output-on-failure --timeout 120
+          if errorlevel 1 exit /b 1
       - name: Install Unix release SDK
         if: matrix.package && matrix.family != 'windows'
         shell: bash

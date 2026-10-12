@@ -38,11 +38,15 @@ if ($releaseQualification) {
 # already qualified all native hosts and cross RIDs.
 $componentIdlSanitizer = $EventName -eq 'pull_request' -and
   $HeadBranch -eq 'feature/component-idl-sanitizer' -and -not $PrepareRelease
+$componentIdlSdkIsolation = $EventName -eq 'pull_request' -and
+  $HeadBranch -eq 'feature/component-idl-sdk-isolation' -and -not $PrepareRelease
 $builds = @()
 $tests = @()
 if ($native) {
   foreach ($profile in $profiles) {
     if ($componentIdlSanitizer -and $profile.id -ne 'linux-release') { continue }
+    if ($componentIdlSdkIsolation -and $profile.id -notin @(
+        'linux-release','windows-release','macos-release')) { continue }
     $profile.cross = $profile.family -in @('android', 'ios')
     $profile.package = $releaseQualification
     $profile.build_dir = switch ($profile.id) {
