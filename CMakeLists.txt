@@ -76,7 +76,11 @@ if(SALTS_UTILS_ENABLE_CFLOW_USB)
 endif()
 add_subdirectory(cron)
 add_subdirectory(mustache)
-add_subdirectory(unicode)
+# Unicode 17 was migrated to Salts (Salts #1088); it is no longer
+# built/exported by SaltsUtils. Do not create a second Salts::Unicode owner.
+if(NOT TARGET Salts::Unicode)
+  message(FATAL_ERROR "Installed Salts SDK must export canonical Salts::Unicode")
+endif()
 add_subdirectory(jinja)
 add_subdirectory(databind)
 if(SALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE)
