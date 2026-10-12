@@ -260,4 +260,36 @@ if(SALTS_COMPONENT_RUNTIME_CANDIDATE_ROOT)
   set_tests_properties(component_idl_candidate_new_servicehost_dso
     PROPERTIES LABELS "component-idl;candidate;real-dso;new-servicehost"
     TIMEOUT 90)
+  # P3.2: the same actual wrong Provider DSOs are admitted and rejected by
+  # the NEW Salts-owned ServiceHostCandidate; no second loader or fallback.
+  add_executable(component_idl_candidate_new_servicehost_negative_dso
+    dso/idl_component_servicehost_negative.c)
+  set_target_properties(component_idl_candidate_new_servicehost_negative_dso
+    PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    FOLDER "component-idl/tests/pilot-candidate")
+  target_include_directories(component_idl_candidate_new_servicehost_negative_dso
+    PRIVATE "${_cidlc_outdir}")
+  target_compile_definitions(component_idl_candidate_new_servicehost_negative_dso
+    PRIVATE
+    "COMPONENT_IDL_GOOD_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_provider_dso>\""
+    "COMPONENT_IDL_BAD_CONTRACT_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_bad_contract_dso>\""
+    "COMPONENT_IDL_BAD_BINDING_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_bad_binding_dso>\""
+    "COMPONENT_IDL_BAD_KIND_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_bad_kind_dso>\"")
+  target_link_libraries(component_idl_candidate_new_servicehost_negative_dso
+    PRIVATE component_idl_candidate_types_types
+    Salts::ServiceHostCandidate Salts::Plugin)
+  add_dependencies(component_idl_candidate_new_servicehost_negative_dso
+    component_idl_candidate_codegen
+    component_idl_candidate_provider_export_codegen
+    component_idl_candidate_types_idl_codegen
+    component_idl_candidate_provider_dso
+    component_idl_candidate_bad_contract_dso
+    component_idl_candidate_bad_binding_dso
+    component_idl_candidate_bad_kind_dso)
+  add_test(NAME component_idl_candidate_new_servicehost_negative_dso
+    COMMAND $<TARGET_FILE:component_idl_candidate_new_servicehost_negative_dso>)
+  set_tests_properties(component_idl_candidate_new_servicehost_negative_dso
+    PROPERTIES LABELS "component-idl;candidate;real-dso;negative;new-servicehost"
+    TIMEOUT 90)
+
 endif()

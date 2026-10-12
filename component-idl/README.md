@@ -125,3 +125,18 @@ remain unchanged; only the new Host uses the source-backed candidate.
 macOS uses AppleClang to match the prebuilt Salts/TinyTest ABI, Windows
 MSVC uses the original source and exact exported C11 Provider ABI. No
 candidate install/export, fallback or general consumer migration.
+
+## P3.2 failure-atomic new ServiceHost admission and recovered N+1
+
+This stacked test compiles the same exact-SHA Salts-owned
+`ServiceHostCandidate` source on Linux/macOS/Windows, and exercises a
+*separate* new-Host executable against the original canonical IDL Provider
+DSO and three real invalid DSOs. It rejects missing Export ID, incorrect
+Component Provider contract ID, wrong Plugin FUNCTION-versus-INTERFACE kind,
+and mismatched Provider Binding ABI, proving every rejected candidate
+lease is released, failed N+1 cannot publish and the previously published
+N remains callable. It then builds **valid N+1 after all failures**, proves
+both live scopes remain callable, BUSY drain and Plugin lease count
+2→1→0, followed by explicit stop/quiescence/unload. The old Host's test
+is unchanged and still executes. No fallback, alternate loader, source
+copy or public SDK migration.
