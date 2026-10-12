@@ -35,10 +35,18 @@ int main(int argc, char **argv) {
     if (argc != 5) return 2;
     source = read_idl(argv[1], &len);
     if (!source) return 3;
-    if (idl_contract_parse(source, len, &contract, &diagnostic) != IDL_OK ||
-        salts_component_idl_candidate_admit(
-            contract, argv[2], argv[3]) != 0)
+    /* The canonical IDL parser returns boolean success, not IdlStatus. */
+    if (!idl_contract_parse(source, len, &contract, &diagnostic)) {
+        fprintf(stderr, "component-idl: IDL parse failed: %s\n",
+                diagnostic.message);
         goto done;
+    }
+    if (salts_component_idl_candidate_admit(
+            contract, argv[2], argv[3]) != 0) {
+        fprintf(stderr, "component-idl: unsupported Component or Service contract: %s\n",
+                argv[2]);
+        goto done;
+    }
     out = fopen(argv[4], "wb");
     if (!out) goto done;
     if (salts_component_idl_candidate_render(
