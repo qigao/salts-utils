@@ -34,5 +34,17 @@ int main(void) {
         fclose(file);
         return 4;
     }
-    return fclose(file) == 0 ? 0 : 5;
+    if (salts_component_idl_candidate_render_provider_plugin(
+            file, &contract, "Example.Bad", "calc_component.h") == 0) {
+        fclose(file);
+        return 5;
+    }
+    if (ftell(file) != 0L) { fclose(file); return 6; }
+    if (salts_component_idl_candidate_render_provider_plugin(
+            file, &contract, "Example.Bad", "../escape.h") == 0) {
+        fclose(file);
+        return 7;
+    }
+    if (ftell(file) != 0L) { fclose(file); return 8; }
+    return fclose(file) == 0 ? 0 : 9;
 }

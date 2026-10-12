@@ -286,3 +286,66 @@ int salts_component_idl_candidate_render(
         return -1;
     return ferror(out) ? -1 : 0;
 }
+
+
+/* This deliberately emits a Salts Plugin INTERFACE provider, never a
+ * reinterpretation of DataBind PLUGIN FUNCTION exports or runtime metadata. */
+int salts_component_idl_candidate_render_provider_plugin(
+    FILE *out, const IdlContract *contract,
+    const char *qualified_component_id, const char *component_header) {
+    const IdlComponent *component;
+    char symbol[320];
+    if (out == NULL || salts_component_idl_candidate_admit(
+            contract, qualified_component_id, component_header) != 0)
+        return -1;
+    component = idl_contract_find_component(contract, qualified_component_id);
+    if (component == NULL ||
+        !native_name(symbol, sizeof(symbol),
+                     contract->name, component->name, NULL))
+        return -1;
+
+    if (fprintf(out,
+          "#ifndef %s_COMPONENT_PROVIDER_PLUGIN_H\n"
+          "#define %s_COMPONENT_PROVIDER_PLUGIN_H\n"
+          "#include \"%s\"\n"
+          "#include <salts/component_plugin_abi.h>\n"
+          "#include <salts/plugin_decl.h>\n\n"
+          "/* Exact, canonical Component Provider identity from IdlContract. */\n"
+          "#define %s_PROVIDER_PLUGIN_ID \"%s\"\n"
+          "#define %s_PROVIDER_EXPORT_ID \"%s\"\n\n",
+          symbol, symbol, component_header,
+          symbol, component->qualified_name,
+          symbol, component->qualified_name) < 0)
+        return -1;
+
+    if (fprintf(out,
+          "#define %s_PROVIDER_PLUGIN_EXPORTS(X) \\\n"
+          "    X(interface, (salts_component_provider, &%s__plugin_value), \\\n"
+          "      %s_PROVIDER_EXPORT_ID, SALTS_COMPONENT_PROVIDER_CONTRACT_ID, \\\n"
+          "      SALTS_COMPONENT_PROVIDER_CONTRACT_VERSION, 0u)\n\n",
+          symbol, symbol, symbol) < 0)
+        return -1;
+
+    /* Provider state and callable authority are business-authored and remain
+     * borrowed under the Plugin lease. The generated carrier uses only the
+     * exact original Salts Component Provider and Plugin public ABIs. */
+    if (fprintf(out,
+          "#define %s_DECLARE_PROVIDER_PLUGIN(NAME, VERSION, BINDING) \\\n"
+          "    CMETA_STATIC_ASSERT(CMETA_TYPE_MATCHES(&(BINDING), \\\n"
+          "        const salts_component_provider_binding *), \\\n"
+          "        \"Component Provider binding must use the exact Salts ABI\"); \\\n"
+          "    static const salts_component_provider_binding *NAME##_get_binding(void *self) { \\\n"
+          "        return (const salts_component_provider_binding *)self; \\\n"
+          "    } \\\n"
+          "    CMETA_IMPLEMENTS(salts_component_provider, NAME##_provider_impl, \\\n"
+          "        0u, .get_binding = NAME##_get_binding); \\\n"
+          "    static salts_component_provider %s__plugin_value = { \\\n"
+          "        (void *)&(BINDING), &NAME##_provider_impl_vtable \\\n"
+          "    }; \\\n"
+          "    CMETA_PLUGIN_DECLARE(NAME, %s_PROVIDER_PLUGIN_ID, VERSION, \\\n"
+          "        %s_PROVIDER_PLUGIN_EXPORTS, CMETA_PLUGIN_PASSIVE())\n\n"
+          "#endif /* %s_COMPONENT_PROVIDER_PLUGIN_H */\n",
+          symbol, symbol, symbol, symbol) < 0)
+        return -1;
+    return ferror(out) ? -1 : 0;
+}

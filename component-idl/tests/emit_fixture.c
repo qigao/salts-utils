@@ -1,6 +1,7 @@
 #include "component_idl_codegen.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static char *read_idl(const char *path, size_t *out_len) {
     FILE *f;
@@ -32,7 +33,9 @@ int main(int argc, char **argv) {
     IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
     FILE *out = NULL;
     int status = 1;
-    if (argc != 5) return 2;
+    const int provider_plugin =
+        argc == 6 && strcmp(argv[5], "--provider-plugin") == 0;
+    if (argc != 5 && !provider_plugin) return 2;
     source = read_idl(argv[1], &len);
     if (!source) return 3;
     /* The canonical IDL parser returns boolean success, not IdlStatus. */
@@ -49,8 +52,11 @@ int main(int argc, char **argv) {
     }
     out = fopen(argv[4], "wb");
     if (!out) goto done;
-    if (salts_component_idl_candidate_render(
-            out, contract, argv[2], argv[3]) == 0 &&
+    if ((provider_plugin
+             ? salts_component_idl_candidate_render_provider_plugin(
+                   out, contract, argv[2], argv[3])
+             : salts_component_idl_candidate_render(
+                   out, contract, argv[2], argv[3])) == 0 &&
         fflush(out) == 0)
         status = 0;
 done:
