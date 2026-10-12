@@ -26,3 +26,20 @@ and must be separately qualified before claiming a full C++ Service client.
 The candidate macOS CI matches the AppleClang-compiled Salts.Native /
 TinyTest SDK on this one branch, rather than compiling with GCC 15's
 incompatible emulated thread-local storage representation.
+
+## P2.0 (stacked, not a public artifact)
+
+`feature/component-idl-dso-provider` adds an opt-in real Provider DSO built
+from this exact generated ComponentDesc, with a separate C11 host executable
+using only `Salts::ComponentPlugin` and `Salts::Plugin` from the released
+Salts SDK. The DSO uses the **original** `salts_component_provider` Interface
+and canonical `CMETA_PLUGIN_DECLARE` (not the different Plugin FUNCTION
+export contract). The first slice deliberately writes business factory,
+projection and Plugin export declarations as ordinary C code to prove real
+DSO lifetimes, before their later generated adapter replaces boilerplate.
+
+Acceptance includes typed call across a real lease, two complete generations,
+N still callable while N+1 is published, BUSY drain, exact lease count 2→1→0,
+explicit stop/quiescence and final unload. Provider DSO never links the host
+registry/ServiceHost runtime. The original P1 branch remains unchanged and
+no candidate header/target is installed or published.
