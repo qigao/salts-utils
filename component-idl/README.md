@@ -61,3 +61,21 @@ identity; ServiceHost uses it to admit the real DSO under an existing Plugin
 lease. No candidate SDK target is installed, and no loader/registry/GC or
 automatic ownership is added. Multiple provider TUs must use distinct plugin
 DSOs; a Plugin query is defined once per DSO.
+
+
+## P2.2 negative provider admission (stacked, opt-in)
+
+The separate negative admission host dynamically loads the valid IDL provider
+and three **real** malformed shared libraries that present (a) a mismatched
+original Salts Plugin Component contract ID, (b) a mismatched exact
+SALTS_COMPONENT_PROVIDER_BINDING_ABI_VERSION, or (c) a well-formed Plugin
+FUNCTION export under the Component's canonical export ID instead of the
+required Provider INTERFACE. A fourth negative source selects a missing export
+from the original good DSO.
+
+On each failed N+1 build, the original Salts::ComponentPlugin runtime must
+reject publication, release the attempted Plugin lease exactly once, and
+preserve an already published N plus its stable, borrowed service scope.
+Explicit close/drain must return BUSY before scope release; final stop,
+quiescence and unload are performed by the **existing** Salts::Plugin
+registry. No second loader, retry, provider ABI or default IDL artifact path.
