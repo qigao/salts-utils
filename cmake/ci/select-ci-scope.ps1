@@ -50,6 +50,8 @@ $componentIdlServiceHostNegative = $EventName -eq 'pull_request' -and
   $HeadBranch -eq 'feature/component-idl-servicehost-negative' -and -not $PrepareRelease
 $componentIdlServiceHostSanitizer = $EventName -eq 'pull_request' -and
   $HeadBranch -eq 'feature/component-idl-servicehost-sanitizer' -and -not $PrepareRelease
+$componentIdlServiceHostFullsource = $EventName -eq 'pull_request' -and
+  $HeadBranch -eq 'feature/component-idl-servicehost-fullsource' -and -not $PrepareRelease
 $builds = @()
 $tests = @()
 if ($native) {
@@ -61,6 +63,7 @@ if ($native) {
     if ($componentIdlServiceHostNegative -and $profile.id -notin @(
         'linux-release','macos-release','windows-release')) { continue }
     if ($componentIdlServiceHostSanitizer -and $profile.id -ne 'linux-release') { continue }
+    if ($componentIdlServiceHostFullsource -and $profile.id -ne 'linux-release') { continue }
     if ($componentIdlSdkIsolation -and $profile.id -notin @(
         'linux-release','windows-release','macos-release')) { continue }
     $profile.cross = $profile.family -in @('android', 'ios')
