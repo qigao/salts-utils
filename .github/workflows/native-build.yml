@@ -21,7 +21,7 @@ jobs:
       matrix: ${{ fromJSON(inputs.builds) }}
     env:
       # Candidate-only exact native SDK: old restore and release profiles untouched.
-      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || (github.head_ref == 'feature/component-idl-servicehost-candidate' || (github.head_ref == 'feature/component-idl-servicehost-platforms' || github.head_ref == 'feature/component-idl-servicehost-negative')))))))) && '2.3.0-rc.14' || '' }}
+      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || (github.head_ref == 'feature/component-idl-servicehost-candidate' || (github.head_ref == 'feature/component-idl-servicehost-platforms' || (github.head_ref == 'feature/component-idl-servicehost-negative' || github.head_ref == 'feature/component-idl-servicehost-sanitizer'))))))))) && '2.3.0-rc.14' || '' }}
       QIGAO_SDK_RID: ${{ matrix.rid }}
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
@@ -39,7 +39,7 @@ jobs:
       # Exact Salts-owned runtime source, sparse and immutable. Do not use
       # the SaltsUtils-local runtime copy or a moving branch ref.
       - uses: actions/checkout@v4
-        if: ${{ (github.head_ref == 'feature/component-idl-servicehost-candidate' && matrix.id == 'linux-release') || ((github.head_ref == 'feature/component-idl-servicehost-platforms' || github.head_ref == 'feature/component-idl-servicehost-negative') && !matrix.cross) }}
+        if: ${{ (github.head_ref == 'feature/component-idl-servicehost-candidate' && matrix.id == 'linux-release') || ((github.head_ref == 'feature/component-idl-servicehost-platforms' || github.head_ref == 'feature/component-idl-servicehost-negative') && !matrix.cross) || (github.head_ref == 'feature/component-idl-servicehost-sanitizer' && matrix.id == 'linux-release') }}
         with:
           repository: qigao/salts
           ref: 540e1da7c2448f15f04aeaaee1106f73a2fbcc7e
@@ -107,13 +107,14 @@ jobs:
           fi
           if [ "${{ github.head_ref }}" = 'feature/component-idl-servicehost-candidate' ] || \
              [ "${{ github.head_ref }}" = 'feature/component-idl-servicehost-platforms' ] || \
-             [ "${{ github.head_ref }}" = 'feature/component-idl-servicehost-negative' ]; then
+             [ "${{ github.head_ref }}" = 'feature/component-idl-servicehost-negative' ] || \
+             [ "${{ github.head_ref }}" = 'feature/component-idl-servicehost-sanitizer' ]; then
             candidate_repo="$PWD/third_party/salts-component-runtime-exact"
             test "$(git -C "$candidate_repo" rev-parse HEAD)" = \
               '540e1da7c2448f15f04aeaaee1106f73a2fbcc7e'
             set -- "$@" "-DSALTS_COMPONENT_RUNTIME_CANDIDATE_ROOT=$candidate_repo/component-runtime"
           fi
-          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || (github.head_ref == 'feature/component-idl-servicehost-candidate' || (github.head_ref == 'feature/component-idl-servicehost-platforms' || github.head_ref == 'feature/component-idl-servicehost-negative')))))))) && !matrix.cross) && 'ON' || 'OFF' }} "$@"
+          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ ((github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || (github.head_ref == 'feature/component-idl-servicehost-candidate' || (github.head_ref == 'feature/component-idl-servicehost-platforms' || (github.head_ref == 'feature/component-idl-servicehost-negative' || github.head_ref == 'feature/component-idl-servicehost-sanitizer'))))))))) && !matrix.cross) && 'ON' || 'OFF' }} "$@"
           cmake --build --preset '${{ matrix.preset }}' --parallel 2
       - name: Configure and build complete Windows graph
         if: matrix.family == 'windows'
@@ -130,7 +131,7 @@ jobs:
             cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=ON ^
               "-DSALTS_COMPONENT_RUNTIME_CANDIDATE_ROOT=%CANDIDATE_RUNTIME_ROOT%"
           ) else (
-          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || (github.head_ref == 'feature/component-idl-servicehost-candidate' || (github.head_ref == 'feature/component-idl-servicehost-platforms' || github.head_ref == 'feature/component-idl-servicehost-negative')))))))) && 'ON' || 'OFF' }}
+          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' || (github.head_ref == 'feature/component-idl-dso-provider' || (github.head_ref == 'feature/component-idl-generated-provider-export' || (github.head_ref == 'feature/component-idl-negative-admission' || (github.head_ref == 'feature/component-idl-sanitizer' || (github.head_ref == 'feature/component-idl-sdk-isolation' || (github.head_ref == 'feature/component-idl-servicehost-candidate' || (github.head_ref == 'feature/component-idl-servicehost-platforms' || (github.head_ref == 'feature/component-idl-servicehost-negative' || github.head_ref == 'feature/component-idl-servicehost-sanitizer'))))))))) && 'ON' || 'OFF' }}
           )
           if errorlevel 1 exit /b 1
           cmake --build --preset "${{ matrix.preset }}" --parallel 2
@@ -231,6 +232,74 @@ jobs:
           ctest --test-dir build\component-idl-installed-consumer-win ^
             --no-tests=error --output-on-failure --timeout 120
           if errorlevel 1 exit /b 1
+      # New Salts Configurator/ServiceHost source + IDL Provider/Host only;
+      # existing Salts.Native Plugin/CMeta/Platform remains prebuilt.
+      - name: Qualify source-instrumented ServiceHost and real Provider DSOs
+        if: ${{ github.head_ref == 'feature/component-idl-servicehost-sanitizer' && matrix.id == 'linux-release' }}
+        timeout-minutes: 40
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          TSAN_OPTIONS: halt_on_error=1:report_bugs=1
+        run: |
+          set -euo pipefail
+          candidate_repo="$PWD/third_party/salts-component-runtime-exact"
+          test "$(git -C "$candidate_repo" rev-parse HEAD)" = '540e1da7c2448f15f04aeaaee1106f73a2fbcc7e'
+          candidate_root="$candidate_repo/component-runtime"
+          for mode in asan-ubsan tsan; do
+            build_dir="$PWD/build/ci-component-idl-servicehost-${mode}"
+            common_flags=(
+              -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=ON
+              "-DSALTS_COMPONENT_RUNTIME_CANDIDATE_ROOT=$candidate_root"
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+              -DBUILD_TESTS=ON
+              -DBUILD_BENCHMARKS=OFF
+              -DBUILD_EXAMPLES=OFF
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo
+            )
+            if [ "$mode" = asan-ubsan ]; then
+              cmake --preset '${{ matrix.preset }}' -B "$build_dir" \
+                "${common_flags[@]}" \
+                -DENABLE_SANITIZER_ADDRESS=ON -DENABLE_SANITIZER_UNDEFINED=ON \
+                -DENABLE_SANITIZER_THREAD=OFF
+            else
+              cmake --preset '${{ matrix.preset }}' -B "$build_dir" \
+                "${common_flags[@]}" \
+                -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF \
+                -DENABLE_SANITIZER_THREAD=ON
+            fi
+            cmake --build "$build_dir" --parallel 2 --target \
+              component_idl_candidate_static_c11 component_idl_candidate_static_cpp17 \
+              component_idl_candidate_negative component_idl_candidate_dso_host \
+              component_idl_candidate_negative_dso_host \
+              component_idl_candidate_new_servicehost_dso \
+              component_idl_candidate_new_servicehost_negative_dso
+            python3 - "$build_dir/compile_commands.json" "$mode" <<'PY'
+          import json, pathlib, sys
+          entries=json.loads(pathlib.Path(sys.argv[1]).read_text())
+          paths=('component-runtime/src/configurator.c','component-runtime/src/service_host.c',
+                 'component-runtime/src/service_host_runtime.c',
+                 'component-idl/tests/dso/idl_component_provider.c',
+                 'component-idl/tests/dso/idl_component_servicehost_candidate.c',
+                 'component-idl/tests/dso/idl_component_servicehost_negative.c',
+                 'component-idl/tests/dso/idl_component_negative_provider.c')
+          flags=('-fsanitize=address','-fsanitize=undefined') if sys.argv[2]=='asan-ubsan' else ('-fsanitize=thread',)
+          for path in paths:
+              rows=[e for e in entries if pathlib.Path(e['file']).as_posix().endswith(path)]
+              if not rows: raise SystemExit('missing instrumented source: '+path)
+              for row in rows:
+                  command=row.get('command',' '.join(row.get('arguments',[])))
+                  if any(flag not in command for flag in flags):
+                      raise SystemExit('missing sanitizer flags for '+path)
+              print('source instrumented:',path,sys.argv[2])
+          PY
+            export LD_LIBRARY_PATH="$build_dir/bin:${SALTS_ROOT}/lib:${LD_LIBRARY_PATH:-}"
+            ctest --test-dir "$build_dir" --no-tests=error \
+              --output-on-failure --timeout 120 --repeat until-fail:5 \
+              -R '^component_idl_candidate_'
+          done
+
       - name: Install Unix release SDK
         if: matrix.package && matrix.family != 'windows'
         shell: bash

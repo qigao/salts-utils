@@ -140,3 +140,7 @@ both live scopes remain callable, BUSY drain and Plugin lease count
 2→1→0, followed by explicit stop/quiescence/unload. The old Host's test
 is unchanged and still executes. No fallback, alternate loader, source
 copy or public SDK migration.
+
+## P3.3 exact-source sanitizer proof
+
+Linux CI uses the unchanged native CMake preset to compile the exact Salts ConfiguratorCandidate/ServiceHostCandidate C sources plus IDL Provider DSO and Host under both ASan+UBSan and TSan; it checks compile_commands.json for actual sanitizer flags on seven critical source files, then executes seven candidate CTests five times per mode. This is explicitly NOT full-source Salts Plugin/CMeta/CNet instrumentation because Salts.Native 2.3.0-rc.14 is a prebuilt SDK. It changes only opt-in CI/docs.
