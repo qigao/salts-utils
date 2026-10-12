@@ -73,3 +73,42 @@ foreach(test IN ITEMS
   set_tests_properties("${test}" PROPERTIES
     LABELS "component-idl;candidate;static")
 endforeach()
+
+
+# P2.0 real provider DSO: compiled from the same canonical IDL TYPES and
+# CMeta Component declaration, exported through existing Plugin INTERFACE ABI.
+# This does not link the DSO into the host, or add a second runtime.
+add_library(component_idl_candidate_provider_dso SHARED
+  dso/idl_component_provider.c)
+target_compile_features(component_idl_candidate_provider_dso PRIVATE c_std_11)
+set_target_properties(component_idl_candidate_provider_dso PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  FOLDER "component-idl/tests/dso")
+target_include_directories(component_idl_candidate_provider_dso PRIVATE
+  "${_cidlc_outdir}")
+target_link_libraries(component_idl_candidate_provider_dso PRIVATE
+  component_idl_candidate_types_types
+  Salts::ComponentPluginABI Salts::PluginABI)
+add_dependencies(component_idl_candidate_provider_dso
+  component_idl_candidate_codegen component_idl_candidate_types_idl_codegen)
+
+add_executable(component_idl_candidate_dso_host
+  dso/idl_component_host.c)
+target_compile_features(component_idl_candidate_dso_host PRIVATE c_std_11)
+set_target_properties(component_idl_candidate_dso_host PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  FOLDER "component-idl/tests/dso")
+target_include_directories(component_idl_candidate_dso_host PRIVATE
+  "${_cidlc_outdir}")
+target_compile_definitions(component_idl_candidate_dso_host PRIVATE
+  "COMPONENT_IDL_DSO_PATH=\"$<TARGET_FILE:component_idl_candidate_provider_dso>\"")
+target_link_libraries(component_idl_candidate_dso_host PRIVATE
+  component_idl_candidate_types_types Salts::ComponentPlugin Salts::Plugin)
+add_dependencies(component_idl_candidate_dso_host
+  component_idl_candidate_codegen component_idl_candidate_types_idl_codegen
+  component_idl_candidate_provider_dso)
+
+add_test(NAME component_idl_candidate_dso_runtime
+  COMMAND $<TARGET_FILE:component_idl_candidate_dso_host>)
+set_tests_properties(component_idl_candidate_dso_runtime PROPERTIES
+  LABELS "component-idl;candidate;dso" TIMEOUT 90)
