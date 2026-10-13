@@ -7,6 +7,9 @@ name: DataBind exact-source IDLC CSTL ASan gate (#639)
       - 'vendor/monocypher/**'
       - 'databind/runtime/data_bind_contract_fingerprint.c'
       - 'cmake/ci/probe_monocypher_odr.c'
+  push:
+    branches:
+      - test/source-idlc-asan-639-stacked-641
   workflow_dispatch:
 
 permissions:
@@ -24,6 +27,8 @@ jobs:
       ((github.event_name == 'pull_request' &&
         github.event.pull_request.head.ref == 'test/source-idlc-asan-639-stacked-641' &&
         github.event.pull_request.head.repo.full_name == 'qigao/salts-utils') ||
+       (github.event_name == 'push' &&
+        github.ref == 'refs/heads/test/source-idlc-asan-639-stacked-641') ||
        (github.event_name == 'workflow_dispatch' &&
         github.ref == 'refs/heads/test/source-idlc-asan-639-stacked-641'))
     name: Real source-built IDLC + CNet/DataBind DSOs with ASan/UBSan
