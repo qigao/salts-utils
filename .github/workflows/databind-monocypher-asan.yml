@@ -105,6 +105,8 @@ jobs:
             echo "saltsutils_immutable_release_base=1410c9fd479f9faab31503523d8e31cc506b5b25"
             echo "saltsutils_overlay=vendor_namespace_4_files"
             echo 'saltsutils_binary_is_candidate_not_published=true'
+            echo 'salts_cstl_linkage=static-hidden-test-only Salts #1167 / PR #1169'
+            echo 'salts_cstl_original_release_linkage=NOT_QUALIFIED'
             echo 'published_native_runtime_binaries_used=false'
             echo 'sanitizers=address,undefined'
             echo 'odr_violation_suppression=none'
@@ -114,6 +116,9 @@ jobs:
             echo "LD_LIBRARY_PATH=$GRAPH_ROOT/prefix/salts/lib:$GRAPH_ROOT/build-utils/bin:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           } >> "$GITHUB_ENV"
 
+      # Salts #1167 / Draft PR #1169 independently qualified a hidden-static
+      # test-only topology under unsuppressed ASan. This is NOT the published
+      # rc.15 CSTL ownership topology and must never be counted as its pass.
       - name: Build exact Salts CNet / Plugin / CSTL native source with sanitizers
         shell: bash
         run: |
@@ -126,6 +131,7 @@ jobs:
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_PROJECT_Salts_INCLUDE="$GITHUB_WORKSPACE/cmake/ci/cstl-hidden-source-odr.cmake" \
             -DENABLE_SANITIZER_ADDRESS=ON -DENABLE_SANITIZER_UNDEFINED=ON \
             -DENABLE_SANITIZER_THREAD=OFF \
             -DCMAKE_C_FLAGS="$flags" -DCMAKE_CXX_FLAGS="$flags" \
@@ -201,6 +207,17 @@ jobs:
             | tee "$GRAPH_ROOT/databind-private-vendor-symbols.txt"
           grep -Eq 'databind_private_crypto_argon2_no_extras' \
             "$GRAPH_ROOT/databind-private-vendor-symbols.txt"
+          # Salts #1167 independently proved static-hidden CSTL is a viable
+          # test-only ODR topology. Keep global ODR detection enabled and
+          # require both real runtime DSOs to hide this duplicate descriptor.
+          for so in "$SALTS_ROOT/lib/libsalts.so" \
+                    "$GRAPH_ROOT/build-utils/bin/libdata_bind.so"; do
+            if nm -D --defined-only "$so" | awk '{print $3}' \
+                  | grep -qx 'stl_bplus_tree_container_desc'; then
+              echo "Unsafe exported CSTL descriptor in $so" >&2
+              exit 1
+            fi
+          done
 
       - name: Compile and run unsuppressed ASan/UBSan original dual-DSO consumer
         shell: bash
