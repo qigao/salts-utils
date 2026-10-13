@@ -1,4 +1,4 @@
-name: DataBind/CNet private Monocypher ASan ODR source gate
+name: DataBind/CNet exact RC + private Monocypher candidate ASan
 
 'on':
   pull_request:
@@ -26,7 +26,7 @@ jobs:
         github.event.pull_request.head.repo.full_name == 'qigao/salts-utils') ||
        (github.event_name == 'workflow_dispatch' &&
         github.ref == 'refs/heads/test/databind-monocypher-odr-640'))
-    name: Original Salts CNet + candidate DataBind source ASan/UBSan
+    name: Original 2.3 CNet + patched 4.3 rc10 DataBind ASan/UBSan
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -52,6 +52,33 @@ jobs:
           ref: v2.3.0-rc.15
           path: build/monocypher-source/salts
           persist-credentials: false
+      - name: Checkout immutable published SaltsUtils 4.3.0-rc.10 source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts-utils
+          ref: v4.3.0-rc.10
+          path: build/monocypher-source/salts-utils-release
+          persist-credentials: false
+      - name: Attest exact release source and apply four-file candidate overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          release="$GITHUB_WORKSPACE/build/monocypher-source/salts-utils-release"
+          test "$(git -C "$release" rev-parse HEAD)" = '1410c9fd479f9faab31503523d8e31cc506b5b25'
+          for path in vendor/monocypher/CMakeLists.txt \
+              vendor/monocypher/databind_monocypher.c \
+              vendor/monocypher/databind_monocypher_namespace.h \
+              databind/runtime/data_bind_contract_fingerprint.c; do
+            cp "$GITHUB_WORKSPACE/$path" "$release/$path"
+          done
+          test "$(git -C "$release" diff --name-only | wc -l)" -eq 2
+          test "$(git -C "$release" ls-files --others --exclude-standard | wc -l)" -eq 2
+          echo 'saltsutils_source_tag=v4.3.0-rc.10' >> "$GITHUB_STEP_SUMMARY"
+          echo 'saltsutils_candidate_overlay=PR641 four-file namespace patch (NOT PUBLISHED)' >> "$GITHUB_STEP_SUMMARY"
+          echo 'source_candidate_not_immutable_published_binary=true' >> "$GITHUB_STEP_SUMMARY"
+          # The normal SaltsUtils master CI separately exercises the new patch
+          # with its current 2.2 compatibility input. Do not add Unicode
+          # compatibility/fallback branches to this exact 2.3 consumer gate.
       - name: Restore pinned shared vcpkg graph
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@0dc254695917bc180504d916240292e9096e9da5
         with:
@@ -71,9 +98,13 @@ jobs:
           mkdir -p "$GRAPH_ROOT"
           test "$(git rev-parse HEAD)" = "$EXPECTED_UTILS"
           test "$(git -C build/monocypher-source/salts rev-parse HEAD)" = '21bdb1145fbb2b39ee3fa644173ec037adba7b87'
+          test "$(git -C build/monocypher-source/salts-utils-release rev-parse HEAD)" = '1410c9fd479f9faab31503523d8e31cc506b5b25'
           {
             echo "salts_cnet_exact_source=21bdb1145fbb2b39ee3fa644173ec037adba7b87"
-            echo "saltsutils_candidate_source=$EXPECTED_UTILS"
+            echo "saltsutils_candidate_patch_source=$EXPECTED_UTILS"
+            echo "saltsutils_immutable_release_base=1410c9fd479f9faab31503523d8e31cc506b5b25"
+            echo "saltsutils_overlay=vendor_namespace_4_files"
+            echo 'saltsutils_binary_is_candidate_not_published=true'
             echo 'published_native_runtime_binaries_used=false'
             echo 'sanitizers=address,undefined'
             echo 'odr_violation_suppression=none'
@@ -111,7 +142,7 @@ jobs:
           set -euo pipefail
           flags='-fsanitize=address -fsanitize=undefined -g -fno-omit-frame-pointer'
           cmake --preset ci-linux-release-user \
-            -S "$GITHUB_WORKSPACE" \
+            -S "$GITHUB_WORKSPACE/build/monocypher-source/salts-utils-release" \
             -B "$GRAPH_ROOT/build-utils" -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_INSTALL_PREFIX="$GRAPH_ROOT/prefix/salts-utils" \
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT" \
@@ -203,7 +234,7 @@ jobs:
             /tmp/databind-monocypher-asan-640/databind-private-vendor-symbols.txt
             /tmp/databind-monocypher-asan-640/data-bind-linked-libraries.txt
 
-      - name: Verify candidate source unchanged
+      - name: Verify review branch remains unchanged
         if: always()
         shell: bash
         env:
