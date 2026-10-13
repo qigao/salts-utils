@@ -1,0 +1,71 @@
+/* DataBind-private Monocypher linkage namespace.
+ *
+ * The vendored Monocypher TU is linked statically into libdata_bind, while
+ * Salts CNet links its own private copy. All Monocypher symbols (including
+ * crypto_argon2_no_extras) must be distinct across these two real DSOs to
+ * prevent accidental dynamic interposition and ASan global ODR violations.
+ *
+ * Include this header ONLY in the private vendored compilation wrapper and
+ * DataBind's private contract-fingerprint implementation, before monocypher.h.
+ * Do not install or expose it in public DataBind/Salts headers.
+ *
+ * The BSD-2-Clause OR CC0-1.0 Monocypher vendor files remain unchanged.
+ */
+#ifndef DATABIND_MONOCYPHER_NAMESPACE_H
+#define DATABIND_MONOCYPHER_NAMESPACE_H
+
+#define crypto_aead_ctx databind_private_crypto_aead_ctx
+#define crypto_aead_init_djb databind_private_crypto_aead_init_djb
+#define crypto_aead_init_ietf databind_private_crypto_aead_init_ietf
+#define crypto_aead_init_x databind_private_crypto_aead_init_x
+#define crypto_aead_lock databind_private_crypto_aead_lock
+#define crypto_aead_read databind_private_crypto_aead_read
+#define crypto_aead_unlock databind_private_crypto_aead_unlock
+#define crypto_aead_write databind_private_crypto_aead_write
+#define crypto_argon2 databind_private_crypto_argon2
+#define crypto_argon2_config databind_private_crypto_argon2_config
+#define crypto_argon2_extras databind_private_crypto_argon2_extras
+#define crypto_argon2_inputs databind_private_crypto_argon2_inputs
+#define crypto_argon2_no_extras databind_private_crypto_argon2_no_extras
+#define crypto_blake2b databind_private_crypto_blake2b
+#define crypto_blake2b_ctx databind_private_crypto_blake2b_ctx
+#define crypto_blake2b_final databind_private_crypto_blake2b_final
+#define crypto_blake2b_init databind_private_crypto_blake2b_init
+#define crypto_blake2b_keyed databind_private_crypto_blake2b_keyed
+#define crypto_blake2b_keyed_init databind_private_crypto_blake2b_keyed_init
+#define crypto_blake2b_update databind_private_crypto_blake2b_update
+#define crypto_chacha20_djb databind_private_crypto_chacha20_djb
+#define crypto_chacha20_h databind_private_crypto_chacha20_h
+#define crypto_chacha20_ietf databind_private_crypto_chacha20_ietf
+#define crypto_chacha20_x databind_private_crypto_chacha20_x
+#define crypto_curve_to_hidden databind_private_crypto_curve_to_hidden
+#define crypto_eddsa_check databind_private_crypto_eddsa_check
+#define crypto_eddsa_check_equation databind_private_crypto_eddsa_check_equation
+#define crypto_eddsa_key_pair databind_private_crypto_eddsa_key_pair
+#define crypto_eddsa_mul_add databind_private_crypto_eddsa_mul_add
+#define crypto_eddsa_reduce databind_private_crypto_eddsa_reduce
+#define crypto_eddsa_scalarbase databind_private_crypto_eddsa_scalarbase
+#define crypto_eddsa_sign databind_private_crypto_eddsa_sign
+#define crypto_eddsa_to_x25519 databind_private_crypto_eddsa_to_x25519
+#define crypto_eddsa_trim_scalar databind_private_crypto_eddsa_trim_scalar
+#define crypto_elligator_key_pair databind_private_crypto_elligator_key_pair
+#define crypto_elligator_map databind_private_crypto_elligator_map
+#define crypto_elligator_rev databind_private_crypto_elligator_rev
+#define crypto_lock databind_private_crypto_lock
+#define crypto_poly1305 databind_private_crypto_poly1305
+#define crypto_poly1305_ctx databind_private_crypto_poly1305_ctx
+#define crypto_poly1305_final databind_private_crypto_poly1305_final
+#define crypto_poly1305_init databind_private_crypto_poly1305_init
+#define crypto_poly1305_update databind_private_crypto_poly1305_update
+#define crypto_verify16 databind_private_crypto_verify16
+#define crypto_verify32 databind_private_crypto_verify32
+#define crypto_verify64 databind_private_crypto_verify64
+#define crypto_wipe databind_private_crypto_wipe
+#define crypto_x25519 databind_private_crypto_x25519
+#define crypto_x25519_dirty_fast databind_private_crypto_x25519_dirty_fast
+#define crypto_x25519_dirty_small databind_private_crypto_x25519_dirty_small
+#define crypto_x25519_inverse databind_private_crypto_x25519_inverse
+#define crypto_x25519_public_key databind_private_crypto_x25519_public_key
+#define crypto_x25519_to_eddsa databind_private_crypto_x25519_to_eddsa
+
+#endif /* DATABIND_MONOCYPHER_NAMESPACE_H */
