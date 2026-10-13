@@ -61,6 +61,8 @@ jobs:
           consumer="$GITHUB_WORKSPACE/databind/compiler/package_config/databind_target"
           build="$RUNNER_TEMP/databind-method-plan-installed-consumer"
           cmake --preset ci-native-release-user -S "$consumer" -B "$build" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DCMAKE_PREFIX_PATH="$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET" \
             -DSaltsUtils_IDLC_EXECUTABLE="$prefix/bin/salts-idlc"
           cmake --build "$build" --target installed_service_consumer --parallel 2
           ctest --test-dir "$build" -R '^installed_service_consumer$' \
