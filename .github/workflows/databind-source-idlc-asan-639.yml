@@ -272,7 +272,7 @@ jobs:
               ["ninja", "-C", str(build), "-t", "commands", "salts_idlc"],
               check=True, capture_output=True, text=True)
           links = [line for line in ninja.stdout.splitlines()
-                   if re.search(r"-o (?:[^ ]*/)?bin/salts-idlc(?:\\s|$)", line)
+                   if re.search(r"-o (?:[^ ]*/)?bin/salts-idlc(?:\s|$)", line)
                    and " -c " not in line]
           if len(links) != 1 or not all(
                   flag in links[0] for flag in ("-fsanitize=address", "-fsanitize=undefined")):
