@@ -575,6 +575,125 @@ spec("DataBind canonical Service native lowering") {
     data_bind_free(codec);
   }
 
+  it("classifies unowned typed-error projections as schema errors, not OOM") {
+    const DataBindHttpErrorMapping unknown_http = {
+        sizeof(DataBindHttpErrorMapping), "NotThrown", 418};
+    const DataBindRpcErrorMapping unknown_rpc = {
+        sizeof(DataBindRpcErrorMapping), "NotThrown", -32014};
+    const DataBindHttpErrorMapping valid_http = {
+        sizeof(DataBindHttpErrorMapping), "NotFound", 404};
+    const DataBindRpcErrorMapping valid_rpc = {
+        sizeof(DataBindRpcErrorMapping), "NotFound", -32004};
+    const DataBindRpcErrorMapping zero_rpc = {
+        sizeof(DataBindRpcErrorMapping), "NotFound", 0};
+    const DataBindRpcErrorMapping duplicate_rpc[] = {
+        {sizeof(DataBindRpcErrorMapping), "NotFound", -32004},
+        {sizeof(DataBindRpcErrorMapping), "NotFound", -32005}};
+    DataBindHttpProjectionConfig http_config =
+        (DataBindHttpProjectionConfig)DATA_BIND_HTTP_PROJECTION_CONFIG_INIT;
+    DataBindRpcProjectionConfig rpc_config =
+        (DataBindRpcProjectionConfig)DATA_BIND_RPC_PROJECTION_CONFIG_INIT;
+    DataBindNativeTypeBinding request = {0};
+    DataBindNativeTypeBinding response = {0};
+    DataBindServiceNativeBinding native = {0};
+    DataBindNativeTypeBinding add_request = {0};
+    DataBindNativeTypeBinding add_response = {0};
+    DataBindServiceNativeBinding add_native = {0};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindHttpMethodPlan *http = NULL;
+    DataBindRpcMethodPlan *rpc = NULL;
+    DataBindRpcErrorMapping mapped_rpc =
+        (DataBindRpcErrorMapping)DATA_BIND_RPC_ERROR_MAPPING_INIT;
+    DataBindHttpErrorMapping mapped_http =
+        (DataBindHttpErrorMapping)DATA_BIND_HTTP_ERROR_MAPPING_INIT;
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_4_Find__databind_native_binding(
+            &request, &response, &native, &error), DATA_BIND_OK);
+    check_equal(
+        databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
+            &add_request, &add_response, &add_native, &error), DATA_BIND_OK);
+    check_equal(ServiceNative_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+
+    /* NotThrown has the correct ABI/format and a valid status/code, but the
+     * Service does not declare it. It is a contract error, never a retryable
+     * allocator failure. Failure releases the partially built MethodPlan. */
+    http_config.errors = &unknown_http;
+    http_config.error_count = 1u;
+    check_equal(data_bind_http_method_plan_compile_service(
+        codec, "Calc", "Find", &http_config, &native,
+        &http, &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_null(http);
+    check_equal(diagnostic.status, DATA_BIND_ERR_SCHEMA);
+    check_true(strstr(diagnostic.message, "HTTP typed-error projection") != NULL);
+
+    rpc_config.errors = &unknown_rpc;
+    rpc_config.error_count = 1u;
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Find", &rpc_config, &native,
+        &rpc, &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_null(rpc);
+    check_equal(diagnostic.status, DATA_BIND_ERR_SCHEMA);
+    check_true(strstr(diagnostic.message, "RPC typed-error projection") != NULL);
+
+    /* A Service with no throws must reject even a valid-looking projection
+     * for a known error from a different operation. */
+    http_config.errors = &valid_http;
+    rpc_config.errors = &valid_rpc;
+    check_equal(data_bind_http_method_plan_compile_service(
+        codec, "Calc", "Add", &http_config, &add_native,
+        &http, &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_null(http);
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Add", &rpc_config, &add_native,
+        &rpc, &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_null(rpc);
+
+    /* Shape violations remain INVALID_ARG, not SCHEMA or OOM. */
+    rpc_config.errors = &zero_rpc;
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Find", &rpc_config, &native,
+        &rpc, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    check_null(rpc);
+    rpc_config.errors = duplicate_rpc;
+    rpc_config.error_count = 2u;
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Find", &rpc_config, &native,
+        &rpc, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    check_null(rpc);
+
+    /* After rejected projections, the same native function and schema
+     * compile normally with one explicitly owned mapping and fallback for
+     * the other Service-declared typed error. */
+    rpc_config.errors = &valid_rpc;
+    rpc_config.error_count = 1u;
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Find", &rpc_config, &native,
+        &rpc, &diagnostic), DATA_BIND_OK);
+    check_not_null(rpc);
+    check_equal(data_bind_rpc_method_plan_error_count(rpc), (size_t)2u);
+    check(data_bind_rpc_method_plan_error_at(rpc, 0u, &mapped_rpc));
+    check_equal(mapped_rpc.error_type, "NotFound");
+    check_equal(mapped_rpc.code, -32004);
+    data_bind_rpc_method_plan_free(rpc);
+    rpc = NULL;
+
+    check_equal(data_bind_http_method_plan_compile_service(
+        codec, "Calc", "Find", &http_config, &native,
+        &http, &diagnostic), DATA_BIND_OK);
+    check_not_null(http);
+    check_equal(data_bind_http_method_plan_error_count(http), (size_t)2u);
+    check(data_bind_http_method_plan_error_at(http, 0u, &mapped_http));
+    check_equal(mapped_http.error_type, "NotFound");
+    check_equal(mapped_http.status, 404);
+    data_bind_http_method_plan_free(http);
+    data_bind_free(codec);
+  }
+
   it("maps canonical BindingPlan outcomes through HTTP and RPC MethodPlans") {
     const DataBindHttpErrorMapping http_errors[] = {
         {sizeof(DataBindHttpErrorMapping), "NotFound", 404},
