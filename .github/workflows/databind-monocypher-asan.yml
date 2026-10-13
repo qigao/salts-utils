@@ -1,0 +1,214 @@
+name: DataBind/CNet private Monocypher ASan ODR source gate
+
+'on':
+  pull_request:
+    paths:
+      - '.github/workflows/databind-monocypher-asan.yml'
+      - 'vendor/monocypher/**'
+      - 'databind/runtime/data_bind_contract_fingerprint.c'
+      - 'cmake/ci/probe_monocypher_odr.c'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: databind-monocypher-asan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-cnet-plus-candidate-databind:
+    if: >-
+      github.repository == 'qigao/salts-utils' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.number == 641 &&
+        github.event.pull_request.head.repo.full_name == 'qigao/salts-utils') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/test/databind-monocypher-odr-640'))
+    name: Original Salts CNet + candidate DataBind source ASan/UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CC: gcc
+      CXX: g++
+      GRAPH_ROOT: /tmp/databind-monocypher-asan-640
+      PKG_ROOT: /tmp/databind-monocypher-asan-640/prefix
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      CCACHE_DIR: ${{ github.workspace }}/.cache/databind-monocypher-asan
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - name: Checkout reviewed DataBind candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Checkout original published Salts CNet source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: v2.3.0-rc.15
+          path: build/monocypher-source/salts
+          persist-credentials: false
+      - name: Restore pinned shared vcpkg graph
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@0dc254695917bc180504d916240292e9096e9da5
+        with:
+          mode: read
+      - name: Restore pinned re2c generator
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@0dc254695917bc180504d916240292e9096e9da5
+      - name: Prepare Salts Linux build host
+        uses: ./build/monocypher-source/salts/.github/actions/setup-build-host
+      - name: Attest source identities and native host prerequisites
+        shell: bash
+        env:
+          EXPECTED_UTILS: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ninja-build nasm pkg-config ccache binutils
+          mkdir -p "$GRAPH_ROOT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_UTILS"
+          test "$(git -C build/monocypher-source/salts rev-parse HEAD)" = '21bdb1145fbb2b39ee3fa644173ec037adba7b87'
+          {
+            echo "salts_cnet_exact_source=21bdb1145fbb2b39ee3fa644173ec037adba7b87"
+            echo "saltsutils_candidate_source=$EXPECTED_UTILS"
+            echo 'published_native_runtime_binaries_used=false'
+            echo 'sanitizers=address,undefined'
+            echo 'odr_violation_suppression=none'
+          } | tee "$GRAPH_ROOT/provenance.txt"
+          {
+            echo "SALTS_ROOT=$GRAPH_ROOT/prefix/salts"
+            echo "LD_LIBRARY_PATH=$GRAPH_ROOT/prefix/salts/lib:$GRAPH_ROOT/build-utils/bin:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build exact Salts CNet / Plugin / CSTL native source with sanitizers
+        shell: bash
+        run: |
+          set -euo pipefail
+          flags='-fsanitize=address -fsanitize=undefined -g -fno-omit-frame-pointer'
+          cmake --preset linux-dev-ci \
+            -S "$GITHUB_WORKSPACE/build/monocypher-source/salts" \
+            -B "$GRAPH_ROOT/build-salts" -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$SALTS_ROOT" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DENABLE_SANITIZER_ADDRESS=ON -DENABLE_SANITIZER_UNDEFINED=ON \
+            -DENABLE_SANITIZER_THREAD=OFF \
+            -DCMAKE_C_FLAGS="$flags" -DCMAKE_CXX_FLAGS="$flags" \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address -fsanitize=undefined' \
+            -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address -fsanitize=undefined'
+          cmake --build "$GRAPH_ROOT/build-salts" --parallel 2
+          cmake --install "$GRAPH_ROOT/build-salts"
+          test -f "$SALTS_ROOT/lib/cmake/Salts/SaltsConfig.cmake"
+          test -f "$SALTS_ROOT/lib/libcnet.so"
+
+      - name: Build changed DataBind and private Monocypher original sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          flags='-fsanitize=address -fsanitize=undefined -g -fno-omit-frame-pointer'
+          cmake --preset ci-linux-release-user \
+            -S "$GITHUB_WORKSPACE" \
+            -B "$GRAPH_ROOT/build-utils" -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$GRAPH_ROOT/prefix/salts-utils" \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DENABLE_SANITIZER_ADDRESS=ON -DENABLE_SANITIZER_UNDEFINED=ON \
+            -DENABLE_SANITIZER_THREAD=OFF \
+            -DCMAKE_C_FLAGS="$flags" -DCMAKE_CXX_FLAGS="$flags" \
+            -DCMAKE_SHARED_LINKER_FLAGS='-fsanitize=address -fsanitize=undefined' \
+            -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address -fsanitize=undefined'
+          cmake --build "$GRAPH_ROOT/build-utils" --target data_bind --parallel 2
+          test -f "$GRAPH_ROOT/build-utils/bin/libdata_bind.so"
+
+      - name: Audit real CNet/Monocypher/DataBind ASan compilation and exported symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee "$GRAPH_ROOT/source-audit.json"
+          import json
+          import os
+          from pathlib import Path
+          root = Path(os.environ["GRAPH_ROOT"])
+          required = {
+              "salts": ["cnet/src/cnet_module.c",
+                        "vendor/monocypher/monocypher.c"],
+              "utils": ["vendor/monocypher/databind_monocypher.c",
+                        "databind/runtime/data_bind_contract_fingerprint.c",
+                        "databind/runtime/data_bind_method_plan.c"],
+          }
+          report = {}
+          for label, suffixes in required.items():
+              build = root / ("build-salts" if label == "salts" else "build-utils")
+              rows = json.loads((build / "compile_commands.json").read_text())
+              for suffix in suffixes:
+                  matches = [row for row in rows if row["file"].replace("\\", "/").endswith("/" + suffix)]
+                  if len(matches) != 1:
+                      raise SystemExit(f"{label}: missing required original source {suffix}")
+                  cmd = matches[0].get("command") or " ".join(matches[0].get("arguments", []))
+                  if "-fsanitize=address" not in cmd or "-fsanitize=undefined" not in cmd:
+                      raise SystemExit(f"{label}: uninstrumented {suffix}")
+              report[label] = {"required_compiled_sources": suffixes,
+                               "configure_commands": len(rows)}
+          print(json.dumps(report, indent=2))
+          PY
+          # Never let a private DataBind Monocypher symbol leak as a
+          # public, unprefixed crypto_* definition from libdata_bind.
+          nm -D --defined-only "$GRAPH_ROOT/build-utils/bin/libdata_bind.so" \
+            | tee "$GRAPH_ROOT/databind-exported-symbols.txt"
+          if awk '{print $3}' "$GRAPH_ROOT/databind-exported-symbols.txt" \
+              | grep -Eq '^crypto_'; then
+            echo 'Unprefixed Monocypher API leaked from DataBind DSO' >&2
+            exit 1
+          fi
+          nm --defined-only "$GRAPH_ROOT/build-utils/lib/libdatabind_monocypher.a" \
+            | tee "$GRAPH_ROOT/databind-private-vendor-symbols.txt"
+          grep -Eq 'databind_private_crypto_argon2_no_extras' \
+            "$GRAPH_ROOT/databind-private-vendor-symbols.txt"
+
+      - name: Compile and run unsuppressed ASan/UBSan original dual-DSO consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc -std=c11 -Wall -Wextra -Werror -fsanitize=address -fsanitize=undefined \
+            -g -fno-omit-frame-pointer \
+            "$GITHUB_WORKSPACE/cmake/ci/probe_monocypher_odr.c" \
+            -ldl -o "$GRAPH_ROOT/dual-dso-probe"
+          # Check *both* loader orders in distinct processes. No ASan/UBSan
+          # suppressions, no producer tag rewrites, no package substitution.
+          ldd "$GRAPH_ROOT/build-utils/bin/libdata_bind.so" \
+            | tee "$GRAPH_ROOT/data-bind-linked-libraries.txt"
+          for order in cnet-first data-first; do
+            "$GRAPH_ROOT/dual-dso-probe" \
+              "$SALTS_ROOT/lib/libcnet.so" \
+              "$GRAPH_ROOT/build-utils/bin/libdata_bind.so" "$order"
+          done
+
+      - name: Preserve exact source/symbol/sanitizer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saltsutils-641-monocypher-native-asan-odr
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            /tmp/databind-monocypher-asan-640/provenance.txt
+            /tmp/databind-monocypher-asan-640/source-audit.json
+            /tmp/databind-monocypher-asan-640/databind-exported-symbols.txt
+            /tmp/databind-monocypher-asan-640/databind-private-vendor-symbols.txt
+            /tmp/databind-monocypher-asan-640/data-bind-linked-libraries.txt
+
+      - name: Verify candidate source unchanged
+        if: always()
+        shell: bash
+        env:
+          EXPECTED_UTILS: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_UTILS"
+          test -z "$(git status --porcelain --untracked-files=no)"
