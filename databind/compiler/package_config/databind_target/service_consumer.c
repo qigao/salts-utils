@@ -76,10 +76,47 @@ int main(void) {
       codec == NULL)
     return 3;
 
-  if (data_bind_http_method_plan_compile_service(
-          codec, "Calc", "Add", http_config, &native,
-          &http, &diagnostic) != DATA_BIND_OK ||
-      http == NULL)
+  /* Verify that the relocated, installed SDK rejects a structurally valid
+   * typed-error mapping not declared by the Service. These failures must be
+   * SCHEMA, never the recoverable-looking OOM classification. The compiler
+   * clears the output plan, preserving the same caller ownership protocol. */
+  {
+    const DataBindHttpErrorMapping unowned_http = {
+        sizeof(DataBindHttpErrorMapping), "NotThrown", 418};
+    const DataBindRpcErrorMapping unowned_rpc = {
+        sizeof(DataBindRpcErrorMapping), "NotThrown", -32014};
+    DataBindHttpProjectionConfig rejected_http = *http_config;
+    DataBindRpcProjectionConfig rejected_rpc = *rpc_config;
+    rejected_http.errors = &unowned_http;
+    rejected_http.error_count = 1u;
+    rejected_rpc.errors = &unowned_rpc;
+    rejected_rpc.error_count = 1u;
+
+    if (data_bind_http_method_plan_compile_service(
+            codec, "Calc", "Add", &rejected_http, &native,
+            &http, &diagnostic) != DATA_BIND_ERR_SCHEMA ||
+        http != NULL ||
+        diagnostic.status != DATA_BIND_ERR_SCHEMA ||
+        strstr(diagnostic.message, "HTTP typed-error projection") == NULL)
+      failed = 15;
+    if (!failed &&
+        (data_bind_rpc_method_plan_compile_service(
+             codec, "Calc", "Add", &rejected_rpc, &native,
+             &rpc, &diagnostic) != DATA_BIND_ERR_SCHEMA ||
+         rpc != NULL ||
+         diagnostic.status != DATA_BIND_ERR_SCHEMA ||
+         strstr(diagnostic.message, "RPC typed-error projection") == NULL))
+      failed = 16;
+  }
+
+  /* A rejected projection does not poison the original installed generated
+   * MethodPlan: compile both canonical plans using the same codec and native
+   * function descriptor, then verify normal transport and identity checks. */
+  if (!failed &&
+      (data_bind_http_method_plan_compile_service(
+           codec, "Calc", "Add", http_config, &native,
+           &http, &diagnostic) != DATA_BIND_OK ||
+       http == NULL))
     failed = 4;
   if (!failed &&
       (data_bind_rpc_method_plan_compile_service(
@@ -93,8 +130,8 @@ int main(void) {
   if (failed) goto cleanup;
 
   if (strcmp(data_bind_http_method_plan_method(http), "POST") != 0 ||
-      strcmp(data_bind_http_method_plan_route(http), "/calc/add") != 0 ||
-      strcmp(data_bind_rpc_method_plan_wire_method(rpc), "calc.add") != 0) {
+      strcmp(data_bind_http_method_plan_route(http), "/Calc/Add") != 0 ||
+      strcmp(data_bind_rpc_method_plan_wire_method(rpc), "Calc.Add") != 0) {
     failed = 6;
     goto cleanup;
   }
