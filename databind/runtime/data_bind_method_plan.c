@@ -227,7 +227,8 @@ static int rpc_config_valid(const DataBindRpcProjectionConfig *config) {
         left->error_type[0] == '\0' || left->code == 0)
       return 0;
     for (j = 0u; j < i; ++j)
-      if (strcmp(left->error_type, config->errors[j].error_type) == 0)
+      if (strcmp(left->error_type, config->errors[j].error_type) == 0 ||
+          left->code == config->errors[j].code)
         return 0;
   }
   return 1;
@@ -468,7 +469,7 @@ static int rpc_error_code(
   return -32000;
 }
 
-static int http_errors_build(
+static DataBindStatus http_errors_build(
     DataBindHttpMethodPlan *plan, const DataBindHttpProjectionConfig *config) {
   size_t count = data_bind_binding_plan_error_count(plan->binding);
   size_t i, j;
@@ -476,11 +477,11 @@ static int http_errors_build(
   plan->error_count = count;
   if (count != 0u) {
     plan->errors = (DataBindHttpErrorMapping *)calloc(count, sizeof(*plan->errors));
-    if (plan->errors == NULL) return 0;
+    if (plan->errors == NULL) return DATA_BIND_ERR_OOM;
   }
   if (config != NULL && config->error_count != 0u) {
     used = (unsigned char *)calloc(config->error_count, 1u);
-    if (used == NULL) return 0;
+    if (used == NULL) return DATA_BIND_ERR_OOM;
   }
   for (i = 0u; i < count; ++i) {
     const char *error_type = data_bind_binding_plan_error_at(plan->binding, i);
@@ -495,25 +496,27 @@ static int http_errors_build(
   }
   if (!config_fields_consumed(used, config != NULL ? config->error_count : 0u)) {
     free(used);
-    return 0;
+    return DATA_BIND_ERR_SCHEMA;
   }
   free(used);
-  return 1;
+  return DATA_BIND_OK;
 }
 
-static int rpc_errors_build(
-    DataBindRpcMethodPlan *plan, const DataBindRpcProjectionConfig *config) {
+static DataBindStatus rpc_errors_build(
+    DataBindRpcMethodPlan *plan, const DataBindRpcProjectionConfig *config,
+    const char **schema_message) {
   size_t count = data_bind_binding_plan_error_count(plan->binding);
   size_t i, j;
   unsigned char *used = NULL;
+  if (schema_message != NULL) *schema_message = NULL;
   plan->error_count = count;
   if (count != 0u) {
     plan->errors = (DataBindRpcErrorMapping *)calloc(count, sizeof(*plan->errors));
-    if (plan->errors == NULL) return 0;
+    if (plan->errors == NULL) return DATA_BIND_ERR_OOM;
   }
   if (config != NULL && config->error_count != 0u) {
     used = (unsigned char *)calloc(config->error_count, 1u);
-    if (used == NULL) return 0;
+    if (used == NULL) return DATA_BIND_ERR_OOM;
   }
   for (i = 0u; i < count; ++i) {
     const char *error_type = data_bind_binding_plan_error_at(plan->binding, i);
@@ -528,10 +531,24 @@ static int rpc_errors_build(
   }
   if (!config_fields_consumed(used, config != NULL ? config->error_count : 0u)) {
     free(used);
-    return 0;
+    if (schema_message != NULL)
+      *schema_message =
+          "RPC typed-error projection references an error not thrown by the Service operation";
+    return DATA_BIND_ERR_SCHEMA;
   }
   free(used);
-  return 1;
+  /* A wire RPC numeric code is the only remote typed-error discriminator.
+   * Reject aliases after applying implicit defaults as well as explicit
+   * projections: a first-match decoder cannot safely choose the error type. */
+  for (i = 0u; i < count; ++i)
+    for (j = 0u; j < i; ++j)
+      if (plan->errors[i].code == plan->errors[j].code) {
+        if (schema_message != NULL)
+          *schema_message =
+              "RPC typed-error numeric code collision between distinct Service errors";
+        return DATA_BIND_ERR_SCHEMA;
+      }
+  return DATA_BIND_OK;
 }
 
 static int artifact_name_equal(
@@ -680,10 +697,18 @@ DataBindStatus data_bind_http_method_plan_compile_service(
   plan->success_status = config != NULL ? config->success_status : 200;
   plan->context_flags = config != NULL ? config->context_flags
                                        : DATA_BIND_HTTP_CONTEXT_NONE;
-  if (plan->method == NULL || plan->route == NULL ||
-      !http_errors_build(plan, config)) {
+  if (plan->method == NULL || plan->route == NULL) {
     status = method_plan_fail(diagnostic, DATA_BIND_ERR_OOM,
                               "Could not materialize HTTP MethodPlan");
+    goto fail;
+  }
+  status = http_errors_build(plan, config);
+  if (status != DATA_BIND_OK) {
+    status = method_plan_fail(
+        diagnostic, status,
+        status == DATA_BIND_ERR_SCHEMA
+            ? "HTTP typed-error projection references an error not thrown by the Service operation"
+            : "Could not allocate HTTP typed-error mappings");
     goto fail;
   }
 
@@ -871,10 +896,21 @@ DataBindStatus data_bind_rpc_method_plan_compile_service(
   }
 
   plan->wire_method = method_plan_strdup(wire_method);
-  if (plan->wire_method == NULL || !rpc_errors_build(plan, config)) {
+  if (plan->wire_method == NULL) {
     status = method_plan_fail(diagnostic, DATA_BIND_ERR_OOM,
                               "Could not materialize RPC MethodPlan");
     goto fail;
+  }
+  {
+    const char *schema_message = NULL;
+    status = rpc_errors_build(plan, config, &schema_message);
+    if (status != DATA_BIND_OK) {
+      status = method_plan_fail(
+          diagnostic, status,
+          status == DATA_BIND_ERR_SCHEMA ? schema_message
+                                        : "Could not allocate RPC typed-error mappings");
+      goto fail;
+    }
   }
 
   free(used);
