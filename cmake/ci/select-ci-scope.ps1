@@ -10,7 +10,7 @@ if ($PrepareRelease -and $EventName -ne 'workflow_dispatch') {
   throw 'Release preparation requires a manual CI run'
 }
 # Exact-SHA RC packaging is independent from #606 (still WIP).
-$rcPush = $EventName -eq 'push' -and $HeadBranch -in @('release/salts-utils-4.3-idlc-606', 'release/salts-utils-4.3-cnet-tls-rc11')
+$rcPush = $EventName -eq 'push' -and $HeadBranch -in @('release/salts-utils-4.3-idlc-606', 'release/salts-utils-4.3-cnet-tls-rc11', 'release/salts-utils-4.3-databind-rc12')
 $releaseQualification = $PrepareRelease -or $rcPush
 $full = $EventName -eq 'workflow_dispatch' -or $BaseRef -match '^0+$' -or $rcPush
 $changed = @()
