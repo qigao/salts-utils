@@ -1,4 +1,5 @@
 #include "data_bind_contract_fingerprint.h"
+#include "databind_monocypher_namespace.h"
 #include "monocypher.h"
 
 #include <stdint.h>
