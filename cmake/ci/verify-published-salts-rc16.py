@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed preflight for official Salts.Native rc.15 across target and host SDKs."""
+"""Fail-closed preflight for official Salts.Native rc.16 across target and host SDKs."""
 import argparse
 import hashlib
 import json
@@ -9,16 +9,16 @@ import sys
 from xml.etree import ElementTree as ET
 import zipfile
 
-VERSION = "2.3.0-rc.15"
-SOURCE = "21bdb1145fbb2b39ee3fa644173ec037adba7b87"
-SHA256 = "fa73229c7b2506b393fe779bb56f8d42c387a79d30db54c0cf17b408b7ba7ad1"
+VERSION = "2.3.0-rc.16"
+SOURCE = "6cf093dc053db98bb21b1788eb2fc1ada4df195e"
+SHA256 = "0b8592cb0b27e91fb5a3ee2c5a888ca53c7593cf9eb8cd5adfbc38fac43659b7"
 RIDS = ("linux-x64", "linux-arm64", "windows-x64", "macos-arm64",
         "android-arm64-v8a", "ios-arm64")
 HOSTS = {"linux-x64": "linux-x64", "linux-arm64": "linux-arm64",
          "windows-x64": "windows-x64", "macos-arm64": "macos-arm64",
          "android-arm64-v8a": "linux-x64", "ios-arm64": "macos-arm64"}
 
-# Salts 2.3.0-rc.15 canonical package format uses os/arch/abi for most
+# Salts 2.3.0-rc.16 canonical package format uses os/arch/abi for most
 # platforms; only some cross builds include an explicit rid manifest field.
 PROFILES = {
     "linux-x64": {"os": "linux", "arch": "x64"},
@@ -107,11 +107,13 @@ def main():
     args = p.parse_args()
     if any(__import__("os").environ.get(name) for name in
            ("SALTS_CANDIDATE_ROOT", "SALTS_UTILS_CANDIDATE_ROOT")):
-        raise ValueError("Draft source package may not be mixed with official rc.15")
+        raise ValueError("Draft source package may not be mixed with official rc.16")
     release = json.loads(subprocess.check_output(
-        ["gh", "api", "repos/qigao/salts/releases/tags/v" + VERSION], text=True))
+        ["gh", "api", "repos/qigao/salts/releases/tags/v" + VERSION],
+        text=True, encoding="utf-8"))
     commit = json.loads(subprocess.check_output(
-        ["gh", "api", "repos/qigao/salts/commits/v" + VERSION], text=True))
+        ["gh", "api", "repos/qigao/salts/commits/v" + VERSION],
+        text=True, encoding="utf-8"))
     verify_release(release, commit)
     digest = verify_archive(args.package, args.target_rid, args.host_rid)
     print("QUALIFIED official Salts.Native", VERSION, SOURCE, digest,
@@ -123,5 +125,5 @@ if __name__ == "__main__":
         main()
     except (ValueError, OSError, subprocess.CalledProcessError,
             zipfile.BadZipFile, KeyError) as e:
-        print("Published Salts rc.15 SDK rejected:", e, file=sys.stderr)
+        print("Published Salts rc.16 SDK rejected:", e, file=sys.stderr)
         sys.exit(1)

@@ -29,9 +29,9 @@ esac
 mkdir -p "$restore_root"
 config="$repository_root/cmake/vcpkg-cache.nuget.config"
 project="$restore_root/qigao-native-sdk-restore.csproj"
-# rc.10 is tied to one published six-RID Salts.Native once ABI epoch.
+# rc.11 is tied to one published six-RID Salts.Native TLS ABI epoch.
 # Fail closed instead of selecting a newer unrelated release or Draft package.
-salts_version="2.3.0-rc.15"
+salts_version="2.3.0-rc.16"
 printf 'selected exact published Salts.Native %s\n' "$salts_version"
 
 cat > "$project" <<'EOF'
@@ -73,7 +73,7 @@ salts_package="$(restored_package_dir Salts.Native)"
 test "$(basename "$salts_package")" = "$salts_version" || {
   echo "restored unexpected Salts.Native version (expected $salts_version)" >&2; exit 1;
 }
-python3 "$repository_root/cmake/ci/verify-published-salts-rc15.py" \
+python3 "$repository_root/cmake/ci/verify-published-salts-rc16.py" \
   --package "$salts_package" --target-rid "$salts_rid" --host-rid "$re2c_rid"
 re2c_package="$(restored_package_dir Qigao.Re2c.Binary)"
 turbowasm_package=""

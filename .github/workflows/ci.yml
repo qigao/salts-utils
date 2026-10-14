@@ -5,7 +5,7 @@ on:
     branches:
       - master
       - release/salts-utils-4.3-idlc-606
-      - release/salts-utils-4.3-cnet-once-rc10
+      - release/salts-utils-4.3-cnet-tls-rc11
   workflow_dispatch:
     inputs:
       salts_candidate_run:
@@ -62,15 +62,15 @@ jobs:
           if ($project -notmatch '(?m)^\s*VERSION\s+([0-9][^\s)]*)' -or $Matches[1] -ne $version) {
             throw 'CMake and package versions differ'
           }
-          if ($env:GITHUB_REF -in @('refs/heads/release/salts-utils-4.3-idlc-606', 'refs/heads/release/salts-utils-4.3-cnet-once-rc10')) {
+          if ($env:GITHUB_REF -in @('refs/heads/release/salts-utils-4.3-idlc-606', 'refs/heads/release/salts-utils-4.3-cnet-tls-rc11')) {
             $channel = (Get-Content cmake/ci/rc-channel.txt -Raw).Trim()
             if ($channel -notmatch '^rc\.[1-9][0-9]*$') { throw "Invalid RC channel: $channel" }
             $version = "$version-$channel"
           }
           "version=$version" >> $env:GITHUB_OUTPUT
-      - name: Validate exact published Salts rc.15 verifier offline contracts
+      - name: Validate exact published Salts rc.16 verifier offline contracts
         shell: bash
-        run: python3 -m unittest discover -s cmake/ci -p test_verify_published_salts_rc15.py -v
+        run: python3 -m unittest discover -s cmake/ci -p test_verify_published_salts_rc16.py -v
       - name: Qualify nupkg permission rewrite
         shell: bash
         run: python3 packaging/nuget/test_preserve_nupkg_permissions.py
@@ -92,7 +92,7 @@ jobs:
       tests: ${{ needs.scope.outputs.tests }}
   package:
     needs: [scope, native, tests]
-    if: (github.event_name == 'workflow_dispatch' && inputs.prepare_release) || (github.event_name == 'push' && (github.ref == 'refs/heads/release/salts-utils-4.3-idlc-606' || github.ref == 'refs/heads/release/salts-utils-4.3-cnet-once-rc10'))
+    if: (github.event_name == 'workflow_dispatch' && inputs.prepare_release) || (github.event_name == 'push' && (github.ref == 'refs/heads/release/salts-utils-4.3-idlc-606' || github.ref == 'refs/heads/release/salts-utils-4.3-cnet-tls-rc11'))
     uses: ./.github/workflows/sdk-package.yml
     with:
       version: ${{ needs.scope.outputs.version }}
@@ -112,7 +112,7 @@ jobs:
           BUILD_RESULT: ${{ needs.native.result }}
           TEST_RESULT: ${{ needs.tests.result }}
           PREPARE_RELEASE: ${{ inputs.prepare_release || false }}
-          RC_BRANCH_PUSH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/release/salts-utils-4.3-idlc-606' || github.ref == 'refs/heads/release/salts-utils-4.3-cnet-once-rc10') }}
+          RC_BRANCH_PUSH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/release/salts-utils-4.3-idlc-606' || github.ref == 'refs/heads/release/salts-utils-4.3-cnet-tls-rc11') }}
           PACKAGE_RESULT: ${{ needs.package.result }}
         run: |
           set -euo pipefail

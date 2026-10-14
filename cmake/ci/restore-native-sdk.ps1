@@ -20,8 +20,8 @@ $packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } elseif 
 $packages = [IO.Path]::GetFullPath($packages)
 $config = Join-Path $repositoryRoot "cmake/vcpkg-cache.nuget.config"
 $project = Join-Path $restoreRoot "qigao-native-sdk-restore.csproj"
-# Immutable Salts.Native rc.15 is the only acceptable CNet once ABI source.
-$saltsVersion = '2.3.0-rc.15'
+# Immutable Salts.Native rc.16 is the only acceptable CNet TLS ABI source.
+$saltsVersion = '2.3.0-rc.16'
 Write-Host "selected exact published Salts.Native $saltsVersion"
 New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
 
@@ -55,8 +55,8 @@ $saltsPackage = Get-RestoredPackage "Salts.Native"
 if ((Split-Path $saltsPackage -Leaf) -ne $saltsVersion) {
   throw "Restored unexpected Salts.Native version (expected $saltsVersion)"
 }
-& python (Join-Path $repositoryRoot "cmake/ci/verify-published-salts-rc15.py") --package $saltsPackage --target-rid $SaltsRid --host-rid $Re2cRid
-if ($LASTEXITCODE -ne 0) { throw "Salts.Native rc.15 immutable Release/once ABI verification failed" }
+& python (Join-Path $repositoryRoot "cmake/ci/verify-published-salts-rc16.py") --package $saltsPackage --target-rid $SaltsRid --host-rid $Re2cRid
+if ($LASTEXITCODE -ne 0) { throw "Salts.Native rc.16 immutable Release/TLS ABI verification failed" }
 $saltsRoot = Join-Path $saltsPackage "sdk\$SaltsRid"
 $saltsHostRoot = Join-Path $saltsPackage "sdk\$Re2cRid"
 $re2cRoot = Join-Path (Get-RestoredPackage "Qigao.Re2c.Binary") "tools\$Re2cRid"

@@ -7,13 +7,13 @@ import unittest
 import zipfile
 import json
 
-source = Path(__file__).with_name("verify-published-salts-rc15.py")
-spec = importlib.util.spec_from_file_location("salts_rc15_verify", source)
+source = Path(__file__).with_name("verify-published-salts-rc16.py")
+spec = importlib.util.spec_from_file_location("salts_rc16_verify", source)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
-class SaltsOfficialRc15Test(unittest.TestCase):
+class SaltsOfficialRc16Test(unittest.TestCase):
     def release(self):
         return {"tag_name": "v" + module.VERSION, "draft": False,
                 "prerelease": True,

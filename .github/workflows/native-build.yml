@@ -48,11 +48,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if ('${{ github.ref }}' -eq 'refs/heads/release/salts-utils-4.3-cnet-once-rc10' -and (
+          if ('${{ github.ref }}' -eq 'refs/heads/release/salts-utils-4.3-cnet-tls-rc11' -and (
               '${{ inputs.salts_candidate_run }}' -ne '' -or
               '${{ inputs.salts_candidate_pr_run }}' -ne '' -or
               '${{ inputs.salts_candidate_commit }}' -ne '')) {
-            throw 'Official rc.10 release must restore only exact published Salts.Native 2.3.0-rc.15'
+            throw 'Official rc.11 release must restore only exact published Salts.Native 2.3.0-rc.16'
           }
           if ('${{ inputs.salts_candidate_run }}' -ne '' -and
               '${{ inputs.salts_candidate_pr_run }}' -ne '') {
