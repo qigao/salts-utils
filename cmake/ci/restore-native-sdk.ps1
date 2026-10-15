@@ -36,6 +36,22 @@ New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
 </Project>
 '@ | Set-Content -LiteralPath $project -Encoding utf8NoBOM
 
+# Explicit Component-IDL candidate SDK opt-in. Default native SDK restore is unchanged.
+if (-not [string]::IsNullOrWhiteSpace($env:SALTS_UTILS_COMPONENT_IDL_SALTS_PIN)) {
+  $pin = $env:SALTS_UTILS_COMPONENT_IDL_SALTS_PIN
+  if ($pin -ne '2.3.0-rc.14') {
+    throw 'unsupported Component-IDL Salts SDK candidate pin'
+  }
+  $original = '<PackageReference Include="Salts.Native" Version="*" />'
+  $source = Get-Content -LiteralPath $project -Raw
+  if (-not $source.Contains($original) -or $source.IndexOf($original) -ne $source.LastIndexOf($original)) {
+    throw 'expected one Salts.Native package reference'
+  }
+  $replacement = '<PackageReference Include="Salts.Native" Version="' + $pin + '" />'
+  $source.Replace($original, $replacement) |
+    Set-Content -LiteralPath $project -Encoding utf8NoBOM
+}
+
 $restoreArgs = @($project, "--packages", $packages, "--configfile", $config, "--no-cache", "--force-evaluate")
 if ($WithTurboWasm) { $restoreArgs += "-p:WithTurboWasm=true" }
 dotnet restore @restoreArgs

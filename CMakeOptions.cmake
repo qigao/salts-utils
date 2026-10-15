@@ -10,6 +10,9 @@ cmake_dependent_option(ENABLE_ASAN "Enable Address Sanitizer" ON
 
 option(BUILD_EXAMPLES "Build example programs" ON)
 option(BUILD_TESTS "Build test suite" ON)
+# Additive, uninstalled IDL -> CMeta Component codegen candidate (#621).
+option(SALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE
+       "Build the opt-in IDL-first Component authoring candidate" OFF)
 set(SALTS_UTILS_HOST_LEMON_EXECUTABLE "" CACHE FILEPATH
     "Host Lemon executable required while cross-compiling")
 cmake_dependent_option(BUILD_BENCHMARKS "Build benchmark executables" ON

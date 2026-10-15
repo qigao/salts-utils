@@ -20,6 +20,8 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.builds) }}
     env:
+      # Candidate-only exact native SDK: old restore and release profiles untouched.
+      SALTS_UTILS_COMPONENT_IDL_SALTS_PIN: ${{ github.head_ref == 'feature/component-idl-static-adapter' && '2.3.0-rc.14' || '' }}
       QIGAO_SDK_RID: ${{ matrix.rid }}
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
@@ -78,7 +80,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset '${{ matrix.preset }}'
+          # Candidate-only: match installed macOS Salts/TinyTest AppleClang TLS
+          # representation. Historical GCC preset and all other branches stay unchanged.
+          set --
+          if [ "${{ github.head_ref }}" = 'feature/component-idl-static-adapter' ] && \
+             [ "${{ matrix.family }}" = 'mac' ]; then
+            : "${QIGAO_APPLE_CLANG:?AppleClang path is required}"
+            set -- "-DCMAKE_C_COMPILER=$QIGAO_APPLE_CLANG" \
+                   "-DCMAKE_CXX_COMPILER=$(xcrun --find clang++)"
+          fi
+          cmake --preset '${{ matrix.preset }}' -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ (github.head_ref == 'feature/component-idl-static-adapter' && !matrix.cross) && 'ON' || 'OFF' }} "$@"
           cmake --build --preset '${{ matrix.preset }}' --parallel 2
       - name: Configure and build complete Windows graph
         if: matrix.family == 'windows'
@@ -87,7 +98,7 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          cmake --preset "${{ matrix.preset }}"
+          cmake --preset "${{ matrix.preset }}" -DSALTS_UTILS_ENABLE_COMPONENT_IDL_CANDIDATE=${{ github.head_ref == 'feature/component-idl-static-adapter' && 'ON' || 'OFF' }}
           if errorlevel 1 exit /b 1
           cmake --build --preset "${{ matrix.preset }}" --parallel 2
           if errorlevel 1 exit /b 1
