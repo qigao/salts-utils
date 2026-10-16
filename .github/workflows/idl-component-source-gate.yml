@@ -91,7 +91,10 @@ jobs:
           cmake --build build/component-source/build-utils --parallel 2 \
             --target databind_component_candidate_provider \
                      test_databind_component_candidate_dso_c11 \
-                     test_databind_component_candidate_header_cpp
+                     test_databind_component_candidate_header_cpp \
+                     databind_component_candidate_multi_provider \
+                     test_databind_component_candidate_multi_dso_c11 \
+                     test_databind_component_candidate_multi_header_cpp
           ctest --test-dir build/component-source/build-utils \
             -R '^test_databind_component_candidate_' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90

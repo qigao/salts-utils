@@ -330,6 +330,59 @@ set_source_files_properties(
 # of the currently published Salts.Native SDK and must not be shadowed here.
 option(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO
   "Run source-qualified unpublished Salts ComponentPlugin DSO tests" OFF)
+
+# Isolated multioperation Contract-only source; ordinary Plugin API and
+# Artifact selectors are unchanged. Its single Service has two native methods.
+salts_idl_target(
+  TARGET databind_component_multi_plugin_fixture
+  FOLDER "databind/compiler/generated/component-candidate"
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_component_multi.schema"
+  COMPONENT "ComponentOps.MathProvider"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "contract_multi"
+  ARTIFACTS PLUGIN
+  SOURCES test_component_multi_business.c)
+
+set(_databind_component_candidate_multi_dir
+  "${databind_component_multi_plugin_fixture_GENERATED_DIR}")
+set(_databind_component_candidate_multi_header
+  "${_databind_component_candidate_multi_dir}/contract_multi.component.h")
+set(_databind_component_candidate_multi_source
+  "${_databind_component_candidate_multi_dir}/contract_multi.component.c")
+
+add_custom_command(
+  OUTPUT
+    "${_databind_component_candidate_multi_header}"
+    "${_databind_component_candidate_multi_source}"
+  COMMAND
+    $<TARGET_FILE:databind_component_candidate_codegen_tool>
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_component_multi.schema"
+    "ComponentOps.MathProvider"
+    "contract_multi.plugin.h"
+    "${_databind_component_candidate_multi_header}"
+    "${_databind_component_candidate_multi_source}"
+  DEPENDS
+    databind_component_candidate_codegen_tool
+    databind_component_multi_plugin_fixture_idl_codegen
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_component_multi.schema"
+  VERBATIM
+  COMMENT "Generate bounded two-method canonical FR2 ComponentProvider")
+add_custom_target(databind_component_candidate_multi_generated ALL
+  DEPENDS
+    "${_databind_component_candidate_multi_header}"
+    "${_databind_component_candidate_multi_source}")
+set_source_files_properties(
+  "${_databind_component_candidate_multi_header}"
+  "${_databind_component_candidate_multi_source}" PROPERTIES GENERATED TRUE)
+
+add_test(NAME test_databind_component_candidate_multi_codegen_content
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHEADER=${_databind_component_candidate_multi_header}"
+    "-DSOURCE=${_databind_component_candidate_multi_source}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_multi_content.cmake")
+set_tests_properties(test_databind_component_candidate_multi_codegen_content PROPERTIES
+  LABELS "databind;compiler;component;multi;codegen;no-fallback")
+
 if(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO)
   if(NOT TARGET Salts::ComponentPluginABI OR
      NOT TARGET Salts::ComponentPlugin)
@@ -394,6 +447,63 @@ add_test(NAME test_databind_component_candidate_header_cpp
 set_tests_properties(test_databind_component_candidate_header_cpp PROPERTIES
   LABELS "databind;compiler;component;fr2;cpp17")
 
+
+  # The multi-operation Provider has exactly one CMeta Interface, multiple
+  # FR2 dispatch slots and ONE module lease. No second loader/owner.
+  add_library(databind_component_candidate_multi_provider SHARED
+    "${_databind_component_candidate_multi_header}"
+    "${_databind_component_candidate_multi_source}"
+    test_component_multi_business.c)
+  add_dependencies(databind_component_candidate_multi_provider
+    databind_component_candidate_multi_generated)
+  target_include_directories(databind_component_candidate_multi_provider PRIVATE
+    "${_databind_component_candidate_multi_dir}")
+  target_compile_features(databind_component_candidate_multi_provider PRIVATE c_std_11)
+  target_link_libraries(databind_component_candidate_multi_provider PRIVATE
+    Salts::ComponentPluginABI Salts::PluginABI Salts::CMeta Salts::DataBind)
+  set_target_properties(databind_component_candidate_multi_provider PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    PREFIX "" OUTPUT_NAME "contract_component_multi"
+    FOLDER "databind/compiler/generated/component-candidate")
+
+  add_executable(test_databind_component_candidate_multi_dso_c11
+    test_component_multi_dso.c)
+  add_dependencies(test_databind_component_candidate_multi_dso_c11
+    databind_component_candidate_multi_provider)
+  target_include_directories(test_databind_component_candidate_multi_dso_c11 PRIVATE
+    "${_databind_component_candidate_multi_dir}")
+  target_compile_definitions(test_databind_component_candidate_multi_dso_c11 PRIVATE
+    GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_multi_provider>")
+  target_link_libraries(test_databind_component_candidate_multi_dso_c11 PRIVATE
+    Salts::ComponentPlugin Salts::Plugin Salts::CMeta Salts::DataBind)
+  set_target_properties(test_databind_component_candidate_multi_dso_c11 PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    FOLDER "databind/compiler/tests/plugin")
+  add_test(NAME test_databind_component_candidate_multi_dso_c11
+    COMMAND test_databind_component_candidate_multi_dso_c11)
+  set_tests_properties(test_databind_component_candidate_multi_dso_c11 PROPERTIES
+    LABELS "databind;compiler;component;multi;real-dso;no-fallback;c11")
+
+  add_executable(test_databind_component_candidate_multi_header_cpp
+    test_component_multi_cpp.cpp)
+  add_dependencies(test_databind_component_candidate_multi_header_cpp
+    databind_component_candidate_multi_generated)
+  target_include_directories(test_databind_component_candidate_multi_header_cpp PRIVATE
+    "${_databind_component_candidate_multi_dir}")
+  target_link_libraries(test_databind_component_candidate_multi_header_cpp PRIVATE
+    Salts::ComponentPluginABI Salts::CMeta Salts::DataBind)
+  set_target_properties(test_databind_component_candidate_multi_header_cpp PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
+    FOLDER "databind/compiler/tests/plugin")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+    target_compile_options(test_databind_component_candidate_multi_header_cpp
+      PRIVATE -pedantic-errors)
+  endif()
+  add_test(NAME test_databind_component_candidate_multi_header_cpp
+    COMMAND test_databind_component_candidate_multi_header_cpp)
+  set_tests_properties(test_databind_component_candidate_multi_header_cpp PROPERTIES
+    LABELS "databind;compiler;component;fr2;multi;cpp17")
+
 endif() # DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO
 
 # Codegen-only conformance is always active in test builds. It proves
@@ -407,3 +517,15 @@ add_test(NAME test_databind_component_candidate_codegen_content
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_candidate_content.cmake")
 set_tests_properties(test_databind_component_candidate_codegen_content PROPERTIES
   LABELS "databind;compiler;component;codegen;candidate;no-fallback")
+
+
+# Real canonical typed-error Service must fail admission before creating
+# any generated ComponentProvider artifact, not ignore/erase its envelope.
+add_test(NAME test_databind_component_candidate_typed_error_reject
+  COMMAND "${CMAKE_COMMAND}"
+    "-DTOOL=$<TARGET_FILE:databind_component_candidate_codegen_tool>"
+    "-DSCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_typed_error.schema"
+    "-DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/component-error-reject"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_typed_error_reject.cmake")
+set_tests_properties(test_databind_component_candidate_typed_error_reject PROPERTIES
+  LABELS "databind;compiler;component;typed-error;reject;no-output")

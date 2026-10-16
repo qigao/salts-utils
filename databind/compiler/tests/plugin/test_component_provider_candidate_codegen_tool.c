@@ -29,8 +29,10 @@ int main(int argc, char **argv) {
   FILE *header = NULL;
   FILE *source = NULL;
   int rc = 1;
+  const int verify_typed_error_reject =
+      argc == 7 && strcmp(argv[6], "--verify-typed-error-reject") == 0;
 
-  if (argc != 6) {
+  if (argc != 6 && !verify_typed_error_reject) {
     fprintf(stderr,
         "usage: %s <schema> <canonical component> <original service-header basename> <candidate-header> <candidate-source>\n",
         argc > 0 ? argv[0] : "component-provider-codegen");
@@ -45,6 +47,21 @@ int main(int argc, char **argv) {
           contract, selected_service, (void *)component, &ir) != 0)
     goto cleanup;
 
+  /* Negative evidence must prove the actual canonical throws envelope
+   * exists. Parser/ServiceNativeIR errors never count as an ABI rejection. */
+  if (verify_typed_error_reject) {
+    if (ir.operation_count != 1u || ir.operations == NULL ||
+        ir.operations[0].error_count != 1u ||
+        ir.operations[0].errors == NULL ||
+        ir.operations[0].errors[0].type_name == NULL ||
+        strcmp(ir.operations[0].errors[0].type_name, "NotFound") != 0 ||
+        databind_component_provider_candidate_admitted(component, &ir))
+      goto cleanup;
+    fprintf(stderr, "Verified canonical typed-error rejection with no output\\n");
+    rc = 0;
+    goto cleanup;
+  }
+
   /* Deliberately forbid implicit multiservice, typed-error or inferred ABI
    * fallback. Reject the entire artifact before opening output files. */
   if (!databind_component_provider_candidate_admitted(component, &ir))
@@ -52,13 +69,30 @@ int main(int argc, char **argv) {
   {
     databind_compiler_service_native_ir malformed = ir;
     databind_compiler_service_native_operation wrong = ir.operations[0];
-    malformed.operation_count = 2u;
+    /* Upper bound, duplicate native slot, foreign Service and typed errors
+     * all reject before the first output file is opened. */
+    malformed.operation_count = 5u;
     if (databind_component_provider_candidate_admitted(
             component, &malformed))
       goto cleanup;
+    {
+      databind_compiler_service_native_operation duplicated[2] = {
+        ir.operations[0], ir.operations[0]
+      };
+      malformed.operation_count = 2u;
+      malformed.operations = duplicated;
+      if (databind_component_provider_candidate_admitted(
+              component, &malformed))
+        goto cleanup;
+    }
     malformed.operation_count = 1u;
     malformed.operations = &wrong;
     wrong.error_count = 1u;
+    if (databind_component_provider_candidate_admitted(
+            component, &malformed))
+      goto cleanup;
+    wrong.error_count = 0u;
+    wrong.service_name = "NotTheChosenService";
     if (databind_component_provider_candidate_admitted(
             component, &malformed))
       goto cleanup;
