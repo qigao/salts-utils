@@ -52,10 +52,10 @@ int main(void) {
   };
   salts_component_plugin_source source = {0};
   salts_component_service service = {0};
-  databind_12_ComponentOps_4_Calc_3_Add__component_service port =
-      databind_12_ComponentOps_4_Calc_3_Add__component_service_bind(NULL, NULL);
+  databind_12_ComponentOps_4_Calc__component_service port =
+      databind_12_ComponentOps_4_Calc__component_service_bind(NULL, NULL);
   const cmeta_interface_desc *iface =
-      databind_12_ComponentOps_4_Calc_3_Add__component_service_interface();
+      databind_12_ComponentOps_4_Calc__component_service_interface();
   MathRequest request = {0};
   MathResponse result = {0};
   bool quiet = false;
@@ -101,16 +101,16 @@ int main(void) {
       &runtime, &scope) == SALTS_COMPONENT_PLUGIN_OK);
   CHECK(salts_component_plugin_scope_find_service(
       &scope, iface, &service) == SALTS_COMPONENT_PLUGIN_OK);
-  CHECK(databind_12_ComponentOps_4_Calc_3_Add__component_service_borrow_from_object(
+  CHECK(databind_12_ComponentOps_4_Calc__component_service_borrow_from_object(
       service.object, service.interfaces, &port) == CMETA_OK);
 
   request.lhs = 8u;
   request.rhs = 5u;
-  CHECK(databind_12_ComponentOps_4_Calc_3_Add__component_service_invoke_Add(
+  CHECK(databind_12_ComponentOps_4_Calc__component_service_invoke_Add(
       &port, &request, &result) == 0);
   CHECK(result.value == 13u);
   result.value = 0u;
-  CHECK(databind_12_ComponentOps_4_Calc_3_Add__component_service_invoke_Multiply(
+  CHECK(databind_12_ComponentOps_4_Calc__component_service_invoke_Multiply(
       &port, &request, &result) == 0);
   CHECK(result.value == 40u);
 

@@ -20,6 +20,23 @@ static int selected_service(void *context, const char *service_name) {
   return 0;
 }
 
+
+/* File-content equality is stronger than semantic acceptance: a reversible
+ * ServiceNativeIR method permutation must produce byte-identical Interface
+ * and Provider DSO source without mutating caller-owned canonical IR. */
+static int candidate_stream_equal(FILE *a, FILE *b) {
+  int left, right;
+  if (a == NULL || b == NULL || fflush(a) != 0 || fflush(b) != 0 ||
+      fseek(a, 0L, SEEK_SET) != 0 || fseek(b, 0L, SEEK_SET) != 0)
+    return 0;
+  do {
+    left = fgetc(a);
+    right = fgetc(b);
+    if (left != right) return 0;
+  } while (left != EOF);
+  return !ferror(a) && !ferror(b);
+}
+
 int main(int argc, char **argv) {
   Node *root = NULL;
   IdlContract *contract = NULL;
@@ -31,8 +48,10 @@ int main(int argc, char **argv) {
   int rc = 1;
   const int verify_typed_error_reject =
       argc == 7 && strcmp(argv[6], "--verify-typed-error-reject") == 0;
+  const int verify_reordered_multi =
+      argc == 7 && strcmp(argv[6], "--verify-reordered-multi") == 0;
 
-  if (argc != 6 && !verify_typed_error_reject) {
+  if (argc != 6 && !verify_typed_error_reject && !verify_reordered_multi) {
     fprintf(stderr,
         "usage: %s <schema> <canonical component> <original service-header basename> <candidate-header> <candidate-source>\n",
         argc > 0 ? argv[0] : "component-provider-codegen");
@@ -58,6 +77,50 @@ int main(int argc, char **argv) {
         databind_component_provider_candidate_admitted(component, &ir))
       goto cleanup;
     fprintf(stderr, "Verified canonical typed-error rejection with no output\\n");
+    rc = 0;
+    goto cleanup;
+  }
+
+  if (verify_reordered_multi) {
+    databind_compiler_service_native_ir reordered = ir;
+    databind_compiler_service_native_operation swapped[2];
+    FILE *files[4] = {NULL, NULL, NULL, NULL};
+    size_t i;
+    int same = 0;
+
+    if (ir.operation_count == 2u && ir.operations != NULL) {
+      swapped[0] = ir.operations[1];
+      swapped[1] = ir.operations[0];
+      reordered.operations = swapped;
+      if (databind_component_provider_candidate_admitted(
+              component, &ir) &&
+          databind_component_provider_candidate_admitted(
+              component, &reordered)) {
+        for (i = 0u; i < 4u; ++i)
+          files[i] = tmpfile();
+        if (files[0] != NULL && files[1] != NULL &&
+            files[2] != NULL && files[3] != NULL &&
+            databind_component_provider_candidate_render(
+              files[0], files[1], component, &ir,
+              argv[3], "contract_multi.component.h", 1u, 0u, 0u) == 0 &&
+            databind_component_provider_candidate_render(
+              files[2], files[3], component, &reordered,
+              argv[3], "contract_multi.component.h", 1u, 0u, 0u) == 0 &&
+            candidate_stream_equal(files[0], files[2]) &&
+            candidate_stream_equal(files[1], files[3]))
+          same = 1;
+      }
+    }
+    for (i = 0u; i < 4u; ++i)
+      if (files[i] != NULL) (void)fclose(files[i]);
+
+    if (!same) {
+      fprintf(stderr,
+          "Service method permutation changed canonical Interface or Provider source\n");
+      goto cleanup;
+    }
+    fprintf(stderr,
+        "Verified canonical FR2 Service Interface/Provider byte identity under method reordering\n");
     rc = 0;
     goto cleanup;
   }
