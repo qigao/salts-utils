@@ -331,6 +331,34 @@ set_source_files_properties(
 option(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO
   "Run source-qualified unpublished Salts ComponentPlugin DSO tests" OFF)
 
+# Source-only strict ServiceHost proof: never silently execute the old
+# ComponentPlugin Owner in place of the exact tested Salts ServiceHost runtime.
+# This flag exists ONLY in BUILD_TESTS and is not an installed/public artifact.
+option(DATABIND_ENABLE_COMPONENT_PROVIDER_STRICT_SERVICEHOST
+  "Build generated FR2 Provider consumer against original strict Salts ServiceHost source" OFF)
+if(DATABIND_ENABLE_COMPONENT_PROVIDER_STRICT_SERVICEHOST)
+  if(NOT DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO)
+    message(FATAL_ERROR "Strict ServiceHost source gate requires explicit real ComponentProvider DSO admission")
+  endif()
+  if(NOT DEFINED DATABIND_SALTS_STRICT_SERVICEHOST_SOURCE_DIR OR
+     NOT EXISTS "${DATABIND_SALTS_STRICT_SERVICEHOST_SOURCE_DIR}/component-runtime/CMakeLists.txt" OR
+     NOT EXISTS "${DATABIND_SALTS_STRICT_SERVICEHOST_SOURCE_DIR}/component-runtime/src/service_host.c")
+    message(FATAL_ERROR "Strict ServiceHost source gate requires exact original Salts Component Runtime sources; no fallback")
+  endif()
+  if(TARGET Salts::ServiceHostCandidate)
+    message(FATAL_ERROR "Strict ServiceHostCandidate already supplied by another runtime Owner")
+  endif()
+  set(_databind_saved_build_tests "${BUILD_TESTS}")
+  set(BUILD_TESTS OFF)
+  add_subdirectory(
+    "${DATABIND_SALTS_STRICT_SERVICEHOST_SOURCE_DIR}/component-runtime"
+    "${CMAKE_CURRENT_BINARY_DIR}/strict-salts-service-host")
+  set(BUILD_TESTS "${_databind_saved_build_tests}")
+  if(NOT TARGET Salts::ServiceHostCandidate)
+    message(FATAL_ERROR "Pinned strict Salts ServiceHostCandidate target was not created")
+  endif()
+endif()
+
 # Isolated multioperation Contract-only source; ordinary Plugin API and
 # Artifact selectors are unchanged. Its single Service has two native methods.
 salts_idl_target(
@@ -503,6 +531,32 @@ set_tests_properties(test_databind_component_candidate_header_cpp PROPERTIES
     COMMAND test_databind_component_candidate_multi_header_cpp)
   set_tests_properties(test_databind_component_candidate_multi_header_cpp PROPERTIES
     LABELS "databind;compiler;component;fr2;multi;cpp17")
+
+
+  if(DATABIND_ENABLE_COMPONENT_PROVIDER_STRICT_SERVICEHOST)
+    add_executable(test_databind_component_candidate_strict_servicehost_c11
+      test_component_multi_servicehost_strict.c)
+    add_dependencies(test_databind_component_candidate_strict_servicehost_c11
+      databind_component_candidate_multi_provider)
+    target_include_directories(
+      test_databind_component_candidate_strict_servicehost_c11 PRIVATE
+      "${_databind_component_candidate_multi_dir}")
+    target_compile_definitions(
+      test_databind_component_candidate_strict_servicehost_c11 PRIVATE
+      GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_multi_provider>")
+    target_link_libraries(
+      test_databind_component_candidate_strict_servicehost_c11 PRIVATE
+      Salts::ServiceHostCandidate Salts::Plugin Salts::CMeta Salts::DataBind)
+    set_target_properties(
+      test_databind_component_candidate_strict_servicehost_c11 PROPERTIES
+      C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+      FOLDER "databind/compiler/tests/plugin")
+    add_test(NAME test_databind_component_candidate_strict_servicehost_c11
+      COMMAND test_databind_component_candidate_strict_servicehost_c11)
+    set_tests_properties(
+      test_databind_component_candidate_strict_servicehost_c11 PROPERTIES
+      LABELS "databind;compiler;component;fr2;strict-servicehost;generation;real-dso;c11")
+  endif()
 
 endif() # DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO
 

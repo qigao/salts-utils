@@ -90,3 +90,33 @@ unchanged.
 This is **not** acceptance of arbitrary service collections, typed-error,
 or public generated Component registration. The first slice's positive tests
 stay unchanged as an independent regression gate.
+
+
+## Generated FR2 under the actual strict ServiceHost Candidate
+
+The isolated downstream strict-source gate now **compiles the original Salts
+ServiceHostCandidate and ConfiguratorCandidate code from the exact tested Salts
+#1234 revision**, in addition to the installed private Salts Component/Plugin
+ABI. It does not implement or install another runtime in SaltsUtils.
+
+An opt-in \`DATABIND_ENABLE_COMPONENT_PROVIDER_STRICT_SERVICEHOST=ON\` requires
+the ordinary DSO qualification flag and an explicit immutable Salts source
+directory. At CMake admission it fails if the source is absent, if another
+ServiceHostCandidate target already exists, or if the DSO mode is not selected.
+The CI verifies the exact Salts \`service_host.c\` Git blob before compiling.
+
+The new C11 native consumer loads the **actual generated two-operation FR2
+Provider DSO**, explicitly requires strict borrowed-Interface ABI admission,
+publishes generation N=100, acquires an address-stable Scope and executes Add
+and Multiply. It then builds/publishes N+1=101 under a distinct module lease
+without discarding N, proves the old Scope remains callable while DRAINING,
+that drain returns BUSY, and that leases settle 2 → 1 → 0 only after each
+generation's own Scope is released. Stop, quiescence and unload remain
+Salts-owned. Tests run unsuppressed within the source gate on Linux, macOS arm64
+and Windows MSVC with ten repetitions.
+
+**The existing original ComponentPlugin and new strict ServiceHostCandidate
+never own the same live graph in these tests.** The single/multi generated
+business functions, target names, source ABI and canonical TypeIdentity remain
+unchanged. This gate does not authorize a public installed ServiceHost SDK,
+default IDL artifact change or CHttp production migration.
