@@ -19,6 +19,7 @@ static const artifact_name_row ARTIFACT_NAMES[] = {
     {DATABIND_COMPILER_ARTIFACT_WASM, "wasm"},
     {DATABIND_COMPILER_ARTIFACT_OPENAPI, "openapi"},
     {DATABIND_COMPILER_ARTIFACT_MOCK, "mock"},
+    {DATABIND_COMPILER_ARTIFACT_COMPONENT, "component"},
 };
 
 static const transport_name_row TRANSPORT_NAMES[] = {

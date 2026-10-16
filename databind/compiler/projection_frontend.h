@@ -2,6 +2,7 @@
 #define DATABIND_COMPILER_PROJECTION_FRONTEND_H
 
 #include "plugin_projection.h"
+#include "component_provider_candidate.h"
 #include "wasm_projection.h"
 #include "method_plan_projection.h"
 #include "native_service_projection.h"
@@ -63,6 +64,7 @@ typedef struct databind_compiler_projection_frontend_plan {
   size_t output_count;
 
   databind_compiler_plugin_config plugin;
+  databind_compiler_component_provider_config component;
   databind_compiler_wasm_config wasm;
   databind_compiler_native_service_config native_service;
   databind_compiler_openapi_projection_config openapi;
@@ -77,6 +79,8 @@ typedef struct databind_compiler_projection_frontend_plan {
   char native_header[SALTS_FS_MAX_PATH];
   char native_service_header[SALTS_FS_MAX_PATH];
   char native_service_source[SALTS_FS_MAX_PATH];
+  char component_header[SALTS_FS_MAX_PATH];
+  char component_source[SALTS_FS_MAX_PATH];
   char plugin_source[SALTS_FS_MAX_PATH];
   char plugin_service_header[SALTS_FS_MAX_PATH];
   char plugin_client_header[SALTS_FS_MAX_PATH];

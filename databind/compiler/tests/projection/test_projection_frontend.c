@@ -73,6 +73,88 @@ spec("DataBind public typed generation frontend") {
                 (uint32_t)DATABIND_COMPILER_ARTIFACT_PLUGIN);
   }
 
+  it("explicitly selects staged PLUGIN plus canonical multi-FR COMPONENT") {
+    databind_compiler_projection_frontend_input input = {
+        .artifacts = "component,plugin",
+        .component_id = "ComponentOps.MathProvider",
+        .artifact_name = "contract_multi",
+        .artifact_version = "1.2.3",
+        .output_path = "generated/contract_multi_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+    char base[SALTS_FS_MAX_PATH];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                0);
+    /* PLUGIN first is necessary to borrow its canonical service header,
+     * irrespective of the user's artifact token order. */
+    check_equal(plan.request_count, (size_t)2u);
+    check_equal(plan.backend_count, (size_t)2u);
+    check_equal(plan.requests[0].id.kind,
+                (uint32_t)DATABIND_COMPILER_ARTIFACT_PLUGIN);
+    check_equal(plan.requests[1].id.kind,
+                (uint32_t)DATABIND_COMPILER_ARTIFACT_COMPONENT);
+    check_true(plan.requests[1].config == &plan.component);
+    check_equal(plan.backends[1].name, "component");
+    check_equal(plan.backends[1].output_policy,
+                DATABIND_COMPILER_OUTPUT_STAGED_MULTI);
+    check_equal(plan.component.version_major, (uint32_t)1u);
+    check_equal(plan.component.version_minor, (uint32_t)2u);
+    check_equal(plan.component.version_patch, (uint32_t)3u);
+    check_equal(plan.component.component_id, input.component_id);
+    check_true(plan.component.native_service_header ==
+               plan.plugin_service_header);
+    check_true(plan.component.header_output == plan.component_header);
+    check_equal(path_base(plan.component_header, base),
+                "contract_multi.component.h");
+    check_equal(path_base(plan.component_source, base),
+                "contract_multi.component.c");
+    check_equal(plan.output_count, (size_t)7u);
+    check_equal(plan.outputs[0].path, input.output_path);
+    check_equal(plan.outputs[5].path, plan.component_source);
+    check_equal(plan.outputs[6].path, plan.component_header);
+    check_equal(plan.outputs[6].owner.kind,
+                (uint32_t)DATABIND_COMPILER_ARTIFACT_COMPONENT);
+    databind_compiler_projection_frontend_dispose(&plan);
+  }
+
+  it("rejects COMPONENT without PLUGIN or outside Contract-only bundle") {
+    databind_compiler_projection_frontend_input input = {
+        .artifacts = "component",
+        .component_id = "ComponentOps.MathProvider",
+        .artifact_name = "contract_multi",
+        .artifact_version = "1.0.0",
+        .output_path = "generated/contract_multi_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+    check_not_null(strstr(error, "plugin,component"));
+
+    input.artifacts = "plugin,component";
+    input.transports = "http";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+    check_not_null(strstr(error, "Contract-only"));
+    input.transports = NULL;
+
+    input.source_output_path = "generated/binary_native.c";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+    input.source_output_path = NULL;
+
+    input.artifacts = "plugin,component,native";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+    input.artifacts = "component,component,plugin";
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)), -1);
+  }
+
   it("lowers one transport-neutral NATIVE Service artifact") {
     databind_compiler_projection_frontend_input input = {
         .artifacts = "native",

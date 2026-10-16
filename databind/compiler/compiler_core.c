@@ -14,6 +14,7 @@
 #include "native_service_projection.h"
 #include "wasm_projection.h"
 #include "plugin_projection.h"
+#include "component_provider_candidate.h"
 #include "native_source_ir.h"
 #include "binary_layout_lowering.h"
 #include "schema_cmeta.h"
@@ -4902,6 +4903,7 @@ typedef struct databind_contract_artifact_stage {
   int native;
   int plugin;
   int wasm;
+  int component;
 } databind_contract_artifact_stage;
 
 static int databind_compiler_generate_contract_native_bundle(
@@ -4966,16 +4968,21 @@ static int databind_compiler_generate_contract_native_bundle(
           entry->backend->output_policy == DATABIND_COMPILER_OUTPUT_STAGED_MULTI &&
           entry->backend->generate == databind_compiler_wasm_generate &&
           request->id.kind == DATABIND_COMPILER_ARTIFACT_WASM;
+      entry->component =
+          entry->backend->output_policy == DATABIND_COMPILER_OUTPUT_STAGED_MULTI &&
+          entry->backend->generate == databind_compiler_component_provider_generate &&
+          request->id.kind == DATABIND_COMPILER_ARTIFACT_COMPONENT;
       if (!entry->native && !entry->plugin && !entry->wasm &&
-          entry->backend->output_policy !=
+          !entry->component && entry->backend->output_policy !=
               DATABIND_COMPILER_OUTPUT_STAGED_SINGLE) {
         fprintf(stderr, "Artifact has no audited staged-output contract\n");
         goto done;
       }
       if ((entry->backend->generate == databind_compiler_native_service_generate ||
            entry->backend->generate == databind_compiler_plugin_generate ||
-           entry->backend->generate == databind_compiler_wasm_generate) &&
-          !entry->native && !entry->plugin && !entry->wasm) {
+           entry->backend->generate == databind_compiler_wasm_generate ||
+           entry->backend->generate == databind_compiler_component_provider_generate) &&
+          !entry->native && !entry->plugin && !entry->wasm && !entry->component) {
         fprintf(stderr, "Multi-output artifact backend has dishonest staging capability\n");
         goto done;
       }
@@ -5031,6 +5038,14 @@ static int databind_compiler_generate_contract_native_bundle(
       final_paths[2] = config->host_source_output;
       final_paths[3] = config->guest_header_output;
       entry->stage_count = 4u;
+    } else if (entry->component) {
+      const databind_compiler_component_provider_config *config =
+          (const databind_compiler_component_provider_config *)request->config;
+      if (config == NULL || config->header_output == NULL)
+        goto done;
+      final_paths[0] = config->header_output;
+      final_paths[1] = request->output;
+      entry->stage_count = 2u;
     } else {
       final_paths[0] = request->output;
       entry->stage_count = 1u;
@@ -5086,6 +5101,12 @@ static int databind_compiler_generate_contract_native_bundle(
               txn.items[first + 1u].staging_path,
               txn.items[first + 2u].staging_path,
               txn.items[first + 3u].staging_path) != 0)
+        goto done;
+    } else if (entry->component) {
+      if (databind_compiler_component_provider_render_staged(
+              &projection_input, request,
+              txn.items[first].staging_path,
+              txn.items[first + 1u].staging_path) != 0)
         goto done;
     } else if (entry->backend->generate(
                    &projection_input, request,

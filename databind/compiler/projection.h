@@ -31,7 +31,9 @@ typedef enum databind_compiler_artifact_kind {
   DATABIND_COMPILER_ARTIFACT_PLUGIN,
   DATABIND_COMPILER_ARTIFACT_WASM,
   DATABIND_COMPILER_ARTIFACT_OPENAPI,
-  DATABIND_COMPILER_ARTIFACT_MOCK
+  DATABIND_COMPILER_ARTIFACT_MOCK,
+  /* Explicit opt-in canonical FR2 ComponentProvider, never default. */
+  DATABIND_COMPILER_ARTIFACT_COMPONENT
 } databind_compiler_artifact_kind;
 
 typedef enum databind_compiler_transport_kind {

@@ -11,7 +11,7 @@
  *              [--lang c|cpp|cxx|go|rust|python|py|ts|typescript|sqlite|postgresql|postgres]
  *              [--output <file>] [--source-output <file>]
  *              [--dsl-output <file>]
- *              [--artifacts plugin] [--transports http,rpc]
+ *              [--artifacts plugin|plugin,component] [--transports http,rpc]
  *              [--projection-config <file.json>]
  *              [--component <Schema.Component>]
  *              [--artifact-name <name>] [--artifact-version M.m.p]
@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
                             "Explicitly admit Binary layout and generate C wire helpers"),
         cmd_arger_desc_string(
             &artifact_names, "artifacts",
-            "Comma-separated artifact selections (native,plugin,wasm,openapi,mock)"),
+            "Comma-separated artifact selections (native,plugin,component,wasm,openapi,mock)"),
         cmd_arger_desc_string(
             &transport_names, "transports",
             "Comma-separated transport selections (http,rpc,socket,flowmq,mqtt,websocket)"),
@@ -199,6 +199,23 @@ int main(int argc, char **argv) {
                         : "unknown projection error");
             databind_compiler_projection_frontend_dispose(&projection_plan);
             return 1;
+        }
+        /* COMPONENT is a strict Contract-only C Artifact with a borrowed
+         * provider ABI; no implicit Binary overlay or wire-side thunk.
+         * Fail before any temporary stage/path is created. */
+        if (binary_codec != cmd_arger_false) {
+            size_t i;
+            for (i = 0u; i < projection_plan.request_count; ++i)
+                if (projection_plan.requests[i].id.axis ==
+                        DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT &&
+                    projection_plan.requests[i].id.kind ==
+                        DATABIND_COMPILER_ARTIFACT_COMPONENT) {
+                    fprintf(stderr,
+                            "COMPONENT requires Contract-only NativeSourceIR; "
+                            "--binary-codec is forbidden\n");
+                    databind_compiler_projection_frontend_dispose(&projection_plan);
+                    return 1;
+                }
         }
     }
 

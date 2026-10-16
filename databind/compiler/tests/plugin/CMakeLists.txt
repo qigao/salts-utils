@@ -583,3 +583,17 @@ add_test(NAME test_databind_component_candidate_typed_error_reject
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_typed_error_reject.cmake")
 set_tests_properties(test_databind_component_candidate_typed_error_reject PROPERTIES
   LABELS "databind;compiler;component;typed-error;reject;no-output")
+
+# Explicit compiler-private IDL Artifact: PLUGIN service header +
+# COMPONENT provider header/source, committed with the native Record under
+# the same canonical output transaction. This is CLI-only in this first
+# candidate; no installed CMake target or production default is switched.
+add_test(NAME test_databind_component_staged_cli
+  COMMAND "${CMAKE_COMMAND}"
+    "-DIDLC=$<TARGET_FILE:salts_idlc>"
+    "-DSCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/test_component_multi.schema"
+    "-DTYPED_ERROR_SCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_typed_error.schema"
+    "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/component-staged-cli"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_staged_cli.cmake")
+set_tests_properties(test_databind_component_staged_cli PROPERTIES
+  LABELS "databind;compiler;component;staged;transaction;no-fallback")
