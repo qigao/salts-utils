@@ -52,13 +52,30 @@ int main(int argc, char **argv) {
   {
     databind_compiler_service_native_ir malformed = ir;
     databind_compiler_service_native_operation wrong = ir.operations[0];
-    malformed.operation_count = 2u;
+    /* Upper bound, duplicate native slot, foreign Service and typed errors
+     * all reject before the first output file is opened. */
+    malformed.operation_count = 5u;
     if (databind_component_provider_candidate_admitted(
             component, &malformed))
       goto cleanup;
+    {
+      databind_compiler_service_native_operation duplicated[2] = {
+        ir.operations[0], ir.operations[0]
+      };
+      malformed.operation_count = 2u;
+      malformed.operations = duplicated;
+      if (databind_component_provider_candidate_admitted(
+              component, &malformed))
+        goto cleanup;
+    }
     malformed.operation_count = 1u;
     malformed.operations = &wrong;
     wrong.error_count = 1u;
+    if (databind_component_provider_candidate_admitted(
+            component, &malformed))
+      goto cleanup;
+    wrong.error_count = 0u;
+    wrong.service_name = "NotTheChosenService";
     if (databind_component_provider_candidate_admitted(
             component, &malformed))
       goto cleanup;

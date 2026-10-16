@@ -1,0 +1,19 @@
+schema ComponentOps [version(1)];
+
+component MathProvider {
+  service Calc;
+}
+
+message MathRequest {
+  uint32 lhs;
+  uint32 rhs;
+}
+
+message MathResponse {
+  uint32 value;
+}
+
+service Calc {
+  Add: MathRequest -> MathResponse;
+  Multiply: MathRequest -> MathResponse;
+}

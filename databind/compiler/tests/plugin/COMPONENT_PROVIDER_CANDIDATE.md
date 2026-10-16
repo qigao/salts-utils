@@ -59,3 +59,34 @@ execution target or default artifact selection). The isolated real DSO
 qualification enforces `-std=c++17 -pedantic-errors` for the generated header.
 Existing Native/Plugin generated output is separately requalified as part of
 normal CI. No alternate C++ record runtime or type provider is introduced.
+
+## Stacked bounded multi-operation FR2 qualification
+
+The isolated child candidate adds **two to four non-throwing operations in one
+canonical Service** without inventing a second Interface per method, runtime
+registry, FFI execution path or module Owner. One `ComponentOps.MathProvider`
+Component/Service emits methods `invoke_Add` and `invoke_Multiply` under
+one `CMETA_INTERFACE` and one standard ProviderBinding/DSO lease. Each FR2
+method uses exactly the preexisting NativeSourceIR request/response CMeta
+record identity and ordinary C11 function pointer ABI. The single-operation
+candidate's original `invoke` spelling, generated source and test remain
+unchanged.
+
+- Admission bounds: one Component capability, one selected Service, **1..4**
+  distinct named operations; duplicate names/symbols/qualified operations,
+  foreign service, fifth operation and any typed-error envelope fail closed.
+- Compiler: same canonical ServiceNativeIR, distinct typed method slots,
+  `CMETA_IMPLEMENTS`, compile-time function pointer checking and a single
+  ProviderBinding export.
+- Tests: a real two-operation Plugin Provider DSO under the existing
+  Salts-owned ComponentPlugin Scope, two different business results,
+  strict ABI contracts, C11/C++17 and lease BUSY→0; negative real typed-error
+  Schema rejects with **zero generated output**.
+- All new DSO execution remains behind the existing
+  `DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO` source gate; ordinary
+  `salts_idl_target` artifacts, public SDK and production CHttp stay
+  unchanged.
+
+This is **not** acceptance of arbitrary service collections, typed-error,
+or public generated Component registration. The first slice's positive tests
+stay unchanged as an independent regression gate.

@@ -8,8 +8,8 @@
 #include <stdio.h>
 
 /*
- * Isolated #620 IDL -> CMeta/ComponentProvider projection, one exact
- * non-throwing Service operation. It consumes the existing canonical
+ * Isolated #620 IDL -> CMeta/ComponentProvider projection, one explicitly chosen
+ * Service with one to four non-throwing canonical operations. It consumes the existing canonical
  * IdlContract -> ServiceNativeIR; it owns no parser, runtime, Plugin or
  * generated native signature. The ordinary PLUGIN outputs are unchanged.
  *
