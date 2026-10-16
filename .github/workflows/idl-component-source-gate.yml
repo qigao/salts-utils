@@ -625,7 +625,7 @@ jobs:
           if not exist "%SALTS_ROOT%\include\salts\component_runtime_abi.h" exit /b 1
           findstr /c:"Salts::ServiceHost" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
           if errorlevel 1 exit /b 1
-      - name: Build generated FR2 through exact installed MSVC ServiceHost
+      - name: Configure generated FR2 through exact installed MSVC ServiceHost
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
@@ -636,6 +636,45 @@ jobs:
           set "VCPKG_INSTALLED_DIR=%GITHUB_WORKSPACE%\vcpkg_installed"
           cmake --preset ci-win-release-user -B "build\installed-servicehost-windows\build-utils" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           if errorlevel 1 exit /b 1
+      - name: Stage exact installed SDK runtime DLLs before host IDL code generation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "idl-servicehost-windows-sdk"
+          $directory = Join-Path $env:GITHUB_WORKSPACE "build/installed-servicehost-windows/build-utils/bin"
+          $sourceDirectory = Join-Path $root "bin"
+          if (-not (Test-Path -LiteralPath $sourceDirectory -PathType Container)) {
+            throw "Exact installed SDK bin directory missing: $sourceDirectory"
+          }
+          $dlls = @(Get-ChildItem -LiteralPath $sourceDirectory -Filter '*.dll' -File)
+          if ($dlls.Count -eq 0) { throw "Exact installed SDK has no runtime DLLs" }
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $byName = @{}
+          foreach ($dll in $dlls) {
+            $key = $dll.Name.ToLowerInvariant()
+            $sha = (Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256).Hash
+            if ($byName.ContainsKey($key) -and $byName[$key] -ne $sha) {
+              throw "Case-insensitive installed SDK DLL collision: $($dll.Name)"
+            }
+            $byName[$key] = $sha
+            $dest = Join-Path $directory $dll.Name
+            if (Test-Path -LiteralPath $dest) {
+              $existingHash = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
+              if ($existingHash -ne $sha) {
+                throw "Host codegen DLL conflicts with exact installed SDK: $($dll.Name)"
+              }
+            } else {
+              Copy-Item -LiteralPath $dll.FullName -Destination $dest
+            }
+            Write-Host "Exact SDK DLL $($dll.Name): $sha"
+          }
+          Write-Host "Pre-staged $($byName.Count) exact installed DLLs beside host codegen tool; no PATH/cwd fallback."
+      - name: Compile and execute exact installed-SDK host FR2 generator
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           cmake --build "build\installed-servicehost-windows\build-utils" --parallel 2 --target databind_component_candidate_multi_provider test_databind_component_candidate_servicehost_c11 test_databind_component_candidate_multi_dso_c11
           if errorlevel 1 exit /b 1
       - name: Stage exact DLL identities beside generated Provider (no fallback PATH)
