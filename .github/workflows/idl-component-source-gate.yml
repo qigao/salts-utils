@@ -1,0 +1,113 @@
+name: IDL ComponentProvider exact-source DSO candidate
+
+'on':
+  pull_request:
+    paths:
+      - ".github/workflows/idl-component-source-gate.yml"
+      - "databind/compiler/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: idl-component-dso-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Exact Salts ComponentPlugin source and generated FR2 DSO
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      EXPECTED_SALTS: 23032bfe124df327317ce9b4d132054e99b2c0cb
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: linux-x64
+      QIGAO_TARGET_TRIPLET: x64-linux
+      QIGAO_HOST_TRIPLET: x64-linux
+      CCACHE_DIR: build/component-source/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-dso-v1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: 23032bfe124df327317ce9b4d132054e99b2c0cb
+          path: build/component-source/salts
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Check exact sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test "$(git -C build/component-source/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
+          test -f build/component-source/salts/component-plugin/src/component_plugin.c
+          test -f build/component-source/salts/component-plugin/include/salts/component_plugin_abi.h
+          printf 'salts=%s\nsaltsutils=%s\npublish=false\n' "$EXPECTED_SALTS" "$EXPECTED_SU" \
+            | tee build/component-source/provenance.txt
+      - name: Build and install exact upstream Salts from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/idl-component-salts"
+          echo "SALTS_ROOT=$prefix" >> "$GITHUB_ENV"
+          cmake --preset linux-release-ci \
+            -S "$GITHUB_WORKSPACE/build/component-source/salts" \
+            -B build/component-source/build-salts \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" \
+            -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          cmake --build build/component-source/build-salts --parallel 2
+          cmake --install build/component-source/build-salts
+          test -f "$prefix/include/salts/component_plugin_abi.h"
+          grep -q 'ComponentPluginABI' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -q 'ComponentPlugin' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+      - name: Build and exercise generated FR2 Provider DSO with real Salts Owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SALTS_ROOT="$RUNNER_TEMP/idl-component-salts"
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          export PKG_ROOT="$RUNNER_TEMP/idl-component-utils"
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_ROOT/bin"
+          cmake --preset ci-linux-release-user \
+            -B build/component-source/build-utils \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build build/component-source/build-utils --parallel 2 \
+            --target databind_component_candidate_provider \
+                     test_databind_component_candidate_dso_c11 \
+                     test_databind_component_candidate_header_cpp
+          ctest --test-dir build/component-source/build-utils \
+            -R '^test_databind_component_candidate_' \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: idl-component-source-fr2-${{ github.run_id }}
+          path: |
+            build/component-source/provenance.txt
+            build/component-source/build-utils/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Assert source unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test -z "$(git status --porcelain --untracked-files=no)"

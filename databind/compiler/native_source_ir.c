@@ -496,13 +496,14 @@ static int native_source_ir_render(
         "static void databind_native_text_trait_move(void *destination, void *source) {\n"
         "    if (!destination || !source || destination == source) return;\n"
         "    *(databind_native_text *)destination = *(databind_native_text *)source;\n"
-        "    *(databind_native_text *)source = (databind_native_text){0};\n"
+        "    { const databind_native_text zero = {0};\n"
+        "      *(databind_native_text *)source = zero; }\n"
         "}\n"
         "static void databind_native_text_trait_destroy(void *value) {\n"
         "    databind_native_text *item = (databind_native_text *)value;\n"
         "    if (!item) return;\n"
         "    free(item->data);\n"
-        "    *item = (databind_native_text){0};\n"
+        "    { const databind_native_text zero = {0}; *item = zero; }\n"
         "}\n"
         "static int databind_native_text_trait_compare(const void *left, const void *right) {\n"
         "    const databind_native_text *a = (const databind_native_text *)left;\n"
@@ -515,19 +516,17 @@ static int native_source_ir_render(
         "    return order ? order : (a->size > b->size) - (a->size < b->size);\n"
         "}\n"
         "static const cmeta_type_traits databind_native_text_cmeta_traits = {\n"
-        "    .flags = CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY | CMETA_TRAIT_COMPARE,\n"
-        "    .compare = databind_native_text_trait_compare,\n"
-        "    .copy_construct = databind_native_text_trait_copy,\n"
-        "    .move_construct = databind_native_text_trait_move,\n"
-        "    .destroy = databind_native_text_trait_destroy\n"
+        "    CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY | CMETA_TRAIT_COMPARE,\n"
+        "    NULL, NULL, databind_native_text_trait_compare,\n"
+        "    databind_native_text_trait_copy, databind_native_text_trait_move,\n"
+        "    databind_native_text_trait_destroy\n"
         "};\n"
         "static const cmeta_type_identity databind_native_text_cmeta_identity =\n"
         "    CMETA_TYPE_ID_ATOM_INIT(\"tbe.native.owned_text.v1\");\n"
         "static const cmeta_type_desc databind_native_text_cmeta_type = {\n"
-        "    .name = \"databind_native_text\",\n"
-        "    .size = sizeof(databind_native_text), .align = _Alignof(databind_native_text),\n"
-        "    .kind = CMETA_T_OBJECT, .traits = &databind_native_text_cmeta_traits,\n"
-        "    .identity = &databind_native_text_cmeta_identity\n"
+        "    \"databind_native_text\", sizeof(databind_native_text),\n"
+        "    CMETA_ALIGNOF(databind_native_text), CMETA_T_OBJECT, NULL,\n"
+        "    &databind_native_text_cmeta_traits, &databind_native_text_cmeta_identity\n"
         "};\n",
         out) == EOF) failed = 1;
     if (!failed && bytes_provider &&
@@ -550,13 +549,14 @@ static int native_source_ir_render(
         "static void databind_native_bytes_trait_move(void *destination, void *source) {\n"
         "    if (!destination || !source || destination == source) return;\n"
         "    *(databind_native_bytes *)destination = *(databind_native_bytes *)source;\n"
-        "    *(databind_native_bytes *)source = (databind_native_bytes){0};\n"
+        "    { const databind_native_bytes zero = {0};\n"
+        "      *(databind_native_bytes *)source = zero; }\n"
         "}\n"
         "static void databind_native_bytes_trait_destroy(void *value) {\n"
         "    databind_native_bytes *item = (databind_native_bytes *)value;\n"
         "    if (!item) return;\n"
         "    free(item->data);\n"
-        "    *item = (databind_native_bytes){0};\n"
+        "    { const databind_native_bytes zero = {0}; *item = zero; }\n"
         "}\n"
         "static int databind_native_bytes_trait_compare(const void *left, const void *right) {\n"
         "    const databind_native_bytes *a = (const databind_native_bytes *)left;\n"
@@ -569,19 +569,17 @@ static int native_source_ir_render(
         "    return order ? order : (a->size > b->size) - (a->size < b->size);\n"
         "}\n"
         "static const cmeta_type_traits databind_native_bytes_cmeta_traits = {\n"
-        "    .flags = CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY | CMETA_TRAIT_COMPARE,\n"
-        "    .compare = databind_native_bytes_trait_compare,\n"
-        "    .copy_construct = databind_native_bytes_trait_copy,\n"
-        "    .move_construct = databind_native_bytes_trait_move,\n"
-        "    .destroy = databind_native_bytes_trait_destroy\n"
+        "    CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY | CMETA_TRAIT_COMPARE,\n"
+        "    NULL, NULL, databind_native_bytes_trait_compare,\n"
+        "    databind_native_bytes_trait_copy, databind_native_bytes_trait_move,\n"
+        "    databind_native_bytes_trait_destroy\n"
         "};\n"
         "static const cmeta_type_identity databind_native_bytes_cmeta_identity =\n"
         "    CMETA_TYPE_ID_ATOM_INIT(\"tbe.native.owned_bytes.v1\");\n"
         "static const cmeta_type_desc databind_native_bytes_cmeta_type = {\n"
-        "    .name = \"databind_native_bytes\",\n"
-        "    .size = sizeof(databind_native_bytes), .align = _Alignof(databind_native_bytes),\n"
-        "    .kind = CMETA_T_OBJECT, .traits = &databind_native_bytes_cmeta_traits,\n"
-        "    .identity = &databind_native_bytes_cmeta_identity\n"
+        "    \"databind_native_bytes\", sizeof(databind_native_bytes),\n"
+        "    CMETA_ALIGNOF(databind_native_bytes), CMETA_T_OBJECT, NULL,\n"
+        "    &databind_native_bytes_cmeta_traits, &databind_native_bytes_cmeta_identity\n"
         "};\n",
         out) == EOF) failed = 1;
   }
@@ -608,7 +606,9 @@ static int native_source_ir_render(
     if (!failed && fprintf(out, "} %s;\n", record->name) < 0)
       failed = 1;
     if (!failed && fprintf(out,
-        "static inline void %s_init(%s *value) { if (value) *value = (%s){0}; }\n"
+        "static inline void %s_init(%s *value) {\n"
+        "    if (value) { const %s zero = {0}; *value = zero; }\n"
+        "}\n"
         "static inline void %s_clear(%s *value) {\n"
         "    if (!value) return;\n",
         record->name, record->name, record->name,
@@ -633,7 +633,7 @@ static int native_source_ir_render(
                     field->name, field->name) < 0) failed = 1;
     }
     if (!failed && fprintf(out,
-        "    *value = (%s){0};\n}\n"
+        "    { const %s zero = {0}; *value = zero; }\n}\n"
         "static inline int %s_clone(%s *dst, const %s *src) {\n"
         "    if (!dst || !src) return -1;\n"
         "    if (dst == src) return 0;\n"
@@ -648,14 +648,14 @@ static int native_source_ir_render(
         continue;
       }
       if (field->ownership == DATABIND_NATIVE_OWNED_SEQUENCE) {
-        if (fprintf(out, "    tmp.%s = (vec_t){0};\n",
+        if (fprintf(out, "    { const vec_t zero = {0}; tmp.%s = zero; }\n",
                     field->name) < 0) failed = 1;
         continue;
       }
       if (field->ownership == DATABIND_NATIVE_OWNED_MAP ||
           field->ownership == DATABIND_NATIVE_OWNED_SET) {
-        if (fprintf(out, "    tmp.%s = (%s){0};\n",
-                    field->name, field->c_type) < 0) failed = 1;
+        if (fprintf(out, "    { const %s zero = {0}; tmp.%s = zero; }\n",
+                    field->c_type, field->name) < 0) failed = 1;
         continue;
       }
       if (field->ownership != DATABIND_NATIVE_OWNED_TEXT &&
@@ -757,10 +757,12 @@ static int native_source_ir_render(
           "        if (src->%s.size == SIZE_MAX) goto native_clone_fail;\n",
           field->name) < 0) failed = 1;
       if (fprintf(out,
-          "        tmp.%s.data = malloc(src->%s.size%s);\n"
+          "        tmp.%s.data = (%s *)malloc(src->%s.size%s);\n"
           "        if (!tmp.%s.data) goto native_clone_fail;\n"
           "        memcpy(tmp.%s.data, src->%s.data, src->%s.size);\n",
-          field->name, field->name,
+          field->name,
+          field->ownership == DATABIND_NATIVE_OWNED_TEXT ? "char" : "unsigned char",
+          field->name,
           field->ownership == DATABIND_NATIVE_OWNED_TEXT ? " + 1u" : "",
           field->name, field->name, field->name, field->name) < 0) failed = 1;
       if (field->ownership == DATABIND_NATIVE_OWNED_TEXT &&
@@ -776,7 +778,7 @@ static int native_source_ir_render(
         "    %s_clear(&tmp); return -1;\n}\n"
         "static inline int %s_move(%s *dst, %s *src) {\n"
         "    if (!dst || !src) return -1;\n"
-        "    if (dst != src) { %s_clear(dst); *dst = *src; *src = (%s){0}; }\n"
+        "    if (dst != src) { const %s zero = {0}; %s_clear(dst); *dst = *src; *src = zero; }\n"
         "    return 0;\n}\n\n",
         record->name, record->name,
         record->name, record->name, record->name,
@@ -808,18 +810,16 @@ static int native_source_ir_render(
         failed = 1;
       if (!failed && fprintf(out,
           "static const cmeta_type_traits %s_native_element_traits = {\n"
-          "    .flags = CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY,\n"
-          "    .copy_construct = %s_native_element_copy,\n"
-          "    .move_construct = %s_native_element_move,\n"
-          "    .destroy = %s_native_element_destroy\n"
+          "    CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY,\n"
+          "    NULL, NULL, NULL,\n"
+          "    %s_native_element_copy, %s_native_element_move, %s_native_element_destroy\n"
           "};\n"
           "static const cmeta_type_identity %s_native_element_identity =\n"
           "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
           "static const cmeta_type_desc %s_native_element_cmeta_type = {\n"
-          "    .name = \"%s\", .size = sizeof(%s), .align = _Alignof(%s),\n"
-          "    .kind = CMETA_T_OBJECT,\n"
-          "    .traits = &%s_native_element_traits,\n"
-          "    .identity = &%s_native_element_identity\n"
+          "    \"%s\", sizeof(%s), CMETA_ALIGNOF(%s),\n"
+          "    CMETA_T_OBJECT, NULL, &%s_native_element_traits,\n"
+          "    &%s_native_element_identity\n"
           "};\n\n",
           record->name, record->name, record->name, record->name,
           record->name, stable_id, record->name, record->name,
@@ -859,9 +859,9 @@ static int native_source_ir_render(
         "static const cmeta_type_identity databind_native_text_data_identity =\n"
         "    CMETA_TYPE_ID_ATOM_INIT(\"tbe.native.owned_text.v1\");\n"
         "static const cmeta_type_desc databind_native_text_cmeta_type = {\n"
-        "    .name = \"databind_native_text\", .size = sizeof(databind_native_text),\n"
-        "    .align = _Alignof(databind_native_text), .kind = CMETA_T_OBJECT,\n"
-        "    .identity = &databind_native_text_data_identity\n"
+        "    \"databind_native_text\", sizeof(databind_native_text),\n"
+        "    CMETA_ALIGNOF(databind_native_text), CMETA_T_OBJECT, NULL, NULL,\n"
+        "    &databind_native_text_data_identity\n"
         "};\n"
         "static bool databind_native_text_data_is_zero(const void *object) {\n"
         "    const databind_native_text *v = (const databind_native_text *)object;\n"
@@ -869,7 +869,8 @@ static int native_source_ir_render(
         "}\n"
         "static cmeta_status databind_native_text_data_init_zero(void *object) {\n"
         "    if (!object) return CMETA_INVALID_ARGUMENT;\n"
-        "    *(databind_native_text *)object = (databind_native_text){0};\n"
+        "    const databind_native_text zero = {0};\n"
+        "    *(databind_native_text *)object = zero;\n"
         "    return CMETA_OK;\n"
         "}\n"
         "static cmeta_status databind_native_text_data_assign(void *object,\n"
@@ -902,39 +903,33 @@ static int native_source_ir_render(
         "    databind_native_text *value = (databind_native_text *)object;\n"
         "    if (!value) return;\n"
         "    free(value->data);\n"
-        "    *value = (databind_native_text){0};\n"
+        "    const databind_native_text zero = {0};\n"
+        "    *value = zero;\n"
         "}\n"
         "static void databind_native_text_data_move(void *destination, void *source) {\n"
         "    databind_native_text *dst = (databind_native_text *)destination;\n"
         "    databind_native_text *src = (databind_native_text *)source;\n"
         "    if (!dst || !src || dst == src) abort();\n"
         "    *dst = *src;\n"
-        "    *src = (databind_native_text){0};\n"
+        "    const databind_native_text zero = {0};\n"
+        "    *src = zero;\n"
         "}\n"
         "static const cmeta_data_buffer_shape databind_native_text_data_shape = {\n"
         "    CMETA_DATA_BUFFER_OWNED\n"
         "};\n"
         "static const cmeta_data_buffer_ops databind_native_text_data_ops = {\n"
-        "    .struct_size = sizeof(cmeta_data_buffer_ops),\n"
-        "    .abi_version = CMETA_DATA_BUFFER_OPS_ABI_VERSION,\n"
-        "    .storage_type = &databind_native_text_cmeta_type,\n"
-        "    .ownership = CMETA_DATA_BUFFER_OWNED,\n"
-        "    .is_zero = databind_native_text_data_is_zero,\n"
-        "    .assign = databind_native_text_data_assign,\n"
-        "    .restore_zero = databind_native_text_data_restore_zero,\n"
-        "    .read = databind_native_text_data_read,\n"
-        "    .init_zero = databind_native_text_data_init_zero,\n"
-        "    .move = databind_native_text_data_move\n"
+        "    sizeof(cmeta_data_buffer_ops), CMETA_DATA_BUFFER_OPS_ABI_VERSION,\n"
+        "    &databind_native_text_cmeta_type, CMETA_DATA_BUFFER_OWNED,\n"
+        "    databind_native_text_data_is_zero, databind_native_text_data_assign,\n"
+        "    databind_native_text_data_restore_zero, databind_native_text_data_read,\n"
+        "    databind_native_text_data_init_zero, databind_native_text_data_move\n"
         "};\n"
         "static const cmeta_data_desc databind_native_text_cmeta_data = {\n"
-        "    .struct_size = sizeof(cmeta_data_desc),\n"
-        "    .abi_version = CMETA_DATA_DESC_ABI_VERSION,\n"
-        "    .stable_id = \"tbe.native.owned_text.v1.data\",\n"
-        "    .display_name = \"databind_native_text\",\n"
-        "    .kind = CMETA_DATA_STRING,\n"
-        "    .storage_type = &databind_native_text_cmeta_type,\n"
-        "    .shape = &databind_native_text_data_shape,\n"
-        "    .buffer_ops = &databind_native_text_data_ops\n"
+        "    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,\n"
+        "    \"tbe.native.owned_text.v1.data\", \"databind_native_text\",\n"
+        "    CMETA_DATA_STRING, &databind_native_text_cmeta_type,\n"
+        "    &databind_native_text_data_shape, &databind_native_text_data_ops,\n"
+        "    NULL, NULL, NULL, NULL, NULL, NULL, NULL\n"
         "};\n",
         out) == EOF) failed = 1;
   if (!failed && needs_bytes_value &&
@@ -943,9 +938,9 @@ static int native_source_ir_render(
         "static const cmeta_type_identity databind_native_bytes_data_identity =\n"
         "    CMETA_TYPE_ID_ATOM_INIT(\"tbe.native.owned_bytes.v1\");\n"
         "static const cmeta_type_desc databind_native_bytes_cmeta_type = {\n"
-        "    .name = \"databind_native_bytes\", .size = sizeof(databind_native_bytes),\n"
-        "    .align = _Alignof(databind_native_bytes), .kind = CMETA_T_OBJECT,\n"
-        "    .identity = &databind_native_bytes_data_identity\n"
+        "    \"databind_native_bytes\", sizeof(databind_native_bytes),\n"
+        "    CMETA_ALIGNOF(databind_native_bytes), CMETA_T_OBJECT, NULL, NULL,\n"
+        "    &databind_native_bytes_data_identity\n"
         "};\n"
         "static bool databind_native_bytes_data_is_zero(const void *object) {\n"
         "    const databind_native_bytes *v = (const databind_native_bytes *)object;\n"
@@ -953,7 +948,8 @@ static int native_source_ir_render(
         "}\n"
         "static cmeta_status databind_native_bytes_data_init_zero(void *object) {\n"
         "    if (!object) return CMETA_INVALID_ARGUMENT;\n"
-        "    *(databind_native_bytes *)object = (databind_native_bytes){0};\n"
+        "    const databind_native_bytes zero = {0};\n"
+        "    *(databind_native_bytes *)object = zero;\n"
         "    return CMETA_OK;\n"
         "}\n"
         "static cmeta_status databind_native_bytes_data_assign(void *object,\n"
@@ -985,39 +981,33 @@ static int native_source_ir_render(
         "    databind_native_bytes *value = (databind_native_bytes *)object;\n"
         "    if (!value) return;\n"
         "    free(value->data);\n"
-        "    *value = (databind_native_bytes){0};\n"
+        "    const databind_native_bytes zero = {0};\n"
+        "    *value = zero;\n"
         "}\n"
         "static void databind_native_bytes_data_move(void *destination, void *source) {\n"
         "    databind_native_bytes *dst = (databind_native_bytes *)destination;\n"
         "    databind_native_bytes *src = (databind_native_bytes *)source;\n"
         "    if (!dst || !src || dst == src) abort();\n"
         "    *dst = *src;\n"
-        "    *src = (databind_native_bytes){0};\n"
+        "    const databind_native_bytes zero = {0};\n"
+        "    *src = zero;\n"
         "}\n"
         "static const cmeta_data_buffer_shape databind_native_bytes_data_shape = {\n"
         "    CMETA_DATA_BUFFER_OWNED\n"
         "};\n"
         "static const cmeta_data_buffer_ops databind_native_bytes_data_ops = {\n"
-        "    .struct_size = sizeof(cmeta_data_buffer_ops),\n"
-        "    .abi_version = CMETA_DATA_BUFFER_OPS_ABI_VERSION,\n"
-        "    .storage_type = &databind_native_bytes_cmeta_type,\n"
-        "    .ownership = CMETA_DATA_BUFFER_OWNED,\n"
-        "    .is_zero = databind_native_bytes_data_is_zero,\n"
-        "    .assign = databind_native_bytes_data_assign,\n"
-        "    .restore_zero = databind_native_bytes_data_restore_zero,\n"
-        "    .read = databind_native_bytes_data_read,\n"
-        "    .init_zero = databind_native_bytes_data_init_zero,\n"
-        "    .move = databind_native_bytes_data_move\n"
+        "    sizeof(cmeta_data_buffer_ops), CMETA_DATA_BUFFER_OPS_ABI_VERSION,\n"
+        "    &databind_native_bytes_cmeta_type, CMETA_DATA_BUFFER_OWNED,\n"
+        "    databind_native_bytes_data_is_zero, databind_native_bytes_data_assign,\n"
+        "    databind_native_bytes_data_restore_zero, databind_native_bytes_data_read,\n"
+        "    databind_native_bytes_data_init_zero, databind_native_bytes_data_move\n"
         "};\n"
         "static const cmeta_data_desc databind_native_bytes_cmeta_data = {\n"
-        "    .struct_size = sizeof(cmeta_data_desc),\n"
-        "    .abi_version = CMETA_DATA_DESC_ABI_VERSION,\n"
-        "    .stable_id = \"tbe.native.owned_bytes.v1.data\",\n"
-        "    .display_name = \"databind_native_bytes\",\n"
-        "    .kind = CMETA_DATA_BYTES,\n"
-        "    .storage_type = &databind_native_bytes_cmeta_type,\n"
-        "    .shape = &databind_native_bytes_data_shape,\n"
-        "    .buffer_ops = &databind_native_bytes_data_ops\n"
+        "    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,\n"
+        "    \"tbe.native.owned_bytes.v1.data\", \"databind_native_bytes\",\n"
+        "    CMETA_DATA_BYTES, &databind_native_bytes_cmeta_type,\n"
+        "    &databind_native_bytes_data_shape, &databind_native_bytes_data_ops,\n"
+        "    NULL, NULL, NULL, NULL, NULL, NULL, NULL\n"
         "};\n",
         out) == EOF) failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
@@ -1063,7 +1053,7 @@ static int native_source_ir_render(
       const databind_native_source_field *field = &record->fields[j];
       if (fprintf(out,
           "    {\"%s\", \"%s\", offsetof(%s, %s), "
-          "sizeof(((%s *)0)->%s), _Alignof(%s), NULL, NULL},\n",
+          "sizeof(((%s *)0)->%s), CMETA_ALIGNOF(%s), NULL, NULL},\n",
           field->name, field->name, record->name, field->name,
           record->name, field->name, field->c_type) < 0)
         failed = 1;
@@ -1072,7 +1062,7 @@ static int native_source_ir_render(
       failed = 1;
     if (!failed && fprintf(out,
         "static const cmeta_struct_desc %s_native_cmeta_layout = {\n"
-        "    \"%s\", sizeof(%s), _Alignof(%s),\n"
+        "    \"%s\", sizeof(%s), CMETA_ALIGNOF(%s),\n"
         "    %s_native_cmeta_fields, %zuu\n"
         "};\n",
         record->name, record->name, record->name, record->name,
@@ -1108,17 +1098,19 @@ static int native_source_ir_render(
         const char *symbol = field->ownership == DATABIND_NATIVE_OWNED_TEXT
             ? "databind_native_text_cmeta_data" : "databind_native_bytes_cmeta_data";
         if (fprintf(out,
-            "    out[%zuu] = (cmeta_data_field_desc){"
-            "\"%s.%s\", \"%s\", offsetof(%s, %s), &%s};\n",
-            j, stable_type_id, field->name, field->name,
-            record->name, field->name, symbol) < 0)
+            "    { const cmeta_data_field_desc entry = {"
+            "\"%s.%s\", \"%s\", offsetof(%s, %s), &%s};\n"
+            "      out[%zuu] = entry; }\n",
+            stable_type_id, field->name, field->name,
+            record->name, field->name, symbol, j) < 0)
           failed = 1;
       } else if (fprintf(out,
-          "    out[%zuu] = (cmeta_data_field_desc){"
+          "    { const cmeta_data_field_desc entry = {"
           "\"%s.%s\", \"%s\", offsetof(%s, %s), "
-          "&cmeta_data_%s};\n",
-          j, stable_type_id, field->name, field->name,
-          record->name, field->name, scalar) < 0) {
+          "&cmeta_data_%s};\n"
+          "      out[%zuu] = entry; }\n",
+          stable_type_id, field->name, field->name,
+          record->name, field->name, scalar, j) < 0) {
         failed = 1;
       }
     }
@@ -1128,11 +1120,8 @@ static int native_source_ir_render(
         "static const cmeta_type_identity %s_native_cmeta_identity =\n"
         "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
         "static const cmeta_type_desc %s_native_cmeta_type = {\n"
-        "    .name = \"%s\",\n"
-        "    .size = sizeof(%s),\n"
-        "    .align = _Alignof(%s),\n"
-        "    .kind = CMETA_T_OBJECT,\n"
-        "    .identity = &%s_native_cmeta_identity\n"
+        "    \"%s\", sizeof(%s), CMETA_ALIGNOF(%s),\n"
+        "    CMETA_T_OBJECT, NULL, NULL, &%s_native_cmeta_identity\n"
         "};\n",
         record->name, stable_type_id,
         record->name, record->name, record->name, record->name,
@@ -1173,19 +1162,19 @@ static int native_source_ir_render(
         "    }\n"
         "    binding->layout = %s_native_cmeta_layout;\n"
         "    binding->layout.fields = binding->layout_fields;\n"
-        "    binding->reflection = (cmeta_data_reflection_shape){\n"
-        "        {&binding->layout, binding->data_fields, %zuu},\n"
-        "        sizeof(cmeta_data_reflection_shape), CMETA_DATA_REFLECTION_VIEW\n"
-        "    };\n"
-        "    binding->data = (cmeta_data_desc){\n"
-        "        .struct_size = sizeof(cmeta_data_desc),\n"
-        "        .abi_version = CMETA_DATA_DESC_REFLECTION_ABI_VERSION,\n"
-        "        .stable_id = \"%s.data\",\n"
-        "        .display_name = \"%s\",\n"
-        "        .kind = CMETA_DATA_STRUCT,\n"
-        "        .storage_type = &%s_native_cmeta_type,\n"
-        "        .shape = &binding->reflection\n"
-        "    };\n"
+        "    binding->reflection.structure.layout = &binding->layout;\n"
+        "    binding->reflection.structure.fields = binding->data_fields;\n"
+        "    binding->reflection.structure.field_count = %zuu;\n"
+        "    binding->reflection.struct_size = sizeof(cmeta_data_reflection_shape);\n"
+        "    binding->reflection.mode = CMETA_DATA_REFLECTION_VIEW;\n"
+        "    { const cmeta_data_desc zero = {0}; binding->data = zero; }\n"
+        "    binding->data.struct_size = sizeof(cmeta_data_desc);\n"
+        "    binding->data.abi_version = CMETA_DATA_DESC_REFLECTION_ABI_VERSION;\n"
+        "    binding->data.stable_id = \"%s.data\";\n"
+        "    binding->data.display_name = \"%s\";\n"
+        "    binding->data.kind = CMETA_DATA_STRUCT;\n"
+        "    binding->data.storage_type = &%s_native_cmeta_type;\n"
+        "    binding->data.shape = &binding->reflection;\n"
         "    return cmeta_data_desc_valid(&binding->data) ? 0 : -1;\n"
         "}\n",
         record->name, record->field_count, record->field_count,
@@ -1234,17 +1223,19 @@ static int native_source_ir_render(
           const databind_native_source_field *field = &record->fields[j];
           if (field->optional &&
               fprintf(out,
-                "    presence[%zuu] = (DataBindNativeStateBinding){\n"
+                "    { const DataBindNativeStateBinding initial = {\n"
                 "        sizeof(DataBindNativeStateBinding), \"%s\",\n"
-                "        offsetof(%s, has_%s), 0u};\n",
-                p++, field->name, record->name, field->name) < 0)
+                "        offsetof(%s, has_%s), 0u};\n"
+                "      presence[%zuu] = initial; }\n",
+                field->name, record->name, field->name, p++) < 0)
             failed = 1;
           if (field->nullable &&
               fprintf(out,
-                "    nulls[%zuu] = (DataBindNativeStateBinding){\n"
+                "    { const DataBindNativeStateBinding initial = {\n"
                 "        sizeof(DataBindNativeStateBinding), \"%s\",\n"
-                "        offsetof(%s, is_null_%s), 0u};\n",
-                n++, field->name, record->name, field->name) < 0)
+                "        offsetof(%s, is_null_%s), 0u};\n"
+                "      nulls[%zuu] = initial; }\n",
+                field->name, record->name, field->name, n++) < 0)
             failed = 1;
         }
         if (!failed && fprintf(out,
@@ -1264,8 +1255,9 @@ static int native_source_ir_render(
           "        %s_native_cmeta_bind(&owner->metadata) != 0 ||\n"
           "        %s_native_state_bind(owner->presence, %zuu,\n"
           "                             owner->nulls, %zuu) != 0) return -1;\n"
-          "    owner->binding = (DataBindNativeTypeBinding)\n"
+          "    { const DataBindNativeTypeBinding initial =\n"
           "        DATA_BIND_NATIVE_TYPE_BINDING_INIT(\"%s\", &owner->metadata.data);\n"
+          "      owner->binding = initial; }\n"
           "    owner->binding.presence = %zuu ? owner->presence : NULL;\n"
           "    owner->binding.presence_count = %zuu;\n"
           "    owner->binding.nulls = %zuu ? owner->nulls : NULL;\n"
@@ -1319,8 +1311,9 @@ static int native_source_ir_render(
               "    DataBindNativeTypeBinding *out) {\n"
               "    if (!metadata || !out ||\n"
               "        %s_native_cmeta_value_bind(metadata) != 0) return -1;\n"
-              "    *out = (DataBindNativeTypeBinding)\n"
+              "    { const DataBindNativeTypeBinding initial =\n"
               "        DATA_BIND_NATIVE_TYPE_BINDING_INIT(\"%s\", &metadata->data);\n"
+              "      *out = initial; }\n"
               "    return 0;\n"
               "}\n"
               "#endif /* DATABIND_NATIVE_ENABLE_DATABIND */\n",
