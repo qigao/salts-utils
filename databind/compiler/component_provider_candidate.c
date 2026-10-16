@@ -115,14 +115,14 @@ int databind_component_provider_candidate_render(
    * Pointer representation matches native_contract_emit_reflection exactly. */
   if (fprintf(header,
       "static const cmeta_type_desc %s__component_req_ptr_type = {\n"
-      "  .name = \"const %s *\", .size = sizeof(const %s *),\n"
-      "  .align = CMETA_ALIGNOF(const %s *), .kind = CMETA_T_POINTER,\n"
-      "  .pointee = &%s_native_cmeta_type\n"
+      "  \"const %s *\", sizeof(const %s *),\n"
+      "  CMETA_ALIGNOF(const %s *), CMETA_T_POINTER,\n"
+      "  &%s_native_cmeta_type, NULL, NULL\n"
       "};\n"
       "static const cmeta_type_desc %s__component_resp_ptr_type = {\n"
-      "  .name = \"%s *\", .size = sizeof(%s *),\n"
-      "  .align = CMETA_ALIGNOF(%s *), .kind = CMETA_T_POINTER,\n"
-      "  .pointee = &%s_native_cmeta_type\n"
+      "  \"%s *\", sizeof(%s *),\n"
+      "  CMETA_ALIGNOF(%s *), CMETA_T_POINTER,\n"
+      "  &%s_native_cmeta_type, NULL, NULL\n"
       "};\n",
       sym, request, request, request, request,
       sym, response, response, response, response) < 0) return -1;
