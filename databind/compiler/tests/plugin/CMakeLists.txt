@@ -529,3 +529,34 @@ add_test(NAME test_databind_component_candidate_typed_error_reject
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_typed_error_reject.cmake")
 set_tests_properties(test_databind_component_candidate_typed_error_reject PROPERTIES
   LABELS "databind;compiler;component;typed-error;reject;no-output")
+
+
+# Experimental Salts #1153 installed runtime migration proof. This uses the
+# exact existing generated multi-operation FR2 Provider and its original
+# NativeSourceIR; it does not add a second compiler, Plugin loader or ABI.
+option(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO
+  "Qualify generated FR2 Provider through real installed Salts::ServiceHost" OFF)
+if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
+  if(NOT DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO OR
+     NOT TARGET Salts::ServiceHost OR NOT TARGET Salts::Configurator)
+    message(FATAL_ERROR
+      "Generated ServiceHost gate requires the exact installed Salts ABI and opt-in existing Provider generation")
+  endif()
+  add_executable(test_databind_component_candidate_servicehost_c11
+    test_component_multi_service_host.c)
+  add_dependencies(test_databind_component_candidate_servicehost_c11
+    databind_component_candidate_multi_provider)
+  target_include_directories(test_databind_component_candidate_servicehost_c11 PRIVATE
+    "${_databind_component_candidate_multi_dir}")
+  target_compile_definitions(test_databind_component_candidate_servicehost_c11 PRIVATE
+    GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_multi_provider>")
+  target_link_libraries(test_databind_component_candidate_servicehost_c11 PRIVATE
+    Salts::ServiceHost Salts::DataBind)
+  set_target_properties(test_databind_component_candidate_servicehost_c11 PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    FOLDER "databind/compiler/tests/plugin")
+  add_test(NAME test_databind_component_candidate_servicehost_c11
+    COMMAND test_databind_component_candidate_servicehost_c11)
+  set_tests_properties(test_databind_component_candidate_servicehost_c11 PROPERTIES
+    LABELS "databind;compiler;component;servicehost;fr2;real-dso;no-fallback")
+endif()
