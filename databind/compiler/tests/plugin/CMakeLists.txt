@@ -315,7 +315,7 @@ add_custom_command(
   VERBATIM
   COMMENT "Generating isolated exact C11 ComponentProvider FR2 candidate")
 
-add_custom_target(databind_component_candidate_generated
+add_custom_target(databind_component_candidate_generated ALL
   DEPENDS
     "${_databind_component_candidate_header}"
     "${_databind_component_candidate_source}")
@@ -325,6 +325,17 @@ set_source_files_properties(
   "${_databind_component_candidate_header}"
   "${_databind_component_candidate_source}" PROPERTIES GENERATED TRUE)
 
+# Real DSO/host test requires an explicitly supplied upstream Salts
+# ComponentPlugin source/package target. Its ABI is deliberately not part
+# of the currently published Salts.Native SDK and must not be shadowed here.
+option(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO
+  "Run source-qualified unpublished Salts ComponentPlugin DSO tests" OFF)
+if(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO)
+  if(NOT TARGET Salts::ComponentPluginABI OR
+     NOT TARGET Salts::ComponentPlugin)
+    message(FATAL_ERROR
+      "ComponentProvider DSO gate requires exact Salts ComponentPluginABI and ComponentPlugin targets; no fallback or shadow ABI allowed")
+  endif()
 add_library(databind_component_candidate_provider SHARED
   "${_databind_component_candidate_header}"
   "${_databind_component_candidate_source}"
@@ -374,3 +385,17 @@ add_test(NAME test_databind_component_candidate_header_cpp
   COMMAND test_databind_component_candidate_header_cpp)
 set_tests_properties(test_databind_component_candidate_header_cpp PROPERTIES
   LABELS "databind;compiler;component;fr2;cpp17")
+
+endif() # DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO
+
+# Codegen-only conformance is always active in test builds. It proves
+# canonical one-Service FR2 shapes, exact metadata declarations, standard
+# ProviderBinding and no generated Function-only fallback without linking an
+# unpublished runtime/ABI from a published SDK.
+add_test(NAME test_databind_component_candidate_codegen_content
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHEADER=${_databind_component_candidate_header}"
+    "-DSOURCE=${_databind_component_candidate_source}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_candidate_content.cmake")
+set_tests_properties(test_databind_component_candidate_codegen_content PROPERTIES
+  LABELS "databind;compiler;component;codegen;candidate;no-fallback")

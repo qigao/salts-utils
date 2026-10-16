@@ -27,9 +27,15 @@ invalid IR, unsafe output names, and unsupported data carriers fail closed.
 No partial sidecar artifacts are retained on codegen error. This does not
 claim support for all IDL Service shapes.
 
-The qualification builds the generated real DSO and independently checks
-ISO C11/ISO C++17 descriptor compatibility, Plugin load/lease, Component
-resolution, typed invocation, Scope BUSY→drain, and release/unload. Candidate
+The **default source-only** qualification runs the generator and checks
+complete FR2/ProviderBinding emission and negative shape admission. The
+**real DSO qualification is a separate explicit opt-in**:
+`-DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON`, and requires the
+exact unpublished upstream `Salts::ComponentPluginABI` and
+`Salts::ComponentPlugin` targets; missing targets are a configuration error,
+not permission to invent duplicate ABI headers or a fallback runtime. When
+those targets are supplied, C11/C++17 and real Plugin load/lease,
+Component graph, typed invocation, Scope BUSY→drain and unload are exercised. Candidate
 runtime ownership stays in Salts. Public `salts-idlc` flags and CMake
 `salts_idl_target` semantics remain unchanged until a separate integration
 review grants an additive opt-in artifact entry.
