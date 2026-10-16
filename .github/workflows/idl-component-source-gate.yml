@@ -223,3 +223,114 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
           test -z "$(git status --porcelain --untracked-files=no)"
+
+
+  windows:
+    name: Exact Salts Windows x64 MSVC ComponentProvider FR2 DSO/Scope
+    runs-on: windows-2025
+    timeout-minutes: 120
+    env:
+      EXPECTED_SALTS: 23032bfe124df327317ce9b4d132054e99b2c0cb
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: windows-x64
+      CCACHE_DIR: ${{ github.workspace }}/build/component-windows/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-windows-dso-v1
+    steps:
+      - name: Checkout exact SaltsUtils candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - name: Checkout exact upstream Salts ComponentPlugin source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: 23032bfe124df327317ce9b4d132054e99b2c0cb
+          path: build/component-windows/salts
+          persist-credentials: false
+      - name: Restore exact shared vcpkg dependencies
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - name: Restore original pinned re2c host generator
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - name: Prepare original Windows native host
+        uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Select immutable Windows host triplet and source graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not $env:VCPKG_ROOT -or -not $env:QIGAO_VCPKG_WINDOWS_TRIPLET) {
+            throw "Exact qigao Windows triplet/cache source was not selected"
+          }
+          "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          "VCPKG_WINDOWS_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          $head = git rev-parse HEAD
+          $salts = git -C build/component-windows/salts rev-parse HEAD
+          if ($head -ne $env:EXPECTED_SU -or $salts -ne $env:EXPECTED_SALTS) {
+            throw "Immutable Salts/SaltsUtils source check failed"
+          }
+          if (-not (Test-Path "build/component-windows/salts/component-plugin/src/component_plugin.c")) {
+            throw "Missing original Salts ComponentPlugin"
+          }
+          New-Item -ItemType Directory -Force build/component-windows | Out-Null
+          @("salts=$salts", "saltsutils=$head", "triplet=$env:QIGAO_VCPKG_WINDOWS_TRIPLET", "sdk_publication=false") |
+            Set-Content build/component-windows/provenance.txt
+      - name: Build/install exact Salts ComponentPlugin source with MSVC
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "SALTS_ROOT=%RUNNER_TEMP%\idl-component-salts-win"
+          echo SALTS_ROOT=%SALTS_ROOT%>> "%GITHUB_ENV%"
+          cmake --preset win-release-ci -S "%GITHUB_WORKSPACE%\build\component-windows\salts" -B "build\component-windows\build-salts" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%SALTS_ROOT%" -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build "build\component-windows\build-salts" --parallel 2
+          if errorlevel 1 exit /b 1
+          cmake --install "build\component-windows\build-salts"
+          if errorlevel 1 exit /b 1
+          if not exist "%SALTS_ROOT%\include\salts\component_plugin_abi.h" exit /b 1
+      - name: Build/execute generated C11/C++17 FR2 DSOs with exact Salts MSVC owner
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "SALTS_ROOT=%RUNNER_TEMP%\idl-component-salts-win"
+          set "PKG_ROOT=%RUNNER_TEMP%\idl-component-utils-win"
+          set "VCPKG_INSTALLED_DIR=%GITHUB_WORKSPACE%\vcpkg_installed"
+          set "PATH=%SALTS_ROOT%\bin;%PATH%"
+          cmake --preset ci-win-release-user -B "build\component-windows\build-utils" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON
+          if errorlevel 1 exit /b 1
+          cmake --build "build\component-windows\build-utils" --parallel 2 --target databind_component_candidate_provider test_databind_component_candidate_dso_c11 test_databind_component_candidate_header_cpp databind_component_candidate_multi_provider test_databind_component_candidate_multi_dso_c11 test_databind_component_candidate_multi_header_cpp
+          if errorlevel 1 exit /b 1
+          ctest --test-dir "build\component-windows\build-utils" -R "^test_databind_component_candidate_" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+          if errorlevel 1 exit /b 1
+      - name: Preserve private Windows source-graph conformance proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idl-component-windows-fr2-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            build/component-windows/provenance.txt
+            build/component-windows/build-utils/Testing/Temporary/LastTest.log
+      - name: Require original source checkout unchanged
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_SU) {
+            throw "Source HEAD changed during exact Windows qualification"
+          }
+          if (git status --porcelain --untracked-files=no) {
+            throw "Unexpected tracked source modification"
+          }
