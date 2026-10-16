@@ -155,12 +155,12 @@ int databind_component_provider_candidate_render(
       "  return %s(request, response);\n"
       "}\n"
       "CMETA_STATIC_ASSERT(CMETA_TYPE_MATCHES(\n"
-      "    &%s__component_invoke, %s__component_service_invoke_fn),\n"
+      "    &%s__component_invoke, int (*)(void *, const %s *, %s *)),\n"
       "    \"generated Component native Service ABI mismatch\");\n"
       "CMETA_IMPLEMENTS(%s__component_service,\n"
       "    %s__component_impl, 0u,\n"
       "    .invoke = %s__component_invoke);\n\n",
-      sym, request, response, sym, sym, sym, sym, sym, sym) < 0) return -1;
+      sym, request, response, sym, sym, request, response, sym, sym, sym) < 0) return -1;
 
   if (fprintf(source,
       "static cmeta_status %s__component_project(\n"
