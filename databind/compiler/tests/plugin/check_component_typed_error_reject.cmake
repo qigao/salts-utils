@@ -10,17 +10,17 @@ file(REMOVE "${_h}" "${_c}")
 execute_process(
   COMMAND "${TOOL}"
     "${SCHEMA}" "ErrorPlugin.StorePlugin"
-    "error.plugin.h" "${_h}" "${_c}"
+    "error.plugin.h" "${_h}" "${_c}" "--verify-typed-error-reject"
   RESULT_VARIABLE _status
   OUTPUT_VARIABLE _stdout
   ERROR_VARIABLE _stderr)
-if(_status EQUAL 0)
-  message(FATAL_ERROR "Typed-error Component incorrectly projected into FR2")
+if(NOT _status EQUAL 0)
+  message(FATAL_ERROR "Canonical typed-error negative verifier failed: ${_stderr}")
 endif()
 if(EXISTS "${_h}" OR EXISTS "${_c}")
   message(FATAL_ERROR "Rejected typed-error created a partial artifact")
 endif()
-if(NOT _stderr MATCHES "unsupported or failed")
-  message(FATAL_ERROR "Typed-error reject did not report explicit admission failure: ${_stderr}")
+if(NOT _stderr MATCHES "Verified canonical typed-error rejection")
+  message(FATAL_ERROR "No evidence of parsed typed-error/IR admission rejection: ${_stderr}")
 endif()
 message(STATUS "Canonical typed-error provider rejected with zero output")
