@@ -43,6 +43,7 @@ jobs:
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
       - uses: ./.github/actions/setup-build-host
       - uses: actions/setup-dotnet@v4
         with:
