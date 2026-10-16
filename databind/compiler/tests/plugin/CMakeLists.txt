@@ -359,7 +359,8 @@ add_dependencies(test_databind_component_candidate_dso_c11
 target_include_directories(test_databind_component_candidate_dso_c11 PRIVATE
   "${_databind_component_candidate_dir}")
 target_compile_definitions(test_databind_component_candidate_dso_c11 PRIVATE
-  GENERATED_COMPONENT_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_provider>")
+  GENERATED_COMPONENT_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_provider>"
+  DATABIND_COMPONENT_PROVIDER_STRICT_SOURCE=1)
 target_link_libraries(test_databind_component_candidate_dso_c11 PRIVATE
   Salts::ComponentPlugin Salts::Plugin Salts::CMeta)
 set_target_properties(test_databind_component_candidate_dso_c11 PROPERTIES

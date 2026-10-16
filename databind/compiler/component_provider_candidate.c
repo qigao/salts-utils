@@ -108,47 +108,28 @@ int databind_component_provider_candidate_render(
       "#include <cmeta/object_interface.h>\n\n",
       sym, sym, native_service_header) < 0) return -1;
 
-  /* The named record has one canonical semantic ID in the source Contract.
-   * A pointer to a const request records the CONST identity explicitly. */
+  /* A Contract-only ServiceNativeIR already has exact NativeSourceIR record
+   * identities. Reuse its canonical CMeta storage descriptors; re-declaring
+   * atom/const IDs from Binary-oriented names creates a second type authority
+   * and would break FunctionAbi comparison with the original Plugin artifact.
+   * Pointer representation matches native_contract_emit_reflection exactly. */
   if (fprintf(header,
-      "static const cmeta_type_identity %s__component_req_id =\n"
-      "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
-      "static const cmeta_type_identity %s__component_req_const_id =\n"
-      "    CMETA_TYPE_ID_CONST_INIT(&%s__component_req_id);\n"
-      "static const cmeta_type_identity %s__component_req_ptr_id =\n"
-      "    CMETA_TYPE_ID_POINTER_INIT(&%s__component_req_const_id);\n"
-      "static const cmeta_type_desc %s__component_req_const_type = {\n"
-      "    \"const %s\", sizeof(%s), CMETA_ALIGNOF(%s),\n"
-      "    CMETA_T_OBJECT, NULL, NULL, &%s__component_req_const_id};\n"
       "static const cmeta_type_desc %s__component_req_ptr_type = {\n"
-      "    \"const %s *\", sizeof(const %s *), CMETA_ALIGNOF(const %s *),\n"
-      "    CMETA_T_POINTER, &%s__component_req_const_type, NULL,\n"
-      "    &%s__component_req_ptr_id};\n",
-      sym, op->request_type_identity,
-      sym, sym, sym, sym,
-      sym, request, request, request, sym,
-      sym, request, request, request, sym, sym) < 0) return -1;
-
-  if (fprintf(header,
-      "static const cmeta_type_identity %s__component_resp_id =\n"
-      "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
-      "static const cmeta_type_identity %s__component_resp_ptr_id =\n"
-      "    CMETA_TYPE_ID_POINTER_INIT(&%s__component_resp_id);\n"
-      "static const cmeta_type_desc %s__component_resp_type = {\n"
-      "    \"%s\", sizeof(%s), CMETA_ALIGNOF(%s),\n"
-      "    CMETA_T_OBJECT, NULL, NULL, &%s__component_resp_id};\n"
+      "  .name = \"const %s *\", .size = sizeof(const %s *),\n"
+      "  .align = CMETA_ALIGNOF(const %s *), .kind = CMETA_T_POINTER,\n"
+      "  .pointee = &%s_native_cmeta_type\n"
+      "};\n"
       "static const cmeta_type_desc %s__component_resp_ptr_type = {\n"
-      "    \"%s *\", sizeof(%s *), CMETA_ALIGNOF(%s *),\n"
-      "    CMETA_T_POINTER, &%s__component_resp_type, NULL,\n"
-      "    &%s__component_resp_ptr_id};\n",
-      sym, op->response_type_identity,
-      sym, sym,
-      sym, response, response, response, sym,
-      sym, response, response, response, sym, sym) < 0) return -1;
+      "  .name = \"%s *\", .size = sizeof(%s *),\n"
+      "  .align = CMETA_ALIGNOF(%s *), .kind = CMETA_T_POINTER,\n"
+      "  .pointee = &%s_native_cmeta_type\n"
+      "};\n",
+      sym, request, request, request, request,
+      sym, response, response, response, response) < 0) return -1;
 
   if (fprintf(header,
       "#define %s__COMPONENT_METHODS(X, I) \\\n"
-      "    X(I, FR2, int, invoke, fallible, &cmeta_type_int, \\\n"
+      "    X(I, FR2, int, invoke, unknown, &cmeta_type_int, \\\n"
       "      CMETA_ABI_SCALAR, CMETA_RESULT_VALUE, \\\n"
       "      (const %s *, request, CMETA_PARAM_IN | CMETA_PARAM_BORROWED, \\\n"
       "       &%s__component_req_ptr_type, CMETA_ABI_OBJECT_POINTER), \\\n"

@@ -15,8 +15,12 @@ and compiles those into a separate real DSO (one `cmeta_plugin_query`).
 The service Interface method is:
 `int invoke(void *self, const AddRequest *, AddResponse *)`.
 It is fully reflected as FR2 with explicit request INPUT|BORROWED and
-response OUTPUT|BORROWED semantics, an exact native FunctionAbi, typed CMeta
-identities and compile-time function-pointer proof. The canonical
+response OUTPUT|BORROWED semantics, exact native FunctionAbi and compile-time
+function-pointer proof. **Its request/response pointer descriptors reuse the
+original NativeSourceIR `AddRequest_native_cmeta_type` and
+`AddResponse_native_cmeta_type` providers.** The existing Contract-only
+FunctionMeta/FunctionAbi remains authoritative; no new atom/type identity is
+synthesized from Binary-facing naming or display strings. The canonical
 `cmeta_component_desc.stable_id` remains `WasmRuntime.Calculator`.
 Its original `salts.component.provider.v1` binding is leased and exercised
 by the existing Salts ComponentPlugin generation/Scope/drain host.

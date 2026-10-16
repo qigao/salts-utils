@@ -10,13 +10,14 @@ file(READ "${SOURCE}" _source)
 foreach(_needle IN ITEMS
     "CMETA_INTERFACE("
     "CMETA_OBJECT_INTERFACE_ADAPTER("
-    "CMETA_TYPE_ID_CONST_INIT("
-    "CMETA_TYPE_ID_POINTER_INIT("
+    "AddRequest_native_cmeta_type"
+    "AddResponse_native_cmeta_type"
     "FR2"
     "CMETA_PARAM_IN | CMETA_PARAM_BORROWED"
     "CMETA_PARAM_OUT | CMETA_PARAM_BORROWED"
     "CMETA_ABI_OBJECT_POINTER"
-    "CMETA_RESULT_VALUE")
+    "CMETA_RESULT_VALUE"
+    "unknown")
   string(FIND "${_header}" "${_needle}" _pos)
   if(_pos EQUAL -1)
     message(FATAL_ERROR "Missing exact FR2 header contract: ${_needle}")

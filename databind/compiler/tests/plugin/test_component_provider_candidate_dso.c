@@ -7,6 +7,18 @@
 #include <stdint.h>
 #include <string.h>
 
+/* Same canonical Contract-only Function ABI as generated PLUGIN; the
+ * Interface adds only the native receiver and does not invent value types. */
+CMETA_FUNCTION_METADATA_AS_ABI_RESULT(
+  expected_calc_add, "WasmRuntime.Calc.Add", unknown, &cmeta_type_int,
+  CMETA_ABI_SCALAR, CMETA_RESULT_VALUE,
+  (const AddRequest *, request, CMETA_PARAM_IN | CMETA_PARAM_BORROWED,
+   &databind_11_WasmRuntime_4_Calc_3_Add__component_req_ptr_type,
+   CMETA_ABI_OBJECT_POINTER),
+  (AddResponse *, response, CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,
+   &databind_11_WasmRuntime_4_Calc_3_Add__component_resp_ptr_type,
+   CMETA_ABI_OBJECT_POINTER));
+
 #define REQUIRE(expr) do { \
   if (!(expr)) { \
     fprintf(stderr, "IDL FR Component test failed at %s:%d: %s\n", \
@@ -61,6 +73,16 @@ int main(void) {
   REQUIRE(iface->methods[0].abi->return_carrier == CMETA_ABI_SCALAR);
   REQUIRE(iface->methods[0].function->result_flags == CMETA_RESULT_VALUE);
   REQUIRE(iface->methods[0].function->param_count == 2u);
+  REQUIRE(cmeta_function_abi_contract_compatible(
+      &expected_calc_add__function_abi_meta, iface->methods[0].abi));
+  REQUIRE(cmeta_type_equal(
+      iface->methods[0].function->params[0].type,
+      &databind_11_WasmRuntime_4_Calc_3_Add__component_req_ptr_type));
+  REQUIRE(cmeta_type_desc_valid(&AddRequest_native_cmeta_type));
+  REQUIRE(cmeta_type_desc_valid(&AddResponse_native_cmeta_type));
+#if defined(DATABIND_COMPONENT_PROVIDER_STRICT_SOURCE)
+  REQUIRE(cmeta_interface_borrowed_service_abi_valid(iface));
+#endif
   REQUIRE(iface->methods[0].function->params[0].flags ==
       (CMETA_PARAM_IN | CMETA_PARAM_BORROWED));
   REQUIRE(iface->methods[0].function->params[1].flags ==
