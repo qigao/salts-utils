@@ -31,6 +31,10 @@ recorded or persisted.
   `create/start/callback/stop/join/destroy` over **three lifecycle
   cycles**, with exact S16LE mono 16k/20ms PCM and monotonic callback
   timestamps. No callback can run after `stop` returns.
+- The **same Capture object is stopped and restarted three times**, proving
+  re-opening the private atomic admission gate, a fresh zero-based first
+  timestamp on every restart, and zero callbacks after each native join.
+  Callback registration remains fixed before the first start.
 - The actual native audio callback is **deliberately held in-flight** on
   a bounded pthread condition variable while a different control
   thread calls `salts_capture_stop`. The stop call must remain
@@ -40,7 +44,7 @@ recorded or persisted.
 - Invalid PCM and unknown explicit device IDs fail closed without an
   implicit system/default-device fallback.
 
-The workflow repeats the test **12 times**, checks all four exact test
+The workflow repeats the test **12 times**, checks all five exact test
 markers, and requires the same executable to import its **own
 source-built `libsalts_capture.so`** rather than the uninstrumented
 published SDK image. `__tsan_init` must be present in the native DSO.

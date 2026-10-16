@@ -60,6 +60,7 @@ typedef struct callback_trace {
   atomic_uint calls;
   atomic_uint invalid;
   atomic_uint_fast64_t previous_ts;
+  atomic_uint_fast64_t first_ts;
 } callback_trace_t;
 
 static void regular_callback(salts_capture_t *cap, const uint8_t *borrowed,
@@ -70,6 +71,8 @@ static void regular_callback(salts_capture_t *cap, const uint8_t *borrowed,
     (void)atomic_fetch_add_explicit(&t->invalid, 1u, memory_order_relaxed);
   unsigned prior = atomic_fetch_add_explicit(
       &t->calls, 1u, memory_order_relaxed);
+  if (prior == 0u)
+    atomic_store_explicit(&t->first_ts, timestamp_us, memory_order_release);
   uint64_t old = atomic_exchange_explicit(
       &t->previous_ts, timestamp_us, memory_order_relaxed);
   if (prior > 0u && timestamp_us <= old)
@@ -96,6 +99,7 @@ static int test_real_callback_start_stop(const char *exact_id) {
     atomic_init(&t.calls, 0u);
     atomic_init(&t.invalid, 0u);
     atomic_init(&t.previous_ts, 0u);
+    atomic_init(&t.first_ts, UINT64_MAX);
     salts_audio_capture_set_callback(cap, regular_callback, &t);
     CHECK(salts_capture_start(cap) == SALTS_CAPTURE_OK);
     CHECK(salts_capture_get_state(cap) == SALTS_CAPTURE_STATE_RUNNING);
@@ -111,6 +115,47 @@ static int test_real_callback_start_stop(const char *exact_id) {
     salts_capture_destroy(cap);
   }
   puts("PASS original source-Tsan Capture native callbacks start/stop/join, 3 cycles");
+  return 0;
+}
+
+/* Reuse the SAME device/owner after a complete native stop/join. Fresh
+ * create/destroy cycles above cannot guard re-opening callback admission or
+ * resetting the sample timestamp origin on a retained miniaudio context.
+ * All trace resets happen only while the native callback is fully joined. */
+static int test_same_device_restart(const char *exact_id) {
+  salts_audio_capture_config_t fmt = audio_format();
+  salts_capture_t *cap = salts_audio_capture_create(exact_id, &fmt);
+  CHECK(cap != NULL);
+  callback_trace_t t = {0};
+  atomic_init(&t.calls, 0u);
+  atomic_init(&t.invalid, 0u);
+  atomic_init(&t.previous_ts, 0u);
+  atomic_init(&t.first_ts, UINT64_MAX);
+  salts_audio_capture_set_callback(cap, regular_callback, &t); /* once, before start */
+
+  for (unsigned cycle = 0u; cycle < 3u; ++cycle) {
+    CHECK(salts_capture_get_state(cap) == SALTS_CAPTURE_STATE_STOPPED);
+    /* The prior stop synchronously joined the native audio callback. */
+    atomic_store_explicit(&t.calls, 0u, memory_order_relaxed);
+    atomic_store_explicit(&t.invalid, 0u, memory_order_relaxed);
+    atomic_store_explicit(&t.previous_ts, 0u, memory_order_relaxed);
+    atomic_store_explicit(&t.first_ts, UINT64_MAX, memory_order_relaxed);
+
+    CHECK(salts_capture_start(cap) == SALTS_CAPTURE_OK);
+    CHECK(salts_capture_get_state(cap) == SALTS_CAPTURE_STATE_RUNNING);
+    CHECK(wait_for_calls(&t, 3u) == 0);
+    CHECK(atomic_load_explicit(&t.invalid, memory_order_acquire) == 0u);
+    CHECK(atomic_load_explicit(&t.first_ts, memory_order_acquire) == 0u);
+
+    salts_capture_stop(cap);
+    CHECK(salts_capture_get_state(cap) == SALTS_CAPTURE_STATE_STOPPED);
+    const unsigned settled = atomic_load_explicit(&t.calls, memory_order_acquire);
+    CHECK(settled >= 3u);
+    nap_ms(35);
+    CHECK(atomic_load_explicit(&t.calls, memory_order_acquire) == settled);
+  }
+  salts_capture_destroy(cap);
+  puts("PASS same-device Capture stop/restart admission, timestamp reset, no late callback");
   return 0;
 }
 
@@ -231,6 +276,7 @@ int main(void) {
   CHECK(audited_monitor(id, sizeof(id)) == 0);
   CHECK(test_invalid_exact_device_rejects() == 0);
   CHECK(test_real_callback_start_stop(id) == 0);
+  CHECK(test_same_device_restart(id) == 0);
   CHECK(test_held_native_callback_stop_barrier(id) == 0);
   puts("PASS self-contained SaltsUtils source-Tsan native callback regression");
   return 0;

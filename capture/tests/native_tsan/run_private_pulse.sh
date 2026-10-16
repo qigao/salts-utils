@@ -87,6 +87,7 @@ ctest --test-dir "$build" \
 
 for marker in \
   'PASS original source-Tsan Capture native callbacks start/stop/join, 3 cycles' \
+  'PASS same-device Capture stop/restart admission, timestamp reset, no late callback' \
   'PASS original source-Tsan Capture blocked callback forces concurrent stop/join' \
   'PASS original source-Tsan Capture invalid format and exact device no fallback' \
   'PASS self-contained SaltsUtils source-Tsan native callback regression'; do
