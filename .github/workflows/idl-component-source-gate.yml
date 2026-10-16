@@ -56,6 +56,7 @@ jobs:
           test "$(git -C build/component-source/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
           test -f build/component-source/salts/component-plugin/src/component_plugin.c
           test -f build/component-source/salts/component-plugin/include/salts/component_plugin_abi.h
+          test "$(git -C build/component-source/salts rev-parse HEAD:component-runtime/src/service_host.c)" = "e9d31e8b4e65472a343172d0157f1a28cea05cbd"
           printf 'salts=%s\nsaltsutils=%s\npublish=false\n' "$EXPECTED_SALTS" "$EXPECTED_SU" \
             | tee build/component-source/provenance.txt
       - name: Build and install exact upstream Salts from source
@@ -87,6 +88,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
             -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_STRICT_SERVICEHOST=ON \
+            -DDATABIND_SALTS_STRICT_SERVICEHOST_SOURCE_DIR="$GITHUB_WORKSPACE/build/component-source/salts" \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           cmake --build build/component-source/build-utils --parallel 2 \
             --target databind_component_candidate_provider \
@@ -94,7 +97,8 @@ jobs:
                      test_databind_component_candidate_header_cpp \
                      databind_component_candidate_multi_provider \
                      test_databind_component_candidate_multi_dso_c11 \
-                     test_databind_component_candidate_multi_header_cpp
+                     test_databind_component_candidate_multi_header_cpp \
+                     test_databind_component_candidate_strict_servicehost_c11
           ctest --test-dir build/component-source/build-utils \
             -R '^test_databind_component_candidate_' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
@@ -161,6 +165,7 @@ jobs:
           test "$(git -C build/component-macos/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
           test -f build/component-macos/salts/component-plugin/include/salts/component_plugin_abi.h
           test -f build/component-macos/salts/component-plugin/src/component_plugin.c
+          test "$(git -C build/component-macos/salts rev-parse HEAD:component-runtime/src/service_host.c)" = "e9d31e8b4e65472a343172d0157f1a28cea05cbd"
           mkdir -p build/component-macos
           printf 'salts=%s\nsaltsutils=%s\nmacos_arm64_real_dso=true\nsdk_publication=false\n' \
             "$EXPECTED_SALTS" "$EXPECTED_SU" \
@@ -195,14 +200,17 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/arm64-osx" \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_STRICT_SERVICEHOST=ON \
+            -DDATABIND_SALTS_STRICT_SERVICEHOST_SOURCE_DIR="$GITHUB_WORKSPACE/build/component-macos/salts"
           cmake --build build/component-macos/build-utils --parallel 2 \
             --target databind_component_candidate_provider \
                      test_databind_component_candidate_dso_c11 \
                      test_databind_component_candidate_header_cpp \
                      databind_component_candidate_multi_provider \
                      test_databind_component_candidate_multi_dso_c11 \
-                     test_databind_component_candidate_multi_header_cpp
+                     test_databind_component_candidate_multi_header_cpp \
+                     test_databind_component_candidate_strict_servicehost_c11
           ctest --test-dir build/component-macos/build-utils \
             -R '^test_databind_component_candidate_' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
@@ -279,6 +287,10 @@ jobs:
           if (-not (Test-Path "build/component-windows/salts/component-plugin/src/component_plugin.c")) {
             throw "Missing original Salts ComponentPlugin"
           }
+          $strictBlob = git -C build/component-windows/salts rev-parse HEAD:component-runtime/src/service_host.c
+          if ($LASTEXITCODE -ne 0 -or $strictBlob -ne "e9d31e8b4e65472a343172d0157f1a28cea05cbd") {
+            throw "Strict Salts ServiceHost source does not match validated candidate"
+          }
           New-Item -ItemType Directory -Force build/component-windows | Out-Null
           @("salts=$salts", "saltsutils=$head", "triplet=$env:QIGAO_VCPKG_WINDOWS_TRIPLET", "sdk_publication=false") |
             Set-Content build/component-windows/provenance.txt
@@ -307,9 +319,9 @@ jobs:
           set "PKG_ROOT=%RUNNER_TEMP%\idl-component-utils-win"
           set "VCPKG_INSTALLED_DIR=%GITHUB_WORKSPACE%\vcpkg_installed"
           set "PATH=%SALTS_ROOT%\bin;%PATH%"
-          cmake --preset ci-win-release-user -B "build\component-windows\build-utils" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON
+          cmake --preset ci-win-release-user -B "build\component-windows\build-utils" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON -DDATABIND_ENABLE_COMPONENT_PROVIDER_STRICT_SERVICEHOST=ON "-DDATABIND_SALTS_STRICT_SERVICEHOST_SOURCE_DIR=%GITHUB_WORKSPACE%\build\component-windows\salts"
           if errorlevel 1 exit /b 1
-          cmake --build "build\component-windows\build-utils" --parallel 2 --target databind_component_candidate_provider test_databind_component_candidate_dso_c11 test_databind_component_candidate_header_cpp databind_component_candidate_multi_provider test_databind_component_candidate_multi_dso_c11 test_databind_component_candidate_multi_header_cpp
+          cmake --build "build\component-windows\build-utils" --parallel 2 --target databind_component_candidate_provider test_databind_component_candidate_dso_c11 test_databind_component_candidate_header_cpp databind_component_candidate_multi_provider test_databind_component_candidate_multi_dso_c11 test_databind_component_candidate_multi_header_cpp test_databind_component_candidate_strict_servicehost_c11
           if errorlevel 1 exit /b 1
           ctest --test-dir "build\component-windows\build-utils" -R "^test_databind_component_candidate_" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
           if errorlevel 1 exit /b 1
