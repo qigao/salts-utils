@@ -120,3 +120,33 @@ never own the same live graph in these tests.** The single/multi generated
 business functions, target names, source ABI and canonical TypeIdentity remain
 unchanged. This gate does not authorize a public installed ServiceHost SDK,
 default IDL artifact change or CHttp production migration.
+
+## Canonical Service Interface identity under IDL operation reordering
+
+The multi-operation first slice formerly named its sole `CMETA_INTERFACE`
+using the first selected Service operation's native symbol, e.g.
+`databind_12_ComponentOps_4_Calc_3_Add__component_service`. This
+made the same Service's Interface identity depend on the IDL declaration
+order. CMeta also compares reflected method rows in their declared order,
+so merely fixing the Interface name would not be enough.
+
+The new review-only generator uses the existing NativeSourceIR canonical
+length-prefix format, but derives an exact **Service-level** identifier
+`databind_12_ComponentOps_4_Calc__component_service`. It validates that
+each operation's already-lowered native symbol equals that prefix plus
+`_<operation_name_length>_<operation_name>`, and that all operations
+belong to the same canonical Service. No new parser, hash or type registry is
+introduced; unsupported/ambiguous IR still fails closed.
+
+For multi-operation Interfaces, the emitter sorts only a small borrowed
+array of canonical IR operation pointers by operation name, without mutating
+IdlContract/ServiceNativeIR. The vtable slots, full FunctionDesc/FunctionAbi
+metadata, Component capability and exported Provider Binding are therefore
+identical if the same operation declarations appear in reverse source order.
+The new independent codegen CTest renders the normal and reversed canonical
+IR into temporary files and requires **byte-identical generated header and
+source**, with no public output artifacts. This applies only to two-or-more
+methods; the earlier single-operation `invoke` symbol remains unchanged.
+
+This is a deliberate unpublished candidate ABI identity correction. The
+published SDK and default `salts_idl_target()` selection remain untouched.

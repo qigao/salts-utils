@@ -411,6 +411,22 @@ add_test(NAME test_databind_component_candidate_multi_codegen_content
 set_tests_properties(test_databind_component_candidate_multi_codegen_content PROPERTIES
   LABELS "databind;compiler;component;multi;codegen;no-fallback")
 
+# One canonical Interface and Provider source must be byte-identical when
+# IDL operation rows are presented in reverse order. The mode parses actual
+# Contract IR and renders both permutations into private tmpfiles; no
+# production generated paths are written or touched.
+add_test(NAME test_databind_component_candidate_multi_order_stability
+  COMMAND
+    $<TARGET_FILE:databind_component_candidate_codegen_tool>
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_component_multi.schema"
+    "ComponentOps.MathProvider"
+    "contract_multi.plugin.h"
+    "${_databind_component_candidate_multi_dir}/order-check.component.h"
+    "${_databind_component_candidate_multi_dir}/order-check.component.c"
+    --verify-reordered-multi)
+set_tests_properties(test_databind_component_candidate_multi_order_stability PROPERTIES
+  LABELS "databind;compiler;component;multi;abi-identity;stable-order;no-output")
+
 if(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO)
   if(NOT TARGET Salts::ComponentPluginABI OR
      NOT TARGET Salts::ComponentPlugin)

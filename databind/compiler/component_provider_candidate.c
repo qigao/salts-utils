@@ -42,10 +42,37 @@ static int candidate_basename(const char *s) {
   return 1;
 }
 
+
+/* One canonical Interface ID per Service, regardless of IDL declaration
+ * order. Derive the Service prefix from canonical ServiceNativeIR fields
+ * and verify the exact existing operation symbol rather than trusting a
+ * free-form name or introducing another identity implementation. */
+static int candidate_service_symbol(
+    const databind_compiler_service_native_operation *op,
+    char out[181]) {
+  char operation_symbol[181];
+  int n;
+  if (op == NULL || !candidate_identifier(op->schema_name) ||
+      !candidate_identifier(op->service_name) ||
+      !candidate_identifier(op->operation_name) ||
+      !candidate_identifier(op->symbol) ||
+      !candidate_stable_id(op->qualified_service))
+    return 0;
+  n = snprintf(out, 181u, "databind_%zu_%s_%zu_%s",
+      strlen(op->schema_name), op->schema_name,
+      strlen(op->service_name), op->service_name);
+  if (n <= 0 || n >= 181) return 0;
+  n = snprintf(operation_symbol, sizeof(operation_symbol),
+      "%s_%zu_%s", out, strlen(op->operation_name), op->operation_name);
+  return n > 0 && (size_t)n < sizeof(operation_symbol) &&
+      strcmp(op->symbol, operation_symbol) == 0;
+}
+
 int databind_component_provider_candidate_admitted(
     const IdlComponent *component,
     const databind_compiler_service_native_ir *ir) {
   size_t i, j;
+  char service_symbol[181] = {0};
   const IdlComponentCapability *cap;
   if (component == NULL || ir == NULL || ir->operations == NULL ||
       ir->operation_count == 0u || ir->operation_count > 4u ||
@@ -58,7 +85,10 @@ int databind_component_provider_candidate_admitted(
     return 0;
   for (i = 0u; i < ir->operation_count; ++i) {
     const databind_compiler_service_native_operation *op = &ir->operations[i];
-    if (!candidate_identifier(op->symbol) ||
+    char current_symbol[181] = {0};
+    if (!candidate_service_symbol(op, current_symbol) ||
+        (i != 0u && strcmp(current_symbol, service_symbol) != 0) ||
+        !candidate_identifier(op->symbol) ||
         !candidate_identifier(op->operation_name) ||
         !candidate_identifier(op->request_type) ||
         !candidate_identifier(op->response_type) ||
@@ -68,6 +98,7 @@ int databind_component_provider_candidate_admitted(
         op->error_count != 0u || op->service_name == NULL ||
         strcmp(op->service_name, cap->name) != 0)
       return 0;
+    if (i == 0u) strcpy(service_symbol, current_symbol);
     for (j = 0u; j < i; ++j) {
       const databind_compiler_service_native_operation *prior = &ir->operations[j];
       if (strcmp(op->operation_name, prior->operation_name) == 0 ||
@@ -180,8 +211,25 @@ static int candidate_render_multi(
     const databind_compiler_service_native_ir *ir,
     const char *native_service_header, const char *component_header,
     uint32_t major, uint32_t minor, uint32_t patch) {
-  const char *first = ir->operations[0].symbol;
-  size_t i;
+  char service_symbol[181] = {0};
+  const char *first = service_symbol;
+  const databind_compiler_service_native_operation *ordered[4] = {0};
+  size_t i, j;
+  if (!candidate_service_symbol(&ir->operations[0], service_symbol))
+    return -1;
+  /* CMeta Interface semantic equality compares methods by order. Sorting
+   * these bounded borrowed IR pointers (without mutating caller storage)
+   * guarantees stable identity when IDL declarations are rearranged. */
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    j = i;
+    while (j > 0u && strcmp(ordered[j - 1u]->operation_name,
+                           op->operation_name) > 0) {
+      ordered[j] = ordered[j - 1u];
+      --j;
+    }
+    ordered[j] = op;
+  }
   if (fprintf(header,
       "#ifndef %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#define %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
@@ -192,12 +240,12 @@ static int candidate_render_multi(
     return -1;
 
   for (i = 0u; i < ir->operation_count; ++i)
-    if (candidate_emit_pointer_descriptors(header, &ir->operations[i]) != 0)
+    if (candidate_emit_pointer_descriptors(header, ordered[i]) != 0)
       return -1;
   if (fprintf(header, "#define %s__COMPONENT_METHODS(X, I) \\\n", first) < 0)
     return -1;
   for (i = 0u; i < ir->operation_count; ++i) {
-    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    const databind_compiler_service_native_operation *op = ordered[i];
     if (fprintf(header,
         "    X(I, FR2, int, invoke_%s, unknown, &cmeta_type_int, \\\n"
         "      CMETA_ABI_SCALAR, CMETA_RESULT_VALUE, \\\n"
@@ -224,7 +272,7 @@ static int candidate_render_multi(
       component_header) < 0)
     return -1;
   for (i = 0u; i < ir->operation_count; ++i) {
-    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    const databind_compiler_service_native_operation *op = ordered[i];
     if (fprintf(source,
         "static int %s__component_invoke(void *self,\n"
         "    const %s *request, %s *response) {\n"
@@ -245,7 +293,7 @@ static int candidate_render_multi(
       first, first) < 0)
     return -1;
   for (i = 0u; i < ir->operation_count; ++i) {
-    const databind_compiler_service_native_operation *op = &ir->operations[i];
+    const databind_compiler_service_native_operation *op = ordered[i];
     if (fprintf(source,
         "    .invoke_%s = %s__component_invoke%s\n",
         op->operation_name, op->symbol,
