@@ -588,3 +588,30 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
   set_tests_properties(test_databind_component_candidate_servicehost_switch_c11 PROPERTIES
     LABELS "databind;compiler;component;servicehost;fr2;handoff;real-dso;no-fallback")
 endif()
+
+
+# Explicit ISO C++17 co-inclusion proof for two independently generated
+# Contract artifacts. Guards must protect canonical shared span definitions.
+if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
+  add_executable(test_databind_component_multiheader_cpp17
+    test_component_multiheader_cpp.cpp)
+  add_dependencies(test_databind_component_multiheader_cpp17
+    databind_component_candidate_generated
+    databind_component_candidate_multi_generated)
+  target_include_directories(test_databind_component_multiheader_cpp17 PRIVATE
+    "${_databind_component_candidate_dir}"
+    "${_databind_component_candidate_multi_dir}")
+  target_link_libraries(test_databind_component_multiheader_cpp17 PRIVATE
+    Salts::ServiceHost Salts::DataBind)
+  set_target_properties(test_databind_component_multiheader_cpp17 PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
+    FOLDER "databind/compiler/tests/plugin")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+    target_compile_options(test_databind_component_multiheader_cpp17
+      PRIVATE -pedantic-errors)
+  endif()
+  add_test(NAME test_databind_component_multiheader_cpp17
+    COMMAND test_databind_component_multiheader_cpp17)
+  set_tests_properties(test_databind_component_multiheader_cpp17 PROPERTIES
+    LABELS "databind;compiler;component;native-header;cpp17;multiheader;strict")
+endif()

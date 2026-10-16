@@ -422,9 +422,10 @@ jobs:
                      databind_component_candidate_multi_provider \
                      test_databind_component_candidate_servicehost_c11 \
                      test_databind_component_candidate_servicehost_switch_c11 \
+                     test_databind_component_multiheader_cpp17 \
                      test_databind_component_candidate_multi_dso_c11
           ctest --test-dir build/installed-servicehost/build-utils \
-            -R '^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|multi_dso_c11)$' \
+            -R '^(test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|multi_dso_c11)|test_databind_component_multiheader_cpp17)$' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
       - name: Preserve exact generated Provider integration proof
         if: always()

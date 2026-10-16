@@ -1889,6 +1889,9 @@ describe("compiler integration") {
     check_true(file_contains(output, "set_t tags;"));
     check_true(file_contains(output, "databind_native_text_cmeta_type"));
     check_true(file_contains(output, "databind_native_bytes_cmeta_type"));
+    check_true(file_contains(output, "#ifndef DATABIND_NATIVE_COMMON_SPANS_V1"));
+    check_true(file_contains(output, "#ifndef DATABIND_NATIVE_TEXT_CSTL_PROVIDER_V1"));
+    check_true(file_contains(output, "#ifndef DATABIND_NATIVE_BYTES_CSTL_PROVIDER_V1"));
     check_true(file_contains(output, "CMETA_TRAIT_COPY"));
     check_true(file_contains(output, "CMETA_TRAIT_DESTROY"));
     check_false(file_contains(output, "binary_wire"));
