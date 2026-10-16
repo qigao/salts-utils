@@ -334,3 +334,110 @@ jobs:
           if (git status --porcelain --untracked-files=no) {
             throw "Unexpected tracked source modification"
           }
+
+
+  linux_servicehost:
+    name: Generated FR2 Provider through installed Salts ServiceHost
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      EXPECTED_SALTS: a6d1f7c6b81c72dfcdcab9a5ea8f72244ab3079a
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: linux-x64
+      QIGAO_TARGET_TRIPLET: x64-linux
+      QIGAO_HOST_TRIPLET: x64-linux
+      CCACHE_DIR: build/installed-servicehost/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-servicehost-fr2-v1
+    steps:
+      - name: Checkout exact SaltsUtils FR2 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - name: Checkout exact Salts strict ServiceHost SDK source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: a6d1f7c6b81c72dfcdcab9a5ea8f72244ab3079a
+          path: build/installed-servicehost/salts
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Assert immutable producer and compiler identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test "$(git -C build/installed-servicehost/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
+          test -f build/installed-servicehost/salts/component-runtime/include/salts/service_host.h
+          test -f build/installed-servicehost/salts/component-runtime/src/service_host.c
+          mkdir -p build/installed-servicehost
+          printf 'salts=%s\nsaltsutils=%s\nprobe_only=true\npublish=false\n' \
+            "$EXPECTED_SALTS" "$EXPECTED_SU" | tee build/installed-servicehost/provenance.txt
+      - name: Install exact strict Salts Configurator/ServiceHost SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/idl-servicehost-native-sdk"
+          echo "SALTS_ROOT=$prefix" >> "$GITHUB_ENV"
+          cmake --preset linux-release-ci \
+            -S "$GITHUB_WORKSPACE/build/installed-servicehost/salts" \
+            -B build/installed-servicehost/build-salts \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" \
+            -DSALTS_ENABLE_COMPONENT_RUNTIME_CANDIDATE=ON \
+            -DSALTS_ENABLE_COMPONENT_RUNTIME_INSTALLED_ABI_PROBE=ON \
+            -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          cmake --build build/installed-servicehost/build-salts --parallel 2
+          cmake --install build/installed-servicehost/build-salts
+          test -f "$prefix/include/salts/service_host.h"
+          test -f "$prefix/include/salts/configurator.h"
+          test -f "$prefix/include/salts/component_runtime_abi.h"
+          grep -Fq 'Salts::ServiceHost' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -Fq 'Salts::Configurator' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          ! grep -Fq 'Salts::ServiceHostCandidate' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+      - name: Execute unchanged generated dual-operation FR2 through installed ServiceHost
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SALTS_ROOT="$RUNNER_TEMP/idl-servicehost-native-sdk"
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          export PKG_ROOT="$RUNNER_TEMP/idl-servicehost-utils"
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_ROOT/bin"
+          cmake --preset ci-linux-release-user \
+            -B build/installed-servicehost/build-utils \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON \
+            -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build build/installed-servicehost/build-utils --parallel 2 \
+            --target databind_component_candidate_multi_provider \
+                     test_databind_component_candidate_servicehost_c11 \
+                     test_databind_component_candidate_multi_dso_c11
+          ctest --test-dir build/installed-servicehost/build-utils \
+            -R '^test_databind_component_candidate_(servicehost_c11|multi_dso_c11)$' \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+      - name: Preserve exact generated Provider integration proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idlc-fr2-installed-servicehost-${{ github.run_id }}
+          path: |
+            build/installed-servicehost/provenance.txt
+            build/installed-servicehost/build-utils/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Confirm original SaltsUtils source unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test -z "$(git status --porcelain --untracked-files=no)"
