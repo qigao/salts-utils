@@ -560,3 +560,31 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
   set_tests_properties(test_databind_component_candidate_servicehost_c11 PROPERTIES
     LABELS "databind;compiler;component;servicehost;fr2;real-dso;no-fallback")
 endif()
+
+
+# Independent generated old-N/new-N+1 conformance through the already
+# installed Salts::ServiceHost. No new IR, compiler or provider loader.
+if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
+  add_executable(test_databind_component_candidate_servicehost_switch_c11
+    test_component_generation_service_host.c)
+  add_dependencies(test_databind_component_candidate_servicehost_switch_c11
+    databind_component_candidate_provider
+    databind_component_candidate_multi_provider
+    databind_component_candidate_generated
+    databind_component_candidate_multi_generated)
+  target_include_directories(test_databind_component_candidate_servicehost_switch_c11 PRIVATE
+    "${_databind_component_candidate_dir}"
+    "${_databind_component_candidate_multi_dir}")
+  target_compile_definitions(test_databind_component_candidate_servicehost_switch_c11 PRIVATE
+    GENERATED_COMPONENT_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_provider>"
+    GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_multi_provider>")
+  target_link_libraries(test_databind_component_candidate_servicehost_switch_c11 PRIVATE
+    Salts::ServiceHost Salts::DataBind)
+  set_target_properties(test_databind_component_candidate_servicehost_switch_c11 PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    FOLDER "databind/compiler/tests/plugin")
+  add_test(NAME test_databind_component_candidate_servicehost_switch_c11
+    COMMAND test_databind_component_candidate_servicehost_switch_c11)
+  set_tests_properties(test_databind_component_candidate_servicehost_switch_c11 PROPERTIES
+    LABELS "databind;compiler;component;servicehost;fr2;handoff;real-dso;no-fallback")
+endif()

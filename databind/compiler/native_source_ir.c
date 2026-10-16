@@ -434,8 +434,12 @@ static int native_source_ir_render(
   if (fprintf(out,
       "#pragma once\n#include <stdbool.h>\n#include <stdint.h>\n"
       "#include <stddef.h>\n#include <stdlib.h>\n#include <string.h>\n\n"
+      "/* Canonical common spans shared by separately generated native headers. */\n"
+      "#ifndef DATABIND_NATIVE_COMMON_SPANS_V1\n"
+      "#define DATABIND_NATIVE_COMMON_SPANS_V1 1\n"
       "typedef struct databind_native_text { char *data; size_t size; } databind_native_text;\n"
-      "typedef struct databind_native_bytes { unsigned char *data; size_t size; } databind_native_bytes;\n\n") < 0)
+      "typedef struct databind_native_bytes { unsigned char *data; size_t size; } databind_native_bytes;\n"
+      "#endif /* DATABIND_NATIVE_COMMON_SPANS_V1 */\n\n") < 0)
     failed = 1;
   for (i = 0u; i < ir->record_count; ++i) {
     for (j = 0u; j < ir->records[i].field_count; ++j)
@@ -477,6 +481,8 @@ static int native_source_ir_render(
     }
     if (!failed && text_provider &&
         fputs(
+        "#ifndef DATABIND_NATIVE_TEXT_CSTL_PROVIDER_V1\n"
+        "#define DATABIND_NATIVE_TEXT_CSTL_PROVIDER_V1 1\n"
         "/* Native text CSTL provider: copy/move/destroy are explicit ownership operations. */\n"
         "static bool databind_native_text_trait_copy(void *destination, const void *source) {\n"
         "    const databind_native_text *src = (const databind_native_text *)source;\n"
@@ -527,10 +533,13 @@ static int native_source_ir_render(
         "    \"databind_native_text\", sizeof(databind_native_text),\n"
         "    CMETA_ALIGNOF(databind_native_text), CMETA_T_OBJECT, NULL,\n"
         "    &databind_native_text_cmeta_traits, &databind_native_text_cmeta_identity\n"
-        "};\n",
+        "};\n"
+        "#endif /* DATABIND_NATIVE_TEXT_CSTL_PROVIDER_V1 */\n",
         out) == EOF) failed = 1;
     if (!failed && bytes_provider &&
         fputs(
+        "#ifndef DATABIND_NATIVE_BYTES_CSTL_PROVIDER_V1\n"
+        "#define DATABIND_NATIVE_BYTES_CSTL_PROVIDER_V1 1\n"
         "/* Native bytes CSTL provider: copy/move/destroy are explicit ownership operations. */\n"
         "static bool databind_native_bytes_trait_copy(void *destination, const void *source) {\n"
         "    const databind_native_bytes *src = (const databind_native_bytes *)source;\n"
@@ -580,7 +589,8 @@ static int native_source_ir_render(
         "    \"databind_native_bytes\", sizeof(databind_native_bytes),\n"
         "    CMETA_ALIGNOF(databind_native_bytes), CMETA_T_OBJECT, NULL,\n"
         "    &databind_native_bytes_cmeta_traits, &databind_native_bytes_cmeta_identity\n"
-        "};\n",
+        "};\n"
+        "#endif /* DATABIND_NATIVE_BYTES_CSTL_PROVIDER_V1 */\n",
         out) == EOF) failed = 1;
   }
   /* Descriptors may be referenced before their record definition, and
