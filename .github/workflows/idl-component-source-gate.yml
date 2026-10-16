@@ -527,11 +527,14 @@ jobs:
             -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           cmake --build build/installed-servicehost-macos/build-utils --parallel 2 \
-            --target databind_component_candidate_multi_provider \
+            --target databind_component_candidate_provider \
+                     databind_component_candidate_multi_provider \
                      test_databind_component_candidate_servicehost_c11 \
+                     test_databind_component_candidate_servicehost_switch_c11 \
+                     test_databind_component_multiheader_cpp17 \
                      test_databind_component_candidate_multi_dso_c11
           ctest --test-dir build/installed-servicehost-macos/build-utils \
-            -R '^test_databind_component_candidate_(servicehost_c11|multi_dso_c11)$' \
+            -R '^(test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|multi_dso_c11)|test_databind_component_multiheader_cpp17)$' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
       - name: Preserve native Apple ARM64 conformance
         if: always()
@@ -676,7 +679,7 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          cmake --build "build\installed-servicehost-windows\build-utils" --parallel 2 --target databind_component_candidate_multi_provider test_databind_component_candidate_servicehost_c11 test_databind_component_candidate_multi_dso_c11
+          cmake --build "build\installed-servicehost-windows\build-utils" --parallel 2 --target databind_component_candidate_provider databind_component_candidate_multi_provider test_databind_component_candidate_servicehost_c11 test_databind_component_candidate_servicehost_switch_c11 test_databind_component_multiheader_cpp17 test_databind_component_candidate_multi_dso_c11
           if errorlevel 1 exit /b 1
       - name: Stage exact DLL identities beside generated Provider (no fallback PATH)
         shell: pwsh
@@ -689,6 +692,8 @@ jobs:
           }
           $provider = Get-ChildItem -LiteralPath $directory -Filter 'contract_component_multi.dll' -File
           if (@($provider).Count -ne 1) { throw "Generated FR2 Provider DSO missing" }
+          $oldProvider = Get-ChildItem -LiteralPath $directory -Filter 'contract_component_candidate.dll' -File
+          if (@($oldProvider).Count -ne 1) { throw "Original generated Provider N DSO missing" }
           $installedDlls = @(Get-ChildItem -LiteralPath (Join-Path $root "bin") -Filter '*.dll' -File)
           if ($installedDlls.Count -eq 0) { throw "Installed Salts dependency DLLs absent" }
           foreach ($dll in $installedDlls) {
@@ -708,7 +713,7 @@ jobs:
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
-          ctest --test-dir "build\installed-servicehost-windows\build-utils" -R "^test_databind_component_candidate_(servicehost_c11|multi_dso_c11)$" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+          ctest --test-dir "build\installed-servicehost-windows\build-utils" -R "^(test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|multi_dso_c11)|test_databind_component_multiheader_cpp17)$" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
           if errorlevel 1 exit /b 1
       - name: Preserve strict Windows generated-Provider proof
         if: always()
