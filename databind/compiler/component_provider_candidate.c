@@ -1,4 +1,5 @@
 #include "component_provider_candidate.h"
+#include "cmeta_fs.h"
 
 #include <ctype.h>
 #include <stdint.h>
@@ -356,3 +357,109 @@ int databind_component_provider_candidate_render(
     return -1;
   return ferror(header) == 0 && ferror(source) == 0 ? 0 : -1;
 }
+
+
+/* The shared compiler coordinator has already reserved both final output
+ * paths as unique sibling stage files. No .component artifact is allowed to
+ * write to the final directory on its own or bypass transactional abort. */
+static int component_provider_selected_service(
+    void *context, const char *service_name) {
+  const IdlComponent *component = (const IdlComponent *)context;
+  size_t i;
+  if (component == NULL || service_name == NULL)
+    return 0;
+  for (i = 0u; i < component->capability_count; ++i)
+    if (component->capabilities[i].kind == IDL_CAPABILITY_SERVICE &&
+        component->capabilities[i].name != NULL &&
+        strcmp(component->capabilities[i].name, service_name) == 0)
+      return 1;
+  return 0;
+}
+
+int databind_compiler_component_provider_render_staged(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    const char *header_stage,
+    const char *source_stage) {
+  const databind_compiler_component_provider_config *config;
+  const IdlComponent *component;
+  databind_compiler_service_native_ir ir = {0};
+  FILE *header = NULL;
+  FILE *source = NULL;
+  char service_basename[SALTS_FS_MAX_PATH];
+  char component_basename[SALTS_FS_MAX_PATH];
+  int result = -1;
+
+  if (input == NULL || input->contract == NULL || input->binary_format != NULL ||
+      request == NULL || request->config == NULL ||
+      request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT ||
+      request->id.kind != DATABIND_COMPILER_ARTIFACT_COMPONENT ||
+      request->output == NULL || header_stage == NULL ||
+      source_stage == NULL || strcmp(header_stage, source_stage) == 0)
+    return -1;
+  config = (const databind_compiler_component_provider_config *)request->config;
+  if (config->component_id == NULL || config->header_output == NULL ||
+      config->native_service_header == NULL ||
+      cmeta_fs_path_basename(config->header_output, component_basename,
+                             sizeof(component_basename)) != 0 ||
+      cmeta_fs_path_basename(config->native_service_header, service_basename,
+                             sizeof(service_basename)) != 0)
+    return -1;
+
+  component = idl_contract_find_component(input->contract, config->component_id);
+  if (component == NULL ||
+      databind_compiler_service_native_build_selected(
+          input->contract, component_provider_selected_service,
+          (void *)component, &ir) != 0)
+    goto cleanup;
+  /* Reject all unsupported shapes before writing even to the stage files.
+   * No output is ever changed for a failure in canonical IR admission. */
+  if (!databind_component_provider_candidate_admitted(component, &ir))
+    goto cleanup;
+
+  header = fopen(header_stage, "wb");
+  if (header == NULL)
+    goto cleanup;
+  source = fopen(source_stage, "wb");
+  if (source == NULL)
+    goto cleanup;
+  if (databind_component_provider_candidate_render(
+          header, source, component, &ir,
+          service_basename, component_basename,
+          config->version_major, config->version_minor,
+          config->version_patch) != 0 ||
+      fflush(header) != 0 || fflush(source) != 0)
+    goto cleanup;
+  result = 0;
+
+cleanup:
+  if (header != NULL && fclose(header) != 0)
+    result = -1;
+  if (source != NULL && fclose(source) != 0)
+    result = -1;
+  databind_compiler_service_native_destroy(&ir);
+  return result;
+}
+
+/* Never self-publish the two-file ComponentProvider. The only supported
+ * entry is the audited pair-stage contract above, invoked by the same
+ * coordinator that owns PLUGIN and the native Record header. */
+int databind_compiler_component_provider_generate(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    void *context) {
+  (void)input;
+  (void)request;
+  (void)context;
+  return -1;
+}
+
+const databind_compiler_projection_backend
+    DATABIND_COMPILER_COMPONENT_PROVIDER_BACKEND = {
+        {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+         DATABIND_COMPILER_ARTIFACT_COMPONENT},
+        "component",
+        databind_compiler_component_provider_generate,
+        NULL,
+        DATABIND_COMPILER_OUTPUT_STAGED_MULTI,
+};

@@ -120,3 +120,37 @@ never own the same live graph in these tests.** The single/multi generated
 business functions, target names, source ABI and canonical TypeIdentity remain
 unchanged. This gate does not authorize a public installed ServiceHost SDK,
 default IDL artifact change or CHttp production migration.
+
+
+## Explicit staged COMPONENT Artifact (review-only CLI selection)
+
+The first opt-in CLI candidate is deliberately narrow:
+
+    salts-idlc calc.schema --lang c --output contract_multi_native.h \
+      --artifact-name contract_multi \
+      --component ComponentOps.MathProvider --artifact-version 1.2.3 \
+      --artifacts plugin,component
+
+One existing compiler-owned transaction publishes exactly seven outputs:
+the canonical NativeSourceIR Record header, four existing PLUGIN
+Service/Provider/client files, plus the new
+contract_multi.component.h/.c alternate ComponentProvider source.
+
+The same parsed IdlContract/ServiceNativeIR is the only semantic authority.
+COMPONENT borrows the native declaration from the existing PLUGIN header
+and emits one CMeta Interface and one standard ComponentProvider Binding.
+PLUGIN and COMPONENT .c files are ALTERNATIVE Provider DSO entry points;
+they must not be linked into the same shared object (both emit the canonical
+Plugin query symbol). This is not a second loader, runtime or FFI.
+
+The STAGED_MULTI coordinator reserves and commits the two new outputs
+together with PLUGIN and native records. When real typed-error admission
+fails, existing files retain their exact bytes and no partial output appears.
+The CLI smoke validates seven outputs, deterministic regeneration, typed
+errors with existing-output sentinels and refusal of Binary selection.
+
+This first explicit CLI selection requires plugin,component only; no
+formatted transport, Binary codec, Native/Wasm mix or source-output companion.
+The ordinary PLUGIN-only, NATIVE-only and default paths remain unchanged.
+It does NOT yet authorize public salts_idl_target(ARTIFACTS COMPONENT),
+installed Component ABI, SDK publication or production runtime switch.

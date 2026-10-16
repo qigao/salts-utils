@@ -588,6 +588,56 @@ static int add_plugin(
   return 0;
 }
 
+/* Explicit staged COMPONENT depends on the same PLUGIN native declaration
+ * header. The generated .component.c and .plugin.c are ALTERNATIVE DSO
+ * exports and must not be linked into one native shared object. */
+static int add_component(
+    const databind_compiler_projection_frontend_input *input,
+    databind_compiler_projection_frontend_plan *out,
+    char *error, size_t error_size) {
+  if (ensure_artifact_context(input, out, error, error_size) != 0)
+    return -1;
+  if (out->plugin_service_header[0] == '\0' ||
+      out->plugin.component_id == NULL)
+    return frontend_error(error, error_size,
+                          "COMPONENT requires selected canonical PLUGIN");
+  if (!derive_artifact_path(out->artifact_dir, input->artifact_name,
+                            ".component.h", out->component_header,
+                            sizeof(out->component_header)) ||
+      !derive_artifact_path(out->artifact_dir, input->artifact_name,
+                            ".component.c", out->component_source,
+                            sizeof(out->component_source)))
+    return frontend_error(error, error_size,
+                          "COMPONENT output path too long");
+  if (frontend_output_path_equal(
+          out->component_header, out->component_source) ||
+      path_reserved(input, out->component_header) ||
+      path_reserved(input, out->component_source) ||
+      projection_output_in_use(out, out->component_header) ||
+      projection_output_in_use(out, out->component_source))
+    return frontend_error(error, error_size,
+                          "COMPONENT output collides with another output");
+
+  out->component = (databind_compiler_component_provider_config){
+      .component_id = out->plugin.component_id,
+      .native_service_header = out->plugin_service_header,
+      .header_output = out->component_header,
+      .version_major = out->plugin.plugin_version_major,
+      .version_minor = out->plugin.plugin_version_minor,
+      .version_patch = out->plugin.plugin_version_patch,
+  };
+  out->requests[out->request_count++] =
+      (databind_compiler_projection_request){
+          .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+                 DATABIND_COMPILER_ARTIFACT_COMPONENT},
+          .output = out->component_source,
+          .config = &out->component,
+      };
+  out->backends[out->backend_count++] =
+      DATABIND_COMPILER_COMPONENT_PROVIDER_BACKEND;
+  return 0;
+}
+
 static int add_wasm(
     const databind_compiler_projection_frontend_input *input,
     databind_compiler_projection_frontend_plan *out,
@@ -759,6 +809,11 @@ static int frontend_manifest_collect(
           return -1;
       break;
     }
+    case DATABIND_COMPILER_ARTIFACT_COMPONENT:
+      if (frontend_manifest_add(
+              plan, plan->component_header, owner, error, error_size) != 0)
+        return -1;
+      break;
     case DATABIND_COMPILER_ARTIFACT_OPENAPI:
       break; /* Only the primary OpenAPI output is emitted. */
     default:
@@ -876,6 +931,27 @@ int databind_compiler_projection_frontend_build(
     cursor = *end == ',' ? end + 1 : end;
   }
 
+  /* Restrict the first public selection to one canonical, Contract-only
+   * PLUGIN declaration paired with one alternative ComponentProvider. No
+   * formatted transport, binary companion, or unverified artifact mixing. */
+  {
+    size_t j;
+    int component = 0, plugin = 0;
+    for (j = 0u; j < artifact_count; ++j) {
+      if (artifacts[j] == DATABIND_COMPILER_ARTIFACT_COMPONENT) component = 1;
+      if (artifacts[j] == DATABIND_COMPILER_ARTIFACT_PLUGIN) plugin = 1;
+    }
+    if (component &&
+        (!plugin || artifact_count != 2u || transport_count != 0u ||
+         input->source_output_path != NULL ||
+         input->guest_output_path != NULL ||
+         input->dsl_output_path != NULL ||
+         input->projection_config_path != NULL ||
+         input->wasm_core_module_path != NULL))
+      return frontend_error(error, error_size,
+          "COMPONENT requires exactly plugin,component, Contract-only C and no transport");
+  }
+
   if (input->projection_config_path != NULL &&
       input->projection_config_path[0] != '\0') {
     if (!selected_http && !selected_rpc &&
@@ -920,7 +996,11 @@ int databind_compiler_projection_frontend_build(
       out->http = (databind_compiler_http_projection_config){0};
   }
 
+  /* COMPONENT's canonical PLUGIN header is prepared regardless of the
+   * user's spelling order in the artifact list. */
   for (i = 0u; i < artifact_count; ++i) {
+    if (artifacts[i] == DATABIND_COMPILER_ARTIFACT_COMPONENT)
+      continue;
     switch (artifacts[i]) {
     case DATABIND_COMPILER_ARTIFACT_NATIVE:
       if (add_native_service(input, out, error, error_size) != 0)
@@ -952,6 +1032,11 @@ int databind_compiler_projection_frontend_build(
       goto fail;
     }
   }
+
+  for (i = 0u; i < artifact_count; ++i)
+    if (artifacts[i] == DATABIND_COMPILER_ARTIFACT_COMPONENT &&
+        add_component(input, out, error, error_size) != 0)
+      goto fail;
 
   for (i = 0u; i < transport_count; ++i) {
     switch (transports[i]) {
