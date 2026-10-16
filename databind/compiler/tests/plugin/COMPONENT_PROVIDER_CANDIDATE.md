@@ -46,3 +46,16 @@ review grants an additive opt-in artifact entry.
 
 **DRAFT / DO NOT MERGE OR PUBLISH.** No SDK or production CHttp consumer
 may switch based solely on this fixture.
+
+## Shared NativeSourceIR ISO C++17 syntax gate
+
+The standard Contract-only NativeSourceIR header is shared by both C and
+C++ consumers. Generated CMeta type/field descriptors, DataDesc binding
+helpers and caller-owned native storage now use portable C11/C++17 aggregate
+initialization and `CMETA_ALIGNOF` rather than C11-only `_Alignof`, C99
+compound literals or C++20 designated initializers. This changes generated
+**source text** (not the ABI, semantic TypeIdentity, Plugin export schema,
+execution target or default artifact selection). The isolated real DSO
+qualification enforces `-std=c++17 -pedantic-errors` for the generated header.
+Existing Native/Plugin generated output is separately requalified as part of
+normal CI. No alternate C++ record runtime or type provider is introduced.

@@ -382,6 +382,13 @@ target_link_libraries(test_databind_component_candidate_header_cpp PRIVATE
 set_target_properties(test_databind_component_candidate_header_cpp PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
   FOLDER "databind/compiler/tests/plugin")
+# Enforce actual ISO C++17 on the generated Contract-only native header.
+# C++20 designated initializers, C99 compound literals, or _Alignof must not
+# pass as GNU extensions in this independent native header qualification.
+if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+  target_compile_options(test_databind_component_candidate_header_cpp
+    PRIVATE -pedantic-errors)
+endif()
 add_test(NAME test_databind_component_candidate_header_cpp
   COMMAND test_databind_component_candidate_header_cpp)
 set_tests_properties(test_databind_component_candidate_header_cpp PROPERTIES
