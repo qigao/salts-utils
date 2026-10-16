@@ -120,6 +120,42 @@ int main(void) {
       &runtime, &old_scope) == SALTS_SERVICE_HOST_OK);
   REQUIRE(check_port(&old_scope, iface, UINT64_C(100)));
 
+  /* Failed N+1 admission must not withdraw N, create an extra live module
+   * lease, poison the immutable generated FR2 provider, or authorize a
+   * fallback publication. The *same* bounded generation storage is reused
+   * after its FAILED-state cleanup and must then accept the real export. */
+  {
+    salts_service_host_source invalid = provider;
+    const salts_service_host_failure *failure;
+
+    invalid.export_id = "missing-component-provider";
+    REQUIRE(salts_service_host_generation_build(
+        &candidate, UINT64_C(101), &registry, &candidate_storage,
+        NULL, 0u, &invalid, 1u, NULL, 0u) ==
+        SALTS_SERVICE_HOST_PLUGIN_ERROR);
+    REQUIRE(candidate.state == SALTS_SERVICE_HOST_GENERATION_FAILED);
+    failure = salts_service_host_generation_failure(&candidate);
+    REQUIRE(failure != NULL);
+    REQUIRE(failure->source_index == 0u);
+    REQUIRE(failure->plugin_status == CMETA_PLUGIN_UNKNOWN_EXPORT);
+    REQUIRE(cmeta_plugin_registry_get_lifecycle(
+        &registry, ref, &info) == CMETA_PLUGIN_OK);
+    REQUIRE(info.active_leases == 1u);
+
+    /* A failed candidate cannot evict N or change previous on failure. */
+    previous = &current;
+    REQUIRE(salts_service_host_runtime_publish(
+        &runtime, &candidate, &previous) ==
+        SALTS_SERVICE_HOST_INVALID_STATE);
+    REQUIRE(previous == &current);
+    REQUIRE(current.state == SALTS_SERVICE_HOST_GENERATION_PUBLISHED);
+    REQUIRE(runtime.attached_generations == 1u);
+    REQUIRE(check_port(&old_scope, iface, UINT64_C(100)));
+
+    /* Clear the diagnostic output only; keep N's actual Scope alive. */
+    previous = NULL;
+  }
+
   REQUIRE(salts_service_host_generation_build(
       &candidate, UINT64_C(101), &registry, &candidate_storage,
       NULL, 0u, &provider, 1u, NULL, 0u) == SALTS_SERVICE_HOST_OK);
