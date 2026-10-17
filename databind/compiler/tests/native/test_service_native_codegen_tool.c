@@ -433,14 +433,19 @@ int main(int argc, char **argv) {
       char *first_restore = strstr(init, "cmeta_data_value_restore_zero(");
       char *bytes_member = first_restore != NULL
           ? strstr(first_restore, "&payload->payload)") : NULL;
-      char *next_restore = bytes_member != NULL
-          ? strstr(bytes_member, "cmeta_data_value_restore_zero(") : NULL;
+      char *bytes_end = first_restore != NULL
+          ? strstr(first_restore, ") != CMETA_OK") : NULL;
+      char *next_restore = bytes_end != NULL
+          ? strstr(bytes_end, "cmeta_data_value_restore_zero(") : NULL;
       char *string_member = next_restore != NULL
           ? strstr(next_restore, "&payload->detail)") : NULL;
-      if (first_restore == NULL || bytes_member == NULL ||
-          next_restore == NULL || string_member == NULL ||
-          first_restore >= clear || bytes_member >= clear ||
-          next_restore >= clear || string_member >= clear) {
+      char *string_end = next_restore != NULL
+          ? strstr(next_restore, ") != CMETA_OK") : NULL;
+      if (first_restore == NULL || bytes_member == NULL || bytes_end == NULL ||
+          next_restore == NULL || string_member == NULL || string_end == NULL ||
+          first_restore >= bytes_member || bytes_member >= bytes_end ||
+          bytes_end >= next_restore || next_restore >= string_member ||
+          string_member >= string_end || string_end >= clear) {
         fprintf(stderr, "service-native-codegen: failed-field rollback order missing\\n");
         goto cleanup_policy_done;
       }
