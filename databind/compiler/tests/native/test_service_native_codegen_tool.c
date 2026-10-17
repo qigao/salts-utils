@@ -416,7 +416,7 @@ int main(int argc, char **argv) {
         snprintf(move_marker, sizeof(move_marker),
                  "static inline DataBindStatus %s__error_1_move(",
                  cleanup_ir.operations[0].symbol) < 0) {
-      fprintf(stderr, "service-native-codegen: cleanup markers failed\\n");
+      fprintf(stderr, "service-native-codegen: cleanup markers failed\n");
       goto cleanup_policy_done;
     }
     init = strstr(text, init_marker);
