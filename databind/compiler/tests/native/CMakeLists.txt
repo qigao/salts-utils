@@ -88,7 +88,11 @@ add_custom_target(databind_service_native_generated_sources
     "${DATABIND_SERVICE_NATIVE_RECORD_H}"
     "${DATABIND_SERVICE_NATIVE_RECORD_C}"
     "${DATABIND_SERVICE_NATIVE_HEADER}"
-    "${DATABIND_SERVICE_NATIVE_SOURCE}")
+    "${DATABIND_SERVICE_NATIVE_SOURCE}"
+    "${DATABIND_SERVICE_NATIVE_CLEANUP_RECORD_H}"
+    "${DATABIND_SERVICE_NATIVE_CLEANUP_RECORD_C}"
+    "${DATABIND_SERVICE_NATIVE_CLEANUP_HEADER}"
+    "${DATABIND_SERVICE_NATIVE_CLEANUP_SOURCE}")
 
 cmake_config_target(databind_service_native_generated_sources
   FOLDER "databind/compiler/generated/native")
@@ -115,6 +119,25 @@ cmake_add_test(test_databind_service_native_lowering
   FOLDER "databind/compiler/tests/native")
 add_dependencies(test_databind_service_native_lowering
   databind_service_native_generated_sources)
+
+cmake_add_test(test_databind_service_native_cleanup_runtime
+  SOURCES
+    test_service_native_cleanup_runtime.c
+    "${DATABIND_SERVICE_NATIVE_CLEANUP_RECORD_C}"
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}"
+  FOLDER "databind/compiler/tests/native")
+add_dependencies(test_databind_service_native_cleanup_runtime
+  databind_service_native_generated_sources)
+set_target_properties(test_databind_service_native_cleanup_runtime PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_service_native_cleanup_runtime PROPERTIES
+  LABELS "databind;compiler;native-service;cleanup;runtime")
 
 cmake_add_test(test_databind_service_native_public_cpp
   SOURCES test_service_native_public_cpp.cpp
