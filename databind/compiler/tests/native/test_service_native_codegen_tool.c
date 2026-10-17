@@ -381,6 +381,8 @@ int main(int argc, char **argv) {
     char init_marker[512];
     char clear_marker[512];
     char move_marker[512];
+    char *init_bytes = NULL;
+    char *init_string = NULL;
     char *clear_bytes = NULL;
     char *clear_string = NULL;
 
@@ -427,9 +429,10 @@ int main(int argc, char **argv) {
               "service-native-codegen: cleanup helper definition markers missing/order invalid\\n");
       goto cleanup_policy_done;
     }
-    if (strstr(init, "cmeta_data_value_restore_zero(&stl_byte_buffer_cmeta_data, &payload->payload)") == NULL ||
-        strstr(init, "cmeta_data_value_restore_zero(&cmeta_tstr_cmeta_data, &payload->detail)") == NULL) {
-      fprintf(stderr, "service-native-codegen: failed-field rollback missing\\n");
+    init_bytes = strstr(init, "cmeta_data_value_restore_zero(&stl_byte_buffer_cmeta_data, &payload->payload)");
+    init_string = strstr(init, "cmeta_data_value_restore_zero(&cmeta_tstr_cmeta_data, &payload->detail)");
+    if (init_bytes == NULL || init_string == NULL || init_bytes >= init_string) {
+      fprintf(stderr, "service-native-codegen: failed-field rollback order missing\\n");
       goto cleanup_policy_done;
     }
     if (strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL) {
