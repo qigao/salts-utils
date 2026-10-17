@@ -15,7 +15,19 @@ test -f "$package"
 prepared_sha="$(sha256sum "$package" | awk '{print $1}')"
 asset_name="SaltsUtils.Native.$VERSION.nupkg"
 
-if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+mkdir -p "$RUNNER_TEMP"
+view_error="$RUNNER_TEMP/release-view.stderr"
+if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>"$view_error"; then
+  release_exists=true
+elif grep -Eqi 'release not found|HTTP 404|Not Found' "$view_error"; then
+  release_exists=false
+else
+  cat "$view_error" >&2
+  echo "unable to determine whether release $TAG exists; refusing to publish" >&2
+  exit 1
+fi
+
+if [ "$release_exists" = true ]; then
   asset_count="$(
     gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets |
       jq --arg asset_name "$asset_name" '[.assets[] | select(.name == $asset_name)] | length'
