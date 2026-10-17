@@ -214,7 +214,6 @@ jobs:
         TAG: ${{ needs.metadata.outputs.tag }}
         VERSION: ${{ needs.metadata.outputs.version }}
         RELEASE_SHA: ${{ needs.metadata.outputs.release_sha }}
-        RELEASE_EXISTS: ${{ env.RELEASE_EXISTS }}
       run: |
         set -euo pipefail
         package="dist/SaltsUtils.Native.$VERSION.nupkg"
