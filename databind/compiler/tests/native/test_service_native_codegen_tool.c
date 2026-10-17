@@ -431,7 +431,8 @@ int main(int argc, char **argv) {
     }
     init_bytes = strstr(init, "cmeta_data_value_restore_zero(&stl_byte_buffer_cmeta_data, &payload->payload)");
     init_string = strstr(init, "cmeta_data_value_restore_zero(&cmeta_tstr_cmeta_data, &payload->detail)");
-    if (init_bytes == NULL || init_string == NULL || init_bytes >= init_string) {
+    if (init_bytes == NULL || init_string == NULL ||
+        init_bytes >= init_string || init_bytes >= clear || init_string >= clear) {
       fprintf(stderr, "service-native-codegen: failed-field rollback order missing\\n");
       goto cleanup_policy_done;
     }
