@@ -53,5 +53,7 @@ if [ "$release_exists" = true ]; then
     echo "do not overwrite the existing release; bump the SaltsUtils project/package version" >&2
     exit 1
   fi
-  echo "existing release asset matches prepared package: $prepared_sha"
+  echo "existing release asset matches prepared package: $prepared_sha" >&2
 fi
+
+printf 'RELEASE_EXISTS=%s\n' "$release_exists"
