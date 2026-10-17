@@ -604,8 +604,8 @@ static int native_emit_error_restore_sequence(
     if (field->native_data_symbol == NULL) continue;
     if (field->member_name == NULL ||
         fprintf(file,
-                "%sif (cmeta_data_value_restore_zero(&%s, &%s->%s) != CMETA_OK)\\n"
-                "%s  %s = DATA_BIND_ERR_RUNTIME;\\n",
+                "%sif (cmeta_data_value_restore_zero(&%s, &%s->%s) != CMETA_OK)\n"
+                "%s  %s = DATA_BIND_ERR_RUNTIME;\n",
                 indent, field->native_data_symbol, payload_expr,
                 field->member_name, indent, status_var) < 0)
       return -1;
@@ -737,20 +737,20 @@ static int native_emit_error_variant_helpers(
           fprintf(
               file,
               "    if (cmeta_data_value_move(&%s, &source->%s, "
-              "&destination->%s) != CMETA_OK)\\n"
-              "      rollback_status = DATA_BIND_ERR_RUNTIME;\\n",
+              "&destination->%s) != CMETA_OK)\n"
+              "      rollback_status = DATA_BIND_ERR_RUNTIME;\n",
               prior->native_data_symbol, prior->member_name,
               prior->member_name) < 0)
         return -1;
     }
     if (fprintf(
             file,
-            "    if (%s__error_%zu_clear(destination) != DATA_BIND_OK)\\n"
-            "      rollback_status = DATA_BIND_ERR_RUNTIME;\\n"
-            "    if (rollback_status != DATA_BIND_OK)\\n"
-            "      return rollback_status;\\n"
-            "    return DATA_BIND_ERR_RUNTIME;\\n"
-            "  }\\n",
+            "    if (%s__error_%zu_clear(destination) != DATA_BIND_OK)\n"
+            "      rollback_status = DATA_BIND_ERR_RUNTIME;\n"
+            "    if (rollback_status != DATA_BIND_OK)\n"
+            "      return rollback_status;\n"
+            "    return DATA_BIND_ERR_RUNTIME;\n"
+            "  }\n",
             operation->symbol, ordinal) < 0)
       return -1;
   }
