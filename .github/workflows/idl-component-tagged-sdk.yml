@@ -1,0 +1,79 @@
+name: Exact published Salts ServiceHost SDK consumer
+
+'on':
+  workflow_dispatch:
+    inputs:
+      salts_tag:
+        description: Explicit already-published canonical Salts release tag
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  linux-tagged-servicehost:
+    name: Linux C11 and C++17 FR2 Provider against released Salts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SALTS_CANONICAL_TAG: ${{ inputs.salts_tag }}
+      QIGAO_SDK_RID: linux-x64
+      QIGAO_TARGET_TRIPLET: x64-linux
+      QIGAO_HOST_TRIPLET: x64-linux
+      QIGAO_NUGET_PACKAGES: ${{ github.workspace }}/stage/nuget
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: su-idlc-tagged-servicehost-v1
+      PKG_ROOT: ${{ runner.temp }}/idlc-tagged-sdk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore and audit exactly the requested published Salts tag
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$SALTS_CANONICAL_TAG"
+          bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
+      - name: Build and execute real tagged Salts ServiceHost FR2 DSO consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_ROOT/bin:${LD_LIBRARY_PATH:-}"
+          cmake --preset ci-linux-release-user -B build/idlc-tagged-sdk \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DDATABIND_ENABLE_SERVICEHOST_DSO_TESTS=ON
+          cmake --build build/idlc-tagged-sdk --parallel 2 \
+            --target databind_component_candidate_provider \
+                     databind_component_candidate_multi_provider \
+                     test_databind_component_candidate_dso_c11 \
+                     test_databind_component_candidate_multi_dso_c11 \
+                     test_databind_component_candidate_header_cpp \
+                     test_databind_component_candidate_multi_header_cpp \
+                     test_databind_component_candidate_strict_servicehost_c11
+          ctest --test-dir build/idlc-tagged-sdk \
+            -R '^test_databind_component_candidate_' \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+      - name: Preserve exact tagged consumer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idlc-tagged-servicehost-linux-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: build/idlc-tagged-sdk/Testing/Temporary/LastTest.log

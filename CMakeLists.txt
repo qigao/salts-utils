@@ -56,6 +56,27 @@ unset(Salts_DIR CACHE)
 unset(Salts_DIR)
 find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+# The consumer is intentionally tag-driven, never built from a mutable
+# branch/commit pin or latest-available NuGet wildcard. A released Salts
+# manifest binds its exact NuGet payload to the named public tag.
+if(NOT DEFINED ENV{SALTS_CANONICAL_TAG} OR
+   NOT "$ENV{SALTS_CANONICAL_TAG}" MATCHES "^v2\\.3\\.0(-rc\\.[1-9][0-9]*)?$")
+  message(FATAL_ERROR "SALTS_CANONICAL_TAG must be an explicit published v2.3.0 release tag")
+endif()
+string(REGEX REPLACE "^v" "" _canonical_salts_version "$ENV{SALTS_CANONICAL_TAG}")
+set(_canonical_salts_manifest "${SALTS_ROOT_PATH}/salts-sdk-manifest.txt")
+if(NOT EXISTS "${_canonical_salts_manifest}")
+  message(FATAL_ERROR "Canonical installed SDK requires a release source/version manifest")
+endif()
+file(STRINGS "${_canonical_salts_manifest}" _canonical_salts_version_line
+  REGEX "^version=")
+if(NOT _canonical_salts_version_line STREQUAL "version=${_canonical_salts_version}")
+  message(FATAL_ERROR "Salts installed SDK manifest version mismatches selected release tag")
+endif()
+unset(_canonical_salts_version_line)
+unset(_canonical_salts_version)
+unset(_canonical_salts_manifest)
+
 
 add_subdirectory(tools)
 include(FindTools)
@@ -76,19 +97,30 @@ if(SALTS_UTILS_ENABLE_CFLOW_USB)
 endif()
 add_subdirectory(cron)
 add_subdirectory(mustache)
-# The exact-source #620 DSO qualification intentionally links the one
-# upstream Salts::Unicode implementation already exported by Salts #1234.
-# Its native source ABI supersedes the duplicate SaltsUtils Unicode target
-# name in that *isolated test graph*. Normal/public SaltsUtils builds remain
-# unchanged and still build/export their own Unicode target.
-if(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO)
-  if(NOT TARGET Salts::Unicode)
+# One provider-neutral Unicode implementation: imported from the exact,
+# tagged Salts SDK. No SaltsUtils-owned duplicate/compatibility target.
+# Jinja and the generated IDL Provider share the same single owner.
+foreach(_canonical_salts_target IN ITEMS
+    Salts::Unicode Salts::Configurator Salts::ServiceHost
+    Salts::ComponentProviderABI)
+  if(NOT TARGET ${_canonical_salts_target})
     message(FATAL_ERROR
-      "Exact-source ComponentProvider DSO requires upstream Salts::Unicode; no fallback")
+      "Tagged canonical Salts SDK required: missing ${_canonical_salts_target}; no old ComponentPlugin/Unicode fallback")
   endif()
-else()
-  add_subdirectory(unicode)
+  get_target_property(_canonical_salts_imported ${_canonical_salts_target} IMPORTED)
+  if(NOT _canonical_salts_imported)
+    message(FATAL_ERROR "${_canonical_salts_target} must be imported from the Salts SDK")
+  endif()
+endforeach()
+if(TARGET Salts::ComponentPlugin OR TARGET Salts::ComponentPluginABI OR
+   TARGET Salts::Component OR TARGET Salts::ServiceHostCandidate)
+  message(FATAL_ERROR "Obsolete Component runtime/ABI alias must not be exported")
 endif()
+if(EXISTS "${SALTS_ROOT_PATH}/include/salts/component_plugin.h" OR
+   EXISTS "${SALTS_ROOT_PATH}/include/salts/component_plugin_abi.h")
+  message(FATAL_ERROR "Obsolete ComponentPlugin header in canonical Salts SDK")
+endif()
+
 add_subdirectory(jinja)
 add_subdirectory(databind)
 

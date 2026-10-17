@@ -10,6 +10,38 @@ unset(Salts_DIR)
 # resolved this same dependency in the current directory.
 find_package(Salts CONFIG REQUIRED PATHS "${_salts_utils_salts_root}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+# Every installed SaltsUtils consumer inherits exactly one canonical
+# Salts Configurator/ServiceHost and Unicode owner. No old ComponentPlugin
+# alias, stale runtime or locally fabricated replacement may satisfy this.
+foreach(_required_target IN ITEMS
+    Salts::Unicode Salts::Configurator Salts::ServiceHost
+    Salts::ComponentProviderABI)
+  if(NOT TARGET ${_required_target})
+    message(FATAL_ERROR
+      "SaltsUtils requires the tagged canonical Salts SDK target ${_required_target}")
+  endif()
+  get_target_property(_imported ${_required_target} IMPORTED)
+  if(NOT _imported)
+    message(FATAL_ERROR "Expected ${_required_target} imported from canonical Salts release")
+  endif()
+endforeach()
+if(TARGET Salts::ComponentPlugin OR TARGET Salts::ComponentPluginABI OR
+   TARGET Salts::Component OR TARGET Salts::ServiceHostCandidate)
+  message(FATAL_ERROR "Old ComponentPlugin/Component runtime aliases are not supported")
+endif()
+if(NOT DEFINED ENV{SALTS_CANONICAL_TAG} OR
+   NOT "$ENV{SALTS_CANONICAL_TAG}" MATCHES "^v2\\.3\\.0(-rc\\.[1-9][0-9]*)?$")
+  message(FATAL_ERROR "Installed consumer must select an explicit published canonical Salts tag")
+endif()
+string(REGEX REPLACE "^v" "" _required_salts_version "$ENV{SALTS_CANONICAL_TAG}")
+file(STRINGS "${_salts_utils_salts_root}/salts-sdk-manifest.txt" _installed_salts_release
+     REGEX "^version=")
+if(NOT _installed_salts_release STREQUAL "version=${_required_salts_version}")
+  message(FATAL_ERROR "Installed Salts tag/package identity mismatch")
+endif()
+unset(_required_salts_version)
+unset(_installed_salts_release)
+
 
 # Runtime packages are selected explicitly by consumers of the VM bindings.
 if(NOT TARGET Lua::Lua)

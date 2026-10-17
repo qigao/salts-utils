@@ -2,6 +2,23 @@
 set -euo pipefail
 
 : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
+: "${SALTS_CANONICAL_TAG:?An explicit published Salts canonical release tag is required}"
+case "$SALTS_CANONICAL_TAG" in
+  v2.3.0-rc.*)
+    salts_version="${SALTS_CANONICAL_TAG#v}"
+    rc_number="${salts_version##*.}"
+    case "$rc_number" in
+      ''|*[!0-9]*) echo "Invalid Salts canonical RC tag" >&2; exit 1 ;;
+    esac
+    if [ "$rc_number" -le 17 ]; then
+      echo "Salts rc.17 and earlier do not export canonical ServiceHost/Configurator" >&2
+      exit 1
+    fi
+    ;;
+  v2.3.0) salts_version=2.3.0 ;;
+  *) echo "Unsupported canonical Salts tag: $SALTS_CANONICAL_TAG" >&2; exit 1 ;;
+esac
+
 
 salts_rid="${1:?Salts target RID is required}"
 re2c_rid="${2:?re2c host RID is required}"
@@ -37,26 +54,20 @@ cat > "$project" <<'EOF'
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
+    <PackageReference Include="Salts.Native" Version="[$(SaltsCanonicalVersion)]" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
 </Project>
 EOF
 
-restore_args=()
+# Bracketed NuGet exact version; never floating/latest or silent source fallback.
+restore_args=("-p:SaltsCanonicalVersion=$salts_version")
 if [ "$with_turbowasm" = "1" ]; then
   restore_args+=("-p:WithTurboWasm=true")
 fi
-if [ "${#restore_args[@]}" -gt 0 ]; then
-  dotnet restore "$project" --packages "$packages" --configfile "$config" \
-    --no-cache --force-evaluate "${restore_args[@]}"
-else
-  # macOS still ships Bash 3.2. Under `set -u`, expanding an empty array
-  # raises "unbound variable", so keep the zero-extra-argument path explicit.
-  dotnet restore "$project" --packages "$packages" --configfile "$config" \
-    --no-cache --force-evaluate
-fi
+dotnet restore "$project" --packages "$packages" --configfile "$config" \
+  --no-cache --force-evaluate "${restore_args[@]}"
 
 restored_package_dir() {
   python3 - "$restore_root/obj/project.assets.json" "$packages" "$1" <<'PY'
@@ -71,7 +82,11 @@ PY
 }
 
 salts_package="$(restored_package_dir Salts.Native)"
-salts_version="$(basename "$salts_package")"
+salts_package_version="$(basename "$salts_package")"
+[ "$salts_package_version" = "$salts_version" ] || {
+  echo "Restored wrong Salts package: $salts_package_version != $salts_version" >&2
+  exit 1
+}
 re2c_package="$(restored_package_dir Qigao.Re2c.Binary)"
 turbowasm_package=""
 if [ "$with_turbowasm" = "1" ]; then
@@ -88,6 +103,20 @@ fail() { printf 'native SDK restore error: %s\n' "$*" >&2; exit 1; }
 
 [ -f "$salts_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing SaltsConfig.cmake under $salts_root"
 [ -f "$salts_root/include/cmeta/function.h" ] || fail "missing CMeta function reflection under $salts_root"
+[ -f "$salts_root/include/salts/service_host.h" ] || fail "canonical Salts ServiceHost header absent"
+[ -f "$salts_root/include/salts/configurator.h" ] || fail "canonical Salts Configurator header absent"
+[ -f "$salts_root/include/salts/component_provider_abi.h" ] || fail "canonical ProviderABI header absent"
+[ ! -e "$salts_root/include/salts/component_plugin.h" ] || fail "obsolete ComponentPlugin runtime exported"
+[ ! -e "$salts_root/include/salts/component_plugin_abi.h" ] || fail "obsolete ComponentPlugin ABI exported"
+[ -f "$salts_root/salts-sdk-manifest.txt" ] || fail "canonical release provenance manifest absent"
+grep -Fxq "version=$salts_version" "$salts_root/salts-sdk-manifest.txt" || fail "Salts SDK release/version mismatch"
+for target in 'Salts::Configurator' 'Salts::ServiceHost' 'Salts::ComponentProviderABI' 'Salts::Unicode'; do
+  grep -Fq "$target" "$salts_root/lib/cmake/Salts/SaltsTargets.cmake" ||
+    fail "canonical Salts SDK missing exported $target"
+done
+! grep -Eq 'add_library\(Salts::Component(Plugin)? ' "$salts_root/lib/cmake/Salts/SaltsTargets.cmake" ||
+  fail "obsolete Component runtime CMake export detected"
+
 [ -f "$salts_host_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing host SaltsConfig.cmake under $salts_host_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_categories.re" ] || fail "missing unicode_categories.re under $re2c_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_properties.re" ] || fail "missing unicode_properties.re under $re2c_root"

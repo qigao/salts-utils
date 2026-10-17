@@ -1,6 +1,6 @@
 #include "contract_plugin.component.h"
 
-#include <salts/component_plugin.h>
+#include <salts/service_host.h>
 #include <salts/plugin.h>
 
 #include <stdio.h>
@@ -32,21 +32,21 @@ int main(void) {
   cmeta_plugin_registry registry = {0};
   cmeta_plugin_ref ref = {0};
   cmeta_plugin_lifecycle_info info = {0};
-  salts_component_plugin_generation generation = {0};
-  salts_component_plugin_runtime runtime = SALTS_COMPONENT_PLUGIN_RUNTIME_INIT;
-  salts_component_plugin_scope scope = SALTS_COMPONENT_PLUGIN_SCOPE_INIT;
-  salts_component_plugin_generation *previous = NULL;
-  salts_component_deployment deployments[1] = {0};
-  salts_component_instance instances[1] = {0};
+  salts_service_host_generation generation = {0};
+  salts_service_host_runtime runtime = SALTS_SERVICE_HOST_RUNTIME_INIT;
+  salts_service_host_scope scope = SALTS_SERVICE_HOST_SCOPE_INIT;
+  salts_service_host_generation *previous = NULL;
+  salts_configurator_deployment deployments[1] = {0};
+  salts_configurator_instance instances[1] = {0};
   salts_component_dependency dependencies[1] = {0};
   size_t order[1] = {0};
-  salts_component_plugin_module modules[1] = {0};
-  const salts_component_plugin_generation_storage storage = {
+  salts_service_host_module modules[1] = {0};
+  const salts_service_host_generation_storage storage = {
     deployments, 1u, instances, 1u, dependencies, 1u,
     order, 1u, modules, 1u
   };
-  salts_component_plugin_source source = {0};
-  salts_component_service service = {0};
+  salts_service_host_source source = {0};
+  salts_configurator_service service = {0};
   databind_11_WasmRuntime_4_Calc_3_Add__component_service port =
       databind_11_WasmRuntime_4_Calc_3_Add__component_service_bind(NULL, NULL);
   AddRequest request = {0};
@@ -60,9 +60,9 @@ int main(void) {
 
   source.plugin = ref;
   source.export_id = "component-provider";
-  REQUIRE(salts_component_plugin_generation_build(
+  REQUIRE(salts_service_host_generation_build(
       &generation, UINT64_C(1), &registry, &storage,
-      NULL, 0u, &source, 1u, NULL, 0u) == SALTS_COMPONENT_PLUGIN_OK);
+      NULL, 0u, &source, 1u, NULL, 0u) == SALTS_SERVICE_HOST_OK);
 
   REQUIRE(cmeta_interface_desc_valid(
       databind_11_WasmRuntime_4_Calc_3_Add__component_service_interface()));
@@ -92,15 +92,15 @@ int main(void) {
   REQUIRE(strcmp(generation.components.deployments[0]
       .provider->component->stable_id, "WasmRuntime.Calculator") == 0);
 
-  REQUIRE(salts_component_plugin_runtime_init(&runtime) ==
-      SALTS_COMPONENT_PLUGIN_OK);
-  REQUIRE(salts_component_plugin_runtime_publish(
-      &runtime, &generation, &previous) == SALTS_COMPONENT_PLUGIN_OK);
+  REQUIRE(salts_service_host_runtime_init(&runtime) ==
+      SALTS_SERVICE_HOST_OK);
+  REQUIRE(salts_service_host_runtime_publish(
+      &runtime, &generation, &previous) == SALTS_SERVICE_HOST_OK);
   REQUIRE(previous == NULL);
-  REQUIRE(salts_component_plugin_scope_acquire(
-      &runtime, &scope) == SALTS_COMPONENT_PLUGIN_OK);
-  REQUIRE(salts_component_plugin_scope_find_service(
-      &scope, iface, &service) == SALTS_COMPONENT_PLUGIN_OK);
+  REQUIRE(salts_service_host_scope_acquire(
+      &runtime, &scope) == SALTS_SERVICE_HOST_OK);
+  REQUIRE(salts_service_host_scope_find_service(
+      &scope, iface, &service) == SALTS_SERVICE_HOST_OK);
   REQUIRE(databind_11_WasmRuntime_4_Calc_3_Add__component_service_borrow_from_object(
       service.object, service.interfaces, &port) == CMETA_OK);
 
@@ -111,11 +111,11 @@ int main(void) {
   REQUIRE(response.sum == 11u);
   REQUIRE(response.product == 30u);
 
-  REQUIRE(salts_component_plugin_runtime_close(
-      &runtime, &previous) == SALTS_COMPONENT_PLUGIN_OK);
+  REQUIRE(salts_service_host_runtime_close(
+      &runtime, &previous) == SALTS_SERVICE_HOST_OK);
   REQUIRE(previous == &generation);
-  REQUIRE(salts_component_plugin_generation_drain(
-      &runtime, previous) == SALTS_COMPONENT_PLUGIN_BUSY);
+  REQUIRE(salts_service_host_generation_drain(
+      &runtime, previous) == SALTS_SERVICE_HOST_BUSY);
   REQUIRE(cmeta_plugin_registry_get_lifecycle(
       &registry, ref, &info) == CMETA_PLUGIN_OK);
   REQUIRE(info.active_leases == 1u);
@@ -125,12 +125,12 @@ int main(void) {
       &registry, ref) == CMETA_PLUGIN_BUSY);
 
   /* A caller-owned borrowed view must expire before the DSO is retired. */
-  REQUIRE(salts_component_plugin_scope_release(&scope) ==
-      SALTS_COMPONENT_PLUGIN_OK);
-  REQUIRE(salts_component_plugin_generation_drain(
-      &runtime, previous) == SALTS_COMPONENT_PLUGIN_OK);
-  REQUIRE(salts_component_plugin_runtime_destroy(&runtime) ==
-      SALTS_COMPONENT_PLUGIN_OK);
+  REQUIRE(salts_service_host_scope_release(&scope) ==
+      SALTS_SERVICE_HOST_OK);
+  REQUIRE(salts_service_host_generation_drain(
+      &runtime, previous) == SALTS_SERVICE_HOST_OK);
+  REQUIRE(salts_service_host_runtime_destroy(&runtime) ==
+      SALTS_SERVICE_HOST_OK);
   REQUIRE(cmeta_plugin_registry_get_lifecycle(
       &registry, ref, &info) == CMETA_PLUGIN_OK);
   REQUIRE(info.active_leases == 0u);
