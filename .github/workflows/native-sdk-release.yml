@@ -191,7 +191,7 @@ jobs:
           echo "release $TAG already exists for this release identity"
         fi
 
-        .github/scripts/verify-release-asset-identity.sh \
+        bash .github/scripts/verify-release-asset-identity.sh \
           "$TAG" "$VERSION" "dist/SaltsUtils.Native.$VERSION.nupkg" \
           "$GITHUB_REPOSITORY" "$RUNNER_TEMP"
     - name: Publish to GitHub Packages
