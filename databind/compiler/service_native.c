@@ -648,7 +648,7 @@ static int native_emit_error_variant_helpers(
             field->native_data_symbol, field->member_name) < 0)
       return -1;
     if (native_emit_error_restore_sequence(
-            file, error, i, "payload", "cleanup_status", "    ") != 0)
+            file, error, i + 1u, "payload", "cleanup_status", "    ") != 0)
       return -1;
     if (fputs(
             "    if (cleanup_status == DATA_BIND_OK)\n"
