@@ -427,6 +427,11 @@ int main(int argc, char **argv) {
               "service-native-codegen: cleanup helper definition markers missing/order invalid\\n");
       goto cleanup_policy_done;
     }
+    if (strstr(init, "cmeta_data_value_restore_zero(&stl_byte_buffer_cmeta_data, payload->payload)") == NULL ||
+        strstr(init, "cmeta_data_value_restore_zero(&cmeta_tstr_cmeta_data, payload->detail)") == NULL) {
+      fprintf(stderr, "service-native-codegen: failed-field rollback missing\\n");
+      goto cleanup_policy_done;
+    }
     if (strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL) {
       fprintf(stderr, "service-native-codegen: cleanup status declaration missing\\n");
       goto cleanup_policy_done;
