@@ -399,8 +399,8 @@ int main(int argc, char **argv) {
 
     generated = tmpfile();
     if (generated == NULL ||
-        databind_compiler_service_native_emit_reflection(
-            generated, &cleanup_ir.operations[0], 1) != 0 ||
+        databind_compiler_service_native_emit_prototype(
+            generated, &cleanup_ir.operations[0]) != 0 ||
         (text = read_stream_text(generated)) == NULL) {
       fprintf(stderr,
               "service-native-codegen: managed cleanup source emit failed\n");
