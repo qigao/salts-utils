@@ -56,10 +56,16 @@ export GITHUB_REPOSITORY="qigao/salts-utils"
 export MOCK_RELEASE_PACKAGE="$package"
 
 run_guard() {
-  bash "$helper" "v4.3.0" "4.3.0" "$package" "$GITHUB_REPOSITORY" "$tmp/runner" >/dev/null 2>&1
+  bash "$helper" "v4.3.0" "4.3.0" "$package" "$GITHUB_REPOSITORY" "$tmp/runner"
 }
 expect_success() {
-  if ! run_guard; then echo "expected success: $*" >&2; exit 1; fi
+  expected_state="$1"
+  shift
+  if ! output="$(run_guard 2>/dev/null)"; then echo "expected success: $*" >&2; exit 1; fi
+  if [[ "$output" != "$expected_state" ]]; then
+    echo "expected $expected_state, got $output: $*" >&2
+    exit 1
+  fi
 }
 expect_failure() {
   if run_guard; then echo "expected failure: $*" >&2; exit 1; fi
@@ -68,7 +74,7 @@ expect_failure() {
 # A not-yet-created release is allowed to proceed.
 export MOCK_RELEASE_EXISTS=false
 export MOCK_RELEASE_VIEW_ERROR=false
-expect_success "new release"
+expect_success "RELEASE_EXISTS=false" "new release"
 
 # A transient/authentication/API error must fail closed, not masquerade as a new release.
 export MOCK_RELEASE_VIEW_ERROR=true
@@ -79,7 +85,7 @@ export MOCK_RELEASE_VIEW_ERROR=false
 export MOCK_RELEASE_EXISTS=true
 export MOCK_ASSET_COUNT=1
 export MOCK_RELEASE_PACKAGE="$package"
-expect_success "identical existing asset"
+expect_success "RELEASE_EXISTS=true" "identical existing asset"
 
 # Missing, duplicate, and changed assets must fail before package publication.
 export MOCK_ASSET_COUNT=0
