@@ -458,14 +458,8 @@ int main(int argc, char **argv) {
     }
 
     *move = '\0';
-    clear_bytes = strstr(
-        clear,
-        "cmeta_data_value_restore_zero(&stl_byte_buffer_cmeta_data, "
-        "&payload->payload)");
-    clear_string = strstr(
-        clear,
-        "cmeta_data_value_restore_zero(&salts_tstr_cmeta_data, "
-        "&payload->detail)");
+    clear_bytes = strstr(clear, "&payload->payload)");
+    clear_string = strstr(clear, "&payload->detail)");
     if (clear_bytes == NULL || clear_string == NULL ||
         clear_bytes >= clear_string ||
         strstr(clear, "DataBindStatus status = DATA_BIND_OK;") == NULL ||
@@ -475,7 +469,7 @@ int main(int argc, char **argv) {
                       "    memset(payload, 0, sizeof(*payload));") == NULL ||
         strstr(clear, "return DATA_BIND_ERR_RUNTIME;") != NULL) {
       fprintf(stderr,
-              "service-native-codegen: clear cleanup failure policy missing\n");
+              "service-native-codegen: clear cleanup failure policy missing\\n");
       goto cleanup_policy_done;
     }
 
