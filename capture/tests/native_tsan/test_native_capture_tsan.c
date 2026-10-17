@@ -263,6 +263,78 @@ static int test_held_native_callback_stop_barrier(const char *exact_id) {
   puts("PASS original source-Tsan Capture blocked callback forces concurrent stop/join");
   return 0;
 }
+/* Destroying an ACTIVE Capture must close admission and synchronously join
+ * the same real miniaudio callback even when the caller did NOT stop first.
+ * Keep the test-owned user_data live until the destroy thread has joined. */
+static void *destroy_owner(void *arg) {
+  held_callback_t *h = arg;
+  atomic_store_explicit(&h->stop_entered, 1, memory_order_release);
+  salts_capture_destroy(h->borrowed_device);
+  atomic_store_explicit(&h->stop_returned, 1, memory_order_release);
+  return NULL;
+}
+
+static int test_held_native_callback_destroy_barrier(const char *exact_id) {
+  salts_audio_capture_config_t fmt = audio_format();
+  salts_capture_t *cap = salts_audio_capture_create(exact_id, &fmt);
+  CHECK(cap != NULL);
+  held_callback_t h = {0};
+  h.borrowed_device = cap;
+  CHECK(pthread_mutex_init(&h.lock, NULL) == 0);
+  CHECK(pthread_cond_init(&h.gate, NULL) == 0);
+  atomic_init(&h.callback_exited, 0);
+  atomic_init(&h.stop_entered, 0);
+  atomic_init(&h.stop_returned, 0);
+  atomic_init(&h.timeout, 0);
+  atomic_init(&h.callbacks, 0u);
+  salts_audio_capture_set_callback(cap, held_pcm, &h);
+  CHECK(salts_capture_start(cap) == SALTS_CAPTURE_OK);
+
+  struct timespec deadline = {0};
+  CHECK(clock_gettime(CLOCK_REALTIME, &deadline) == 0);
+  deadline.tv_sec += 7;
+  CHECK(pthread_mutex_lock(&h.lock) == 0);
+  while (!h.entered) {
+    if (pthread_cond_timedwait(&h.gate, &h.lock, &deadline) != 0) {
+      (void)pthread_mutex_unlock(&h.lock);
+      CHECK(0 && "native callback did not enter pre-destroy gate");
+    }
+  }
+  CHECK(pthread_mutex_unlock(&h.lock) == 0);
+  CHECK(atomic_load_explicit(&h.callback_exited, memory_order_acquire) == 0);
+
+  pthread_t destroyer;
+  CHECK(pthread_create(&destroyer, NULL, destroy_owner, &h) == 0);
+  const uint64_t limit = now_ms() + 1000u;
+  while (!atomic_load_explicit(&h.stop_entered, memory_order_acquire)) {
+    CHECK(now_ms() < limit);
+    nap_ms(POLL_MS);
+  }
+  nap_ms(40);
+  const int premature = atomic_load_explicit(
+      &h.stop_returned, memory_order_acquire);
+  CHECK(pthread_mutex_lock(&h.lock) == 0);
+  h.release = 1; /* release even if destroy returned too early */
+  CHECK(pthread_cond_broadcast(&h.gate) == 0);
+  CHECK(pthread_mutex_unlock(&h.lock) == 0);
+  CHECK(pthread_join(destroyer, NULL) == 0);
+
+  CHECK(premature == 0);
+  CHECK(atomic_load_explicit(&h.callback_exited, memory_order_acquire) == 1);
+  CHECK(atomic_load_explicit(&h.stop_returned, memory_order_acquire) == 1);
+  CHECK(atomic_load_explicit(&h.timeout, memory_order_acquire) == 0);
+  const unsigned settled = atomic_load_explicit(
+      &h.callbacks, memory_order_acquire);
+  CHECK(settled >= 1u);
+  nap_ms(40);
+  CHECK(atomic_load_explicit(&h.callbacks, memory_order_acquire) == settled);
+  CHECK(pthread_cond_destroy(&h.gate) == 0);
+  CHECK(pthread_mutex_destroy(&h.lock) == 0);
+  /* cap is already destroyed; neither this thread nor callback may touch it. */
+  puts("PASS active Capture destroy waits for blocked native callback join");
+  return 0;
+}
+
 static int test_invalid_exact_device_rejects(void) {
   salts_audio_capture_config_t bad = {12345, 1, 16, 20};
   salts_audio_capture_config_t valid = audio_format();
@@ -278,6 +350,7 @@ int main(void) {
   CHECK(test_real_callback_start_stop(id) == 0);
   CHECK(test_same_device_restart(id) == 0);
   CHECK(test_held_native_callback_stop_barrier(id) == 0);
+  CHECK(test_held_native_callback_destroy_barrier(id) == 0);
   puts("PASS self-contained SaltsUtils source-Tsan native callback regression");
   return 0;
 }

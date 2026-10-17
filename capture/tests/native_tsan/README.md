@@ -41,10 +41,14 @@ recorded or persisted.
   blocked until the callback has been explicitly released and joined,
   or the test fails. The callback has a deadline which releases it on
   timeout to avoid unsafe forced destruction.
+- An **active Capture owner can be destroyed without a prior explicit stop**:
+  the real native callback is held in-flight while another thread destroys
+  the device. Destroy must remain blocked until callback release and join,
+  with zero post-destroy callbacks and no borrowed owner use afterward.
 - Invalid PCM and unknown explicit device IDs fail closed without an
   implicit system/default-device fallback.
 
-The workflow repeats the test **12 times**, checks all five exact test
+The workflow repeats the test **12 times**, checks all six exact test
 markers, and requires the same executable to import its **own
 source-built `libsalts_capture.so`** rather than the uninstrumented
 published SDK image. `__tsan_init` must be present in the native DSO.
