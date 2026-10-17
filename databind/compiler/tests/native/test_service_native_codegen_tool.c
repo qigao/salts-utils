@@ -429,12 +429,21 @@ int main(int argc, char **argv) {
               "service-native-codegen: cleanup helper definition markers missing/order invalid\\n");
       goto cleanup_policy_done;
     }
-    init_bytes = strstr(init, "cmeta_data_value_restore_zero(&stl_byte_buffer_cmeta_data, &payload->payload)");
-    init_string = strstr(init, "cmeta_data_value_restore_zero(&cmeta_tstr_cmeta_data, &payload->detail)");
-    if (init_bytes == NULL || init_string == NULL ||
-        init_bytes >= init_string || init_bytes >= clear || init_string >= clear) {
-      fprintf(stderr, "service-native-codegen: failed-field rollback order missing\\n");
-      goto cleanup_policy_done;
+    {
+      char *first_restore = strstr(init, "cmeta_data_value_restore_zero(");
+      char *bytes_member = first_restore != NULL
+          ? strstr(first_restore, "&payload->payload)") : NULL;
+      char *next_restore = bytes_member != NULL
+          ? strstr(bytes_member, "cmeta_data_value_restore_zero(") : NULL;
+      char *string_member = next_restore != NULL
+          ? strstr(next_restore, "&payload->detail)") : NULL;
+      if (first_restore == NULL || bytes_member == NULL ||
+          next_restore == NULL || string_member == NULL ||
+          first_restore >= clear || bytes_member >= clear ||
+          next_restore >= clear || string_member >= clear) {
+        fprintf(stderr, "service-native-codegen: failed-field rollback order missing\\n");
+        goto cleanup_policy_done;
+      }
     }
     if (strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL) {
       fprintf(stderr, "service-native-codegen: cleanup status declaration missing\\n");
