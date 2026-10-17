@@ -168,6 +168,7 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         TAG: ${{ needs.metadata.outputs.tag }}
+        VERSION: ${{ needs.metadata.outputs.version }}
         RELEASE_SHA: ${{ needs.metadata.outputs.release_sha }}
       run: |
         set -euo pipefail
