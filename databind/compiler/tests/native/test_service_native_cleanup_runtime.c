@@ -29,4 +29,18 @@ suite("DataBind typed-error cleanup runtime failure") {
         CMETA_OK);
     check_true(detail_zero);
   }
+
+  it("reports cleanup failure from clear without skipping the remaining field") {
+    MultiError_t payload = {0};
+    bool detail_zero = false;
+    DataBindStatus status =
+        databind_12_CleanupError_5_Store_4_Read__error_1_clear(&payload);
+
+    check_equal(status, DATA_BIND_ERR_RUNTIME);
+    check_equal(
+        cmeta_data_value_is_zero(
+            &cmeta_tstr_cmeta_data, &payload.detail, &detail_zero),
+        CMETA_OK);
+    check_true(detail_zero);
+  }
 }
