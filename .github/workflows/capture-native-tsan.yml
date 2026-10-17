@@ -1,0 +1,91 @@
+name: Capture original-source TSan on private PulseAudio monitor
+'on':
+  pull_request:
+    paths:
+      - 'capture/**'
+      - '.github/workflows/capture-native-tsan.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-capture-source-tsan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TSAN_OPTIONS: halt_on_error=1:exitcode=66:history_size=7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Pin reviewed upstream miniaudio 0.11.22 native source
+        uses: actions/checkout@v4
+        with:
+          repository: mackron/miniaudio
+          ref: 0.11.22
+          path: build/pinned-capture-tsan-miniaudio
+          persist-credentials: false
+      - name: Check exact miniaudio and original Linux Capture source identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C build/pinned-capture-tsan-miniaudio describe --tags --exact-match)" = '0.11.22'
+          test -f build/pinned-capture-tsan-miniaudio/miniaudio.h
+          test -f capture/src/capture_audio_miniaudio.c
+          test -f capture/src/capture_linux.c
+          test -f capture/src/capture_video.c
+          test -f capture/src/capture_video_linux.c
+          test -f capture/src/capture_screen_linux.c
+          grep -Fq 'callback_admitted' capture/src/capture_audio_miniaudio.c
+          ! grep -Fq 'ctx->capture->state != SALTS_CAPTURE_STATE_RUNNING' \
+            capture/src/capture_audio_miniaudio.c
+      - name: Restore explicit released Salts.Native SDK and native OS dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build unzip libpipewire-0.3-dev pkg-config \
+            libx11-dev libxext-dev pulseaudio pulseaudio-utils libpulse0
+          mkdir -p "$RUNNER_TEMP/capture-tsan-dep"
+          curl --fail --location --silent --show-error --retry 3 \
+            --connect-timeout 25 --max-time 240 \
+            --proto '=https' --proto-redir '=https' \
+            https://github.com/qigao/salts/releases/download/v2.3.0-rc.16/Salts.Native.2.3.0-rc.16.nupkg \
+            --output "$RUNNER_TEMP/capture-tsan-dep/Salts.Native.2.3.0-rc.16.nupkg"
+          mkdir -p "$RUNNER_TEMP/capture-tsan-salts"
+          unzip -q "$RUNNER_TEMP/capture-tsan-dep/Salts.Native.2.3.0-rc.16.nupkg" \
+            -d "$RUNNER_TEMP/capture-tsan-salts"
+          echo "SALTS_ROOT=$RUNNER_TEMP/capture-tsan-salts/sdk/linux-x64" >> "$GITHUB_ENV"
+          test -f "$RUNNER_TEMP/capture-tsan-salts/sdk/linux-x64/lib/cmake/Salts/SaltsConfig.cmake"
+          test -f "$RUNNER_TEMP/capture-tsan-salts/sdk/linux-x64/include/salts/spsc_ring.h"
+      - name: Compile full original Linux Capture and miniaudio under ThreadSanitizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S capture/tests/native_tsan -B build/original-capture-native-tsan -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
+            "-DNATIVE_TSAN_MINIAUDIO_ROOT=$GITHUB_WORKSPACE/build/pinned-capture-tsan-miniaudio" \
+            "-DCMAKE_C_FLAGS=-fsanitize=thread -fno-omit-frame-pointer -g -O1" \
+            "-DCMAKE_CXX_FLAGS=-fsanitize=thread -fno-omit-frame-pointer -g -O1" \
+            -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread \
+            -DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=thread
+          cmake --build build/original-capture-native-tsan \
+            --target salts_capture_native_tsan_regression --parallel 2
+          test -f build/original-capture-native-tsan/libsalts_capture.so
+          test -x build/original-capture-native-tsan/salts_capture_native_tsan_regression
+          nm -D build/original-capture-native-tsan/libsalts_capture.so | grep -F '__tsan_init'
+      - name: Real native Capture callback and forced stop/join 12x, no suppression
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash capture/tests/native_tsan/run_private_pulse.sh \
+            build/original-capture-native-tsan
+      - name: Verify no user device, model, or source rewrite
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git diff --name-only -- capture/src)"
+          test "$(git -C build/pinned-capture-tsan-miniaudio describe --tags --exact-match)" = '0.11.22'
+          ! grep -E 'ma_device_init|fallback_audio_device|cloud_asr' \
+            capture/tests/native_tsan/test_native_capture_tsan.c
+          echo 'PASS original production Capture source unmodified, native TSan gate only'
