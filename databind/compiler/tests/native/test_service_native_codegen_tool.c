@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
   databind_compiler_service_native_ir ir = {0};
   int status = 1;
 
-  if (argc != 8) {
+  if (argc != 10) {
     fprintf(stderr,
             "usage: %s <schema> <service.h> <service.c> <native-header> <overlay-schema> <owned-error-reject-schema> <cleanup-error-schema>\n",
             argc > 0 ? argv[0] : "service-native-codegen");
@@ -497,6 +497,14 @@ int main(int argc, char **argv) {
     }
 
     *move = '\0';
+    if (!write_header(argv[8], "service_native_cleanup_records.h",
+                      &cleanup_ir) ||
+        !write_source(argv[9], "service_native_cleanup_generated.h",
+                      &cleanup_ir)) {
+      fprintf(stderr,
+              "service-native-codegen: failed to emit executable cleanup fixture\\n");
+      goto cleanup_policy_done;
+    }
     clear_bytes = strstr(clear, "&payload->payload)");
     clear_string = strstr(clear, "&payload->detail)");
     if (clear_bytes == NULL || clear_string == NULL ||
