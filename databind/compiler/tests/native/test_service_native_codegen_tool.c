@@ -378,6 +378,9 @@ int main(int argc, char **argv) {
     char *init = NULL;
     char *clear = NULL;
     char *move = NULL;
+    char init_marker[512];
+    char clear_marker[512];
+    char move_marker[512];
     char *clear_bytes = NULL;
     char *clear_string = NULL;
 
@@ -404,9 +407,21 @@ int main(int argc, char **argv) {
       goto cleanup_policy_done;
     }
 
-    init = strstr(text, "__error_1_init(");
-    clear = strstr(text, "__error_1_clear(");
-    move = clear != NULL ? strstr(clear, "__error_1_move(") : NULL;
+    if (snprintf(init_marker, sizeof(init_marker),
+                 "static inline DataBindStatus %s__error_1_init(",
+                 cleanup_ir.operations[0].symbol) < 0 ||
+        snprintf(clear_marker, sizeof(clear_marker),
+                 "static inline DataBindStatus %s__error_1_clear(",
+                 cleanup_ir.operations[0].symbol) < 0 ||
+        snprintf(move_marker, sizeof(move_marker),
+                 "static inline DataBindStatus %s__error_1_move(",
+                 cleanup_ir.operations[0].symbol) < 0) {
+      fprintf(stderr, "service-native-codegen: cleanup markers failed\\n");
+      goto cleanup_policy_done;
+    }
+    init = strstr(text, init_marker);
+    clear = strstr(text, clear_marker);
+    move = clear != NULL ? strstr(clear, move_marker) : NULL;
     if (init == NULL || clear == NULL || move == NULL || init >= clear ||
         strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL ||
         strstr(init, "cleanup_status = DATA_BIND_ERR_RUNTIME;") == NULL ||
