@@ -49,7 +49,7 @@ export GITHUB_REPOSITORY="qigao/salts-utils"
 export MOCK_RELEASE_PACKAGE="$package"
 
 run_guard() {
-  "$helper" "v4.3.0" "4.3.0" "$package" "$GITHUB_REPOSITORY" "$tmp/runner" >/dev/null 2>&1
+  bash "$helper" "v4.3.0" "4.3.0" "$package" "$GITHUB_REPOSITORY" "$tmp/runner" >/dev/null 2>&1
 }
 expect_success() {
   if ! run_guard; then echo "expected success: $*" >&2; exit 1; fi
