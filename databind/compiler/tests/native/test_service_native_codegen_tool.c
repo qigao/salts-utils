@@ -430,20 +430,36 @@ int main(int argc, char **argv) {
       goto cleanup_policy_done;
     }
     {
-      char *first_restore = strstr(init, "cmeta_data_value_restore_zero(");
-      char *bytes_member = first_restore != NULL
-          ? strstr(first_restore, "&payload->payload)") : NULL;
-      char *bytes_end = first_restore != NULL
-          ? strstr(first_restore, ") != CMETA_OK") : NULL;
-      char *next_restore = bytes_end != NULL
+      char *restore_scan = init;
+      char *bytes_restore = NULL;
+      char *bytes_member = NULL;
+      char *bytes_end = NULL;
+      char *next_restore = NULL;
+      char *string_member = NULL;
+      char *string_end = NULL;
+      while ((restore_scan = strstr(restore_scan,
+                                    "cmeta_data_value_restore_zero(")) != NULL &&
+             restore_scan < clear) {
+        char *call_end = strstr(restore_scan, ") != CMETA_OK");
+        char *member = strstr(restore_scan, "&payload->payload)");
+        if (call_end == NULL || call_end >= clear) break;
+        if (member != NULL && member < call_end) {
+          bytes_restore = restore_scan;
+          bytes_member = member;
+          bytes_end = call_end;
+          break;
+        }
+        restore_scan = call_end + strlen(") != CMETA_OK");
+      }
+      next_restore = bytes_end != NULL
           ? strstr(bytes_end, "cmeta_data_value_restore_zero(") : NULL;
-      char *string_member = next_restore != NULL
+      string_member = next_restore != NULL
           ? strstr(next_restore, "&payload->detail)") : NULL;
-      char *string_end = next_restore != NULL
+      string_end = next_restore != NULL
           ? strstr(next_restore, ") != CMETA_OK") : NULL;
-      if (first_restore == NULL || bytes_member == NULL || bytes_end == NULL ||
+      if (bytes_restore == NULL || bytes_member == NULL || bytes_end == NULL ||
           next_restore == NULL || string_member == NULL || string_end == NULL ||
-          first_restore >= bytes_member || bytes_member >= bytes_end ||
+          bytes_restore >= bytes_member || bytes_member >= bytes_end ||
           bytes_end >= next_restore || next_restore >= string_member ||
           string_member >= string_end || string_end >= clear) {
         fprintf(stderr, "service-native-codegen: failed-field rollback order missing\\n");
