@@ -930,7 +930,6 @@ int databind_compiler_service_native_emit_prototype(
           "int %s(const %s_t *request, %s_t *response, %s__error *error);\n",
           operation->symbol,
           operation->symbol,
-          operation->symbol,
           operation->request_type,
           operation->response_type,
           operation->symbol) < 0)
