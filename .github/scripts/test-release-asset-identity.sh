@@ -14,7 +14,14 @@ cat > "$tmp/bin/gh" <<'MOCK_GH'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "$1" == release && "$2" == view ]]; then
-  if [[ "${MOCK_RELEASE_EXISTS:-false}" != true ]]; then exit 1; fi
+  if [[ "${MOCK_RELEASE_VIEW_ERROR:-false}" == true ]]; then
+    echo "API unavailable" >&2
+    exit 1
+  fi
+  if [[ "${MOCK_RELEASE_EXISTS:-false}" != true ]]; then
+    echo "release not found" >&2
+    exit 1
+  fi
   if [[ " $* " == *" --json assets "* ]]; then
     case "${MOCK_ASSET_COUNT:-1}" in
       0) printf '{"assets":[]}\n' ;;
@@ -60,7 +67,13 @@ expect_failure() {
 
 # A not-yet-created release is allowed to proceed.
 export MOCK_RELEASE_EXISTS=false
+export MOCK_RELEASE_VIEW_ERROR=false
 expect_success "new release"
+
+# A transient/authentication/API error must fail closed, not masquerade as a new release.
+export MOCK_RELEASE_VIEW_ERROR=true
+expect_failure "release lookup error"
+export MOCK_RELEASE_VIEW_ERROR=false
 
 # An existing immutable asset is idempotent only when its bytes match.
 export MOCK_RELEASE_EXISTS=true
