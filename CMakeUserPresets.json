@@ -608,6 +608,16 @@
                 "BUILD_BENCHMARKS": true,
                 "CMAKE_SUPPRESS_REGENERATION": true
             }
+        },
+        {
+            "name": "ci-unicode-candidate-user",
+            "inherits": "ci-native-release-user",
+            "description": "Unicode cutover: build and test the full graph, then install beside its isolated Salts candidate.",
+            "cacheVariables": {
+                "BUILD_EXAMPLES": false,
+                "BUILD_BENCHMARKS": false,
+                "CMAKE_INSTALL_PREFIX": "$env{SALTS_ROOT}"
+            }
         }
     ],
     "buildPresets": [
@@ -944,6 +954,17 @@
             "targets": [
                 "install"
             ]
+        },
+        {
+            "name": "ci-unicode-candidate-user",
+            "configurePreset": "ci-unicode-candidate-user"
+        },
+        {
+            "name": "install-ci-unicode-candidate-user",
+            "configurePreset": "ci-unicode-candidate-user",
+            "targets": [
+                "install"
+            ]
         }
     ],
     "testPresets": [
@@ -1044,6 +1065,11 @@
             "execution": {
                 "noTestsAction": "error"
             }
+        },
+        {
+            "name": "ci-unicode-candidate-user",
+            "inherits": "ci-native-release-user",
+            "configurePreset": "ci-unicode-candidate-user"
         }
     ]
 }

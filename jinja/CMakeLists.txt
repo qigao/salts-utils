@@ -84,6 +84,11 @@ target_include_directories(
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
           ${CMAKE_CURRENT_SOURCE_DIR}/src/parser
           ${CMAKE_CURRENT_BINARY_DIR})
+# Unicode is owned by the released Salts SDK, not by SaltsUtils.
+# Fail fast rather than resurrecting a local copy or silently changing behavior.
+if(NOT TARGET Salts::Unicode)
+  message(FATAL_ERROR "Jinja requires Salts::Unicode from the installed Salts SDK")
+endif()
 target_link_libraries(jinja_cmeta
   PUBLIC Salts::CMeta Salts::Core
   PRIVATE Salts::Unicode Salts::CSTL)

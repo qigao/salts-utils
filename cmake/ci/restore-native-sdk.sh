@@ -37,7 +37,10 @@ cat > "$project" <<'EOF'
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
+    <!-- The latest Salts 2.3 RC/GA family is required for Salts::Unicode.
+         NuGet Version="*" skips prereleases and incorrectly restores old 2.2.
+         This is a floating family, never an exact candidate pin. -->
+    <PackageReference Include="Salts.Native" Version="2.3.0-*" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -88,6 +91,8 @@ fail() { printf 'native SDK restore error: %s\n' "$*" >&2; exit 1; }
 
 [ -f "$salts_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing SaltsConfig.cmake under $salts_root"
 [ -f "$salts_root/include/cmeta/function.h" ] || fail "missing CMeta function reflection under $salts_root"
+grep -Fq 'Salts::Unicode' "$salts_root/lib/cmake/Salts/SaltsTargets.cmake" ||
+  fail "released Salts.Native 2.3 SDK must export Salts::Unicode; no local owner fallback"
 [ -f "$salts_host_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing host SaltsConfig.cmake under $salts_host_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_categories.re" ] || fail "missing unicode_categories.re under $re2c_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_properties.re" ] || fail "missing unicode_properties.re under $re2c_root"

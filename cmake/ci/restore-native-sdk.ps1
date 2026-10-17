@@ -29,7 +29,8 @@ New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
+    <!-- Float latest 2.3 RC/GA: '*' alone silently selects old stable 2.2. -->
+    <PackageReference Include="Salts.Native" Version="2.3.0-*" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -65,6 +66,11 @@ $required = @(
 foreach ($path in $required) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "missing restored SDK file: $path" }
 }
+$saltsTargets = Join-Path $saltsRoot "lib\cmake\Salts\SaltsTargets.cmake"
+if (-not (Select-String -LiteralPath $saltsTargets -SimpleMatch "Salts::Unicode" -Quiet)) {
+  throw "released Salts.Native 2.3 SDK must export Salts::Unicode; no local owner fallback"
+}
+
 & (Join-Path $re2cRoot "bin\re2c.exe") --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "restored re2c executable cannot run" }
 
