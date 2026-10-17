@@ -44,8 +44,10 @@ projection and produce zero partial files.
 
 The separate tagged-SDK conformance workflow can be run **only when a real
 published tag is supplied**. It restores that exact Salts.Native package
-with no wildcard and executes independent Linux, macOS arm64 and Windows MSVC
-real DSO tests. An unset or unpublished tag cannot be interpreted as success
+with no wildcard and first executes the independent Linux installed-SDK
+C11/C++17 real DSO gate. Windows MSVC, macOS arm64 and Android/iOS published
+SDK gates remain open and must be added/qualified against the same actual
+release tag before production cutover. An unset or unpublished tag cannot be interpreted as success
 and is **not** replaced by a checkout of the untagged Salts master.
 
 Current tag publication is upstream-controlled; this Draft does **not**

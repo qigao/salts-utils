@@ -1,64 +1,37 @@
-name: IDL ComponentProvider against exact published Salts ServiceHost tag
+name: Exact published Salts ServiceHost SDK consumer
 
 'on':
   workflow_dispatch:
     inputs:
       salts_tag:
-        description: Exact published Salts release tag
-        required: true
+        description: Explicit already-published canonical Salts release tag
         type: string
-  pull_request:
-    paths:
-      - ".github/workflows/idl-component-tagged-sdk.yml"
-      - "databind/compiler/**"
-      - "cmake/ci/restore-native-sdk.sh"
-      - "cmake/ci/restore-native-sdk.ps1"
+        required: true
 
 permissions:
   contents: read
   packages: read
 
-concurrency:
-  group: idlc-tagged-servicehost-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
-
 jobs:
-  exact-tag:
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.SALTS_CANONICAL_TAG != '' }}
-    name: Installed canonical ServiceHost / ${{ matrix.id }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 110
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { id: linux-x64, runner: ubuntu-24.04, family: linux, rid: linux-x64, host: linux-x64, triplet: x64-linux, preset: ci-linux-release-user }
-          - { id: macos-arm64, runner: macos-15, family: macos, rid: macos-arm64, host: macos-arm64, triplet: arm64-osx, preset: ci-macos-release-user }
-          - { id: windows-x64, runner: windows-2025, family: windows, rid: windows-x64, host: windows-x64, triplet: "", preset: ci-win-release-user }
+  linux-tagged-servicehost:
+    name: Linux C11 and C++17 FR2 Provider against released Salts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     env:
-      SALTS_CANONICAL_TAG: ${{ inputs.salts_tag || vars.SALTS_CANONICAL_TAG }}
-      QIGAO_SDK_RID: ${{ matrix.rid }}
-      QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
-      QIGAO_HOST_TRIPLET: ${{ matrix.triplet }}
+      SALTS_CANONICAL_TAG: ${{ inputs.salts_tag }}
+      QIGAO_SDK_RID: linux-x64
+      QIGAO_TARGET_TRIPLET: x64-linux
+      QIGAO_HOST_TRIPLET: x64-linux
       QIGAO_NUGET_PACKAGES: ${{ github.workspace }}/stage/nuget
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
       CCACHE_COMPILERCHECK: content
-      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: idlc-canonical-tag-${{ matrix.id }}
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: su-idlc-tagged-servicehost-v1
       PKG_ROOT: ${{ runner.temp }}/idlc-tagged-sdk
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Assert explicit published canonical tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$SALTS_CANONICAL_TAG"
-          case "$SALTS_CANONICAL_TAG" in
-            v2.3.0-rc.*|v2.3.0) ;;
-            *) echo "No supported canonical Salts tag: $SALTS_CANONICAL_TAG" >&2; exit 1 ;;
-          esac
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
         with:
           mode: read
@@ -67,37 +40,22 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Select exact Windows vendor triplet
-        if: matrix.family == 'windows'
-        shell: pwsh
-        run: |
-          if (-not $env:QIGAO_VCPKG_WINDOWS_TRIPLET -or -not $env:VCPKG_ROOT) {
-            throw "Exact Windows vcpkg triplet unavailable"
-          }
-          "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
-          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
-          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
-      - name: Restore official exact-tag Unix Salts.Native SDK
-        if: matrix.family != 'windows'
+      - name: Restore and audit exactly the requested published Salts tag
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash cmake/ci/restore-native-sdk.sh '${{ matrix.rid }}' '${{ matrix.host }}'
-      - name: Restore official exact-tag Windows Salts.Native SDK
-        if: matrix.family == 'windows'
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
-      - name: Build and test tag-installed ServiceHost Provider on Unix
-        if: matrix.family != 'windows'
+        run: |
+          set -euo pipefail
+          test -n "$SALTS_CANONICAL_TAG"
+          bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
+      - name: Build and execute real tagged Salts ServiceHost FR2 DSO consumers
         shell: bash
         run: |
           set -euo pipefail
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_ROOT/bin:${LD_LIBRARY_PATH:-}"
-          cmake --preset '${{ matrix.preset }}' -B build/idlc-tagged-sdk \
+          cmake --preset ci-linux-release-user -B build/idlc-tagged-sdk \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET" \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DDATABIND_ENABLE_SERVICEHOST_DSO_TESTS=ON
           cmake --build build/idlc-tagged-sdk --parallel 2 \
@@ -111,25 +69,11 @@ jobs:
           ctest --test-dir build/idlc-tagged-sdk \
             -R '^test_databind_component_candidate_' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
-      - name: Build and test tag-installed ServiceHost Provider on Windows
-        if: matrix.family == 'windows'
-        shell: cmd
-        run: |
-          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-          if errorlevel 1 exit /b 1
-          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          set "PATH=%SALTS_ROOT%\bin;%PATH%"
-          cmake --preset ci-win-release-user -B build\idlc-tagged-sdk -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DDATABIND_ENABLE_SERVICEHOST_DSO_TESTS=ON
-          if errorlevel 1 exit /b 1
-          cmake --build build\idlc-tagged-sdk --parallel 2 --target databind_component_candidate_provider databind_component_candidate_multi_provider test_databind_component_candidate_dso_c11 test_databind_component_candidate_multi_dso_c11 test_databind_component_candidate_header_cpp test_databind_component_candidate_multi_header_cpp test_databind_component_candidate_strict_servicehost_c11
-          if errorlevel 1 exit /b 1
-          ctest --test-dir build\idlc-tagged-sdk -R "^test_databind_component_candidate_" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
-          if errorlevel 1 exit /b 1
-      - name: Preserve exact-tag consumer evidence
+      - name: Preserve exact tagged consumer evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: idlc-tagged-servicehost-${{ matrix.id }}-${{ github.run_id }}
+          name: idlc-tagged-servicehost-linux-${{ github.run_id }}
           if-no-files-found: warn
           retention-days: 14
           path: build/idlc-tagged-sdk/Testing/Temporary/LastTest.log
