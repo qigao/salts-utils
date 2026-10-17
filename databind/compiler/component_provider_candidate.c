@@ -143,7 +143,7 @@ static int candidate_emit_common_footer(
       "    X(interface, (salts_component_provider, &%s__provider), \\\n"
       "      \"component-provider\", SALTS_COMPONENT_PROVIDER_CONTRACT_ID, \\\n"
       "      SALTS_COMPONENT_PROVIDER_CONTRACT_VERSION, 0)\n"
-      "CMETA_PLUGIN_DECLARE(%s__component_plugin, \"%s\", (%uu,%uu,%uu),\n"
+      "CMETA_PLUGIN_DECLARE(%s__component_provider_dso, \"%s\", (%uu,%uu,%uu),\n"
       "    %s__COMPONENT_EXPORTS, CMETA_PLUGIN_PASSIVE());\n",
       sym, sym, sym, sym, sym,
       sym, sym, sym, sym, sym, sym, sym, sym, sym,
@@ -187,7 +187,7 @@ static int candidate_render_multi(
       "#ifndef %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#define %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#include \"%s\"\n"
-      "#include <salts/component_plugin_abi.h>\n"
+      "#include <salts/component_provider_abi.h>\n"
       "#include <cmeta/object_interface.h>\n\n",
       first, first, native_service_header) < 0)
     return -1;
@@ -294,7 +294,7 @@ int databind_component_provider_candidate_render(
       "#ifndef %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#define %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#include \"%s\"\n"
-      "#include <salts/component_plugin_abi.h>\n"
+      "#include <salts/component_provider_abi.h>\n"
       "#include <cmeta/object_interface.h>\n\n",
       sym, sym, native_service_header) < 0) return -1;
 

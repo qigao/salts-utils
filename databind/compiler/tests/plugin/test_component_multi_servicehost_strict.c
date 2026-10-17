@@ -17,7 +17,7 @@
 
 /*
  * Generated native IDL methods must be admitted by the actual strict
- * ServiceHostCandidate source, not by a second ComponentPlugin owner.
+ * ServiceHost source, not by a second ComponentPlugin owner.
  * Both generations use ONE immutable, real DSO with a distinct Plugin lease
  * per generation; old borrowed Scopes stay live during N -> N+1 publication.
  */

@@ -5,6 +5,16 @@ param(
   [switch]$Local
 )
 $ErrorActionPreference = "Stop"
+$tag = $env:SALTS_CANONICAL_TAG
+if (-not $tag) { throw "An explicit published SALTS_CANONICAL_TAG is required" }
+if ($tag -match '^v2\.3\.0-rc\.([1-9][0-9]*)$') {
+  if ([int]$Matches[1] -le 17) {
+    throw "Salts rc.17 or earlier lacks the canonical ServiceHost/Configurator"
+  }
+} elseif ($tag -ne 'v2.3.0') {
+  throw "Unsupported Salts canonical release tag: $tag"
+}
+$saltsVersion = $tag.Substring(1)
 
 $requiredEnvironment = @("GITHUB_TOKEN")
 if (-not $Local) { $requiredEnvironment += @("RUNNER_TEMP", "GITHUB_ENV", "GITHUB_PATH") }
@@ -29,14 +39,15 @@ New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
+    <PackageReference Include="Salts.Native" Version="[$(SaltsCanonicalVersion)]" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
 </Project>
 '@ | Set-Content -LiteralPath $project -Encoding utf8NoBOM
 
-$restoreArgs = @($project, "--packages", $packages, "--configfile", $config, "--no-cache", "--force-evaluate")
+$restoreArgs = @($project, "--packages", $packages, "--configfile", $config, "--no-cache", "--force-evaluate",
+  "-p:SaltsCanonicalVersion=$saltsVersion")
 if ($WithTurboWasm) { $restoreArgs += "-p:WithTurboWasm=true" }
 dotnet restore @restoreArgs
 if ($LASTEXITCODE -ne 0) { throw "failed to restore the latest Salts and native tools" }
@@ -49,6 +60,9 @@ function Get-RestoredPackage([string]$name) {
 }
 
 $saltsPackage = Get-RestoredPackage "Salts.Native"
+if ((Split-Path $saltsPackage -Leaf) -ne $saltsVersion) {
+  throw "Resolved Salts.Native package is not the explicitly tagged version"
+}
 $saltsRoot = Join-Path $saltsPackage "sdk\$SaltsRid"
 $saltsHostRoot = Join-Path $saltsPackage "sdk\$Re2cRid"
 $re2cRoot = Join-Path (Get-RestoredPackage "Qigao.Re2c.Binary") "tools\$Re2cRid"
@@ -65,6 +79,38 @@ $required = @(
 foreach ($path in $required) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "missing restored SDK file: $path" }
 }
+# Exact released Salts package: no source checkout, old target, alias, or
+# floating NuGet resolution may masquerade as the canonical SDK.
+foreach ($relative in @(
+    'include/salts/service_host.h',
+    'include/salts/configurator.h',
+    'include/salts/component_provider_abi.h',
+    'lib/cmake/Salts/SaltsTargets.cmake',
+    'salts-sdk-manifest.txt')) {
+  if (-not (Test-Path -LiteralPath (Join-Path $saltsRoot $relative) -PathType Leaf)) {
+    throw "Tagged Salts SDK missing canonical file: $relative"
+  }
+}
+foreach ($oldHeader in @('component_plugin.h','component_plugin_abi.h')) {
+  if (Test-Path -LiteralPath (Join-Path $saltsRoot "include/salts/$oldHeader")) {
+    throw "Tagged Salts SDK still exports obsolete $oldHeader"
+  }
+}
+$manifest = Get-Content -LiteralPath (Join-Path $saltsRoot 'salts-sdk-manifest.txt')
+if (-not ($manifest -contains "version=$saltsVersion")) {
+  throw "Canonical Salts tag and installed RID manifest disagree"
+}
+$targetsFile = Join-Path $saltsRoot 'lib/cmake/Salts/SaltsTargets.cmake'
+foreach ($target in @('Salts::Configurator','Salts::ServiceHost','Salts::ComponentProviderABI','Salts::Unicode')) {
+  if (-not (Select-String -LiteralPath $targetsFile -SimpleMatch $target -Quiet)) {
+    throw "Canonical Salts SDK missing $target"
+  }
+}
+$targetText = Get-Content -LiteralPath $targetsFile -Raw
+if ($targetText -match 'add_library\(Salts::Component(Plugin)?\s') {
+  throw "Legacy Component runtime exported by supposed canonical SDK"
+}
+
 & (Join-Path $re2cRoot "bin\re2c.exe") --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "restored re2c executable cannot run" }
 
