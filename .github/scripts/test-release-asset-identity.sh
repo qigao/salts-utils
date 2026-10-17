@@ -59,22 +59,22 @@ expect_failure() {
 }
 
 # A not-yet-created release is allowed to proceed.
-MOCK_RELEASE_EXISTS=false
+export MOCK_RELEASE_EXISTS=false
 expect_success "new release"
 
 # An existing immutable asset is idempotent only when its bytes match.
-MOCK_RELEASE_EXISTS=true
-MOCK_ASSET_COUNT=1
-MOCK_RELEASE_PACKAGE="$package"
+export MOCK_RELEASE_EXISTS=true
+export MOCK_ASSET_COUNT=1
+export MOCK_RELEASE_PACKAGE="$package"
 expect_success "identical existing asset"
 
 # Missing, duplicate, and changed assets must fail before package publication.
-MOCK_ASSET_COUNT=0
+export MOCK_ASSET_COUNT=0
 expect_failure "missing asset"
-MOCK_ASSET_COUNT=2
+export MOCK_ASSET_COUNT=2
 expect_failure "duplicate asset"
-MOCK_ASSET_COUNT=1
-MOCK_RELEASE_PACKAGE="$tmp/different.nupkg"
+export MOCK_ASSET_COUNT=1
+export MOCK_RELEASE_PACKAGE="$tmp/different.nupkg"
 expect_failure "SHA-256 mismatch"
 
 echo "release asset identity cases passed: new, identical, missing, duplicate, mismatch"
