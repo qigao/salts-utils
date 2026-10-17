@@ -191,9 +191,14 @@ jobs:
           echo "release $TAG already exists for this release identity"
         fi
 
-        bash .github/scripts/verify-release-asset-identity.sh \
+        release_state="$(bash .github/scripts/verify-release-asset-identity.sh \
           "$TAG" "$VERSION" "dist/SaltsUtils.Native.$VERSION.nupkg" \
-          "$GITHUB_REPOSITORY" "$RUNNER_TEMP"
+          "$GITHUB_REPOSITORY" "$RUNNER_TEMP")"
+        case "$release_state" in
+          RELEASE_EXISTS=true|RELEASE_EXISTS=false) ;;
+          *) echo "invalid release identity result: $release_state" >&2; exit 1 ;;
+        esac
+        echo "$release_state" >> "$GITHUB_ENV"
     - name: Publish to GitHub Packages
       shell: bash
       env:
@@ -209,13 +214,18 @@ jobs:
         TAG: ${{ needs.metadata.outputs.tag }}
         VERSION: ${{ needs.metadata.outputs.version }}
         RELEASE_SHA: ${{ needs.metadata.outputs.release_sha }}
+        RELEASE_EXISTS: ${{ env.RELEASE_EXISTS }}
       run: |
         set -euo pipefail
         package="dist/SaltsUtils.Native.$VERSION.nupkg"
         test -f "$package"
-        if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+        if [ "$RELEASE_EXISTS" = true ]; then
           echo "release $TAG was already validated against the prepared package"
           exit 0
+        fi
+        if [ "$RELEASE_EXISTS" != false ]; then
+          echo "missing validated release-existence state; refusing to publish" >&2
+          exit 1
         fi
         gh release create "$TAG" "$package" --repo "$GITHUB_REPOSITORY" \
           --verify-tag --title "SaltsUtils $VERSION" --generate-notes
