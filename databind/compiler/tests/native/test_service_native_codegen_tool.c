@@ -422,13 +422,22 @@ int main(int argc, char **argv) {
     init = strstr(text, init_marker);
     clear = strstr(text, clear_marker);
     move = clear != NULL ? strstr(clear, move_marker) : NULL;
-    if (init == NULL || clear == NULL || move == NULL || init >= clear ||
-        strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL ||
-        strstr(init, "cleanup_status = DATA_BIND_ERR_RUNTIME;") == NULL ||
-        strstr(init, "if (cleanup_status == DATA_BIND_OK)\n"
-                     "      memset(payload, 0, sizeof(*payload));") == NULL) {
+    if (init == NULL || clear == NULL || move == NULL || init >= clear) {
       fprintf(stderr,
-              "service-native-codegen: init rollback cleanup policy missing\n");
+              "service-native-codegen: cleanup helper definition markers missing/order invalid\\n");
+      goto cleanup_policy_done;
+    }
+    if (strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL) {
+      fprintf(stderr, "service-native-codegen: cleanup status declaration missing\\n");
+      goto cleanup_policy_done;
+    }
+    if (strstr(init, "cleanup_status = DATA_BIND_ERR_RUNTIME;") == NULL) {
+      fprintf(stderr, "service-native-codegen: cleanup failure propagation missing\\n");
+      goto cleanup_policy_done;
+    }
+    if (strstr(init, "if (cleanup_status == DATA_BIND_OK)\n"
+                     "      memset(payload, 0, sizeof(*payload));") == NULL) {
+      fprintf(stderr, "service-native-codegen: guarded init memset missing\\n");
       goto cleanup_policy_done;
     }
 
