@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
 
   if (argc != 10) {
     fprintf(stderr,
-            "usage: %s <schema> <service.h> <service.c> <native-header> <overlay-schema> <owned-error-reject-schema> <cleanup-error-schema>\n",
+            "usage: %s <schema> <service.h> <service.c> <native-header> <overlay-schema> <owned-error-reject-schema> <cleanup-error-schema> <cleanup-header> <cleanup-source>\n",
             argc > 0 ? argv[0] : "service-native-codegen");
     return 2;
   }
