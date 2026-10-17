@@ -30,11 +30,14 @@ suite("DataBind typed-error cleanup runtime failure") {
     check_true(detail_zero);
   }
 
-  it("reports cleanup failure from clear without skipping the remaining field") {
+  it("reports cleanup failure from clear after restoring the remaining field") {
     MultiError_t payload = {0};
     bool detail_zero = false;
-    DataBindStatus status =
-        databind_12_CleanupError_5_Store_4_Read__error_1_clear(&payload);
+    DataBindStatus status;
+    payload.detail = tstr_dup("live cleanup field");
+    check_not_null(payload.detail);
+
+    status = databind_12_CleanupError_5_Store_4_Read__error_1_clear(&payload);
 
     check_equal(status, DATA_BIND_ERR_RUNTIME);
     check_equal(
