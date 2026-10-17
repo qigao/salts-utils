@@ -670,19 +670,9 @@ static int native_emit_error_variant_helpers(
           operation->symbol, ordinal, error->type_name) < 0)
     return -1;
 
-  for (i = error->field_count; i != 0u; --i) {
-    const databind_compiler_service_native_error_field *field =
-        &error->fields[i - 1u];
-    if (field->native_data_symbol == NULL) continue;
-    if (field->member_name == NULL || field->native_data_symbol == NULL)
-      return -1;
-    if (fprintf(
-            file,
-            "  if (cmeta_data_value_restore_zero(&%s, &payload->%s) != CMETA_OK)\n"
-            "    status = DATA_BIND_ERR_RUNTIME;\n",
-            field->native_data_symbol, field->member_name) < 0)
-      return -1;
-  }
+  if (native_emit_error_restore_sequence(
+          file, error, error->field_count, "payload", "status", "  ") != 0)
+    return -1;
 
   if (fputs(
           "  if (status == DATA_BIND_OK)\n"
