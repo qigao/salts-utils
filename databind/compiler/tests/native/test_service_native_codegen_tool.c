@@ -492,6 +492,10 @@ int main(int argc, char **argv) {
     if (strstr(move, "DataBindStatus rollback_status = DATA_BIND_OK;") == NULL ||
         strstr(move, "(void)cmeta_data_value_move(") != NULL ||
         strstr(move, "rollback_status = DATA_BIND_ERR_RUNTIME;") == NULL ||
+        strstr(move, "cmeta_data_value_is_zero(&cmeta_tstr_cmeta_data") == NULL ||
+        strstr(move, "cmeta_data_value_is_zero(&stl_byte_buffer_cmeta_data") == NULL ||
+        strstr(move, "|| !rollback_zero)") == NULL ||
+        strstr(move, "__error_1_clear(destination)") != NULL ||
         strstr(text, "error->kind = kind;\n"
                      "    status = ") == NULL ||
         strstr(text, "destination->kind = kind;\n"
