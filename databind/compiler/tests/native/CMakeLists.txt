@@ -139,6 +139,25 @@ set_target_properties(test_databind_service_native_cleanup_runtime PROPERTIES
 set_tests_properties(test_databind_service_native_cleanup_runtime PROPERTIES
   LABELS "databind;compiler;native-service;cleanup;runtime")
 
+cmake_add_test(test_databind_service_native_cleanup_init_failure
+  SOURCES
+    test_service_native_cleanup_init_failure.c
+    "${DATABIND_SERVICE_NATIVE_CLEANUP_RECORD_C}"
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}"
+  FOLDER "databind/compiler/tests/native")
+add_dependencies(test_databind_service_native_cleanup_init_failure
+  databind_service_native_generated_sources)
+set_target_properties(test_databind_service_native_cleanup_init_failure PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_service_native_cleanup_init_failure PROPERTIES
+  LABELS "databind;compiler;native-service;cleanup;runtime;init-failure")
+
 cmake_add_test(test_databind_service_native_cleanup_success
   SOURCES
     test_service_native_cleanup_success.c

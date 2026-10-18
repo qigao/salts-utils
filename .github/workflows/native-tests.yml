@@ -52,9 +52,9 @@ jobs:
           # Use the dedicated debug/sanitizer tree; do not mutate the archived
           # Release graph exercised by the full CTest job.
           cmake --preset ci-linux-dev-user -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
-          cmake --build build/ci-linux-dev --target test_databind_service_native_cleanup_runtime test_databind_service_native_cleanup_success --parallel 2
+          cmake --build build/ci-linux-dev --target test_databind_service_native_cleanup_runtime test_databind_service_native_cleanup_success test_databind_service_native_cleanup_init_failure --parallel 2
           export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/build/ci-linux-dev/bin:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/debug/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:$SALTS_ROOT/lib:${LD_LIBRARY_PATH:-}"
-          ctest --test-dir build/ci-linux-dev -R '^test_databind_service_native_cleanup_(runtime|success)$' --no-tests=error --output-on-failure --timeout 180 --parallel 1
+          ctest --test-dir build/ci-linux-dev -R '^test_databind_service_native_cleanup_(runtime|success|init_failure)$' --no-tests=error --output-on-failure --timeout 180 --parallel 1
       - name: Qualify relocated installed DataBind MethodPlan C11 consumer
         if: matrix.id == 'linux-release'
         shell: bash
