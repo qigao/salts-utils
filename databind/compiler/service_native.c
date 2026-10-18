@@ -653,6 +653,8 @@ static int native_emit_error_variant_helpers(
             file, error, i, "payload", "cleanup_status", "    ") != 0)
       return -1;
     if (fputs(
+            "    if (cleanup_status != DATA_BIND_OK)\n"
+            "      return cleanup_status;\n"
             "    return DATA_BIND_ERR_RUNTIME;\n"
             "  }\n",
             file) == EOF)
