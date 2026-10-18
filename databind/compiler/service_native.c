@@ -647,8 +647,10 @@ static int native_emit_error_variant_helpers(
             "    DataBindStatus cleanup_status = DATA_BIND_OK;\n",
             field->native_data_symbol, field->member_name) < 0)
       return -1;
+    /* The failing init operation did not establish a live field. Roll back
+     * only the successfully initialized prefix, in reverse order. */
     if (native_emit_error_restore_sequence(
-            file, error, i + 1u, "payload", "cleanup_status", "    ") != 0)
+            file, error, i, "payload", "cleanup_status", "    ") != 0)
       return -1;
     if (fputs(
             "    return DATA_BIND_ERR_RUNTIME;\n"
