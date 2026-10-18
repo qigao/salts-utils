@@ -1,5 +1,6 @@
 #include <cmeta/data_reflect.h>
 #include <cstl/byte_buffer.h>
+#include <string.h>
 
 #include "service_native_cleanup_records.h"
 #include "service_native_cleanup_generated.h"
@@ -59,9 +60,9 @@ suite("DataBind typed-error cleanup runtime success") {
     source.detail = tstr_dup("successful move");
     check_not_null(source.detail);
     check_equal(
-        stl_byte_buffer_from(&source.payload, bytes, sizeof(bytes),
-                             sizeof(bytes)),
+        stl_byte_buffer_resize(&source.payload, sizeof(bytes)),
         STL_OK);
+    memcpy(stl_byte_buffer_data(&source.payload), bytes, sizeof(bytes));
 
     check_equal(
         databind_12_CleanupError_5_Store_4_Read__error_1_move(
