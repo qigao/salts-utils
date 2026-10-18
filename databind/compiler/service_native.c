@@ -641,7 +641,7 @@ static int native_emit_error_move_rollback_sequence(
     if (prior->member_name == NULL) return -1;
     if (prior->native_data_symbol == NULL) {
       if (fprintf(file,
-                  "%smemset(&%s->%s, 0, sizeof(%s->%s));\\n",
+                  "%smemset(&%s->%s, 0, sizeof(%s->%s));\n",
                   indent, destination_expr, prior->member_name,
                   destination_expr, prior->member_name) < 0)
         return -1;
@@ -650,8 +650,8 @@ static int native_emit_error_move_rollback_sequence(
     if (fprintf(
             file,
             "%sif (cmeta_data_value_move(&%s, &%s->%s, "
-            "&%s->%s) != CMETA_OK)\\n"
-            "%s  %s = DATA_BIND_ERR_RUNTIME;\\n",
+            "&%s->%s) != CMETA_OK)\n"
+            "%s  %s = DATA_BIND_ERR_RUNTIME;\n",
             indent, prior->native_data_symbol, source_expr,
             prior->member_name, destination_expr, prior->member_name,
             indent, rollback_status_var) < 0)
@@ -665,13 +665,13 @@ static int native_emit_error_move_rollback_sequence(
     if (cleanup_field->member_name == NULL ||
         fprintf(
             file,
-            "%s%s = cmeta_data_value_is_zero(&%s, &%s->%s, &%s);\\n"
-            "%sif (%s != CMETA_OK)\\n"
-            "%s  %s = DATA_BIND_ERR_RUNTIME;\\n"
-            "%sif (%s != CMETA_OK || !%s) {\\n"
-            "%s  if (cmeta_data_value_restore_zero(&%s, &%s->%s) != CMETA_OK)\\n"
-            "%s    %s = DATA_BIND_ERR_RUNTIME;\\n"
-            "%s}\\n",
+            "%s%s = cmeta_data_value_is_zero(&%s, &%s->%s, &%s);\n"
+            "%sif (%s != CMETA_OK)\n"
+            "%s  %s = DATA_BIND_ERR_RUNTIME;\n"
+            "%sif (%s != CMETA_OK || !%s) {\n"
+            "%s  if (cmeta_data_value_restore_zero(&%s, &%s->%s) != CMETA_OK)\n"
+            "%s    %s = DATA_BIND_ERR_RUNTIME;\n"
+            "%s}\n",
             indent, rollback_zero_status_var,
             cleanup_field->native_data_symbol, destination_expr,
             cleanup_field->member_name, rollback_zero_var,
