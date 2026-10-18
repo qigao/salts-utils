@@ -672,24 +672,27 @@ static int native_emit_error_variant_helpers(
           file, error, error->field_count, "payload", "status", "  ") != 0)
     return -1;
 
-  if (fputs("  if (status == DATA_BIND_OK) {\n", file) == EOF)
-    return -1;
-  for (i = 0u; i < error->field_count; ++i) {
-    const databind_compiler_service_native_error_field *field =
-        &error->fields[i];
-    if (field->native_data_symbol != NULL) continue;
-    if (field->member_name == NULL ||
-        fprintf(file,
-                "    memset(&payload->%s, 0, sizeof(payload->%s));\n",
-                field->member_name, field->member_name) < 0)
+  {
+    int has_plain_fields = 0;
+    for (i = 0u; i < error->field_count; ++i)
+      if (error->fields[i].native_data_symbol == NULL)
+        has_plain_fields = 1;
+    if (has_plain_fields &&
+        fputs("  if (status == DATA_BIND_OK) {\n", file) == EOF)
       return -1;
+    for (i = 0u; i < error->field_count; ++i) {
+      const databind_compiler_service_native_error_field *field =
+          &error->fields[i];
+      if (field->native_data_symbol != NULL) continue;
+      if (field->member_name == NULL ||
+          fprintf(file,
+                  "    memset(&payload->%s, 0, sizeof(payload->%s));\n",
+                  field->member_name, field->member_name) < 0)
+        return -1;
+    }
+    if (has_plain_fields && fputs("  }\n", file) == EOF) return -1;
   }
-  if (fputs(
-          "  }\n"
-          "  return status;\n"
-          "}\n",
-          file) == EOF)
-    return -1;
+  if (fputs("  return status;\n}\n", file) == EOF) return -1;
 
   if (fprintf(
           file,
@@ -911,7 +914,6 @@ int databind_compiler_service_native_emit_prototype(
           operation->symbol,
           operation->symbol,
           operation->symbol, operation->symbol, operation->symbol,
-          operation->symbol,
           operation->symbol) < 0)
     return -1;
 
