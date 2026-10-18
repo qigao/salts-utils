@@ -1,4 +1,7 @@
 #include <cmeta/data_reflect.h>
+#include <cstl/byte_buffer.h>
+#include <string.h>
+
 #include "service_native_cleanup_records.h"
 
 typedef struct CleanupFailureView {
@@ -62,20 +65,31 @@ suite("DataBind typed-error cleanup runtime failure") {
         CMETA_OK);
   }
 
-  it("reports cleanup failure from clear after restoring the remaining field") {
+  it("preserves failed bytes carrier while clearing independent fields") {
     MultiError_t payload = {0};
+    const unsigned char initial_bytes[] = {0x31u, 0x42u, 0x53u};
+    stl_byte_buffer before = {0};
     bool detail_zero = false;
     DataBindStatus status;
+
+    check_equal(
+        stl_byte_buffer_from(&payload.payload, initial_bytes,
+                            sizeof(initial_bytes), sizeof(initial_bytes)),
+        STL_OK);
     payload.detail = tstr_dup("live cleanup field");
     check_not_null(payload.detail);
+    before = payload.payload;
 
     status = databind_12_CleanupError_5_Store_4_Read__error_1_clear(&payload);
 
     check_equal(status, DATA_BIND_ERR_RUNTIME);
+    check_equal(memcmp(&payload.payload, &before, sizeof(before)), 0);
     check_equal(
         cmeta_data_value_is_zero(
             &cmeta_tstr_cmeta_data, &payload.detail, &detail_zero),
         CMETA_OK);
     check_true(detail_zero);
+
+    stl_byte_buffer_destroy(&payload.payload);
   }
 }
