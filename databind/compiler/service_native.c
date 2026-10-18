@@ -651,8 +651,6 @@ static int native_emit_error_variant_helpers(
             file, error, i + 1u, "payload", "cleanup_status", "    ") != 0)
       return -1;
     if (fputs(
-            "    if (cleanup_status == DATA_BIND_OK)\n"
-            "      memset(payload, 0, sizeof(*payload));\n"
             "    return DATA_BIND_ERR_RUNTIME;\n"
             "  }\n",
             file) == EOF)
@@ -674,9 +672,20 @@ static int native_emit_error_variant_helpers(
           file, error, error->field_count, "payload", "status", "  ") != 0)
     return -1;
 
+  if (fputs("  if (status == DATA_BIND_OK) {\n", file) == EOF)
+    return -1;
+  for (i = 0u; i < error->field_count; ++i) {
+    const databind_compiler_service_native_error_field *field =
+        &error->fields[i];
+    if (field->native_data_symbol != NULL) continue;
+    if (field->member_name == NULL ||
+        fprintf(file,
+                "    memset(&payload->%s, 0, sizeof(payload->%s));\n",
+                field->member_name, field->member_name) < 0)
+      return -1;
+  }
   if (fputs(
-          "  if (status == DATA_BIND_OK)\n"
-          "    memset(payload, 0, sizeof(*payload));\n"
+          "  }\n"
           "  return status;\n"
           "}\n",
           file) == EOF)
