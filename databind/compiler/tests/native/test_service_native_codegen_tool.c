@@ -461,6 +461,8 @@ int main(int argc, char **argv) {
       char *whole_payload_clear;
       if (strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL ||
           strstr(init, "cleanup_status = DATA_BIND_ERR_RUNTIME;") == NULL ||
+          strstr(init, "if (cleanup_status != DATA_BIND_OK)") == NULL ||
+          strstr(init, "return cleanup_status;") == NULL ||
           init_failure == NULL) {
         fprintf(stderr, "service-native-codegen: init rollback status missing\\n");
         goto cleanup_policy_done;
