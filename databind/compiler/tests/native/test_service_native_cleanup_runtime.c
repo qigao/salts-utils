@@ -65,6 +65,60 @@ suite("DataBind typed-error cleanup runtime failure") {
         CMETA_OK);
   }
 
+
+  it("preserves the selected error kind when payload initialization fails") {
+    databind_12_CleanupError_5_Store_4_Read__error error = {0};
+    bool detail_zero = false;
+    DataBindStatus status =
+        databind_12_CleanupError_5_Store_4_Read__error_select(
+            &error, databind_12_CleanupError_5_Store_4_Read__ERROR_1);
+
+    check_equal(status, DATA_BIND_ERR_RUNTIME);
+    check_equal(
+        error.kind, databind_12_CleanupError_5_Store_4_Read__ERROR_1);
+    check_equal(
+        cmeta_data_value_is_zero(
+            &cmeta_tstr_cmeta_data,
+            &error.payload.error_1.detail, &detail_zero),
+        CMETA_OK);
+    check_true(detail_zero);
+  }
+
+  it("retains error kind and failed carrier when typed-error clear fails") {
+    databind_12_CleanupError_5_Store_4_Read__error error = {0};
+    const unsigned char initial_bytes[] = {0x61u, 0x72u, 0x83u};
+    stl_byte_buffer before = {0};
+    bool detail_zero = false;
+    DataBindStatus status;
+
+    error.kind = databind_12_CleanupError_5_Store_4_Read__ERROR_1;
+    check_equal(
+        stl_byte_buffer_from(
+            &error.payload.error_1.payload, initial_bytes,
+            sizeof(initial_bytes), sizeof(initial_bytes)),
+        STL_OK);
+    error.payload.error_1.detail = tstr_dup("preserve kind on clear");
+    check_not_null(error.payload.error_1.detail);
+    before = error.payload.error_1.payload;
+
+    status = databind_12_CleanupError_5_Store_4_Read__error_clear(&error);
+
+    check_equal(status, DATA_BIND_ERR_RUNTIME);
+    check_equal(
+        error.kind, databind_12_CleanupError_5_Store_4_Read__ERROR_1);
+    check_equal(
+        memcmp(&error.payload.error_1.payload, &before, sizeof(before)), 0);
+    check_equal(
+        cmeta_data_value_is_zero(
+            &cmeta_tstr_cmeta_data, &error.payload.error_1.detail,
+            &detail_zero),
+        CMETA_OK);
+    check_true(detail_zero);
+
+    stl_byte_buffer_destroy(&error.payload.error_1.payload);
+  }
+
+
   it("preserves failed bytes carrier while clearing independent fields") {
     MultiError_t payload = {0};
     const unsigned char initial_bytes[] = {0x31u, 0x42u, 0x53u};
