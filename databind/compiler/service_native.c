@@ -733,7 +733,7 @@ static int native_emit_error_variant_helpers(
             "  if (cmeta_data_value_move(&%s, &destination->%s, "
             "&source->%s) != CMETA_OK) {\n"
             "    DataBindStatus rollback_status = DATA_BIND_OK;\n"
-            "    DataBindStatus rollback_zero_status = DATA_BIND_OK;\n"
+            "    cmeta_status rollback_zero_status = CMETA_OK;\n"
             "    bool rollback_zero = false;\n",
             field->native_data_symbol, field->member_name,
             field->member_name) < 0)
