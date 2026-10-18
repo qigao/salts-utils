@@ -69,14 +69,14 @@ static void observed_tstr_move(void *destination, void *source) {
 
 static const cmeta_data_buffer_ops observed_tstr_buffer_ops = {
     sizeof(cmeta_data_buffer_ops), CMETA_DATA_BUFFER_OPS_ABI_VERSION,
-    &cmeta_tstr_cmeta_type, CMETA_DATA_BUFFER_OWNED,
+    &cmeta_tstr_header_cmeta_type, CMETA_DATA_BUFFER_OWNED,
     observed_tstr_is_zero, observed_tstr_assign, observed_tstr_restore_zero,
     observed_tstr_read, observed_tstr_init_zero, observed_tstr_move};
 
 static const cmeta_data_desc observed_tstr_data = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "salts.tstr.data", "tstr", CMETA_DATA_STRING,
-    &cmeta_tstr_cmeta_type, &cmeta_tstr_cmeta_shape,
+    &cmeta_tstr_header_cmeta_type, &cmeta_tstr_header_cmeta_shape,
     &observed_tstr_buffer_ops, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 
 static bool observed_bytes_is_zero(const void *object) {
