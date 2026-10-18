@@ -48,7 +48,7 @@ suite("DataBind typed-error cleanup runtime failure") {
         cmeta_data_value_is_zero(
             &cmeta_tstr_cmeta_data, &source.detail, &source_detail_zero),
         CMETA_OK);
-    check_false(source_detail_zero);
+    check_true(!source_detail_zero);
     check_equal(
         cmeta_data_value_is_zero(
             &cmeta_tstr_cmeta_data, &destination.detail,
