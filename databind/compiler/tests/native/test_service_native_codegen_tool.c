@@ -466,18 +466,20 @@ int main(int argc, char **argv) {
         goto cleanup_policy_done;
       }
     }
-    if (strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL) {
-      fprintf(stderr, "service-native-codegen: cleanup status declaration missing\\n");
-      goto cleanup_policy_done;
-    }
-    if (strstr(init, "cleanup_status = DATA_BIND_ERR_RUNTIME;") == NULL) {
-      fprintf(stderr, "service-native-codegen: cleanup failure propagation missing\\n");
-      goto cleanup_policy_done;
-    }
-    if (strstr(init, "if (cleanup_status == DATA_BIND_OK)\n"
-                     "      memset(payload, 0, sizeof(*payload));") == NULL) {
-      fprintf(stderr, "service-native-codegen: guarded init memset missing\\n");
-      goto cleanup_policy_done;
+    {
+      char *init_failure = strstr(init, "if (cmeta_data_value_init_zero(");
+      char *whole_payload_clear;
+      if (strstr(init, "DataBindStatus cleanup_status = DATA_BIND_OK;") == NULL ||
+          strstr(init, "cleanup_status = DATA_BIND_ERR_RUNTIME;") == NULL ||
+          init_failure == NULL) {
+        fprintf(stderr, "service-native-codegen: init rollback status missing\\n");
+        goto cleanup_policy_done;
+      }
+      whole_payload_clear = strstr(init_failure, "memset(payload, 0, sizeof(*payload));");
+      if (whole_payload_clear != NULL && whole_payload_clear < clear) {
+        fprintf(stderr, "service-native-codegen: init rollback clears managed carriers\\n");
+        goto cleanup_policy_done;
+      }
     }
 
     if (strstr(move, "DataBindStatus rollback_status = DATA_BIND_OK;") == NULL ||
@@ -512,8 +514,7 @@ int main(int argc, char **argv) {
         strstr(clear, "DataBindStatus status = DATA_BIND_OK;") == NULL ||
         text_count(clear, "cmeta_data_value_restore_zero(") != 2u ||
         text_count(clear, "status = DATA_BIND_ERR_RUNTIME;") != 2u ||
-        strstr(clear, "if (status == DATA_BIND_OK)\n"
-                      "    memset(payload, 0, sizeof(*payload));") == NULL ||
+        strstr(clear, "memset(payload, 0, sizeof(*payload));") != NULL ||
         strstr(clear, "return DATA_BIND_ERR_RUNTIME;") != NULL) {
       fprintf(stderr,
               "service-native-codegen: clear cleanup failure policy missing\\n");
