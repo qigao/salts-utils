@@ -474,6 +474,21 @@ int main(int argc, char **argv) {
       }
     }
 
+    {
+      const char *string_move = strstr(
+          move, "cmeta_data_value_move(&cmeta_tstr_cmeta_data, &destination->detail, &source->detail)");
+      const char *bytes_move = strstr(
+          move, "cmeta_data_value_move(&stl_byte_buffer_cmeta_data, &destination->payload, &source->payload)");
+      const char *string_move_back = strstr(
+          move, "cmeta_data_value_move(&cmeta_tstr_cmeta_data, &source->detail, &destination->detail)");
+      if (string_move == NULL || bytes_move == NULL || string_move_back == NULL ||
+          string_move >= bytes_move || bytes_move >= string_move_back) {
+        fprintf(stderr,
+                "service-native-codegen: move rollback order must reverse prior moves\\n");
+        goto cleanup_policy_done;
+      }
+    }
+
     if (strstr(move, "DataBindStatus rollback_status = DATA_BIND_OK;") == NULL ||
         strstr(move, "(void)cmeta_data_value_move(") != NULL ||
         strstr(move, "rollback_status = DATA_BIND_ERR_RUNTIME;") == NULL ||

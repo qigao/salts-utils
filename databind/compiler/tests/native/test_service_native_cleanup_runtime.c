@@ -33,7 +33,7 @@ suite("DataBind typed-error cleanup runtime failure") {
     check_true(detail_zero);
   }
 
-  it("moves a prior field back when a later bytes move fails") {
+  it("preserves source when destination initialization fails before move") {
     MultiError_t source = {0};
     MultiError_t destination = {0};
     bool source_detail_zero = true;
@@ -52,6 +52,7 @@ suite("DataBind typed-error cleanup runtime failure") {
             &cmeta_tstr_cmeta_data, &source.detail, &source_detail_zero),
         CMETA_OK);
     check_true(!source_detail_zero);
+    check_equal(strcmp(source.detail, "move rollback field"), 0);
     check_equal(
         cmeta_data_value_is_zero(
             &cmeta_tstr_cmeta_data, &destination.detail,
