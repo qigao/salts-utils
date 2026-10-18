@@ -732,15 +732,24 @@ static int native_emit_error_variant_helpers(
             file,
             "  if (cmeta_data_value_move(&%s, &destination->%s, "
             "&source->%s) != CMETA_OK) {\n"
-            "    DataBindStatus rollback_status = DATA_BIND_OK;\n",
+            "    DataBindStatus rollback_status = DATA_BIND_OK;\n"
+            "    DataBindStatus rollback_zero_status = DATA_BIND_OK;\n"
+            "    bool rollback_zero = false;\n",
             field->native_data_symbol, field->member_name,
             field->member_name) < 0)
       return -1;
     for (j = i; j != 0u; --j) {
       const databind_compiler_service_native_error_field *prior =
           &error->fields[j - 1u];
-      if (prior->native_data_symbol != NULL &&
-          fprintf(
+      if (prior->native_data_symbol == NULL) {
+        if (prior->member_name == NULL ||
+            fprintf(file,
+                    "    memset(&destination->%s, 0, sizeof(destination->%s));\n",
+                    prior->member_name, prior->member_name) < 0)
+          return -1;
+        continue;
+      }
+      if (fprintf(
               file,
               "    if (cmeta_data_value_move(&%s, &source->%s, "
               "&destination->%s) != CMETA_OK)\n"
@@ -749,15 +758,36 @@ static int native_emit_error_variant_helpers(
               prior->member_name) < 0)
         return -1;
     }
-    if (fprintf(
-            file,
-            "    if (%s__error_%zu_clear(destination) != DATA_BIND_OK)\n"
-            "      rollback_status = DATA_BIND_ERR_RUNTIME;\n"
+
+    /* A successful move-back leaves destination semantic zero. Only restore
+     * residual nonzero carriers, so the rollback does not clean a transferred
+     * field twice merely because the whole operation failed later. */
+    for (j = i + 1u; j != 0u; --j) {
+      const databind_compiler_service_native_error_field *cleanup_field =
+          &error->fields[j - 1u];
+      if (cleanup_field->native_data_symbol == NULL) continue;
+      if (cleanup_field->member_name == NULL ||
+          fprintf(
+              file,
+              "    rollback_zero_status = cmeta_data_value_is_zero(&%s, "
+              "&destination->%s, &rollback_zero);\n"
+              "    if (rollback_zero_status != CMETA_OK)\n"
+              "      rollback_status = DATA_BIND_ERR_RUNTIME;\n"
+              "    if (rollback_zero_status != CMETA_OK || !rollback_zero) {\n"
+              "      if (cmeta_data_value_restore_zero(&%s, "
+              "&destination->%s) != CMETA_OK)\n"
+              "        rollback_status = DATA_BIND_ERR_RUNTIME;\n"
+              "    }\n",
+              cleanup_field->native_data_symbol, cleanup_field->member_name,
+              cleanup_field->native_data_symbol, cleanup_field->member_name) < 0)
+        return -1;
+    }
+    if (fputs(
             "    if (rollback_status != DATA_BIND_OK)\n"
             "      return rollback_status;\n"
             "    return DATA_BIND_ERR_RUNTIME;\n"
             "  }\n",
-            operation->symbol, ordinal) < 0)
+            file) == EOF)
       return -1;
   }
 
