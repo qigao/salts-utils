@@ -442,7 +442,9 @@ int main(int argc, char **argv) {
       char *prefix_restore = second_init_failure != NULL
           ? strstr(second_init_failure, "cmeta_data_value_restore_zero(") : NULL;
       char *failed_field_restore = second_init_failure != NULL
-          ? strstr(second_init_failure, "&payload->payload)") : NULL;
+          ? strstr(second_init_failure,
+                   "cmeta_data_value_restore_zero(&stl_byte_buffer_cmeta_data, &payload->payload)")
+          : NULL;
       if (first_init_failure == NULL || first_rollback_end == NULL ||
           second_init_failure == NULL || second_rollback_end == NULL ||
           (strstr(first_init_failure, "cmeta_data_value_restore_zero(") != NULL &&
