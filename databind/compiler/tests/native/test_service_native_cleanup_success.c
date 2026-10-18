@@ -84,12 +84,15 @@ suite("DataBind typed-error cleanup runtime success") {
             &destination_detail_zero),
         CMETA_OK);
     check_true(!destination_detail_zero);
+    check_equal(strcmp(destination.detail, "successful move"), 0);
     check_equal(
         cmeta_data_value_is_zero(
             &stl_byte_buffer_cmeta_data, &destination.payload,
             &destination_bytes_zero),
         CMETA_OK);
     check_true(!destination_bytes_zero);
+    check_equal(memcmp(stl_byte_buffer_data(&destination.payload),
+                       bytes, sizeof(bytes)), 0);
 
     check_equal(
         databind_12_CleanupError_5_Store_4_Read__error_1_clear(&source),
