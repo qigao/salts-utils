@@ -430,16 +430,25 @@ int main(int argc, char **argv) {
       goto cleanup_policy_done;
     }
     {
-      char *init_failure = strstr(init, "if (cmeta_data_value_init_zero(");
-      char *rollback_end = init_failure != NULL
-          ? strstr(init_failure, "return DATA_BIND_ERR_RUNTIME;") : NULL;
-      char *failed_field_restore = init_failure != NULL
-          ? strstr(init_failure, "&payload->payload)") : NULL;
-      char *prior_field_restore = init_failure != NULL
-          ? strstr(init_failure, "&payload->detail)") : NULL;
-      if (init_failure == NULL || rollback_end == NULL ||
-          prior_field_restore == NULL || prior_field_restore >= rollback_end ||
-          (failed_field_restore != NULL && failed_field_restore < rollback_end)) {
+      char *first_init_failure =
+          strstr(init, "if (cmeta_data_value_init_zero(");
+      char *first_rollback_end = first_init_failure != NULL
+          ? strstr(first_init_failure, "return DATA_BIND_ERR_RUNTIME;") : NULL;
+      char *second_init_failure = first_init_failure != NULL
+          ? strstr(first_init_failure + 1, "if (cmeta_data_value_init_zero(")
+          : NULL;
+      char *second_rollback_end = second_init_failure != NULL
+          ? strstr(second_init_failure, "return DATA_BIND_ERR_RUNTIME;") : NULL;
+      char *prefix_restore = second_init_failure != NULL
+          ? strstr(second_init_failure, "cmeta_data_value_restore_zero(") : NULL;
+      char *failed_field_restore = second_init_failure != NULL
+          ? strstr(second_init_failure, "&payload->payload)") : NULL;
+      if (first_init_failure == NULL || first_rollback_end == NULL ||
+          second_init_failure == NULL || second_rollback_end == NULL ||
+          (strstr(first_init_failure, "cmeta_data_value_restore_zero(") != NULL &&
+           strstr(first_init_failure, "cmeta_data_value_restore_zero(") < first_rollback_end) ||
+          prefix_restore == NULL || prefix_restore >= second_rollback_end ||
+          (failed_field_restore != NULL && failed_field_restore < second_rollback_end)) {
         fprintf(stderr,
                 "service-native-codegen: init rollback must restore only accepted prefix\\n");
         goto cleanup_policy_done;
