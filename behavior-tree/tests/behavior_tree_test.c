@@ -286,4 +286,73 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
+  it("retries terminal failures up to the configured attempt bound") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status steps[] = {
+        SALTS_BT_FAILURE, SALTS_BT_SUCCESS};
+    leaf_probe probe = {steps, 2u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node_with_limit(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_RETRY,
+                    NULL, NULL, 2u, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &child), SALTS_OK);
+    check_equal(salts_bt_tree_validate(&tree), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(probe.calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("repeats a bounded number of terminal child cycles across RUNNING ticks") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status steps[] = {
+        SALTS_BT_RUNNING, SALTS_BT_SUCCESS};
+    leaf_probe probe = {steps, 2u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node_with_limit(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_REPEAT,
+                    NULL, NULL, 2u, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(probe.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(probe.calls, 3u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("rejects unbounded or over-budget Retry and Repeat limits") {
+    salts_bt_tree tree = {0};
+    salts_bt_tree_config config = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+
+    salts_bt_tree_config_init(&config);
+    config.max_nodes = 4u;
+    config.max_depth = 4u;
+    config.max_control_iterations = 1u;
+    check_equal(salts_bt_tree_init(&tree, &config), SALTS_OK);
+    check_equal(salts_bt_tree_add_node_with_limit(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_RETRY,
+                    NULL, NULL, 0u, &root), SALTS_EINVAL);
+    check_equal(root, SALTS_BT_INVALID_NODE_ID);
+    check_equal(salts_bt_tree_add_node_with_limit(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_RETRY,
+                    NULL, NULL, 2u, &root), SALTS_EINVAL);
+    check_equal(salts_bt_tree_add_node_with_limit(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_REPEAT,
+                    NULL, NULL, 2u, &root), SALTS_EINVAL);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
 }
