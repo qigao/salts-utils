@@ -35,7 +35,11 @@ typedef enum salts_bt_node_kind {
   SALTS_BT_NODE_DELAY = 9,
   SALTS_BT_NODE_PARALLEL = 10,
   SALTS_BT_NODE_REACTIVE_SEQUENCE = 11,
-  SALTS_BT_NODE_RUN_ONCE = 12
+  SALTS_BT_NODE_RUN_ONCE = 12,
+  SALTS_BT_NODE_IF_THEN_ELSE = 13,
+  SALTS_BT_NODE_PRECONDITION = 14,
+  SALTS_BT_NODE_WHILE_DO = 15,
+  SALTS_BT_NODE_SWITCH = 16
 } salts_bt_node_kind;
 
 typedef enum salts_bt_node_status {
@@ -62,6 +66,11 @@ typedef struct salts_bt_tree_config {
  */
 typedef salts_bt_node_status (*salts_bt_leaf_fn)(void *user);
 typedef void (*salts_bt_leaf_halt_fn)(void *user);
+
+/* Predicate/selector callbacks return a Salts status code; SALTS_OK means the
+ * out parameter is valid. They run synchronously on the tree driver thread. */
+typedef int (*salts_bt_condition_fn)(void *user, bool *out_condition);
+typedef int (*salts_bt_selector_fn)(void *user, size_t *out_child_index);
 
 typedef struct salts_bt_leaf_ops {
   salts_bt_leaf_fn tick;
@@ -136,6 +145,33 @@ int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
                                  salts_bt_node_kind kind,
                                  uint64_t duration_ns,
                                  salts_bt_node_id *out_node_id);
+
+/*
+ * Add an IfThenElse, Precondition, or WhileDo control node with a predicate.
+ * IfThenElse has a then child and optional else child (1 or 2 children).
+ * Precondition and WhileDo require exactly one child. WhileDo limit is the
+ * maximum number of successful body iterations and must be positive; it is
+ * bounded by max_control_iterations. WhileDo yields RUNNING after each
+ * successful body iteration instead of spinning in one driver call.
+ */
+int salts_bt_tree_add_condition_node(salts_bt_tree *tree,
+                                     salts_bt_node_id parent_id,
+                                     salts_bt_node_kind kind,
+                                     salts_bt_condition_fn condition,
+                                     void *user,
+                                     size_t limit,
+                                     salts_bt_node_id *out_node_id);
+
+/*
+ * Add a Switch node. The selector chooses a zero-based child index on every
+ * tick. Out-of-range selections fail. When the selected child changes during
+ * RUNNING, the prior child is reset/halted before the new case is ticked.
+ */
+int salts_bt_tree_add_switch_node(salts_bt_tree *tree,
+                                  salts_bt_node_id parent_id,
+                                  salts_bt_selector_fn selector,
+                                  void *user,
+                                  salts_bt_node_id *out_node_id);
 
 /*
  * Tick the root once. Sequence stops at FAILURE or RUNNING and resumes the
