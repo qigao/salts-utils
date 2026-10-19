@@ -1331,4 +1331,35 @@ spec("Salts C11 Behavior Tree") {
   }
 
 
+
+  it("finishes a Parallel branch after a nested Repeat resets its own control state") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id repeat = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id leaf = SALTS_BT_INVALID_NODE_ID;
+    parallel_probe context = {0};
+    const salts_bt_node_status steps[] = {SALTS_BT_FAILURE, SALTS_BT_SUCCESS};
+    leaf_probe probe = {steps, 2u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                               parallel_enter, parallel_finish,
+                                               parallel_abort, &context, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_node_with_limit(&tree, root, SALTS_BT_NODE_REPEAT,
+                                                  NULL, NULL, 2u, &repeat), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, repeat, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &leaf), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(probe.calls, 2u);
+    check_equal(context.enter_calls[0], 1u);
+    check_equal(context.finish_calls[0], 1u);
+    check_equal(context.terminal_status[0], SALTS_BT_SUCCESS);
+    check_equal(context.abort_calls[0], 0u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+
 }
