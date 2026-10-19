@@ -28,6 +28,13 @@ typedef struct salts_bt_node {
   salts_bt_leaf_halt_fn halt;
   salts_bt_condition_fn condition;
   salts_bt_selector_fn selector;
+  salts_bt_pipeline_prepare_fn pipeline_prepare;
+  salts_bt_pipeline_complete_fn pipeline_complete;
+  salts_bt_entry_changed_fn entry_changed;
+  salts_bt_queue_begin_fn queue_begin;
+  salts_bt_queue_finish_fn queue_finish;
+  bool observed;
+  bool prepared;
   bool running;
 } salts_bt_node;
 
@@ -76,7 +83,10 @@ static bool node_kind_valid(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_PRECONDITION ||
          kind == SALTS_BT_NODE_WHILE_DO ||
          kind == SALTS_BT_NODE_SWITCH ||
-         kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE;
+         kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE ||
+         kind == SALTS_BT_NODE_PIPELINE_SEQUENCE ||
+         kind == SALTS_BT_NODE_ENTRY_UPDATED ||
+         kind == SALTS_BT_NODE_CONSUME_QUEUE;
 }
 
 static bool node_kind_accepts_children(salts_bt_node_kind kind) {
@@ -96,7 +106,10 @@ static bool node_kind_accepts_children(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_PRECONDITION ||
          kind == SALTS_BT_NODE_WHILE_DO ||
          kind == SALTS_BT_NODE_SWITCH ||
-         kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE;
+         kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE ||
+         kind == SALTS_BT_NODE_PIPELINE_SEQUENCE ||
+         kind == SALTS_BT_NODE_ENTRY_UPDATED ||
+         kind == SALTS_BT_NODE_CONSUME_QUEUE;
 }
 
 static bool node_kind_is_single_child(salts_bt_node_kind kind) {
@@ -110,7 +123,9 @@ static bool node_kind_is_single_child(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_RUN_ONCE ||
          kind == SALTS_BT_NODE_PRECONDITION ||
          kind == SALTS_BT_NODE_WHILE_DO ||
-         kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE;
+         kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE ||
+         kind == SALTS_BT_NODE_ENTRY_UPDATED ||
+         kind == SALTS_BT_NODE_CONSUME_QUEUE;
 }
 
 static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
@@ -128,6 +143,8 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   node->delay_elapsed = false;
   node->evaluated = false;
   node->run_once_complete = false;
+  node->observed = false;
+  node->prepared = false;
   node->last_status = SALTS_BT_FAILURE;
   child = node->first_child;
   while (child != SALTS_BT_INVALID_NODE_ID) {
@@ -166,6 +183,158 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
   child_id = node->cursor != SALTS_BT_INVALID_NODE_ID
                  ? node->cursor
                  : node->first_child;
+
+  if (node->kind == SALTS_BT_NODE_PIPELINE_SEQUENCE) {
+    for (;;) {
+      salts_bt_node_id current = SALTS_BT_INVALID_NODE_ID;
+      salts_bt_node_id scan = node->first_child;
+      size_t index = 0u;
+      salts_bt_node_status child_status = SALTS_BT_FAILURE;
+      int status;
+      while (scan != SALTS_BT_INVALID_NODE_ID && index < node->counter) {
+        const salts_bt_node *scan_node = get_node(impl, scan);
+        if (scan_node == NULL) return SALTS_EINVAL;
+        scan = scan_node->next_sibling;
+        ++index;
+      }
+      current = node->cursor != SALTS_BT_INVALID_NODE_ID ? node->cursor : scan;
+      if (current == SALTS_BT_INVALID_NODE_ID) {
+        reset_node_state(impl, id);
+        node->last_status = SALTS_BT_SUCCESS;
+        *out_status = SALTS_BT_SUCCESS;
+        return SALTS_OK;
+      }
+      if (!node->prepared) {
+        if (node->pipeline_prepare == NULL || node->pipeline_complete == NULL)
+          return SALTS_EINVAL;
+        status = node->pipeline_prepare(node->user, node->counter);
+        if (status != SALTS_OK) {
+          reset_node_state(impl, id);
+          return status;
+        }
+        node->prepared = true;
+      }
+      status = tick_node(impl, current, depth + 1u, &child_status);
+      if (status != SALTS_OK) {
+        reset_node_state(impl, id);
+        return status;
+      }
+      if (child_status == SALTS_BT_RUNNING) {
+        node->cursor = current;
+        node->last_status = SALTS_BT_RUNNING;
+        *out_status = SALTS_BT_RUNNING;
+        return SALTS_OK;
+      }
+      status = node->pipeline_complete(node->user, node->counter, child_status);
+      if (status != SALTS_OK) {
+        reset_node_state(impl, id);
+        return status;
+      }
+      node->cursor = SALTS_BT_INVALID_NODE_ID;
+      node->prepared = false;
+      if (child_status == SALTS_BT_FAILURE) {
+        reset_node_state(impl, id);
+        node->last_status = SALTS_BT_FAILURE;
+        *out_status = SALTS_BT_FAILURE;
+        return SALTS_OK;
+      }
+      ++node->counter;
+    }
+  }
+
+  if (node->kind == SALTS_BT_NODE_ENTRY_UPDATED) {
+    bool changed = false;
+    salts_bt_node_id child = node->first_child;
+    salts_bt_node_status child_status = SALTS_BT_FAILURE;
+    int status;
+    if (node->entry_changed == NULL || child == SALTS_BT_INVALID_NODE_ID)
+      return SALTS_EINVAL;
+    status = node->entry_changed(node->user, &changed);
+    if (status != SALTS_OK) {
+      reset_node_state(impl, id);
+      return status;
+    }
+    if (!node->observed) changed = true;
+    if (!changed && node->cursor == SALTS_BT_INVALID_NODE_ID && node->observed) {
+      *out_status = node->last_status;
+      return SALTS_OK;
+    }
+    if (changed && node->cursor != SALTS_BT_INVALID_NODE_ID) {
+      reset_node_state(impl, node->cursor);
+      node->cursor = SALTS_BT_INVALID_NODE_ID;
+    } else if (changed) {
+      reset_node_state(impl, child);
+    }
+    node->observed = true;
+    status = tick_node(impl, child, depth + 1u, &child_status);
+    if (status != SALTS_OK) {
+      reset_node_state(impl, id);
+      return status;
+    }
+    node->last_status = child_status;
+    node->cursor = child_status == SALTS_BT_RUNNING ? child : SALTS_BT_INVALID_NODE_ID;
+    *out_status = child_status;
+    return SALTS_OK;
+  }
+
+  if (node->kind == SALTS_BT_NODE_CONSUME_QUEUE) {
+    salts_bt_node_id child = node->first_child;
+    salts_bt_node_status child_status = SALTS_BT_FAILURE;
+    int status;
+    if (node->queue_begin == NULL || node->queue_finish == NULL ||
+        child == SALTS_BT_INVALID_NODE_ID)
+      return SALTS_EINVAL;
+    if (node->cursor == SALTS_BT_INVALID_NODE_ID) {
+      bool has_item = false;
+      status = node->queue_begin(node->user, &has_item);
+      if (status != SALTS_OK) {
+        reset_node_state(impl, id);
+        return status;
+      }
+      if (!has_item) {
+        reset_node_state(impl, id);
+        node->last_status = SALTS_BT_FAILURE;
+        *out_status = SALTS_BT_FAILURE;
+        return SALTS_OK;
+      }
+    }
+    status = tick_node(impl, child, depth + 1u, &child_status);
+    if (status != SALTS_OK) {
+      reset_node_state(impl, id);
+      return status;
+    }
+    if (child_status == SALTS_BT_RUNNING) {
+      node->cursor = child;
+      node->last_status = SALTS_BT_RUNNING;
+      *out_status = SALTS_BT_RUNNING;
+      return SALTS_OK;
+    }
+    if (child_status == SALTS_BT_FAILURE) {
+      reset_node_state(impl, id);
+      node->last_status = SALTS_BT_FAILURE;
+      *out_status = SALTS_BT_FAILURE;
+      return SALTS_OK;
+    }
+    {
+      bool has_more = false;
+      status = node->queue_finish(node->user, &has_more);
+      if (status != SALTS_OK) {
+        reset_node_state(impl, id);
+        return status;
+      }
+      if (has_more) {
+        reset_node_state(impl, child);
+        node->cursor = SALTS_BT_INVALID_NODE_ID;
+        node->last_status = SALTS_BT_RUNNING;
+        *out_status = SALTS_BT_RUNNING;
+      } else {
+        reset_node_state(impl, id);
+        node->last_status = SALTS_BT_SUCCESS;
+        *out_status = SALTS_BT_SUCCESS;
+      }
+    }
+    return SALTS_OK;
+  }
 
   if (node->kind == SALTS_BT_NODE_PRECONDITION ||
       node->kind == SALTS_BT_NODE_IF_THEN_ELSE) {
@@ -796,6 +965,14 @@ static int validate_impl(const salts_bt_impl *impl) {
       return SALTS_EINVAL;
     if (node->kind == SALTS_BT_NODE_SWITCH && node->selector == NULL)
       return SALTS_EINVAL;
+    if (node->kind == SALTS_BT_NODE_PIPELINE_SEQUENCE &&
+        (node->pipeline_prepare == NULL || node->pipeline_complete == NULL))
+      return SALTS_EINVAL;
+    if (node->kind == SALTS_BT_NODE_ENTRY_UPDATED && node->entry_changed == NULL)
+      return SALTS_EINVAL;
+    if (node->kind == SALTS_BT_NODE_CONSUME_QUEUE &&
+        (node->queue_begin == NULL || node->queue_finish == NULL))
+      return SALTS_EINVAL;
     if ((node->kind == SALTS_BT_NODE_RETRY &&
          (node->limit == 0u || node->limit > impl->max_control_iterations)) ||
         (node->kind == SALTS_BT_NODE_WHILE_DO &&
@@ -821,6 +998,72 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
                            salts_bt_node_id *out_node_id) {
   return salts_bt_tree_add_node_with_limit(tree, parent_id, kind, handler,
                                            user, 0u, out_node_id);
+}
+
+int salts_bt_tree_add_pipeline_node(salts_bt_tree *tree,
+                                    salts_bt_node_id parent_id,
+                                    salts_bt_pipeline_prepare_fn prepare,
+                                    salts_bt_pipeline_complete_fn complete,
+                                    void *user,
+                                    salts_bt_node_id *out_node_id) {
+  salts_bt_impl *impl;
+  salts_bt_node *node;
+  int status;
+  if (prepare == NULL || complete == NULL || out_node_id == NULL)
+    return SALTS_EINVAL;
+  status = salts_bt_tree_add_node_with_limit(tree, parent_id,
+                                             SALTS_BT_NODE_PIPELINE_SEQUENCE,
+                                             NULL, user, 0u, out_node_id);
+  if (status != SALTS_OK) return status;
+  impl = tree_impl(tree);
+  node = get_node(impl, *out_node_id);
+  if (node == NULL) return SALTS_EINVAL;
+  node->pipeline_prepare = prepare;
+  node->pipeline_complete = complete;
+  return SALTS_OK;
+}
+
+int salts_bt_tree_add_entry_updated_node(salts_bt_tree *tree,
+                                         salts_bt_node_id parent_id,
+                                         salts_bt_entry_changed_fn changed,
+                                         void *user,
+                                         salts_bt_node_id *out_node_id) {
+  salts_bt_impl *impl;
+  salts_bt_node *node;
+  int status;
+  if (changed == NULL || out_node_id == NULL) return SALTS_EINVAL;
+  status = salts_bt_tree_add_node_with_limit(tree, parent_id,
+                                             SALTS_BT_NODE_ENTRY_UPDATED,
+                                             NULL, user, 0u, out_node_id);
+  if (status != SALTS_OK) return status;
+  impl = tree_impl(tree);
+  node = get_node(impl, *out_node_id);
+  if (node == NULL) return SALTS_EINVAL;
+  node->entry_changed = changed;
+  return SALTS_OK;
+}
+
+int salts_bt_tree_add_consume_queue_node(salts_bt_tree *tree,
+                                         salts_bt_node_id parent_id,
+                                         salts_bt_queue_begin_fn begin,
+                                         salts_bt_queue_finish_fn finish,
+                                         void *user,
+                                         salts_bt_node_id *out_node_id) {
+  salts_bt_impl *impl;
+  salts_bt_node *node;
+  int status;
+  if (begin == NULL || finish == NULL || out_node_id == NULL)
+    return SALTS_EINVAL;
+  status = salts_bt_tree_add_node_with_limit(tree, parent_id,
+                                             SALTS_BT_NODE_CONSUME_QUEUE,
+                                             NULL, user, 0u, out_node_id);
+  if (status != SALTS_OK) return status;
+  impl = tree_impl(tree);
+  node = get_node(impl, *out_node_id);
+  if (node == NULL) return SALTS_EINVAL;
+  node->queue_begin = begin;
+  node->queue_finish = finish;
+  return SALTS_OK;
 }
 
 int salts_bt_tree_add_condition_node(salts_bt_tree *tree,
