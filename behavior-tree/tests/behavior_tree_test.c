@@ -95,8 +95,8 @@ typedef struct parallel_probe {
   size_t finish_calls[4];
   size_t abort_calls[4];
   salts_bt_node_status terminal_status[4];
-  int enter_status;
-  int finish_status;
+  int enter_status[4];
+  int finish_status[4];
 } parallel_probe;
 
 static int parallel_enter(void *user, size_t child_index,
@@ -106,7 +106,7 @@ static int parallel_enter(void *user, size_t child_index,
   ++probe->enter_calls[child_index];
   if (first_activation) ++probe->first_activations[child_index];
   else ++probe->resumes[child_index];
-  return probe->enter_status;
+  return probe->enter_status[child_index];
 }
 
 static int parallel_finish(void *user, size_t child_index,
@@ -115,7 +115,7 @@ static int parallel_finish(void *user, size_t child_index,
   if (probe == NULL || child_index >= 4u) return SALTS_EINVAL;
   ++probe->finish_calls[child_index];
   probe->terminal_status[child_index] = child_status;
-  return probe->finish_status;
+  return probe->finish_status[child_index];
 }
 
 static void parallel_abort(void *user, size_t child_index) {
@@ -1263,6 +1263,71 @@ spec("Salts C11 Behavior Tree") {
     check_equal(state.halt_calls, 1u);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
     check_equal(state.halt_calls, 1u);
+  }
+
+
+
+  it("aborts prepared Parallel contexts and halts prior branches when enter fails") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id active = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id not_started = SALTS_BT_INVALID_NODE_ID;
+    parallel_probe context = {0};
+    const salts_bt_leaf_ops active_ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state active_leaf = {&tree, 0u, 0u, SALTS_OK};
+    const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe never_started = {success_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    context.enter_status[1] = SALTS_EINVAL;
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                               parallel_enter, parallel_finish,
+                                               parallel_abort, &context, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &active_ops,
+                                      &active_leaf, &active), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &never_started, &not_started), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_EINVAL);
+    check_equal(context.enter_calls[0], 1u);
+    check_equal(context.enter_calls[1], 1u);
+    check_equal(active_leaf.tick_calls, 1u);
+    check_equal(active_leaf.halt_calls, 1u);
+    check_equal(never_started.calls, 0u);
+    check_equal(context.abort_calls[0], 1u);
+    check_equal(context.abort_calls[1], 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(context.abort_calls[0], 1u);
+    check_equal(context.abort_calls[1], 1u);
+  }
+
+  it("aborts the Parallel branch context when terminal finish fails") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    parallel_probe context = {0};
+    const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe leaf = {success_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    context.finish_status[0] = SALTS_EINVAL;
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                               parallel_enter, parallel_finish,
+                                               parallel_abort, &context, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &leaf, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_EINVAL);
+    check_equal(context.enter_calls[0], 1u);
+    check_equal(context.finish_calls[0], 1u);
+    check_equal(context.terminal_status[0], SALTS_BT_SUCCESS);
+    check_equal(context.abort_calls[0], 1u);
+    check_equal(leaf.calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(context.abort_calls[0], 1u);
   }
 
 
