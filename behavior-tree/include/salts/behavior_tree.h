@@ -39,7 +39,8 @@ typedef enum salts_bt_node_kind {
   SALTS_BT_NODE_IF_THEN_ELSE = 13,
   SALTS_BT_NODE_PRECONDITION = 14,
   SALTS_BT_NODE_WHILE_DO = 15,
-  SALTS_BT_NODE_SWITCH = 16
+  SALTS_BT_NODE_SWITCH = 16,
+  SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE = 17
 } salts_bt_node_kind;
 
 typedef enum salts_bt_node_status {
@@ -110,7 +111,8 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
 /*
  * Parameterized single-child nodes use limit: RETRY means maximum attempts
  * including the first attempt (must be positive); REPEAT means completed child
- * cycles (zero is a valid immediate SUCCESS). The value is bounded by the tree
+ * cycles (zero is a valid immediate SUCCESS). KeepRunningUntilFailure counts
+ * successful child ticks and returns FAILURE when the budget is exhausted. The value is bounded by the tree
  * configuration. Other node kinds require limit == 0.
  */
 int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
