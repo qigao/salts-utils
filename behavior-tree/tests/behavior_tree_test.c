@@ -87,6 +87,74 @@ static int probe_selector(void *user, size_t *out_index) {
   return SALTS_OK;
 }
 
+
+typedef struct pipeline_probe {
+  size_t prepare_calls;
+  size_t complete_calls;
+  size_t last_prepared_child;
+  size_t last_completed_child;
+  salts_bt_node_status last_completed_status;
+  int status;
+} pipeline_probe;
+
+static int pipeline_prepare(void *user, size_t child_index) {
+  pipeline_probe *probe = (pipeline_probe *)user;
+  ++probe->prepare_calls;
+  probe->last_prepared_child = child_index;
+  return probe->status;
+}
+
+static int pipeline_complete(void *user, size_t child_index,
+                             salts_bt_node_status child_status) {
+  pipeline_probe *probe = (pipeline_probe *)user;
+  ++probe->complete_calls;
+  probe->last_completed_child = child_index;
+  probe->last_completed_status = child_status;
+  return probe->status;
+}
+
+typedef struct entry_changed_probe {
+  const bool *steps;
+  size_t step_count;
+  size_t calls;
+  int status;
+} entry_changed_probe;
+
+static int entry_changed(void *user, bool *out_changed) {
+  entry_changed_probe *probe = (entry_changed_probe *)user;
+  if (probe == NULL || out_changed == NULL ||
+      probe->steps == NULL || probe->step_count == 0u)
+    return SALTS_EINVAL;
+  *out_changed = probe->steps[probe->calls < probe->step_count
+                                  ? probe->calls
+                                  : probe->step_count - 1u];
+  ++probe->calls;
+  return probe->status;
+}
+
+typedef struct queue_probe {
+  size_t remaining;
+  size_t begin_calls;
+  size_t finish_calls;
+} queue_probe;
+
+static int queue_begin(void *user, bool *out_has_item) {
+  queue_probe *probe = (queue_probe *)user;
+  if (probe == NULL || out_has_item == NULL) return SALTS_EINVAL;
+  ++probe->begin_calls;
+  *out_has_item = probe->remaining > 0u;
+  if (*out_has_item) --probe->remaining;
+  return SALTS_OK;
+}
+
+static int queue_finish(void *user, bool *out_has_more) {
+  queue_probe *probe = (queue_probe *)user;
+  if (probe == NULL || out_has_more == NULL) return SALTS_EINVAL;
+  ++probe->finish_calls;
+  *out_has_more = probe->remaining > 0u;
+  return SALTS_OK;
+}
+
 spec("Salts C11 Behavior Tree") {
   it("resumes a Sequence at its RUNNING child and resets after terminal success") {
     salts_bt_tree tree = {0};
@@ -833,6 +901,102 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
     check_equal(result, SALTS_BT_FAILURE);
     check_equal(probe.calls, 0u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+
+
+  it("PipelineSequence runs preparation/completion once per child across RUNNING") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id first = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id second = SALTS_BT_INVALID_NODE_ID;
+    pipeline_probe pipeline = {0u, 0u, 0u, 0u, SALTS_BT_FAILURE, SALTS_OK};
+    const salts_bt_node_status first_steps[] = {SALTS_BT_SUCCESS};
+    const salts_bt_node_status second_steps[] = {SALTS_BT_RUNNING, SALTS_BT_SUCCESS};
+    leaf_probe first_probe = {first_steps, 1u, 0u};
+    leaf_probe second_probe = {second_steps, 2u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_pipeline_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                                pipeline_prepare, pipeline_complete,
+                                                &pipeline, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &first_probe, &first), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &second_probe, &second), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(pipeline.prepare_calls, 2u);
+    check_equal(pipeline.complete_calls, 1u);
+    check_equal(pipeline.last_completed_child, 0u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(pipeline.prepare_calls, 2u);
+    check_equal(pipeline.complete_calls, 2u);
+    check_equal(pipeline.last_completed_child, 1u);
+    check_equal(pipeline.last_completed_status, SALTS_BT_SUCCESS);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("EntryUpdated continues live work, caches terminal results, and reruns on change") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const bool change_steps[] = {false, false, false, true};
+    entry_changed_probe changed = {change_steps, 4u, 0u, SALTS_OK};
+    const salts_bt_node_status child_steps[] = {
+        SALTS_BT_RUNNING, SALTS_BT_SUCCESS, SALTS_BT_FAILURE};
+    leaf_probe probe = {child_steps, 3u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_entry_updated_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                                     entry_changed, &changed, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(probe.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(probe.calls, 2u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(probe.calls, 2u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(probe.calls, 3u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("ConsumeQueue advances one item per successful child iteration") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    queue_probe queue = {2u, 0u, 0u};
+    const salts_bt_node_status child_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe probe = {child_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_consume_queue_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                                     queue_begin, queue_finish,
+                                                     &queue, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(queue.begin_calls, 1u);
+    check_equal(queue.finish_calls, 1u);
+    check_equal(probe.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(queue.begin_calls, 2u);
+    check_equal(queue.finish_calls, 2u);
+    check_equal(probe.calls, 2u);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
