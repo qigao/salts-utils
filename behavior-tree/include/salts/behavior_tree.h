@@ -72,9 +72,13 @@ typedef struct salts_bt_tree_config {
 typedef salts_bt_node_status (*salts_bt_leaf_fn)(void *user);
 typedef void (*salts_bt_leaf_halt_fn)(void *user);
 
-/* Predicate/selector callbacks return a Salts status code; SALTS_OK means the
- * out parameter is valid. They run synchronously on the tree driver thread. */
-typedef int (*salts_bt_condition_fn)(void *user, bool *out_condition);
+/* Predicate callbacks return a Salts status code; SALTS_OK means the output
+ * is one of SUCCESS/FAILURE/RUNNING. RUNNING means condition evaluation is
+ * pending; the guarded branch is not ticked and a previously active branch is
+ * halted. They run synchronously on the tree driver thread. */
+typedef int (*salts_bt_condition_fn)(void *user,
+                                     salts_bt_node_status *out_condition_status);
+/* Selector callbacks return a Salts status code and a zero-based child index. */
 typedef int (*salts_bt_selector_fn)(void *user, size_t *out_child_index);
 typedef int (*salts_bt_pipeline_prepare_fn)(void *user, size_t child_index);
 typedef int (*salts_bt_pipeline_complete_fn)(void *user, size_t child_index,
