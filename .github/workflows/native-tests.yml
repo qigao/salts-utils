@@ -112,8 +112,7 @@ jobs:
           name: ctest-${{ matrix.id }}
           path: ${{ matrix.build_dir }}/Testing/Temporary
           if-no-files-found: warn
- \
-            --no-tests=error --output-on-failure --timeout 180
+ --no-tests=error --output-on-failure --timeout 180
       - name: Run complete Windows CTest graph
         if: matrix.family == 'windows'
         shell: cmd
