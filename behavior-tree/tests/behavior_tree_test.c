@@ -791,4 +791,50 @@ spec("Salts C11 Behavior Tree") {
   }
 
 
+
+  it("propagates predicate errors before executing any branch side effects") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const bool conditions[] = {true};
+    condition_probe condition = {conditions, 1u, 0u, SALTS_EINVAL};
+    const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe child_probe = {success_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_condition_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                                SALTS_BT_NODE_PRECONDITION,
+                                                probe_condition, &condition, 0u, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &child_probe, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_EINVAL);
+    check_equal(condition.calls, 1u);
+    check_equal(child_probe.calls, 0u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("fails Switch cleanly for an out-of-range case index") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id first = SALTS_BT_INVALID_NODE_ID;
+    const size_t selections[] = {3u};
+    selector_probe selector = {selections, 1u, 0u};
+    const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe probe = {success_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_SUCCESS;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_switch_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                              probe_selector, &selector, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &first), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(probe.calls, 0u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+
 }
