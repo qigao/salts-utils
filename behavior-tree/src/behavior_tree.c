@@ -1323,13 +1323,13 @@ int salts_bt_tree_tick(salts_bt_tree *tree,
   impl->busy = true;
   if (status != SALTS_OK) {
     if (node_id_valid(impl, impl->root))
-      reset_node_state(impl, impl->root);
+      reset_tree_state(impl, impl->root);
     impl->busy = false;
     return status;
   }
   status = tick_node(impl, impl->root, 1u, out_status);
   if (status != SALTS_OK && node_id_valid(impl, impl->root))
-    reset_node_state(impl, impl->root);
+    reset_tree_state(impl, impl->root);
   impl->busy = false;
   return status;
 }
