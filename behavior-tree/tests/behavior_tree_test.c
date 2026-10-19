@@ -1111,7 +1111,7 @@ spec("Salts C11 Behavior Tree") {
 
 
 
-  it("treats an empty ConsumeQueue as successful exhaustion") {
+  it("returns FAILURE for an empty ConsumeQueue without ticking its child") {
     salts_bt_tree tree = {0};
     salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
     salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
@@ -1127,7 +1127,7 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
                                       probe_leaf, &probe, &child), SALTS_OK);
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
-    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(result, SALTS_BT_FAILURE);
     check_equal(queue.begin_calls, 1u);
     check_equal(queue.finish_calls, 0u);
     check_equal(queue.abort_calls, 0u);
