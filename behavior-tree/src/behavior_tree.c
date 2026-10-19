@@ -134,7 +134,9 @@ static bool node_kind_is_single_child(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_CONSUME_QUEUE;
 }
 
-static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
+static void reset_node_state_impl(salts_bt_impl *impl,
+                                   salts_bt_node_id id,
+                                   bool clear_persistent_state) {
   salts_bt_node *node = get_node(impl, id);
   salts_bt_node_id child;
   size_t child_index = 0u;
@@ -143,6 +145,14 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   const bool abort_queue =
       node != NULL && node->kind == SALTS_BT_NODE_CONSUME_QUEUE && node->prepared;
   const size_t pipeline_child = node != NULL ? node->counter : 0u;
+  const bool preserve_run_once =
+      !clear_persistent_state && node != NULL &&
+      node->kind == SALTS_BT_NODE_RUN_ONCE && node->run_once_complete;
+  const bool preserve_entry_updated =
+      !clear_persistent_state && node != NULL &&
+      node->kind == SALTS_BT_NODE_ENTRY_UPDATED && node->observed;
+  const salts_bt_node_status persistent_status =
+      node != NULL ? node->last_status : SALTS_BT_FAILURE;
   if (node == NULL) return;
   if (node->kind == SALTS_BT_NODE_LEAF && node->running) {
     node->running = false;
@@ -154,10 +164,12 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   node->timer_started = false;
   node->delay_elapsed = false;
   node->evaluated = false;
-  node->run_once_complete = false;
-  node->observed = false;
+  node->run_once_complete = preserve_run_once;
+  node->observed = preserve_entry_updated;
   node->prepared = false;
-  node->last_status = SALTS_BT_FAILURE;
+  node->last_status = (preserve_run_once || preserve_entry_updated)
+                          ? persistent_status
+                          : SALTS_BT_FAILURE;
   child = node->first_child;
   while (child != SALTS_BT_INVALID_NODE_ID) {
     salts_bt_node *child_node = get_node(impl, child);
@@ -168,10 +180,10 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
       const bool abort_parallel_branch =
           node->kind == SALTS_BT_NODE_PARALLEL &&
           child_node->parallel_branch_prepared;
-      /* This flag belongs to the parent's activation, not the child's resettable state. */
+      /* The active parent's branch marker must survive nested child resets. */
       if (abort_parallel_branch)
         child_node->parallel_branch_prepared = false;
-      reset_node_state(impl, child);
+      reset_node_state_impl(impl, child, clear_persistent_state);
       if (abort_parallel_branch && node->parallel_abort != NULL)
         node->parallel_abort(node->user, child_index);
     }
@@ -183,6 +195,14 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
     node->pipeline_abort(node->user, pipeline_child);
   if (abort_queue && node->queue_abort != NULL)
     node->queue_abort(node->user);
+}
+
+static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
+  reset_node_state_impl(impl, id, false);
+}
+
+static void reset_tree_state(salts_bt_impl *impl, salts_bt_node_id id) {
+  reset_node_state_impl(impl, id, true);
 }
 
 static int tick_node(salts_bt_impl *impl, salts_bt_node_id id,
@@ -284,7 +304,8 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
       return status;
     }
     if (!node->observed) changed = true;
-    if (!changed && node->cursor == SALTS_BT_INVALID_NODE_ID && node->observed) {
+    if (!changed && node->cursor == SALTS_BT_INVALID_NODE_ID && node->observed &&
+        node->last_status != SALTS_BT_RUNNING) {
       *out_status = node->last_status;
       return SALTS_OK;
     }
@@ -1274,7 +1295,7 @@ int salts_bt_tree_reset(salts_bt_tree *tree) {
   if (impl->busy) return SALTS_EBUSY;
   impl->busy = true;
   if (impl->root != SALTS_BT_INVALID_NODE_ID)
-    reset_node_state(impl, impl->root);
+    reset_tree_state(impl, impl->root);
   impl->busy = false;
   return SALTS_OK;
 }
@@ -1310,7 +1331,7 @@ int salts_bt_tree_destroy(salts_bt_tree *tree) {
   if (impl->busy) return SALTS_EBUSY;
   impl->busy = true;
   if (impl->root != SALTS_BT_INVALID_NODE_ID)
-    reset_node_state(impl, impl->root);
+    reset_tree_state(impl, impl->root);
   free(impl->nodes);
   memset(impl, 0, sizeof(*impl));
   free(impl);
