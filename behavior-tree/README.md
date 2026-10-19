@@ -13,7 +13,7 @@ The current C11 implementation provides:
 - Predicate/selector-driven IfThenElse, Precondition, WhileDo and Switch.
 - Host-context adapters for PipelineSequence, EntryUpdated and ConsumeQueue. They use typed callbacks; optional abort hooks clean adapter-owned state on interrupted pipeline/queue work. The library does not impose Praktor's blackboard or workflow value representation.
 - SUCCESS / FAILURE / RUNNING transitions with per-control-node state retained across ticks. Retry attempts, Repeat cycles, KeepRunningUntilFailure iterations and WhileDo iterations are bounded by the tree configuration (default 64, hard maximum 4096).
-- Full topology validation before leaf side effects, plus explicit cancel/reset/destruction; API errors abort active execution and halt descendants. Cancel halts active descendants and retains tree topology for reuse.
+- Full topology validation before leaf side effects, plus explicit cancel/reset/destruction; API errors abort active execution, clear persistent caches and halt descendants. Cancel halts active descendants and retains tree topology for reuse.
 - Reentrancy guards: attempts to reset/destroy/mutate the same tree from tick/halt callbacks return `SALTS_EBUSY`.
 - Monotonic cooperative Timeout/Delay. Timeout invokes leaf halt callbacks for active descendants; Delay never blocks the driver.
 - A single synchronous driver. Callback users remain caller-owned and must outlive the tree; this runtime creates no hidden worker threads and never launches processes.
