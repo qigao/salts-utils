@@ -1474,8 +1474,10 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_cancel(&tree), SALTS_OK);
     check_equal(updated_probe.calls, 1u);
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
-    check_equal(result, SALTS_BT_RUNNING);
+    /* EntryUpdated restarts and succeeds; Sequence then reaches its failing blocker. */
+    check_equal(result, SALTS_BT_FAILURE);
     check_equal(updated_probe.calls, 2u);
+    check_equal(blocker.calls, 1u);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
