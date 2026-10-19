@@ -43,7 +43,8 @@ typedef enum salts_bt_node_kind {
   SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE = 17,
   SALTS_BT_NODE_PIPELINE_SEQUENCE = 18,
   SALTS_BT_NODE_ENTRY_UPDATED = 19,
-  SALTS_BT_NODE_CONSUME_QUEUE = 20
+  SALTS_BT_NODE_CONSUME_QUEUE = 20,
+  SALTS_BT_NODE_REACTIVE_FALLBACK = 21
 } salts_bt_node_kind;
 
 typedef enum salts_bt_node_status {
