@@ -25,7 +25,7 @@ The first implementation provides:
 - Cooperative Parallel advances each branch at most once per parent tick and
   retains terminal branch results. ReactiveSequence reticks conditions from the
   first child and halts children to the right when an earlier child blocks or fails.
-- CTest coverage for sequence resumption, fallback advancement, status decorators,
+- CTest coverage for sequence resumption, fallback advancement, predicate/selector routing, cooperative WhileDo, status decorators,
   terminal reset, preflight-before-side-effects, invalid topology, and capacity boundaries.
 
 Tree node IDs are stable for the tree lifetime. Root depth counts as one. Retry's limit is maximum attempts including the first attempt; a success ends retrying, a failure consumes an attempt, and RUNNING preserves the current child. Repeat's limit is its terminal child-cycle count; RUNNING resumes the same cycle, while terminal child outcomes consume a cycle.
@@ -39,7 +39,8 @@ This is a first vertical slice, not BehaviorTree.CPP parity yet. The following
 remain later work tracked by [SaltsUtils #671](https://github.com/qigao/salts-utils/issues/671):
 
 - Stateful nodes such as ConsumeQueue and EntryUpdated.
-- IfThenElse, WhileDo, Switch, PipelineSequence and SubTree.
+- PipelineSequence and SubTree.
+- Blackboards and snapshot/merge semantics; condition and selector nodes currently use caller-supplied C callbacks.
 - Tree-local blackboard, snapshot/merge policy, external async completion,
   cancellation/deadline integration, richer validation and diagnostics.
 - Blackboard snapshot/merge semantics for Parallel branches. Current leaves
