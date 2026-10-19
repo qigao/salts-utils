@@ -764,4 +764,31 @@ spec("Salts C11 Behavior Tree") {
   }
 
 
+
+  it("keeps running after successful child ticks and fails on its bounded budget") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status steps[] = {
+        SALTS_BT_SUCCESS, SALTS_BT_SUCCESS, SALTS_BT_SUCCESS};
+    leaf_probe probe = {steps, 3u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node_with_limit(
+                    &tree, SALTS_BT_INVALID_NODE_ID,
+                    SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE, NULL, NULL,
+                    2u, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(probe.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(probe.calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+
 }
