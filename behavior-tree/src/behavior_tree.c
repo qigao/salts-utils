@@ -979,7 +979,6 @@ int salts_bt_tree_init(salts_bt_tree *tree,
       config->max_nodes > (size_t)UINT32_MAX ||
       config->max_depth == 0u ||
       config->max_depth > SALTS_BT_MAX_DEPTH ||
-      config->max_depth > config->max_nodes ||
       config->max_control_iterations == 0u ||
       config->max_control_iterations > SALTS_BT_MAX_CONTROL_ITERATIONS ||
       config->max_nodes > SIZE_MAX / sizeof(salts_bt_node) - 1u)
