@@ -15,6 +15,7 @@ typedef struct salts_bt_node {
   salts_bt_node_id next_sibling;
   salts_bt_node_id cursor;
   size_t depth;
+  size_t child_count;
 } salts_bt_node;
 
 typedef struct salts_bt_impl {
@@ -41,6 +42,29 @@ static bool node_id_valid(const salts_bt_impl *impl, salts_bt_node_id id) {
 
 static salts_bt_node *get_node(salts_bt_impl *impl, salts_bt_node_id id) {
   return node_id_valid(impl, id) ? &impl->nodes[id] : NULL;
+}
+
+static bool node_kind_valid(salts_bt_node_kind kind) {
+  return kind == SALTS_BT_NODE_LEAF ||
+         kind == SALTS_BT_NODE_SEQUENCE ||
+         kind == SALTS_BT_NODE_FALLBACK ||
+         kind == SALTS_BT_NODE_INVERTER ||
+         kind == SALTS_BT_NODE_FORCE_SUCCESS ||
+         kind == SALTS_BT_NODE_FORCE_FAILURE;
+}
+
+static bool node_kind_accepts_children(salts_bt_node_kind kind) {
+  return kind == SALTS_BT_NODE_SEQUENCE ||
+         kind == SALTS_BT_NODE_FALLBACK ||
+         kind == SALTS_BT_NODE_INVERTER ||
+         kind == SALTS_BT_NODE_FORCE_SUCCESS ||
+         kind == SALTS_BT_NODE_FORCE_FAILURE;
+}
+
+static bool node_kind_is_single_child(salts_bt_node_kind kind) {
+  return kind == SALTS_BT_NODE_INVERTER ||
+         kind == SALTS_BT_NODE_FORCE_SUCCESS ||
+         kind == SALTS_BT_NODE_FORCE_FAILURE;
 }
 
 static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
@@ -81,6 +105,25 @@ static int tick_node(salts_bt_impl *impl, salts_bt_node_id id,
   child_id = node->cursor != SALTS_BT_INVALID_NODE_ID
                  ? node->cursor
                  : node->first_child;
+
+  if (node_kind_is_single_child(node->kind)) {
+    salts_bt_node_status child_status = SALTS_BT_FAILURE;
+    int status;
+    if (child_id == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
+    status = tick_node(impl, child_id, depth + 1u, &child_status);
+    if (status != SALTS_OK) return status;
+    if (node->kind == SALTS_BT_NODE_INVERTER) {
+      if (child_status == SALTS_BT_SUCCESS) child_status = SALTS_BT_FAILURE;
+      else if (child_status == SALTS_BT_FAILURE) child_status = SALTS_BT_SUCCESS;
+    } else if (node->kind == SALTS_BT_NODE_FORCE_SUCCESS) {
+      if (child_status != SALTS_BT_RUNNING) child_status = SALTS_BT_SUCCESS;
+    } else if (node->kind == SALTS_BT_NODE_FORCE_FAILURE) {
+      if (child_status != SALTS_BT_RUNNING) child_status = SALTS_BT_FAILURE;
+    }
+    node->last_status = child_status;
+    *out_status = child_status;
+    return SALTS_OK;
+  }
 
   if (node->kind == SALTS_BT_NODE_SEQUENCE) {
     while (child_id != SALTS_BT_INVALID_NODE_ID) {
@@ -195,10 +238,7 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
   if (out_node_id != NULL) *out_node_id = SALTS_BT_INVALID_NODE_ID;
   if (impl == NULL || out_node_id == NULL) return SALTS_EINVAL;
   if (impl->ticking) return SALTS_EBUSY;
-  if (kind != SALTS_BT_NODE_LEAF &&
-      kind != SALTS_BT_NODE_SEQUENCE &&
-      kind != SALTS_BT_NODE_FALLBACK)
-    return SALTS_EINVAL;
+  if (!node_kind_valid(kind)) return SALTS_EINVAL;
   if ((kind == SALTS_BT_NODE_LEAF && handler == NULL) ||
       (kind != SALTS_BT_NODE_LEAF && handler != NULL))
     return SALTS_EINVAL;
@@ -207,9 +247,8 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
     if (impl->root != SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
   } else {
     parent = get_node(impl, parent_id);
-    if (parent == NULL ||
-        (parent->kind != SALTS_BT_NODE_SEQUENCE &&
-         parent->kind != SALTS_BT_NODE_FALLBACK))
+    if (parent == NULL || !node_kind_accepts_children(parent->kind) ||
+        (node_kind_is_single_child(parent->kind) && parent->child_count >= 1u))
       return SALTS_EINVAL;
     depth = parent->depth + 1u;
     if (depth > impl->max_depth) return SALTS_EINVAL;
@@ -232,6 +271,7 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
   } else if (parent->first_child == SALTS_BT_INVALID_NODE_ID) {
     parent->first_child = id;
     parent->last_child = id;
+    ++parent->child_count;
   } else {
     salts_bt_node *last = get_node(impl, parent->last_child);
     if (last == NULL) {
@@ -241,6 +281,7 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
     }
     last->next_sibling = id;
     parent->last_child = id;
+    ++parent->child_count;
   }
 
   *out_node_id = id;
