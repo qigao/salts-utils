@@ -13,11 +13,11 @@ The first implementation provides:
 - Leaf callbacks plus Sequence, Fallback, Inverter, ForceSuccess and ForceFailure control nodes.
 - SUCCESS / FAILURE / RUNNING status transitions.
 - Per-control-node cursor state retained across RUNNING ticks.
-- Explicit whole-tree reset and destruction.
+- Explicit whole-tree validation before leaf side effects, reset and destruction.
 - A single synchronous driver. Leaf callbacks are borrowed, caller-owned
   contexts; the library creates no hidden threads and never launches processes.
-- CTest coverage for sequence resumption, fallback advancement, terminal reset,
-  invalid topology, and capacity boundaries.
+- CTest coverage for sequence resumption, fallback advancement, status decorators,
+  terminal reset, preflight-before-side-effects, invalid topology, and capacity boundaries.
 
 Tree node IDs are stable for the tree lifetime. Root depth counts as one.
 Construction rejects trees deeper than the configured bound and the public
