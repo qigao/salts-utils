@@ -89,7 +89,9 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
  *
  * Terminal control-flow outcomes reset that subtree, so a later re-entry starts
  * from the first child. This initial runtime is single-driver and synchronous;
- * RUNNING is cooperative re-tick, not hidden background work.
+ * RUNNING is cooperative re-tick, not hidden background work. A tree is not
+ * internally synchronized; all operations on one tree must be serialized on
+ * a single driver thread.
  *
  * On API error, the function returns a Salts status code. On success it stores
  * one of SALTS_BT_SUCCESS, SALTS_BT_FAILURE, SALTS_BT_RUNNING in out_status.
