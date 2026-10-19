@@ -78,9 +78,11 @@ typedef int (*salts_bt_selector_fn)(void *user, size_t *out_child_index);
 typedef int (*salts_bt_pipeline_prepare_fn)(void *user, size_t child_index);
 typedef int (*salts_bt_pipeline_complete_fn)(void *user, size_t child_index,
                                              salts_bt_node_status child_status);
+typedef void (*salts_bt_pipeline_abort_fn)(void *user, size_t child_index);
 typedef int (*salts_bt_entry_changed_fn)(void *user, bool *out_changed);
 typedef int (*salts_bt_queue_begin_fn)(void *user, bool *out_has_item);
 typedef int (*salts_bt_queue_finish_fn)(void *user, bool *out_has_more);
+typedef void (*salts_bt_queue_abort_fn)(void *user);
 
 typedef struct salts_bt_leaf_ops {
   salts_bt_leaf_fn tick;
@@ -190,13 +192,16 @@ int salts_bt_tree_add_switch_node(salts_bt_tree *tree,
  * PipelineSequence invokes prepare before first ticking each child and complete
  * when that child becomes terminal. SUCCESS advances to the next child;
  * FAILURE terminates; RUNNING resumes the same child next tick without another
- * prepare call. Empty pipelines succeed. This lets a host bridge pipeline data
- * through its own context/blackboard without coupling this library to it.
+ * prepare call. Empty pipelines succeed. If the tree is reset/destroyed while
+ * a child is active, optional abort runs after the child is halted/reset. Abort
+ * is also called if prepare/child/complete fails while its context is active.
+ * This lets a host clean its own context without coupling this library to it.
  */
 int salts_bt_tree_add_pipeline_node(salts_bt_tree *tree,
                                     salts_bt_node_id parent_id,
                                     salts_bt_pipeline_prepare_fn prepare,
                                     salts_bt_pipeline_complete_fn complete,
+                                    salts_bt_pipeline_abort_fn abort,
                                     void *user,
                                     salts_bt_node_id *out_node_id);
 
@@ -224,6 +229,7 @@ int salts_bt_tree_add_consume_queue_node(salts_bt_tree *tree,
                                          salts_bt_node_id parent_id,
                                          salts_bt_queue_begin_fn begin,
                                          salts_bt_queue_finish_fn finish,
+                                         salts_bt_queue_abort_fn abort,
                                          void *user,
                                          salts_bt_node_id *out_node_id);
 
