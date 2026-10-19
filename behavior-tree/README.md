@@ -30,8 +30,7 @@ This is a first vertical slice, not BehaviorTree.CPP parity yet. The following
 remain later work tracked by [SaltsUtils #671](https://github.com/qigao/salts-utils/issues/671):
 
 - Parallel and ReactiveSequence.
-- Decorators such as Retry, Repeat, Timeout, Delay, Inverter, ForceSuccess and
-  ForceFailure.
+- Decorators such as Retry, Repeat, Timeout and Delay.
 - Stateful nodes such as RunOnce, ConsumeQueue and EntryUpdated.
 - IfThenElse, WhileDo, Switch, PipelineSequence and SubTree.
 - Tree-local blackboard, snapshot/merge policy, external async completion,
