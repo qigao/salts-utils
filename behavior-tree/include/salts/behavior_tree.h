@@ -89,13 +89,16 @@ typedef int (*salts_bt_queue_begin_fn)(void *user, bool *out_has_item);
 typedef int (*salts_bt_queue_finish_fn)(void *user, bool *out_has_more);
 typedef void (*salts_bt_queue_abort_fn)(void *user);
 
-/* Parallel branch hooks execute sequentially on the single tree driver. Enter
- * is called before every active branch tick; first_activation is true once per
- * activation. Finish is called once when a branch becomes terminal. Abort is
- * optional and runs after branch descendants are halted during reset/cancel or
- * when another branch/callback fails. */
+/* Parallel host-context hooks run on the single tree driver thread.
+ * Enter selects/prepares branch-local context before every active branch tick;
+ * first_activation is true once per activation. Step runs after each branch tick,
+ * including RUNNING, so the host can merge progress on every tick. Finish runs
+ * once when a branch becomes terminal. Abort is optional and runs after branch
+ * descendants are halted during reset/cancel or when another callback fails. */
 typedef int (*salts_bt_parallel_enter_fn)(void *user, size_t child_index,
                                           bool first_activation);
+typedef int (*salts_bt_parallel_step_fn)(void *user, size_t child_index,
+                                         salts_bt_node_status child_status);
 typedef int (*salts_bt_parallel_finish_fn)(void *user, size_t child_index,
                                            salts_bt_node_status child_status);
 typedef void (*salts_bt_parallel_abort_fn)(void *user, size_t child_index);
@@ -227,6 +230,7 @@ int salts_bt_tree_add_switch_node(salts_bt_tree *tree,
 int salts_bt_tree_add_parallel_node(salts_bt_tree *tree,
                                     salts_bt_node_id parent_id,
                                     salts_bt_parallel_enter_fn enter,
+                                    salts_bt_parallel_step_fn step,
                                     salts_bt_parallel_finish_fn finish,
                                     salts_bt_parallel_abort_fn abort,
                                     void *user,
