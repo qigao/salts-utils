@@ -75,6 +75,7 @@ static bool node_kind_valid(salts_bt_node_kind kind) {
   return kind == SALTS_BT_NODE_LEAF ||
          kind == SALTS_BT_NODE_SEQUENCE ||
          kind == SALTS_BT_NODE_FALLBACK ||
+         kind == SALTS_BT_NODE_REACTIVE_FALLBACK ||
          kind == SALTS_BT_NODE_INVERTER ||
          kind == SALTS_BT_NODE_FORCE_SUCCESS ||
          kind == SALTS_BT_NODE_FORCE_FAILURE ||
@@ -98,6 +99,7 @@ static bool node_kind_valid(salts_bt_node_kind kind) {
 static bool node_kind_accepts_children(salts_bt_node_kind kind) {
   return kind == SALTS_BT_NODE_SEQUENCE ||
          kind == SALTS_BT_NODE_FALLBACK ||
+         kind == SALTS_BT_NODE_REACTIVE_FALLBACK ||
          kind == SALTS_BT_NODE_INVERTER ||
          kind == SALTS_BT_NODE_FORCE_SUCCESS ||
          kind == SALTS_BT_NODE_FORCE_FAILURE ||
@@ -786,6 +788,48 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
     return SALTS_OK;
   }
 
+  if (node->kind == SALTS_BT_NODE_REACTIVE_FALLBACK) {
+    salts_bt_node_id current = node->first_child;
+    if (current == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
+    while (current != SALTS_BT_INVALID_NODE_ID) {
+      salts_bt_node *child = get_node(impl, current);
+      salts_bt_node_id next;
+      salts_bt_node_status child_status = SALTS_BT_FAILURE;
+      int status;
+      if (child == NULL) return SALTS_EINVAL;
+      next = child->next_sibling;
+      status = tick_node(impl, current, depth + 1u, &child_status);
+      if (status != SALTS_OK) return status;
+      if (child_status == SALTS_BT_SUCCESS) {
+        /* A higher-priority branch won; halt/reset all lower-priority work. */
+        reset_node_state(impl, id);
+        node->last_status = SALTS_BT_SUCCESS;
+        *out_status = SALTS_BT_SUCCESS;
+        return SALTS_OK;
+      }
+      if (child_status == SALTS_BT_RUNNING) {
+        salts_bt_node_id later = next;
+        while (later != SALTS_BT_INVALID_NODE_ID) {
+          salts_bt_node *later_node = get_node(impl, later);
+          salts_bt_node_id later_next;
+          if (later_node == NULL) return SALTS_EINVAL;
+          later_next = later_node->next_sibling;
+          reset_node_state(impl, later);
+          later = later_next;
+        }
+        node->cursor = current;
+        node->last_status = SALTS_BT_RUNNING;
+        *out_status = SALTS_BT_RUNNING;
+        return SALTS_OK;
+      }
+      current = next;
+    }
+    reset_node_state(impl, id);
+    node->last_status = SALTS_BT_FAILURE;
+    *out_status = SALTS_BT_FAILURE;
+    return SALTS_OK;
+  }
+
   if (node->kind == SALTS_BT_NODE_REACTIVE_SEQUENCE) {
     salts_bt_node_id current = node->first_child;
     if (current == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
@@ -1034,6 +1078,7 @@ static int validate_impl(const salts_bt_impl *impl) {
       return SALTS_EINVAL;
     if ((node->kind == SALTS_BT_NODE_PARALLEL ||
          node->kind == SALTS_BT_NODE_REACTIVE_SEQUENCE ||
+         node->kind == SALTS_BT_NODE_REACTIVE_FALLBACK ||
          node->kind == SALTS_BT_NODE_SWITCH) && node->child_count == 0u)
       return SALTS_EINVAL;
     if (node->kind == SALTS_BT_NODE_IF_THEN_ELSE &&
