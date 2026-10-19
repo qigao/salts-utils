@@ -1362,4 +1362,122 @@ spec("Salts C11 Behavior Tree") {
   }
 
 
+
+  it("preserves RunOnce completion across ordinary parent Sequence resets") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id once = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id once_leaf = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id fail_leaf = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
+    const salts_bt_node_status failure_steps[] = {SALTS_BT_FAILURE};
+    leaf_probe once_probe = {success_steps, 1u, 0u};
+    leaf_probe failure_probe = {failure_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_SUCCESS;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_SEQUENCE, NULL, NULL, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_RUN_ONCE,
+                                      NULL, NULL, &once), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, once, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &once_probe, &once_leaf), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &failure_probe, &fail_leaf), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(once_probe.calls, 1u);
+    check_equal(failure_probe.calls, 1u);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(once_probe.calls, 1u);
+    check_equal(failure_probe.calls, 2u);
+
+    check_equal(salts_bt_tree_reset(&tree), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(once_probe.calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("preserves EntryUpdated terminal cache across parent resets but reruns after explicit reset") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id updated = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id updated_leaf = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id fail_leaf = SALTS_BT_INVALID_NODE_ID;
+    const bool unchanged_steps[] = {false, false, false, false};
+    entry_changed_probe changed = {unchanged_steps, 4u, 0u, SALTS_OK};
+    const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
+    const salts_bt_node_status failure_steps[] = {SALTS_BT_FAILURE};
+    leaf_probe updated_probe = {success_steps, 1u, 0u};
+    leaf_probe failure_probe = {failure_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_SUCCESS;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_SEQUENCE, NULL, NULL, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_entry_updated_node(&tree, root, entry_changed,
+                                                     &changed, &updated), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, updated, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &updated_probe, &updated_leaf), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &failure_probe, &fail_leaf), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(updated_probe.calls, 1u);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(updated_probe.calls, 1u);
+
+    check_equal(salts_bt_tree_reset(&tree), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(updated_probe.calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("restarts an EntryUpdated child that was RUNNING when its parent reset") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id updated = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id updated_leaf = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id blocking_leaf = SALTS_BT_INVALID_NODE_ID;
+    const bool unchanged_steps[] = {false, false, false};
+    entry_changed_probe changed = {unchanged_steps, 3u, 0u, SALTS_OK};
+    const salts_bt_node_status running_then_success[] = {
+        SALTS_BT_RUNNING, SALTS_BT_SUCCESS};
+    const salts_bt_node_status failure_steps[] = {SALTS_BT_FAILURE};
+    leaf_probe updated_probe = {running_then_success, 2u, 0u};
+    leaf_probe blocker = {failure_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_SEQUENCE, NULL, NULL, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_entry_updated_node(&tree, root, entry_changed,
+                                                     &changed, &updated), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, updated, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &updated_probe, &updated_leaf), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &blocker, &blocking_leaf), SALTS_OK);
+
+    /* The first tick is RUNNING inside EntryUpdated, so Sequence never reaches blocker. */
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(updated_probe.calls, 1u);
+    /* Force a tree-local cancellation/reset: RUNNING work is halted and state is reusable. */
+    check_equal(salts_bt_tree_cancel(&tree), SALTS_OK);
+    check_equal(updated_probe.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(updated_probe.calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+
 }
