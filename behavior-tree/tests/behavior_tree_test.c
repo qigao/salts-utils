@@ -51,20 +51,20 @@ static void halt_running_leaf(void *user) {
 }
 
 typedef struct condition_probe {
-  const bool *steps;
+  const salts_bt_node_status *steps;
   size_t step_count;
   size_t calls;
   int status;
 } condition_probe;
 
-static int probe_condition(void *user, bool *out_condition) {
+static int probe_condition(void *user, salts_bt_node_status *out_condition_status) {
   condition_probe *probe = (condition_probe *)user;
-  if (probe == NULL || out_condition == NULL ||
+  if (probe == NULL || out_condition_status == NULL ||
       probe->steps == NULL || probe->step_count == 0u)
     return SALTS_EINVAL;
-  *out_condition = probe->steps[probe->calls < probe->step_count
-                                    ? probe->calls
-                                    : probe->step_count - 1u];
+  *out_condition_status = probe->steps[probe->calls < probe->step_count
+                                           ? probe->calls
+                                           : probe->step_count - 1u];
   ++probe->calls;
   return probe->status;
 }
@@ -773,7 +773,7 @@ spec("Salts C11 Behavior Tree") {
     salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
     salts_bt_node_id then_node = SALTS_BT_INVALID_NODE_ID;
     salts_bt_node_id else_node = SALTS_BT_INVALID_NODE_ID;
-    const bool conditions[] = {true, false};
+    const salts_bt_node_status conditions[] = {SALTS_BT_SUCCESS, SALTS_BT_FAILURE};
     condition_probe condition = {conditions, 2u, 0u, SALTS_OK};
     const salts_bt_leaf_ops running_ops = {always_running_leaf, halt_running_leaf};
     running_leaf_state running = {&tree, 0u, 0u, SALTS_OK};
@@ -806,7 +806,7 @@ spec("Salts C11 Behavior Tree") {
     salts_bt_tree tree = {0};
     salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
     salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
-    const bool precondition_steps[] = {false, true};
+    const salts_bt_node_status precondition_steps[] = {SALTS_BT_FAILURE, SALTS_BT_SUCCESS};
     condition_probe precondition = {precondition_steps, 2u, 0u, SALTS_OK};
     const salts_bt_node_status child_steps[] = {SALTS_BT_SUCCESS};
     leaf_probe child_probe = {child_steps, 1u, 0u};
@@ -831,7 +831,7 @@ spec("Salts C11 Behavior Tree") {
       salts_bt_tree while_tree = {0};
       salts_bt_node_id while_root = SALTS_BT_INVALID_NODE_ID;
       salts_bt_node_id while_child = SALTS_BT_INVALID_NODE_ID;
-      const bool while_conditions[] = {true, true, false};
+      const salts_bt_node_status while_conditions[] = {SALTS_BT_SUCCESS, SALTS_BT_SUCCESS, SALTS_BT_FAILURE};
       condition_probe while_condition = {while_conditions, 3u, 0u, SALTS_OK};
       const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
       leaf_probe while_probe = {success_steps, 1u, 0u};
@@ -918,7 +918,7 @@ spec("Salts C11 Behavior Tree") {
     salts_bt_tree tree = {0};
     salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
     salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
-    const bool conditions[] = {true};
+    const salts_bt_node_status conditions[] = {SALTS_BT_SUCCESS};
     condition_probe condition = {conditions, 1u, 0u, SALTS_EINVAL};
     const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
     leaf_probe child_probe = {success_steps, 1u, 0u};
@@ -1550,6 +1550,81 @@ spec("Salts C11 Behavior Tree") {
     check_equal(result, SALTS_BT_SUCCESS);
     check_equal(once_probe.calls, 2u);
     check_equal(flaky_probe.calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+
+
+  it("does not tick IfThenElse branches while its condition is RUNNING") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id then_node = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id else_node = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status condition_steps[] = {
+        SALTS_BT_SUCCESS, SALTS_BT_RUNNING, SALTS_BT_FAILURE};
+    condition_probe condition = {condition_steps, 3u, 0u, SALTS_OK};
+    const salts_bt_leaf_ops running_ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state then_probe = {&tree, 0u, 0u, SALTS_OK};
+    const salts_bt_node_status else_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe else_probe = {else_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_condition_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                                SALTS_BT_NODE_IF_THEN_ELSE,
+                                                probe_condition, &condition, 0u, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &running_ops, &then_probe, &then_node),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &else_probe, &else_node), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(then_probe.tick_calls, 1u);
+    check_equal(then_probe.halt_calls, 0u);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(then_probe.tick_calls, 1u);
+    check_equal(then_probe.halt_calls, 1u);
+    check_equal(else_probe.calls, 0u);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(then_probe.tick_calls, 1u);
+    check_equal(else_probe.calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(then_probe.halt_calls, 1u);
+  }
+
+  it("pauses WhileDo body execution while its condition node is RUNNING") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status condition_steps[] = {
+        SALTS_BT_SUCCESS, SALTS_BT_RUNNING, SALTS_BT_SUCCESS};
+    condition_probe condition = {condition_steps, 3u, 0u, SALTS_OK};
+    const salts_bt_node_status child_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe child_probe = {child_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_condition_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                                SALTS_BT_NODE_WHILE_DO,
+                                                probe_condition, &condition, 2u, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &child_probe, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(child_probe.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(child_probe.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(child_probe.calls, 2u);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
