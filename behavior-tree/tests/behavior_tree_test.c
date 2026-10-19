@@ -1518,4 +1518,40 @@ spec("Salts C11 Behavior Tree") {
   }
 
 
+
+  it("clears persistent caches after a tick callback error before retrying") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id once = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id once_leaf = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id flaky_leaf = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
+    const salts_bt_node_status invalid_then_success[] = {
+        (salts_bt_node_status)99, SALTS_BT_SUCCESS};
+    leaf_probe once_probe = {success_steps, 1u, 0u};
+    leaf_probe flaky_probe = {invalid_then_success, 2u, 0u};
+    salts_bt_node_status result = SALTS_BT_SUCCESS;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_SEQUENCE, NULL, NULL, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_RUN_ONCE,
+                                      NULL, NULL, &once), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, once, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &once_probe, &once_leaf), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &flaky_probe, &flaky_leaf), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_EINVAL);
+    check_equal(once_probe.calls, 1u);
+    check_equal(flaky_probe.calls, 1u);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(once_probe.calls, 2u);
+    check_equal(flaky_probe.calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+
 }
