@@ -26,7 +26,7 @@ Tree node IDs are stable for the tree lifetime; the root depth is one. Ordinary 
 
 This remains **partial parity**, not a completed replacement for Praktor's current `actions` runtime:
 
-- Tree-local blackboard storage. Parallel enter/step/finish/abort callbacks let the host create/select isolated branch contexts, merge outputs after every active tick, close terminal branches and abort interrupted branches. The library does not dictate the blackboard snapshot/merge policy or store values.
+- Tree-local blackboard storage. Parallel enter/step/join/finish/abort callbacks let the host create/select isolated branch contexts, stage branch progress, commit outputs once after all branches tick but before the parent resumes, close terminal branches and abort interrupted branches. Join should commit atomically; on join error, prepared contexts are aborted. The library does not dictate blackboard snapshot/merge policy or store values.
 - Workflow-level cancellation/deadline integration and any asynchronous host-completion adapter beyond cooperative leaf polling and halt callbacks.
 - SubTree expansion is left to Praktor's compile-time adapter, which should resolve and expand named trees while preserving independent node state.
 - Full node-by-node differential tests against the current Praktor `actions` behavior. Any known semantic mismatch must be documented before removing the C++ dependency.
