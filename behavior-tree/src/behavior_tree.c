@@ -873,6 +873,16 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
         }
         child->parallel_branch_prepared = false;
       }
+      /*
+       * Legacy Praktor calls each Parallel branch again on every parent tick.
+       * If another branch keeps the Parallel node RUNNING, terminal branches
+       * start a new activation next tick rather than retaining terminal status.
+       */
+      if (aggregate_status == SALTS_BT_RUNNING &&
+          child->evaluated && child->last_status != SALTS_BT_RUNNING) {
+        child->parallel_branch_prepared = false;
+        reset_tree_state(impl, current);
+      }
       current = next;
       ++child_index;
     }
