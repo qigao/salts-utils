@@ -395,20 +395,34 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
 
   if (node->kind == SALTS_BT_NODE_PRECONDITION ||
       node->kind == SALTS_BT_NODE_IF_THEN_ELSE) {
-    bool condition = false;
+    salts_bt_node_status condition_status = SALTS_BT_FAILURE;
     salts_bt_node_id selected = SALTS_BT_INVALID_NODE_ID;
     salts_bt_node_id child = node->first_child;
     int status;
     if (node->condition == NULL) return SALTS_EINVAL;
-    status = node->condition(node->user, &condition);
+    status = node->condition(node->user, &condition_status);
     if (status != SALTS_OK) return status;
-    if (node->kind == SALTS_BT_NODE_PRECONDITION && !condition) {
+    if (condition_status != SALTS_BT_SUCCESS &&
+        condition_status != SALTS_BT_FAILURE &&
+        condition_status != SALTS_BT_RUNNING)
+      return SALTS_EINVAL;
+    if (condition_status == SALTS_BT_RUNNING) {
+      if (node->cursor != SALTS_BT_INVALID_NODE_ID)
+        reset_node_state(impl, node->cursor);
+      node->cursor = SALTS_BT_INVALID_NODE_ID;
+      node->last_status = SALTS_BT_RUNNING;
+      *out_status = SALTS_BT_RUNNING;
+      return SALTS_OK;
+    }
+    if (node->kind == SALTS_BT_NODE_PRECONDITION &&
+        condition_status == SALTS_BT_FAILURE) {
       reset_node_state(impl, id);
       node->last_status = SALTS_BT_FAILURE;
       *out_status = SALTS_BT_FAILURE;
       return SALTS_OK;
     }
-    if (node->kind == SALTS_BT_NODE_IF_THEN_ELSE && !condition) {
+    if (node->kind == SALTS_BT_NODE_IF_THEN_ELSE &&
+        condition_status == SALTS_BT_FAILURE) {
       if (child != SALTS_BT_INVALID_NODE_ID) {
         salts_bt_node *then_node = get_node(impl, child);
         if (then_node == NULL) return SALTS_EINVAL;
@@ -471,7 +485,7 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
   }
 
   if (node->kind == SALTS_BT_NODE_WHILE_DO) {
-    bool condition = false;
+    salts_bt_node_status condition_status = SALTS_BT_FAILURE;
     salts_bt_node_status child_status = SALTS_BT_FAILURE;
     int status;
     if (node->condition == NULL || child_id == SALTS_BT_INVALID_NODE_ID)
@@ -482,9 +496,21 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
       *out_status = SALTS_BT_SUCCESS;
       return SALTS_OK;
     }
-    status = node->condition(node->user, &condition);
+    status = node->condition(node->user, &condition_status);
     if (status != SALTS_OK) return status;
-    if (!condition) {
+    if (condition_status != SALTS_BT_SUCCESS &&
+        condition_status != SALTS_BT_FAILURE &&
+        condition_status != SALTS_BT_RUNNING)
+      return SALTS_EINVAL;
+    if (condition_status == SALTS_BT_RUNNING) {
+      if (node->cursor != SALTS_BT_INVALID_NODE_ID)
+        reset_node_state(impl, node->cursor);
+      node->cursor = SALTS_BT_INVALID_NODE_ID;
+      node->last_status = SALTS_BT_RUNNING;
+      *out_status = SALTS_BT_RUNNING;
+      return SALTS_OK;
+    }
+    if (condition_status == SALTS_BT_FAILURE) {
       reset_node_state(impl, id);
       node->last_status = SALTS_BT_SUCCESS;
       *out_status = SALTS_BT_SUCCESS;
@@ -493,10 +519,12 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
     status = tick_node(impl, child_id, depth + 1u, &child_status);
     if (status != SALTS_OK) return status;
     if (child_status == SALTS_BT_RUNNING) {
+      node->cursor = child_id;
       node->last_status = SALTS_BT_RUNNING;
       *out_status = SALTS_BT_RUNNING;
       return SALTS_OK;
     }
+    node->cursor = SALTS_BT_INVALID_NODE_ID;
     if (child_status == SALTS_BT_FAILURE) {
       reset_node_state(impl, id);
       node->last_status = SALTS_BT_FAILURE;
