@@ -20,6 +20,7 @@ typedef uint32_t salts_bt_node_id;
 
 #define SALTS_BT_INVALID_NODE_ID ((salts_bt_node_id)0u)
 #define SALTS_BT_MAX_DEPTH 256u
+#define SALTS_BT_MAX_CONTROL_ITERATIONS 4096u
 
 typedef enum salts_bt_node_kind {
   SALTS_BT_NODE_LEAF = 0,
@@ -27,7 +28,9 @@ typedef enum salts_bt_node_kind {
   SALTS_BT_NODE_FALLBACK = 2,
   SALTS_BT_NODE_INVERTER = 3,
   SALTS_BT_NODE_FORCE_SUCCESS = 4,
-  SALTS_BT_NODE_FORCE_FAILURE = 5
+  SALTS_BT_NODE_FORCE_FAILURE = 5,
+  SALTS_BT_NODE_RETRY = 6,
+  SALTS_BT_NODE_REPEAT = 7
 } salts_bt_node_kind;
 
 typedef enum salts_bt_node_status {
@@ -43,6 +46,7 @@ typedef enum salts_bt_node_status {
 typedef struct salts_bt_tree_config {
   size_t max_nodes;
   size_t max_depth;
+  size_t max_control_iterations;
 } salts_bt_tree_config;
 
 /*
@@ -81,6 +85,20 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
                            salts_bt_leaf_fn handler,
                            void *user,
                            salts_bt_node_id *out_node_id);
+
+/*
+ * Parameterized single-child nodes use limit: RETRY means maximum attempts
+ * including the first attempt (must be positive); REPEAT means completed child
+ * cycles (zero is a valid immediate SUCCESS). The value is bounded by the tree
+ * configuration. Other node kinds require limit == 0.
+ */
+int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
+                                      salts_bt_node_id parent_id,
+                                      salts_bt_node_kind kind,
+                                      salts_bt_leaf_fn handler,
+                                      void *user,
+                                      size_t limit,
+                                      salts_bt_node_id *out_node_id);
 
 /*
  * Tick the root once. Sequence stops at FAILURE or RUNNING and resumes the
