@@ -30,9 +30,11 @@ typedef struct salts_bt_node {
   salts_bt_selector_fn selector;
   salts_bt_pipeline_prepare_fn pipeline_prepare;
   salts_bt_pipeline_complete_fn pipeline_complete;
+  salts_bt_pipeline_abort_fn pipeline_abort;
   salts_bt_entry_changed_fn entry_changed;
   salts_bt_queue_begin_fn queue_begin;
   salts_bt_queue_finish_fn queue_finish;
+  salts_bt_queue_abort_fn queue_abort;
   bool observed;
   bool prepared;
   bool running;
@@ -131,6 +133,11 @@ static bool node_kind_is_single_child(salts_bt_node_kind kind) {
 static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   salts_bt_node *node = get_node(impl, id);
   salts_bt_node_id child;
+  const bool abort_pipeline =
+      node != NULL && node->kind == SALTS_BT_NODE_PIPELINE_SEQUENCE && node->prepared;
+  const bool abort_queue =
+      node != NULL && node->kind == SALTS_BT_NODE_CONSUME_QUEUE && node->prepared;
+  const size_t pipeline_child = node != NULL ? node->counter : 0u;
   if (node == NULL) return;
   if (node->kind == SALTS_BT_NODE_LEAF && node->running) {
     node->running = false;
@@ -155,6 +162,11 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
     reset_node_state(impl, child);
     child = next;
   }
+  /* Clean adapter-owned context only after an active child has been halted. */
+  if (abort_pipeline && node->pipeline_abort != NULL)
+    node->pipeline_abort(node->user, pipeline_child);
+  if (abort_queue && node->queue_abort != NULL)
+    node->queue_abort(node->user);
 }
 
 static int tick_node(salts_bt_impl *impl, salts_bt_node_id id,
@@ -207,12 +219,13 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
       if (!node->prepared) {
         if (node->pipeline_prepare == NULL || node->pipeline_complete == NULL)
           return SALTS_EINVAL;
+        /* Begin ownership before the callback so abort can clean partial setup. */
+        node->prepared = true;
         status = node->pipeline_prepare(node->user, node->counter);
         if (status != SALTS_OK) {
           reset_node_state(impl, id);
           return status;
         }
-        node->prepared = true;
       }
       status = tick_node(impl, current, depth + 1u, &child_status);
       if (status != SALTS_OK) {
@@ -284,14 +297,17 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
     if (node->queue_begin == NULL || node->queue_finish == NULL ||
         child == SALTS_BT_INVALID_NODE_ID)
       return SALTS_EINVAL;
-    if (node->cursor == SALTS_BT_INVALID_NODE_ID) {
+    if (!node->prepared) {
       bool has_item = false;
+      /* begin may prepare partial item context even when it returns an error. */
+      node->prepared = true;
       status = node->queue_begin(node->user, &has_item);
       if (status != SALTS_OK) {
         reset_node_state(impl, id);
         return status;
       }
       if (!has_item) {
+        node->prepared = false;
         reset_node_state(impl, id);
         node->last_status = SALTS_BT_FAILURE;
         *out_status = SALTS_BT_FAILURE;
@@ -322,6 +338,8 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
         reset_node_state(impl, id);
         return status;
       }
+      /* finish has committed the current item; a later reset must not abort it. */
+      node->prepared = false;
       if (has_more) {
         reset_node_state(impl, child);
         node->cursor = SALTS_BT_INVALID_NODE_ID;
@@ -1004,6 +1022,7 @@ int salts_bt_tree_add_pipeline_node(salts_bt_tree *tree,
                                     salts_bt_node_id parent_id,
                                     salts_bt_pipeline_prepare_fn prepare,
                                     salts_bt_pipeline_complete_fn complete,
+                                    salts_bt_pipeline_abort_fn abort,
                                     void *user,
                                     salts_bt_node_id *out_node_id) {
   salts_bt_impl *impl;
@@ -1020,6 +1039,7 @@ int salts_bt_tree_add_pipeline_node(salts_bt_tree *tree,
   if (node == NULL) return SALTS_EINVAL;
   node->pipeline_prepare = prepare;
   node->pipeline_complete = complete;
+  node->pipeline_abort = abort;
   return SALTS_OK;
 }
 
@@ -1047,6 +1067,7 @@ int salts_bt_tree_add_consume_queue_node(salts_bt_tree *tree,
                                          salts_bt_node_id parent_id,
                                          salts_bt_queue_begin_fn begin,
                                          salts_bt_queue_finish_fn finish,
+                                         salts_bt_queue_abort_fn abort,
                                          void *user,
                                          salts_bt_node_id *out_node_id) {
   salts_bt_impl *impl;
@@ -1063,6 +1084,7 @@ int salts_bt_tree_add_consume_queue_node(salts_bt_tree *tree,
   if (node == NULL) return SALTS_EINVAL;
   node->queue_begin = begin;
   node->queue_finish = finish;
+  node->queue_abort = abort;
   return SALTS_OK;
 }
 
