@@ -28,6 +28,26 @@ static void init_tree(salts_bt_tree *tree, size_t max_nodes, size_t max_depth) {
   check_equal(salts_bt_tree_init(tree, &config), SALTS_OK);
 }
 
+
+typedef struct running_leaf_state {
+  salts_bt_tree *tree;
+  size_t tick_calls;
+  size_t halt_calls;
+  int reentrant_reset_status;
+} running_leaf_state;
+
+static salts_bt_node_status always_running_leaf(void *user) {
+  running_leaf_state *state = (running_leaf_state *)user;
+  ++state->tick_calls;
+  return SALTS_BT_RUNNING;
+}
+
+static void halt_running_leaf(void *user) {
+  running_leaf_state *state = (running_leaf_state *)user;
+  ++state->halt_calls;
+  state->reentrant_reset_status = salts_bt_tree_reset(state->tree);
+}
+
 spec("Salts C11 Behavior Tree") {
   it("resumes a Sequence at its RUNNING child and resets after terminal success") {
     salts_bt_tree tree = {0};
@@ -393,6 +413,31 @@ spec("Salts C11 Behavior Tree") {
     check_equal(result, SALTS_BT_SUCCESS);
     check_equal(probe.calls, 0u);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("halts a RUNNING leaf once on reset and again only after it restarts") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_leaf_ops ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state state = {&tree, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_leaf(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      &ops, &state, &root), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(state.tick_calls, 1u);
+    check_equal(salts_bt_tree_reset(&tree), SALTS_OK);
+    check_equal(state.halt_calls, 1u);
+    check_equal(state.reentrant_reset_status, SALTS_EBUSY);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(state.halt_calls, 2u);
+    check_equal(state.reentrant_reset_status, SALTS_EBUSY);
+    check_true(tree.impl == NULL);
   }
 
 }
