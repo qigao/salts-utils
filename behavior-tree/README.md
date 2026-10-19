@@ -19,7 +19,7 @@ The first implementation provides:
 - CTest coverage for sequence resumption, fallback advancement, status decorators,
   terminal reset, preflight-before-side-effects, invalid topology, and capacity boundaries.
 
-Tree node IDs are stable for the tree lifetime. Root depth counts as one.
+Tree node IDs are stable for the tree lifetime. Root depth counts as one. Retry's limit is maximum attempts including the first attempt; a success ends retrying, a failure consumes an attempt, and RUNNING preserves the current child. Repeat's limit is its terminal child-cycle count; RUNNING resumes the same cycle, while terminal child outcomes consume a cycle.
 Construction rejects trees deeper than the configured bound and the public
 `SALTS_BT_MAX_DEPTH` limit. Terminal Sequence/Fallback results reset the control
 subtree, so re-entering a completed branch begins at its first child.
