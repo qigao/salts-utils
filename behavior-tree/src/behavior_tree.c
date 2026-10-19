@@ -18,6 +18,8 @@ typedef struct salts_bt_node {
   size_t child_count;
   size_t limit;
   size_t counter;
+  salts_bt_leaf_halt_fn halt;
+  bool running;
 } salts_bt_node;
 
 typedef struct salts_bt_impl {
@@ -27,7 +29,7 @@ typedef struct salts_bt_impl {
   size_t max_control_iterations;
   size_t node_count;
   salts_bt_node_id root;
-  bool ticking;
+  bool busy;
 } salts_bt_impl;
 
 static salts_bt_impl *tree_impl(salts_bt_tree *tree) {
@@ -80,6 +82,10 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   salts_bt_node *node = get_node(impl, id);
   salts_bt_node_id child;
   if (node == NULL) return;
+  if (node->kind == SALTS_BT_NODE_LEAF && node->running) {
+    node->running = false;
+    if (node->halt != NULL) node->halt(node->user);
+  }
   node->cursor = SALTS_BT_INVALID_NODE_ID;
   node->counter = 0u;
   node->last_status = SALTS_BT_FAILURE;
@@ -107,6 +113,7 @@ static int tick_node(salts_bt_impl *impl, salts_bt_node_id id,
         status != SALTS_BT_FAILURE &&
         status != SALTS_BT_RUNNING)
       return SALTS_EINVAL;
+    node->running = status == SALTS_BT_RUNNING;
     node->last_status = status;
     *out_status = status;
     return SALTS_OK;
@@ -310,7 +317,7 @@ int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
 
   if (out_node_id != NULL) *out_node_id = SALTS_BT_INVALID_NODE_ID;
   if (impl == NULL || out_node_id == NULL) return SALTS_EINVAL;
-  if (impl->ticking) return SALTS_EBUSY;
+  if (impl->busy) return SALTS_EBUSY;
   if (!node_kind_valid(kind)) return SALTS_EINVAL;
   if ((kind == SALTS_BT_NODE_LEAF && handler == NULL) ||
       (kind != SALTS_BT_NODE_LEAF && handler != NULL))
@@ -409,26 +416,48 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
                                            user, 0u, out_node_id);
 }
 
+int salts_bt_tree_add_leaf(salts_bt_tree *tree,
+                           salts_bt_node_id parent_id,
+                           const salts_bt_leaf_ops *ops,
+                           void *user,
+                           salts_bt_node_id *out_node_id) {
+  salts_bt_impl *impl;
+  salts_bt_node *node;
+  int status;
+  if (ops == NULL || ops->tick == NULL || out_node_id == NULL)
+    return SALTS_EINVAL;
+  status = salts_bt_tree_add_node(tree, parent_id, SALTS_BT_NODE_LEAF,
+                                  ops->tick, user, out_node_id);
+  if (status != SALTS_OK) return status;
+  impl = tree_impl(tree);
+  node = get_node(impl, *out_node_id);
+  if (node == NULL) return SALTS_EINVAL;
+  node->halt = ops->halt;
+  return SALTS_OK;
+}
+
 int salts_bt_tree_tick(salts_bt_tree *tree,
                        salts_bt_node_status *out_status) {
   salts_bt_impl *impl = tree_impl(tree);
   int status;
   if (impl == NULL || out_status == NULL) return SALTS_EINVAL;
-  if (impl->ticking) return SALTS_EBUSY;
+  if (impl->busy) return SALTS_EBUSY;
   status = validate_impl(impl);
   if (status != SALTS_OK) return status;
-  impl->ticking = true;
+  impl->busy = true;
   status = tick_node(impl, impl->root, 1u, out_status);
-  impl->ticking = false;
+  impl->busy = false;
   return status;
 }
 
 int salts_bt_tree_reset(salts_bt_tree *tree) {
   salts_bt_impl *impl = tree_impl(tree);
   if (impl == NULL) return SALTS_EINVAL;
-  if (impl->ticking) return SALTS_EBUSY;
+  if (impl->busy) return SALTS_EBUSY;
+  impl->busy = true;
   if (impl->root != SALTS_BT_INVALID_NODE_ID)
     reset_node_state(impl, impl->root);
+  impl->busy = false;
   return SALTS_OK;
 }
 
@@ -455,7 +484,10 @@ int salts_bt_tree_destroy(salts_bt_tree *tree) {
   if (tree == NULL) return SALTS_EINVAL;
   impl = tree_impl(tree);
   if (impl == NULL) return SALTS_OK;
-  if (impl->ticking) return SALTS_EBUSY;
+  if (impl->busy) return SALTS_EBUSY;
+  impl->busy = true;
+  if (impl->root != SALTS_BT_INVALID_NODE_ID)
+    reset_node_state(impl, impl->root);
   free(impl->nodes);
   memset(impl, 0, sizeof(*impl));
   free(impl);
