@@ -1441,7 +1441,7 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
-  it("restarts an EntryUpdated child that was RUNNING when its parent reset") {
+  it("restarts an EntryUpdated child that was RUNNING when explicitly cancelled") {
     salts_bt_tree tree = {0};
     salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
     salts_bt_node_id updated = SALTS_BT_INVALID_NODE_ID;
@@ -1470,7 +1470,7 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
     check_equal(result, SALTS_BT_RUNNING);
     check_equal(updated_probe.calls, 1u);
-    /* Force a tree-local cancellation/reset: RUNNING work is halted and state is reusable. */
+    /* Explicit cancellation clears cached state and halts RUNNING work. */
     check_equal(salts_bt_tree_cancel(&tree), SALTS_OK);
     check_equal(updated_probe.calls, 1u);
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
