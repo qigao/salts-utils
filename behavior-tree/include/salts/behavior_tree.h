@@ -56,6 +56,13 @@ typedef struct salts_bt_tree_config {
  * reset, mutate, or recursively tick the same tree.
  */
 typedef salts_bt_node_status (*salts_bt_leaf_fn)(void *user);
+typedef void (*salts_bt_leaf_halt_fn)(void *user);
+
+typedef struct salts_bt_leaf_ops {
+  salts_bt_leaf_fn tick;
+  /* Optional: synchronously stop work while this leaf is RUNNING. */
+  salts_bt_leaf_halt_fn halt;
+} salts_bt_leaf_ops;
 
 /* Set a useful bounded default before changing individual limits. */
 void salts_bt_tree_config_init(salts_bt_tree_config *config);
@@ -99,6 +106,18 @@ int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
                                       void *user,
                                       size_t limit,
                                       salts_bt_node_id *out_node_id);
+
+/*
+ * Add a leaf with an optional halt callback. When reset/destroy aborts a leaf
+ * whose last status was RUNNING, halt is called at most once before the user
+ * can release its borrowed state. Callbacks execute synchronously on the
+ * single driver thread and must not mutate or destroy this tree.
+ */
+int salts_bt_tree_add_leaf(salts_bt_tree *tree,
+                           salts_bt_node_id parent_id,
+                           const salts_bt_leaf_ops *ops,
+                           void *user,
+                           salts_bt_node_id *out_node_id);
 
 /*
  * Tick the root once. Sequence stops at FAILURE or RUNNING and resumes the
