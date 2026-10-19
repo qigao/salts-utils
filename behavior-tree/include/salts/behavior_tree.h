@@ -256,6 +256,15 @@ int salts_bt_tree_validate(const salts_bt_tree *tree);
 /* Reset all per-node execution state without changing tree topology. */
 int salts_bt_tree_reset(salts_bt_tree *tree);
 
+/*
+ * Cancel the current activation: synchronously halt RUNNING descendants, abort
+ * any prepared host adapter context, and clear per-node state while preserving
+ * topology. The tree may be ticked again after cancellation. This call is
+ * serialized with all other tree operations and returns SALTS_EBUSY if invoked
+ * reentrantly from a callback.
+ */
+int salts_bt_tree_cancel(salts_bt_tree *tree);
+
 /* Copy the current root ID / node count. Returns SALTS_EINVAL if no root exists. */
 int salts_bt_tree_get_root(const salts_bt_tree *tree,
                            salts_bt_node_id *out_root);
