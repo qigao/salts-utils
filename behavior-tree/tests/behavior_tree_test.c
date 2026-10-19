@@ -1839,7 +1839,7 @@ spec("Salts C11 Behavior Tree") {
     init_tree(&tree, 8u, 8u);
     check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
                                                parallel_enter, parallel_step,
-                                               parallel_finish, parallel_abort,
+                                               parallel_join, parallel_finish, parallel_abort,
                                                &context, &root), SALTS_OK);
     check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
                                       probe_leaf, &failure_leaf, &failing), SALTS_OK);
@@ -1889,7 +1889,7 @@ spec("Salts C11 Behavior Tree") {
     init_tree(&tree, 4u, 4u);
     check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
                                                parallel_enter, parallel_step,
-                                               parallel_finish, parallel_abort,
+                                               parallel_join, parallel_finish, parallel_abort,
                                                &context, &root), SALTS_OK);
     check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
                                       probe_leaf, &leaf, &child), SALTS_OK);
