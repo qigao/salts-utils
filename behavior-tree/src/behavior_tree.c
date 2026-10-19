@@ -715,7 +715,8 @@ int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
   } else {
     parent = get_node(impl, parent_id);
     if (parent == NULL || !node_kind_accepts_children(parent->kind) ||
-        (node_kind_is_single_child(parent->kind) && parent->child_count >= 1u))
+        (node_kind_is_single_child(parent->kind) && parent->child_count >= 1u) ||
+        (parent->kind == SALTS_BT_NODE_IF_THEN_ELSE && parent->child_count >= 2u))
       return SALTS_EINVAL;
     depth = parent->depth + 1u;
     if (depth > impl->max_depth) return SALTS_EINVAL;
