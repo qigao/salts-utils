@@ -38,9 +38,8 @@ subtree, so re-entering a completed branch begins at its first child.
 This is a first vertical slice, not BehaviorTree.CPP parity yet. The following
 remain later work tracked by [SaltsUtils #671](https://github.com/qigao/salts-utils/issues/671):
 
-- Stateful nodes such as ConsumeQueue and EntryUpdated.
-- PipelineSequence and SubTree.
-- Blackboards and snapshot/merge semantics; condition and selector nodes currently use caller-supplied C callbacks.
+- SubTree expansion remains a Praktor compile-time responsibility; tree-local blackboard and Parallel snapshot/merge semantics are not yet built into this generic runtime.
+- Full node-by-node differential tests against Praktor's currently used `actions` behavior.
 - Tree-local blackboard, snapshot/merge policy, external async completion,
   cancellation/deadline integration, richer validation and diagnostics.
 - Blackboard snapshot/merge semantics for Parallel branches. Current leaves
