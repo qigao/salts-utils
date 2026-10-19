@@ -254,7 +254,8 @@ int salts_bt_tree_add_entry_updated_node(salts_bt_tree *tree,
  * and prepares the current item in host-owned context. On child FAILURE the
  * node fails; on RUNNING it resumes the same child; on SUCCESS, finish reports
  * whether another item exists. If more items exist, the node yields RUNNING and
- * begins the next iteration on the next tick; an exhausted queue succeeds.
+ * begins the next iteration on the next tick; an empty/exhausted queue fails,
+ * matching Praktor's current ConsumeQueue contract.
  */
 int salts_bt_tree_add_consume_queue_node(salts_bt_tree *tree,
                                          salts_bt_node_id parent_id,
