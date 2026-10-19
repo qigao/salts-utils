@@ -1,4 +1,6 @@
 #include <salts/behavior_tree.h>
+#include <salts/clock.h>
+#include <salts/thread.h>
 
 #include "tinytest.h"
 
@@ -438,6 +440,55 @@ spec("Salts C11 Behavior Tree") {
     check_equal(state.halt_calls, 2u);
     check_equal(state.reentrant_reset_status, SALTS_EBUSY);
     check_true(tree.impl == NULL);
+  }
+
+  it("halts a RUNNING child when Timeout expires") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_leaf_ops ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state state = {&tree, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_timed_node(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_TIMEOUT,
+                    UINT64_C(50000000), &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &ops, &state, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(state.tick_calls, 1u);
+    cmeta_sleep_ms(60u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(state.halt_calls, 1u);
+    check_equal(state.reentrant_reset_status, SALTS_EBUSY);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(state.halt_calls, 1u);
+  }
+
+  it("delays child execution without blocking the driver") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe probe = {steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_timed_node(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_DELAY,
+                    UINT64_C(30000000), &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(probe.calls, 0u);
+    cmeta_sleep_ms(40u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(probe.calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
 }
