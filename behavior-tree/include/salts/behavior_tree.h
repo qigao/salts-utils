@@ -24,7 +24,10 @@ typedef uint32_t salts_bt_node_id;
 typedef enum salts_bt_node_kind {
   SALTS_BT_NODE_LEAF = 0,
   SALTS_BT_NODE_SEQUENCE = 1,
-  SALTS_BT_NODE_FALLBACK = 2
+  SALTS_BT_NODE_FALLBACK = 2,
+  SALTS_BT_NODE_INVERTER = 3,
+  SALTS_BT_NODE_FORCE_SUCCESS = 4,
+  SALTS_BT_NODE_FORCE_FAILURE = 5
 } salts_bt_node_kind;
 
 typedef enum salts_bt_node_status {
@@ -64,8 +67,9 @@ int salts_bt_tree_init(salts_bt_tree *tree,
 /*
  * Add a node. parent_id == SALTS_BT_INVALID_NODE_ID declares the single root;
  * otherwise the node is appended to its parent's child list. Parents must be
- * created before children. Only Sequence and Fallback may have children.
- * Leaves require a handler; control-flow nodes require a NULL handler.
+ * created before children. Sequence/Fallback may have many children; Inverter,
+ * ForceSuccess and ForceFailure require exactly one child. Leaves cannot have
+ * children. Leaves require a handler; control-flow nodes require a NULL handler.
  * IDs are stable for the lifetime of the tree and are not reused after reset.
  *
  * Capacity exhaustion returns SALTS_ENOBUFS. Invalid topology/contracts return
