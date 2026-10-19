@@ -43,11 +43,6 @@ static salts_bt_node *get_node(salts_bt_impl *impl, salts_bt_node_id id) {
   return node_id_valid(impl, id) ? &impl->nodes[id] : NULL;
 }
 
-static const salts_bt_node *get_const_node(const salts_bt_impl *impl,
-                                           salts_bt_node_id id) {
-  return node_id_valid(impl, id) ? &impl->nodes[id] : NULL;
-}
-
 static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   salts_bt_node *node = get_node(impl, id);
   salts_bt_node_id child;
