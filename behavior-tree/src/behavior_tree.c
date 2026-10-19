@@ -23,6 +23,7 @@ typedef struct salts_bt_node {
   uint64_t deadline_ns;
   bool timer_started;
   bool delay_elapsed;
+  bool evaluated;
   salts_bt_leaf_halt_fn halt;
   bool running;
 } salts_bt_node;
@@ -64,7 +65,9 @@ static bool node_kind_valid(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_RETRY ||
          kind == SALTS_BT_NODE_REPEAT ||
          kind == SALTS_BT_NODE_TIMEOUT ||
-         kind == SALTS_BT_NODE_DELAY;
+         kind == SALTS_BT_NODE_DELAY ||
+         kind == SALTS_BT_NODE_PARALLEL ||
+         kind == SALTS_BT_NODE_REACTIVE_SEQUENCE;
 }
 
 static bool node_kind_accepts_children(salts_bt_node_kind kind) {
@@ -76,7 +79,9 @@ static bool node_kind_accepts_children(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_RETRY ||
          kind == SALTS_BT_NODE_REPEAT ||
          kind == SALTS_BT_NODE_TIMEOUT ||
-         kind == SALTS_BT_NODE_DELAY;
+         kind == SALTS_BT_NODE_DELAY ||
+         kind == SALTS_BT_NODE_PARALLEL ||
+         kind == SALTS_BT_NODE_REACTIVE_SEQUENCE;
 }
 
 static bool node_kind_is_single_child(salts_bt_node_kind kind) {
@@ -102,6 +107,7 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   node->deadline_ns = 0u;
   node->timer_started = false;
   node->delay_elapsed = false;
+  node->evaluated = false;
   node->last_status = SALTS_BT_FAILURE;
   child = node->first_child;
   while (child != SALTS_BT_INVALID_NODE_ID) {
@@ -115,11 +121,15 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
 }
 
 static int tick_node(salts_bt_impl *impl, salts_bt_node_id id,
-                     size_t depth, salts_bt_node_status *out_status) {
+                     size_t depth, salts_bt_node_status *out_status);
+
+static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
+                          size_t depth, salts_bt_node_status *out_status) {
   salts_bt_node *node = get_node(impl, id);
   salts_bt_node_id child_id;
   if (node == NULL || out_status == NULL || depth > impl->max_depth)
     return SALTS_EINVAL;
+  node->evaluated = false;
 
   if (node->kind == SALTS_BT_NODE_LEAF) {
     salts_bt_node_status status = node->handler(node->user);
@@ -284,6 +294,87 @@ static int tick_node(salts_bt_impl *impl, salts_bt_node_id id,
     }
     node->last_status = child_status;
     *out_status = child_status;
+    return SALTS_OK;
+  }
+
+  if (node->kind == SALTS_BT_NODE_PARALLEL) {
+    bool any_failure = false;
+    bool any_running = false;
+    salts_bt_node_id current = node->first_child;
+    if (current == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
+    while (current != SALTS_BT_INVALID_NODE_ID) {
+      salts_bt_node *child = get_node(impl, current);
+      salts_bt_node_id next;
+      salts_bt_node_status child_status = SALTS_BT_FAILURE;
+      int status;
+      if (child == NULL) return SALTS_EINVAL;
+      next = child->next_sibling;
+      if (child->evaluated && child->last_status != SALTS_BT_RUNNING) {
+        child_status = child->last_status;
+        status = SALTS_OK;
+      } else {
+        status = tick_node(impl, current, depth + 1u, &child_status);
+      }
+      if (status != SALTS_OK) return status;
+      if (child_status == SALTS_BT_FAILURE) any_failure = true;
+      else if (child_status == SALTS_BT_RUNNING) any_running = true;
+      current = next;
+    }
+    if (any_failure) {
+      reset_node_state(impl, id);
+      node->last_status = SALTS_BT_FAILURE;
+      *out_status = SALTS_BT_FAILURE;
+      return SALTS_OK;
+    }
+    if (any_running) {
+      node->last_status = SALTS_BT_RUNNING;
+      *out_status = SALTS_BT_RUNNING;
+      return SALTS_OK;
+    }
+    reset_node_state(impl, id);
+    node->last_status = SALTS_BT_SUCCESS;
+    *out_status = SALTS_BT_SUCCESS;
+    return SALTS_OK;
+  }
+
+  if (node->kind == SALTS_BT_NODE_REACTIVE_SEQUENCE) {
+    salts_bt_node_id current = node->first_child;
+    if (current == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
+    while (current != SALTS_BT_INVALID_NODE_ID) {
+      salts_bt_node *child = get_node(impl, current);
+      salts_bt_node_id next;
+      salts_bt_node_status child_status = SALTS_BT_FAILURE;
+      int status;
+      if (child == NULL) return SALTS_EINVAL;
+      next = child->next_sibling;
+      status = tick_node(impl, current, depth + 1u, &child_status);
+      if (status != SALTS_OK) return status;
+      if (child_status == SALTS_BT_FAILURE) {
+        reset_node_state(impl, id);
+        node->last_status = SALTS_BT_FAILURE;
+        *out_status = SALTS_BT_FAILURE;
+        return SALTS_OK;
+      }
+      if (child_status == SALTS_BT_RUNNING) {
+        salts_bt_node_id later = next;
+        while (later != SALTS_BT_INVALID_NODE_ID) {
+          salts_bt_node *later_node = get_node(impl, later);
+          salts_bt_node_id later_next;
+          if (later_node == NULL) return SALTS_EINVAL;
+          later_next = later_node->next_sibling;
+          reset_node_state(impl, later);
+          later = later_next;
+        }
+        node->cursor = current;
+        node->last_status = SALTS_BT_RUNNING;
+        *out_status = SALTS_BT_RUNNING;
+        return SALTS_OK;
+      }
+      current = next;
+    }
+    reset_node_state(impl, id);
+    node->last_status = SALTS_BT_SUCCESS;
+    *out_status = SALTS_BT_SUCCESS;
     return SALTS_OK;
   }
 
@@ -464,6 +555,16 @@ int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
 }
 
 
+static int tick_node(salts_bt_impl *impl, salts_bt_node_id id,
+                     size_t depth, salts_bt_node_status *out_status) {
+  salts_bt_node *node = get_node(impl, id);
+  int status;
+  if (node == NULL) return SALTS_EINVAL;
+  status = tick_node_impl(impl, id, depth, out_status);
+  if (status == SALTS_OK) node->evaluated = true;
+  return status;
+}
+
 static int validate_impl(const salts_bt_impl *impl) {
   size_t index;
   if (impl == NULL || !node_id_valid(impl, impl->root)) return SALTS_EINVAL;
@@ -479,6 +580,9 @@ static int validate_impl(const salts_bt_impl *impl) {
       return SALTS_EINVAL;
     }
     if (node_kind_is_single_child(node->kind) && node->child_count != 1u)
+      return SALTS_EINVAL;
+    if ((node->kind == SALTS_BT_NODE_PARALLEL ||
+         node->kind == SALTS_BT_NODE_REACTIVE_SEQUENCE) && node->child_count == 0u)
       return SALTS_EINVAL;
     if ((node->kind == SALTS_BT_NODE_RETRY &&
          (node->limit == 0u || node->limit > impl->max_control_iterations)) ||
