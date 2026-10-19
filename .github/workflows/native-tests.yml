@@ -81,6 +81,39 @@ jobs:
           cmake --build "$build" --target installed_service_consumer --parallel 2
           ctest --test-dir "$build" -R '^installed_service_consumer$' \
             --no-tests=error --output-on-failure --timeout 180
+      - name: Qualify installed C11 BehaviorTree consumer
+        if: matrix.id == 'linux-release'
+        shell: bash
+        env:
+          NATIVE_BUILD_DIR: ${{ matrix.build_dir }}
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/behavior-tree-installed-sdk"
+          cmake --install "$NATIVE_BUILD_DIR" --prefix "$prefix"
+          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$prefix/include/salts/behavior_tree.h"
+          export SALTS_UTILS_ROOT="$prefix"
+          consumer="$GITHUB_WORKSPACE/behavior-tree/package_config"
+          build="$RUNNER_TEMP/behavior-tree-installed-consumer"
+          cmake -S "$consumer" -B "$build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$GITHUB_WORKSPACE/vcpkg_installed/$QIGAO_TARGET_TRIPLET"
+          cmake --build "$build" --parallel 2
+          ctest --test-dir "$build" -R '^behavior_tree_installed_consumer        if: matrix.family == 'windows'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          ctest --preset "${{ matrix.preset }}" --no-tests=error --output-on-failure --timeout 180 --parallel 2
+          if errorlevel 1 exit /b 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ctest-${{ matrix.id }}
+          path: ${{ matrix.build_dir }}/Testing/Temporary
+          if-no-files-found: warn
+ \
+            --no-tests=error --output-on-failure --timeout 180
       - name: Run complete Windows CTest graph
         if: matrix.family == 'windows'
         shell: cmd
