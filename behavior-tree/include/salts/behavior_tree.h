@@ -198,8 +198,9 @@ int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
  * take condition + body. All children then share the same tree lifecycle.
  *
  * WhileDo limit is the maximum number of successful body iterations and must
- * be positive and bounded by max_control_iterations. WhileDo yields RUNNING
- * after each successful body iteration instead of spinning in one driver call.
+ * be positive and bounded by max_control_iterations. Successful iterations
+ * continue in the same tick until the condition fails, the body fails/returns
+ * RUNNING, or the iteration limit is reached; this preserves Praktor semantics.
  */
 int salts_bt_tree_add_condition_node(salts_bt_tree *tree,
                                      salts_bt_node_id parent_id,
