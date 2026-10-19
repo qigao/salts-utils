@@ -10,7 +10,7 @@ The first implementation provides:
 
 - Bounded, caller-configured tree allocation.
 - A single root and parent-before-child construction.
-- Leaf callbacks plus Sequence, Fallback, cooperative Parallel/ReactiveSequence, Inverter, ForceSuccess/ForceFailure, bounded Retry/Repeat, cooperative Timeout and non-blocking Delay.
+- Leaf callbacks plus Sequence, Fallback, cooperative Parallel/ReactiveSequence, Inverter, ForceSuccess/ForceFailure, bounded Retry/Repeat, RunOnce, cooperative Timeout and non-blocking Delay.
 - SUCCESS / FAILURE / RUNNING status transitions.
 - Per-control-node cursor/counter state retained across RUNNING ticks. Retry attempts and Repeat cycles are bounded by a caller-configured control-iteration budget (default 64, hard maximum 4096).
 - Explicit whole-tree validation before leaf side effects, reset and destruction.
@@ -38,7 +38,7 @@ subtree, so re-entering a completed branch begins at its first child.
 This is a first vertical slice, not BehaviorTree.CPP parity yet. The following
 remain later work tracked by [SaltsUtils #671](https://github.com/qigao/salts-utils/issues/671):
 
-- Stateful nodes such as RunOnce, ConsumeQueue and EntryUpdated.
+- Stateful nodes such as ConsumeQueue and EntryUpdated.
 - IfThenElse, WhileDo, Switch, PipelineSequence and SubTree.
 - Tree-local blackboard, snapshot/merge policy, external async completion,
   cancellation/deadline integration, richer validation and diagnostics.
