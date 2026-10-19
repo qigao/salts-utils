@@ -491,4 +491,91 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
+  it("runs Parallel children cooperatively and retains completed branches") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id first = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id second = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status first_steps[] = {
+        SALTS_BT_RUNNING, SALTS_BT_SUCCESS};
+    const salts_bt_node_status second_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe first_probe = {first_steps, 2u, 0u};
+    leaf_probe second_probe = {second_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_PARALLEL, NULL, NULL, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &first_probe, &first), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &second_probe, &second), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(first_probe.calls, 1u);
+    check_equal(second_probe.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(first_probe.calls, 2u);
+    check_equal(second_probe.calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("halts active Parallel branches when any branch fails") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id active = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id failed = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_leaf_ops ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state state = {&tree, 0u, 0u, SALTS_OK};
+    const salts_bt_node_status fail_steps[] = {SALTS_BT_FAILURE};
+    leaf_probe fail_probe = {fail_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_RUNNING;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_PARALLEL, NULL, NULL, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &ops, &state, &active), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &fail_probe, &failed), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(state.halt_calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(state.halt_calls, 1u);
+  }
+
+  it("rechecks ReactiveSequence conditions and halts later active children") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id condition = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id work = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status condition_steps[] = {
+        SALTS_BT_SUCCESS, SALTS_BT_FAILURE};
+    leaf_probe condition_probe = {condition_steps, 2u, 0u};
+    const salts_bt_leaf_ops ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state work_state = {&tree, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_REACTIVE_SEQUENCE, NULL, NULL, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &condition_probe, &condition), SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &ops, &work_state, &work), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(condition_probe.calls, 1u);
+    check_equal(work_state.tick_calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(condition_probe.calls, 2u);
+    check_equal(work_state.halt_calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(work_state.halt_calls, 1u);
+  }
+
 }
