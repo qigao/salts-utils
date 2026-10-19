@@ -24,6 +24,7 @@ typedef struct salts_bt_node {
   bool timer_started;
   bool delay_elapsed;
   bool evaluated;
+  bool run_once_complete;
   salts_bt_leaf_halt_fn halt;
   bool running;
 } salts_bt_node;
@@ -67,7 +68,8 @@ static bool node_kind_valid(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_TIMEOUT ||
          kind == SALTS_BT_NODE_DELAY ||
          kind == SALTS_BT_NODE_PARALLEL ||
-         kind == SALTS_BT_NODE_REACTIVE_SEQUENCE;
+         kind == SALTS_BT_NODE_REACTIVE_SEQUENCE ||
+         kind == SALTS_BT_NODE_RUN_ONCE;
 }
 
 static bool node_kind_accepts_children(salts_bt_node_kind kind) {
@@ -81,7 +83,8 @@ static bool node_kind_accepts_children(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_TIMEOUT ||
          kind == SALTS_BT_NODE_DELAY ||
          kind == SALTS_BT_NODE_PARALLEL ||
-         kind == SALTS_BT_NODE_REACTIVE_SEQUENCE;
+         kind == SALTS_BT_NODE_REACTIVE_SEQUENCE ||
+         kind == SALTS_BT_NODE_RUN_ONCE;
 }
 
 static bool node_kind_is_single_child(salts_bt_node_kind kind) {
@@ -91,7 +94,8 @@ static bool node_kind_is_single_child(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_RETRY ||
          kind == SALTS_BT_NODE_REPEAT ||
          kind == SALTS_BT_NODE_TIMEOUT ||
-         kind == SALTS_BT_NODE_DELAY;
+         kind == SALTS_BT_NODE_DELAY ||
+         kind == SALTS_BT_NODE_RUN_ONCE;
 }
 
 static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
@@ -108,6 +112,7 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   node->timer_started = false;
   node->delay_elapsed = false;
   node->evaluated = false;
+  node->run_once_complete = false;
   node->last_status = SALTS_BT_FAILURE;
   child = node->first_child;
   while (child != SALTS_BT_INVALID_NODE_ID) {
@@ -146,6 +151,22 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
   child_id = node->cursor != SALTS_BT_INVALID_NODE_ID
                  ? node->cursor
                  : node->first_child;
+
+  if (node->kind == SALTS_BT_NODE_RUN_ONCE) {
+    salts_bt_node_status child_status = SALTS_BT_FAILURE;
+    int status;
+    if (node->run_once_complete) {
+      *out_status = node->last_status;
+      return SALTS_OK;
+    }
+    if (child_id == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
+    status = tick_node(impl, child_id, depth + 1u, &child_status);
+    if (status != SALTS_OK) return status;
+    node->last_status = child_status;
+    if (child_status != SALTS_BT_RUNNING) node->run_once_complete = true;
+    *out_status = child_status;
+    return SALTS_OK;
+  }
 
   if (node->kind == SALTS_BT_NODE_TIMEOUT) {
     salts_bt_node_status child_status = SALTS_BT_FAILURE;
