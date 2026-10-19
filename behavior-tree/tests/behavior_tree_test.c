@@ -1,6 +1,6 @@
 #include <salts/behavior_tree.h>
 
-#include <tinytest.h>
+#include "tinytest.h"
 
 typedef struct leaf_probe {
   const salts_bt_node_status *steps;
