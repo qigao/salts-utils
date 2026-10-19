@@ -37,6 +37,7 @@ typedef struct salts_bt_node {
   salts_bt_queue_abort_fn queue_abort;
   salts_bt_parallel_enter_fn parallel_enter;
   salts_bt_parallel_step_fn parallel_step;
+  salts_bt_parallel_join_fn parallel_join;
   salts_bt_parallel_finish_fn parallel_finish;
   salts_bt_parallel_abort_fn parallel_abort;
   bool observed;
@@ -799,19 +800,20 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
   if (node->kind == SALTS_BT_NODE_PARALLEL) {
     bool any_failure = false;
     bool any_running = false;
+    salts_bt_node_status aggregate_status;
     salts_bt_node_id current = node->first_child;
     size_t child_index = 0u;
+    int status;
+
     if (current == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
     while (current != SALTS_BT_INVALID_NODE_ID) {
       salts_bt_node *child = get_node(impl, current);
       salts_bt_node_id next;
       salts_bt_node_status child_status = SALTS_BT_FAILURE;
-      int status;
       if (child == NULL) return SALTS_EINVAL;
       next = child->next_sibling;
       if (child->evaluated && child->last_status != SALTS_BT_RUNNING) {
         child_status = child->last_status;
-        status = SALTS_OK;
       } else {
         if (node->parallel_enter != NULL) {
           const bool first_activation = !child->parallel_branch_prepared;
@@ -834,29 +836,53 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
             return status;
           }
         }
-        if (node->parallel_finish != NULL &&
-            child->parallel_branch_prepared &&
-            child_status != SALTS_BT_RUNNING) {
-          status = node->parallel_finish(node->user, child_index, child_status);
-          if (status != SALTS_OK) {
-            reset_node_state(impl, id);
-            return status;
-          }
-          child->parallel_branch_prepared = false;
-        }
       }
       if (child_status == SALTS_BT_FAILURE) any_failure = true;
       else if (child_status == SALTS_BT_RUNNING) any_running = true;
       current = next;
       ++child_index;
     }
+
     /* Match Praktor's existing Parallel aggregation: RUNNING wins over FAILURE. */
-    if (any_running) {
+    aggregate_status = any_running ? SALTS_BT_RUNNING
+                      : any_failure ? SALTS_BT_FAILURE
+                                    : SALTS_BT_SUCCESS;
+    if (node->parallel_join != NULL) {
+      status = node->parallel_join(node->user, aggregate_status);
+      if (status != SALTS_OK) {
+        reset_node_state(impl, id);
+        return status;
+      }
+    }
+
+    /* Keep contexts live until Join has committed staged branch outputs. */
+    current = node->first_child;
+    child_index = 0u;
+    while (current != SALTS_BT_INVALID_NODE_ID) {
+      salts_bt_node *child = get_node(impl, current);
+      salts_bt_node_id next;
+      if (child == NULL) return SALTS_EINVAL;
+      next = child->next_sibling;
+      if (node->parallel_finish != NULL &&
+          child->parallel_branch_prepared &&
+          child->evaluated && child->last_status != SALTS_BT_RUNNING) {
+        status = node->parallel_finish(node->user, child_index, child->last_status);
+        if (status != SALTS_OK) {
+          reset_node_state(impl, id);
+          return status;
+        }
+        child->parallel_branch_prepared = false;
+      }
+      current = next;
+      ++child_index;
+    }
+
+    if (aggregate_status == SALTS_BT_RUNNING) {
       node->last_status = SALTS_BT_RUNNING;
       *out_status = SALTS_BT_RUNNING;
       return SALTS_OK;
     }
-    if (any_failure) {
+    if (aggregate_status == SALTS_BT_FAILURE) {
       reset_node_state(impl, id);
       node->last_status = SALTS_BT_FAILURE;
       *out_status = SALTS_BT_FAILURE;
@@ -1185,11 +1211,13 @@ static int validate_impl(const salts_bt_impl *impl) {
     if (node->kind == SALTS_BT_NODE_SWITCH && node->selector == NULL)
       return SALTS_EINVAL;
     if ((node->parallel_enter == NULL) != (node->parallel_step == NULL) ||
+        (node->parallel_enter == NULL) != (node->parallel_join == NULL) ||
         (node->parallel_enter == NULL) != (node->parallel_finish == NULL))
       return SALTS_EINVAL;
     if (node->kind != SALTS_BT_NODE_PARALLEL &&
         (node->parallel_enter != NULL || node->parallel_step != NULL ||
-         node->parallel_finish != NULL || node->parallel_abort != NULL))
+         node->parallel_join != NULL || node->parallel_finish != NULL ||
+         node->parallel_abort != NULL))
       return SALTS_EINVAL;
     if (node->parallel_abort != NULL && node->parallel_enter == NULL)
       return SALTS_EINVAL;
@@ -1232,6 +1260,7 @@ int salts_bt_tree_add_parallel_node(salts_bt_tree *tree,
                                     salts_bt_node_id parent_id,
                                     salts_bt_parallel_enter_fn enter,
                                     salts_bt_parallel_step_fn step,
+                                    salts_bt_parallel_join_fn join,
                                     salts_bt_parallel_finish_fn finish,
                                     salts_bt_parallel_abort_fn abort,
                                     void *user,
@@ -1239,7 +1268,8 @@ int salts_bt_tree_add_parallel_node(salts_bt_tree *tree,
   salts_bt_impl *impl;
   salts_bt_node *node;
   int status;
-  if (enter == NULL || step == NULL || finish == NULL || out_node_id == NULL)
+  if (enter == NULL || step == NULL || join == NULL || finish == NULL ||
+      out_node_id == NULL)
     return SALTS_EINVAL;
   status = salts_bt_tree_add_node_with_limit(tree, parent_id,
                                              SALTS_BT_NODE_PARALLEL, NULL,
@@ -1250,6 +1280,7 @@ int salts_bt_tree_add_parallel_node(salts_bt_tree *tree,
   if (node == NULL) return SALTS_EINVAL;
   node->parallel_enter = enter;
   node->parallel_step = step;
+  node->parallel_join = join;
   node->parallel_finish = finish;
   node->parallel_abort = abort;
   return SALTS_OK;
