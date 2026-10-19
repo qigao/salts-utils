@@ -174,7 +174,7 @@ int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
                                  salts_bt_node_id *out_node_id);
 
 /*
- * Add an IfThenElse, Precondition, or WhileDo control node with a predicate.
+ * Add an IfThenElse, Precondition, or WhileDo control node with a status predicate.
  * IfThenElse has a then child and optional else child (1 or 2 children).
  * Precondition and WhileDo require exactly one child. WhileDo limit is the
  * maximum number of successful body iterations and must be positive; it is
