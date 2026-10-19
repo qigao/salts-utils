@@ -35,8 +35,12 @@ typedef struct salts_bt_node {
   salts_bt_queue_begin_fn queue_begin;
   salts_bt_queue_finish_fn queue_finish;
   salts_bt_queue_abort_fn queue_abort;
+  salts_bt_parallel_enter_fn parallel_enter;
+  salts_bt_parallel_finish_fn parallel_finish;
+  salts_bt_parallel_abort_fn parallel_abort;
   bool observed;
   bool prepared;
+  bool parallel_branch_prepared;
   bool running;
 } salts_bt_node;
 
@@ -133,6 +137,7 @@ static bool node_kind_is_single_child(salts_bt_node_kind kind) {
 static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   salts_bt_node *node = get_node(impl, id);
   salts_bt_node_id child;
+  size_t child_index = 0u;
   const bool abort_pipeline =
       node != NULL && node->kind == SALTS_BT_NODE_PIPELINE_SEQUENCE && node->prepared;
   const bool abort_queue =
@@ -152,6 +157,7 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   node->run_once_complete = false;
   node->observed = false;
   node->prepared = false;
+  node->parallel_branch_prepared = false;
   node->last_status = SALTS_BT_FAILURE;
   child = node->first_child;
   while (child != SALTS_BT_INVALID_NODE_ID) {
@@ -159,8 +165,16 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
     salts_bt_node_id next;
     if (child_node == NULL) break;
     next = child_node->next_sibling;
-    reset_node_state(impl, child);
+    {
+      const bool abort_parallel_branch =
+          node->kind == SALTS_BT_NODE_PARALLEL &&
+          child_node->parallel_branch_prepared;
+      reset_node_state(impl, child);
+      if (abort_parallel_branch && node->parallel_abort != NULL)
+        node->parallel_abort(node->user, child_index);
+    }
     child = next;
+    ++child_index;
   }
   /* Clean adapter-owned context only after an active child has been halted. */
   if (abort_pipeline && node->pipeline_abort != NULL)
@@ -689,6 +703,7 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
     bool any_failure = false;
     bool any_running = false;
     salts_bt_node_id current = node->first_child;
+    size_t child_index = 0u;
     if (current == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
     while (current != SALTS_BT_INVALID_NODE_ID) {
       salts_bt_node *child = get_node(impl, current);
@@ -701,12 +716,35 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
         child_status = child->last_status;
         status = SALTS_OK;
       } else {
+        if (node->parallel_enter != NULL) {
+          const bool first_activation = !child->parallel_branch_prepared;
+          if (first_activation) child->parallel_branch_prepared = true;
+          status = node->parallel_enter(node->user, child_index, first_activation);
+          if (status != SALTS_OK) {
+            reset_node_state(impl, id);
+            return status;
+          }
+        }
         status = tick_node(impl, current, depth + 1u, &child_status);
+        if (status != SALTS_OK) {
+          reset_node_state(impl, id);
+          return status;
+        }
+        if (node->parallel_finish != NULL &&
+            child->parallel_branch_prepared &&
+            child_status != SALTS_BT_RUNNING) {
+          status = node->parallel_finish(node->user, child_index, child_status);
+          if (status != SALTS_OK) {
+            reset_node_state(impl, id);
+            return status;
+          }
+          child->parallel_branch_prepared = false;
+        }
       }
-      if (status != SALTS_OK) return status;
       if (child_status == SALTS_BT_FAILURE) any_failure = true;
       else if (child_status == SALTS_BT_RUNNING) any_running = true;
       current = next;
+      ++child_index;
     }
     if (any_failure) {
       reset_node_state(impl, id);
@@ -983,6 +1021,15 @@ static int validate_impl(const salts_bt_impl *impl) {
       return SALTS_EINVAL;
     if (node->kind == SALTS_BT_NODE_SWITCH && node->selector == NULL)
       return SALTS_EINVAL;
+    if ((node->parallel_enter == NULL) !=
+        (node->parallel_finish == NULL))
+      return SALTS_EINVAL;
+    if (node->kind != SALTS_BT_NODE_PARALLEL &&
+        (node->parallel_enter != NULL || node->parallel_finish != NULL ||
+         node->parallel_abort != NULL))
+      return SALTS_EINVAL;
+    if (node->parallel_abort != NULL && node->parallel_enter == NULL)
+      return SALTS_EINVAL;
     if (node->kind == SALTS_BT_NODE_PIPELINE_SEQUENCE &&
         (node->pipeline_prepare == NULL || node->pipeline_complete == NULL))
       return SALTS_EINVAL;
@@ -1016,6 +1063,31 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
                            salts_bt_node_id *out_node_id) {
   return salts_bt_tree_add_node_with_limit(tree, parent_id, kind, handler,
                                            user, 0u, out_node_id);
+}
+
+int salts_bt_tree_add_parallel_node(salts_bt_tree *tree,
+                                    salts_bt_node_id parent_id,
+                                    salts_bt_parallel_enter_fn enter,
+                                    salts_bt_parallel_finish_fn finish,
+                                    salts_bt_parallel_abort_fn abort,
+                                    void *user,
+                                    salts_bt_node_id *out_node_id) {
+  salts_bt_impl *impl;
+  salts_bt_node *node;
+  int status;
+  if (enter == NULL || finish == NULL || out_node_id == NULL)
+    return SALTS_EINVAL;
+  status = salts_bt_tree_add_node_with_limit(tree, parent_id,
+                                             SALTS_BT_NODE_PARALLEL, NULL,
+                                             user, 0u, out_node_id);
+  if (status != SALTS_OK) return status;
+  impl = tree_impl(tree);
+  node = get_node(impl, *out_node_id);
+  if (node == NULL) return SALTS_EINVAL;
+  node->parallel_enter = enter;
+  node->parallel_finish = finish;
+  node->parallel_abort = abort;
+  return SALTS_OK;
 }
 
 int salts_bt_tree_add_pipeline_node(salts_bt_tree *tree,
@@ -1180,9 +1252,16 @@ int salts_bt_tree_tick(salts_bt_tree *tree,
   if (impl == NULL || out_status == NULL) return SALTS_EINVAL;
   if (impl->busy) return SALTS_EBUSY;
   status = validate_impl(impl);
-  if (status != SALTS_OK) return status;
   impl->busy = true;
+  if (status != SALTS_OK) {
+    if (node_id_valid(impl, impl->root))
+      reset_node_state(impl, impl->root);
+    impl->busy = false;
+    return status;
+  }
   status = tick_node(impl, impl->root, 1u, out_status);
+  if (status != SALTS_OK && node_id_valid(impl, impl->root))
+    reset_node_state(impl, impl->root);
   impl->busy = false;
   return status;
 }
