@@ -309,8 +309,8 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
       if (!has_item) {
         node->prepared = false;
         reset_node_state(impl, id);
-        node->last_status = SALTS_BT_FAILURE;
-        *out_status = SALTS_BT_FAILURE;
+        node->last_status = SALTS_BT_SUCCESS;
+        *out_status = SALTS_BT_SUCCESS;
         return SALTS_OK;
       }
     }
