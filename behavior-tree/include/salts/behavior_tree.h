@@ -84,6 +84,17 @@ typedef int (*salts_bt_queue_begin_fn)(void *user, bool *out_has_item);
 typedef int (*salts_bt_queue_finish_fn)(void *user, bool *out_has_more);
 typedef void (*salts_bt_queue_abort_fn)(void *user);
 
+/* Parallel branch hooks execute sequentially on the single tree driver. Enter
+ * is called before every active branch tick; first_activation is true once per
+ * activation. Finish is called once when a branch becomes terminal. Abort is
+ * optional and runs after branch descendants are halted during reset/cancel or
+ * when another branch/callback fails. */
+typedef int (*salts_bt_parallel_enter_fn)(void *user, size_t child_index,
+                                          bool first_activation);
+typedef int (*salts_bt_parallel_finish_fn)(void *user, size_t child_index,
+                                           salts_bt_node_status child_status);
+typedef void (*salts_bt_parallel_abort_fn)(void *user, size_t child_index);
+
 typedef struct salts_bt_leaf_ops {
   salts_bt_leaf_fn tick;
   /* Optional: synchronously stop work while this leaf is RUNNING. */
@@ -187,6 +198,26 @@ int salts_bt_tree_add_switch_node(salts_bt_tree *tree,
                                   salts_bt_selector_fn selector,
                                   void *user,
                                   salts_bt_node_id *out_node_id);
+
+/*
+ * Add a host-context Parallel. enter selects/prepares the branch-local context
+ * before each child tick; first_activation is true on its first tick after
+ * construction/reset. finish commits/merges or otherwise closes a terminal
+ * branch. If reset/cancel or another branch error interrupts an active branch,
+ * optional abort runs after the descendant is halted/reset. The caller owns
+ * branch snapshots, isolation and merge policy; this runtime stores no
+ * blackboard values and launches no worker threads.
+ *
+ * Use salts_bt_tree_add_node(..., SALTS_BT_NODE_PARALLEL, ...) for an unhooked
+ * Parallel whose leaves already manage their own isolated contexts.
+ */
+int salts_bt_tree_add_parallel_node(salts_bt_tree *tree,
+                                    salts_bt_node_id parent_id,
+                                    salts_bt_parallel_enter_fn enter,
+                                    salts_bt_parallel_finish_fn finish,
+                                    salts_bt_parallel_abort_fn abort,
+                                    void *user,
+                                    salts_bt_node_id *out_node_id);
 
 /*
  * PipelineSequence invokes prepare before first ticking each child and complete
