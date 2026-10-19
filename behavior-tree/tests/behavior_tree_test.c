@@ -674,7 +674,7 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
-  it("runs Parallel children cooperatively and retains completed branches") {
+  it("reactivates terminal Parallel branches while another branch runs") {
     salts_bt_tree tree = {0};
     salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
     salts_bt_node_id first = SALTS_BT_INVALID_NODE_ID;
@@ -701,7 +701,7 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
     check_equal(result, SALTS_BT_SUCCESS);
     check_equal(first_probe.calls, 2u);
-    check_equal(second_probe.calls, 1u);
+    check_equal(second_probe.calls, 2u);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
@@ -1224,6 +1224,7 @@ spec("Salts C11 Behavior Tree") {
     check_equal(context.resumes[0], 0u);
     check_equal(context.finish_calls[0], 0u);
     check_equal(context.enter_calls[1], 1u);
+    check_equal(context.first_activations[1], 1u);
     check_equal(context.finish_calls[1], 1u);
     check_equal(context.terminal_status[1], SALTS_BT_SUCCESS);
 
@@ -1234,6 +1235,9 @@ spec("Salts C11 Behavior Tree") {
     check_equal(context.resumes[0], 1u);
     check_equal(context.finish_calls[0], 1u);
     check_equal(context.terminal_status[0], SALTS_BT_SUCCESS);
+    check_equal(context.enter_calls[1], 2u);
+    check_equal(context.first_activations[1], 2u);
+    check_equal(context.finish_calls[1], 2u);
     check_equal(context.abort_calls[0], 0u);
     check_equal(context.abort_calls[1], 0u);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
