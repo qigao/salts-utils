@@ -34,7 +34,8 @@ typedef enum salts_bt_node_kind {
   SALTS_BT_NODE_TIMEOUT = 8,
   SALTS_BT_NODE_DELAY = 9,
   SALTS_BT_NODE_PARALLEL = 10,
-  SALTS_BT_NODE_REACTIVE_SEQUENCE = 11
+  SALTS_BT_NODE_REACTIVE_SEQUENCE = 11,
+  SALTS_BT_NODE_RUN_ONCE = 12
 } salts_bt_node_kind;
 
 typedef enum salts_bt_node_status {
