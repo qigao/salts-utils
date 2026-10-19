@@ -1480,4 +1480,42 @@ spec("Salts C11 Behavior Tree") {
   }
 
 
+
+  it("rechecks ReactiveFallback priority and halts a lower-priority RUNNING branch") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id priority = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id fallback = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status priority_steps[] = {
+        SALTS_BT_FAILURE, SALTS_BT_SUCCESS};
+    leaf_probe priority_probe = {priority_steps, 2u, 0u};
+    const salts_bt_leaf_ops running_ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state fallback_probe = {&tree, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_REACTIVE_FALLBACK,
+                                      NULL, NULL, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &priority_probe, &priority), SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &running_ops,
+                                      &fallback_probe, &fallback), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(priority_probe.calls, 1u);
+    check_equal(fallback_probe.tick_calls, 1u);
+    check_equal(fallback_probe.halt_calls, 0u);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(priority_probe.calls, 2u);
+    check_equal(fallback_probe.tick_calls, 1u);
+    check_equal(fallback_probe.halt_calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(fallback_probe.halt_calls, 1u);
+  }
+
+
 }
