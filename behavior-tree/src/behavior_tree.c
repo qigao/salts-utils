@@ -157,7 +157,6 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   node->run_once_complete = false;
   node->observed = false;
   node->prepared = false;
-  node->parallel_branch_prepared = false;
   node->last_status = SALTS_BT_FAILURE;
   child = node->first_child;
   while (child != SALTS_BT_INVALID_NODE_ID) {
@@ -169,6 +168,9 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
       const bool abort_parallel_branch =
           node->kind == SALTS_BT_NODE_PARALLEL &&
           child_node->parallel_branch_prepared;
+      /* This flag belongs to the parent's activation, not the child's resettable state. */
+      if (abort_parallel_branch)
+        child_node->parallel_branch_prepared = false;
       reset_node_state(impl, child);
       if (abort_parallel_branch && node->parallel_abort != NULL)
         node->parallel_abort(node->user, child_index);
