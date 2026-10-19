@@ -288,14 +288,39 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
   return SALTS_OK;
 }
 
+
+static int validate_impl(const salts_bt_impl *impl) {
+  size_t index;
+  if (impl == NULL || !node_id_valid(impl, impl->root)) return SALTS_EINVAL;
+  if (impl->nodes[impl->root].parent != SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
+  for (index = 1u; index <= impl->node_count; ++index) {
+    const salts_bt_node *node = &impl->nodes[index];
+    if (node->depth == 0u || node->depth > impl->max_depth ||
+        !node_kind_valid(node->kind))
+      return SALTS_EINVAL;
+    if (node->kind == SALTS_BT_NODE_LEAF) {
+      if (node->handler == NULL || node->child_count != 0u) return SALTS_EINVAL;
+    } else if (node->handler != NULL) {
+      return SALTS_EINVAL;
+    }
+    if (node_kind_is_single_child(node->kind) && node->child_count != 1u)
+      return SALTS_EINVAL;
+  }
+  return SALTS_OK;
+}
+
+int salts_bt_tree_validate(const salts_bt_tree *tree) {
+  return validate_impl(tree_const_impl(tree));
+}
+
 int salts_bt_tree_tick(salts_bt_tree *tree,
                        salts_bt_node_status *out_status) {
   salts_bt_impl *impl = tree_impl(tree);
   int status;
-  if (impl == NULL || out_status == NULL ||
-      impl->root == SALTS_BT_INVALID_NODE_ID)
-    return SALTS_EINVAL;
+  if (impl == NULL || out_status == NULL) return SALTS_EINVAL;
   if (impl->ticking) return SALTS_EBUSY;
+  status = validate_impl(impl);
+  if (status != SALTS_OK) return status;
   impl->ticking = true;
   status = tick_node(impl, impl->root, 1u, out_status);
   impl->ticking = false;
