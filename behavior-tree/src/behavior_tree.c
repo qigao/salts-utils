@@ -531,13 +531,22 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
     if (body_node == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
 
     /*
-     * Match Praktor's bounded synchronous WhileDo loop: successful iterations
-     * continue in this tick, but RUNNING condition/body work yields cooperatively.
-     * The validated iteration limit bounds the maximum amount of work per tick.
+     * WhileDo is cooperative: one condition evaluation and at most one body
+     * tick per tree tick. A successful body iteration yields RUNNING unless
+     * the configured iteration budget has been exhausted. This preserves
+     * condition/body state across ticks and gives cancellation a chance to
+     * halt active work instead of monopolizing the driver in an internal loop.
      */
-    while (node->counter < node->limit) {
+    {
       salts_bt_node_status condition_status = SALTS_BT_FAILURE;
       salts_bt_node_status child_status = SALTS_BT_FAILURE;
+
+      if (node->counter >= node->limit) {
+        reset_node_state(impl, id);
+        node->last_status = SALTS_BT_SUCCESS;
+        *out_status = SALTS_BT_SUCCESS;
+        return SALTS_OK;
+      }
 
       if (node->condition != NULL) {
         status = node->condition(node->user, &condition_status);
@@ -584,12 +593,16 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
 
       ++node->counter;
       reset_node_state(impl, body_node);
+      if (node->counter >= node->limit) {
+        reset_node_state(impl, id);
+        node->last_status = SALTS_BT_SUCCESS;
+        *out_status = SALTS_BT_SUCCESS;
+      } else {
+        node->last_status = SALTS_BT_RUNNING;
+        *out_status = SALTS_BT_RUNNING;
+      }
+      return SALTS_OK;
     }
-
-    reset_node_state(impl, id);
-    node->last_status = SALTS_BT_SUCCESS;
-    *out_status = SALTS_BT_SUCCESS;
-    return SALTS_OK;
   }
 
   if (node->kind == SALTS_BT_NODE_SWITCH) {
