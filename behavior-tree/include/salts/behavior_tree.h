@@ -99,6 +99,9 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
 int salts_bt_tree_tick(salts_bt_tree *tree,
                        salts_bt_node_status *out_status);
 
+/* Validate complete topology before any leaf is allowed to run. */
+int salts_bt_tree_validate(const salts_bt_tree *tree);
+
 /* Reset all per-node execution state without changing tree topology. */
 int salts_bt_tree_reset(salts_bt_tree *tree);
 
