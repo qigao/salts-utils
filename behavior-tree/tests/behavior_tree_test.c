@@ -92,10 +92,13 @@ typedef struct parallel_probe {
   size_t enter_calls[4];
   size_t first_activations[4];
   size_t resumes[4];
+  size_t step_calls[4];
   size_t finish_calls[4];
   size_t abort_calls[4];
+  salts_bt_node_status step_status[4];
   salts_bt_node_status terminal_status[4];
   int enter_status[4];
+  int step_return[4];
   int finish_status[4];
 } parallel_probe;
 
@@ -107,6 +110,15 @@ static int parallel_enter(void *user, size_t child_index,
   if (first_activation) ++probe->first_activations[child_index];
   else ++probe->resumes[child_index];
   return probe->enter_status[child_index];
+}
+
+static int parallel_step(void *user, size_t child_index,
+                         salts_bt_node_status child_status) {
+  parallel_probe *probe = (parallel_probe *)user;
+  if (probe == NULL || child_index >= 4u) return SALTS_EINVAL;
+  ++probe->step_calls[child_index];
+  probe->step_status[child_index] = child_status;
+  return probe->step_return[child_index];
 }
 
 static int parallel_finish(void *user, size_t child_index,
@@ -1183,7 +1195,7 @@ spec("Salts C11 Behavior Tree") {
 
     init_tree(&tree, 8u, 8u);
     check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
-                                               parallel_enter, parallel_finish,
+                                               parallel_enter, parallel_step, parallel_finish,
                                                parallel_abort, &context, &root),
                 SALTS_OK);
     check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
@@ -1226,7 +1238,7 @@ spec("Salts C11 Behavior Tree") {
 
     init_tree(&tree, 8u, 8u);
     check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
-                                               parallel_enter, parallel_finish,
+                                               parallel_enter, parallel_step, parallel_finish,
                                                parallel_abort, &context, &root),
                 SALTS_OK);
     check_equal(salts_bt_tree_add_leaf(&tree, root, &ops, &first_leaf, &first), SALTS_OK);
@@ -1282,7 +1294,7 @@ spec("Salts C11 Behavior Tree") {
     context.enter_status[1] = SALTS_EINVAL;
     init_tree(&tree, 8u, 8u);
     check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
-                                               parallel_enter, parallel_finish,
+                                               parallel_enter, parallel_step, parallel_finish,
                                                parallel_abort, &context, &root),
                 SALTS_OK);
     check_equal(salts_bt_tree_add_leaf(&tree, root, &active_ops,
@@ -1315,7 +1327,7 @@ spec("Salts C11 Behavior Tree") {
     context.finish_status[0] = SALTS_EINVAL;
     init_tree(&tree, 4u, 4u);
     check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
-                                               parallel_enter, parallel_finish,
+                                               parallel_enter, parallel_step, parallel_finish,
                                                parallel_abort, &context, &root),
                 SALTS_OK);
     check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
@@ -1344,7 +1356,7 @@ spec("Salts C11 Behavior Tree") {
 
     init_tree(&tree, 8u, 8u);
     check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
-                                               parallel_enter, parallel_finish,
+                                               parallel_enter, parallel_step, parallel_finish,
                                                parallel_abort, &context, &root),
                 SALTS_OK);
     check_equal(salts_bt_tree_add_node_with_limit(&tree, root, SALTS_BT_NODE_REPEAT,
@@ -1798,6 +1810,80 @@ spec("Salts C11 Behavior Tree") {
     check_equal(body_state.reentrant_reset_status, SALTS_EBUSY);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
     check_equal(body_state.halt_calls, 1u);
+  }
+
+  it("gives RUNNING precedence over FAILURE and invokes branch step on each tick") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id failing = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id running = SALTS_BT_INVALID_NODE_ID;
+    parallel_probe context = {0};
+    const salts_bt_node_status failure_steps[] = {SALTS_BT_FAILURE};
+    leaf_probe failure_leaf = {failure_steps, 1u, 0u};
+    const salts_bt_leaf_ops running_ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state running_leaf = {&tree, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                               parallel_enter, parallel_step,
+                                               parallel_finish, parallel_abort,
+                                               &context, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &failure_leaf, &failing), SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &running_ops, &running_leaf, &running), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(failure_leaf.calls, 1u);
+    check_equal(running_leaf.tick_calls, 1u);
+    check_equal(running_leaf.halt_calls, 0u);
+    check_equal(context.step_calls[0], 1u);
+    check_equal(context.step_status[0], SALTS_BT_FAILURE);
+    check_equal(context.finish_calls[0], 1u);
+    check_equal(context.step_calls[1], 1u);
+    check_equal(context.step_status[1], SALTS_BT_RUNNING);
+    check_equal(context.finish_calls[1], 0u);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(failure_leaf.calls, 1u);
+    check_equal(running_leaf.tick_calls, 2u);
+    check_equal(context.step_calls[0], 1u);
+    check_equal(context.step_calls[1], 2u);
+    check_equal(context.step_status[1], SALTS_BT_RUNNING);
+    check_equal(salts_bt_tree_cancel(&tree), SALTS_OK);
+    check_equal(running_leaf.halt_calls, 1u);
+    check_equal(context.abort_calls[0], 0u);
+    check_equal(context.abort_calls[1], 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(running_leaf.halt_calls, 1u);
+  }
+
+  it("aborts Parallel branch context when per-tick step/merge fails") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    parallel_probe context = {0};
+    const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe leaf = {success_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    context.step_return[0] = SALTS_EINVAL;
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                               parallel_enter, parallel_step,
+                                               parallel_finish, parallel_abort,
+                                               &context, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &leaf, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_EINVAL);
+    check_equal(leaf.calls, 1u);
+    check_equal(context.step_calls[0], 1u);
+    check_equal(context.finish_calls[0], 0u);
+    check_equal(context.abort_calls[0], 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(context.abort_calls[0], 1u);
   }
 
   it("treats max_depth and max_nodes as independent bounds") {
