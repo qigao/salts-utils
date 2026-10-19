@@ -116,8 +116,9 @@ int salts_bt_tree_init(salts_bt_tree *tree,
 /*
  * Add a node. parent_id == SALTS_BT_INVALID_NODE_ID declares the single root;
  * otherwise the node is appended to its parent's child list. Parents must be
- * created before children. Sequence/Fallback/Parallel/ReactiveSequence/Switch
- * accept multiple children; single-child decorators enforce their arity, and
+ * created before children. Sequence/Fallback/Parallel/ReactiveSequence/
+ * ReactiveFallback/Switch accept multiple children; single-child decorators
+ * enforce their arity, and
  * IfThenElse accepts one or two branches. Leaves cannot have children. Leaves
  * require a handler; control nodes use typed predicate/selector APIs where needed.
  * IDs are stable for the lifetime of the tree and are not reused after reset.
