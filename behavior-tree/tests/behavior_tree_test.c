@@ -1070,4 +1070,30 @@ spec("Salts C11 Behavior Tree") {
   }
 
 
+
+  it("treats an empty ConsumeQueue as successful exhaustion") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    queue_probe queue = {0u, 0u, 0u, 0u};
+    const salts_bt_node_status child_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe probe = {child_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_consume_queue_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                                     queue_begin, queue_finish,
+                                                     queue_abort, &queue, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &child), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(queue.begin_calls, 1u);
+    check_equal(queue.finish_calls, 0u);
+    check_equal(queue.abort_calls, 0u);
+    check_equal(probe.calls, 0u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+
 }
