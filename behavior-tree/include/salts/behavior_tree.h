@@ -285,13 +285,17 @@ int salts_bt_tree_tick(salts_bt_tree *tree,
 /* Validate complete topology before any leaf is allowed to run. */
 int salts_bt_tree_validate(const salts_bt_tree *tree);
 
-/* Reset all per-node execution state without changing tree topology. */
+/*
+ * Clear all per-node execution state without changing topology. Unlike internal
+ * terminal-subtree resets, explicit reset also clears RunOnce and EntryUpdated
+ * cached state. RUNNING descendants are halted and host adapter abort hooks run.
+ */
 int salts_bt_tree_reset(salts_bt_tree *tree);
 
 /*
  * Cancel the current activation: synchronously halt RUNNING descendants, abort
- * any prepared host adapter context, and clear per-node state while preserving
- * topology. The tree may be ticked again after cancellation. This call is
+ * any prepared host adapter context, and clear all per-node and cached state
+ * while preserving topology. The tree may be ticked again after cancellation. This call is
  * serialized with all other tree operations and returns SALTS_EBUSY if invoked
  * reentrantly from a callback.
  */
