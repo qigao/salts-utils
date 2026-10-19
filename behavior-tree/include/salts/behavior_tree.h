@@ -30,7 +30,9 @@ typedef enum salts_bt_node_kind {
   SALTS_BT_NODE_FORCE_SUCCESS = 4,
   SALTS_BT_NODE_FORCE_FAILURE = 5,
   SALTS_BT_NODE_RETRY = 6,
-  SALTS_BT_NODE_REPEAT = 7
+  SALTS_BT_NODE_REPEAT = 7,
+  SALTS_BT_NODE_TIMEOUT = 8,
+  SALTS_BT_NODE_DELAY = 9
 } salts_bt_node_kind;
 
 typedef enum salts_bt_node_status {
@@ -118,6 +120,19 @@ int salts_bt_tree_add_leaf(salts_bt_tree *tree,
                            const salts_bt_leaf_ops *ops,
                            void *user,
                            salts_bt_node_id *out_node_id);
+
+/*
+ * Add a Timeout or Delay decorator with a monotonic duration in nanoseconds.
+ * Timeout returns FAILURE and halts a still-running descendant once the
+ * deadline is reached. Delay returns RUNNING until its delay elapses, then
+ * starts ticking its child. A zero duration is immediate for Delay and an
+ * immediate timeout for Timeout.
+ */
+int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
+                                 salts_bt_node_id parent_id,
+                                 salts_bt_node_kind kind,
+                                 uint64_t duration_ns,
+                                 salts_bt_node_id *out_node_id);
 
 /*
  * Tick the root once. Sequence stops at FAILURE or RUNNING and resumes the
