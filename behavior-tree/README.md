@@ -14,8 +14,12 @@ The first implementation provides:
 - SUCCESS / FAILURE / RUNNING status transitions.
 - Per-control-node cursor/counter state retained across RUNNING ticks. Retry attempts and Repeat cycles are bounded by a caller-configured control-iteration budget (default 64, hard maximum 4096).
 - Explicit whole-tree validation before leaf side effects, reset and destruction.
+- Reentrancy guard: attempts to reset/destroy/mutate the same tree from tick/halt
+  callbacks return `SALTS_EBUSY`.
 - A single synchronous driver. Leaf callbacks are borrowed, caller-owned
-  contexts; the library creates no hidden threads and never launches processes.
+  contexts; optional halt callbacks run when reset/destruction interrupts a
+  RUNNING leaf. All lifecycle callbacks execute on the driver thread; the
+  library creates no hidden threads and never launches processes.
 - CTest coverage for sequence resumption, fallback advancement, status decorators,
   terminal reset, preflight-before-side-effects, invalid topology, and capacity boundaries.
 
