@@ -1096,4 +1096,35 @@ spec("Salts C11 Behavior Tree") {
   }
 
 
+
+  it("cancels active work and allows a fresh activation without stale callbacks") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_leaf_ops ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state state = {&tree, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+    size_t node_count = 0u;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_leaf(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      &ops, &state, &root), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(state.tick_calls, 1u);
+    check_equal(salts_bt_tree_cancel(&tree), SALTS_OK);
+    check_equal(state.halt_calls, 1u);
+    check_equal(salts_bt_tree_get_node_count(&tree, &node_count), SALTS_OK);
+    check_equal(node_count, 1u);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(state.tick_calls, 2u);
+    check_equal(salts_bt_tree_cancel(&tree), SALTS_OK);
+    check_equal(state.halt_calls, 2u);
+    check_equal(state.reentrant_reset_status, SALTS_EBUSY);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(state.halt_calls, 2u);
+  }
+
+
 }
