@@ -1651,6 +1651,10 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
     check_equal(result, SALTS_BT_RUNNING);
     check_equal(child_probe.calls, 1u);
+    check_equal(condition.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(child_probe.calls, 1u);
     check_equal(condition.calls, 2u);
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
     check_equal(result, SALTS_BT_SUCCESS);
@@ -1744,6 +1748,14 @@ spec("Salts C11 Behavior Tree") {
                                       probe_leaf, &condition_probe, &condition), SALTS_OK);
     check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
                                       probe_leaf, &body_probe, &body), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(condition_probe.calls, 1u);
+    check_equal(body_probe.calls, 1u);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(condition_probe.calls, 2u);
+    check_equal(body_probe.calls, 2u);
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
     check_equal(result, SALTS_BT_SUCCESS);
     check_equal(condition_probe.calls, 3u);
