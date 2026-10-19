@@ -179,12 +179,18 @@ int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
                                  salts_bt_node_id *out_node_id);
 
 /*
- * Add an IfThenElse, Precondition, or WhileDo control node with a status predicate.
- * IfThenElse has a then child and optional else child (1 or 2 children).
- * Precondition and WhileDo require exactly one child. WhileDo limit is the
- * maximum number of successful body iterations and must be positive; it is
- * bounded by max_control_iterations. WhileDo yields RUNNING after each
- * successful body iteration instead of spinning in one driver call.
+ * Add an IfThenElse, Precondition, or WhileDo node with a status predicate.
+ * In callback form, IfThenElse has one or two branch children and
+ * Precondition/WhileDo have one body child. The callback may return RUNNING.
+ *
+ * Alternatively, create the node with salts_bt_tree_add_node(_with_limit)
+ * without a predicate, and make its first child the condition tree:
+ * IfThenElse takes condition + then + optional else; Precondition and WhileDo
+ * take condition + body. All children then share the same tree lifecycle.
+ *
+ * WhileDo limit is the maximum number of successful body iterations and must
+ * be positive and bounded by max_control_iterations. WhileDo yields RUNNING
+ * after each successful body iteration instead of spinning in one driver call.
  */
 int salts_bt_tree_add_condition_node(salts_bt_tree *tree,
                                      salts_bt_node_id parent_id,
