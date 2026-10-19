@@ -1,4 +1,5 @@
 #include <salts/behavior_tree.h>
+#include <salts/clock.h>
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -18,6 +19,10 @@ typedef struct salts_bt_node {
   size_t child_count;
   size_t limit;
   size_t counter;
+  uint64_t duration_ns;
+  uint64_t deadline_ns;
+  bool timer_started;
+  bool delay_elapsed;
   salts_bt_leaf_halt_fn halt;
   bool running;
 } salts_bt_node;
@@ -57,7 +62,9 @@ static bool node_kind_valid(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_FORCE_SUCCESS ||
          kind == SALTS_BT_NODE_FORCE_FAILURE ||
          kind == SALTS_BT_NODE_RETRY ||
-         kind == SALTS_BT_NODE_REPEAT;
+         kind == SALTS_BT_NODE_REPEAT ||
+         kind == SALTS_BT_NODE_TIMEOUT ||
+         kind == SALTS_BT_NODE_DELAY;
 }
 
 static bool node_kind_accepts_children(salts_bt_node_kind kind) {
@@ -67,7 +74,9 @@ static bool node_kind_accepts_children(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_FORCE_SUCCESS ||
          kind == SALTS_BT_NODE_FORCE_FAILURE ||
          kind == SALTS_BT_NODE_RETRY ||
-         kind == SALTS_BT_NODE_REPEAT;
+         kind == SALTS_BT_NODE_REPEAT ||
+         kind == SALTS_BT_NODE_TIMEOUT ||
+         kind == SALTS_BT_NODE_DELAY;
 }
 
 static bool node_kind_is_single_child(salts_bt_node_kind kind) {
@@ -75,7 +84,9 @@ static bool node_kind_is_single_child(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_FORCE_SUCCESS ||
          kind == SALTS_BT_NODE_FORCE_FAILURE ||
          kind == SALTS_BT_NODE_RETRY ||
-         kind == SALTS_BT_NODE_REPEAT;
+         kind == SALTS_BT_NODE_REPEAT ||
+         kind == SALTS_BT_NODE_TIMEOUT ||
+         kind == SALTS_BT_NODE_DELAY;
 }
 
 static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
@@ -88,6 +99,9 @@ static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
   }
   node->cursor = SALTS_BT_INVALID_NODE_ID;
   node->counter = 0u;
+  node->deadline_ns = 0u;
+  node->timer_started = false;
+  node->delay_elapsed = false;
   node->last_status = SALTS_BT_FAILURE;
   child = node->first_child;
   while (child != SALTS_BT_INVALID_NODE_ID) {
@@ -122,6 +136,79 @@ static int tick_node(salts_bt_impl *impl, salts_bt_node_id id,
   child_id = node->cursor != SALTS_BT_INVALID_NODE_ID
                  ? node->cursor
                  : node->first_child;
+
+  if (node->kind == SALTS_BT_NODE_TIMEOUT) {
+    salts_bt_node_status child_status = SALTS_BT_FAILURE;
+    uint64_t now;
+    int status;
+    if (child_id == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
+    now = cmeta_hrtime();
+    if (!node->timer_started) {
+      node->deadline_ns = node->duration_ns > UINT64_MAX - now
+                              ? UINT64_MAX
+                              : now + node->duration_ns;
+      node->timer_started = true;
+    }
+    if (now >= node->deadline_ns) {
+      reset_node_state(impl, id);
+      node->last_status = SALTS_BT_FAILURE;
+      *out_status = SALTS_BT_FAILURE;
+      return SALTS_OK;
+    }
+    status = tick_node(impl, child_id, depth + 1u, &child_status);
+    if (status != SALTS_OK) return status;
+    now = cmeta_hrtime();
+    if (now >= node->deadline_ns) {
+      reset_node_state(impl, id);
+      node->last_status = SALTS_BT_FAILURE;
+      *out_status = SALTS_BT_FAILURE;
+      return SALTS_OK;
+    }
+    if (child_status == SALTS_BT_RUNNING) {
+      node->last_status = SALTS_BT_RUNNING;
+      *out_status = SALTS_BT_RUNNING;
+      return SALTS_OK;
+    }
+    reset_node_state(impl, id);
+    node->last_status = child_status;
+    *out_status = child_status;
+    return SALTS_OK;
+  }
+
+  if (node->kind == SALTS_BT_NODE_DELAY) {
+    salts_bt_node_status child_status = SALTS_BT_FAILURE;
+    uint64_t now;
+    int status;
+    if (child_id == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
+    if (!node->delay_elapsed) {
+      now = cmeta_hrtime();
+      if (!node->timer_started) {
+        node->deadline_ns = node->duration_ns > UINT64_MAX - now
+                                ? UINT64_MAX
+                                : now + node->duration_ns;
+        node->timer_started = true;
+      }
+      if (now < node->deadline_ns) {
+        node->last_status = SALTS_BT_RUNNING;
+        *out_status = SALTS_BT_RUNNING;
+        return SALTS_OK;
+      }
+      node->delay_elapsed = true;
+      node->timer_started = false;
+      node->deadline_ns = 0u;
+    }
+    status = tick_node(impl, child_id, depth + 1u, &child_status);
+    if (status != SALTS_OK) return status;
+    if (child_status == SALTS_BT_RUNNING) {
+      node->last_status = SALTS_BT_RUNNING;
+      *out_status = SALTS_BT_RUNNING;
+      return SALTS_OK;
+    }
+    reset_node_state(impl, id);
+    node->last_status = child_status;
+    *out_status = child_status;
+    return SALTS_OK;
+  }
 
   if (node->kind == SALTS_BT_NODE_REPEAT) {
     if (node->limit == 0u) {
@@ -433,6 +520,26 @@ int salts_bt_tree_add_leaf(salts_bt_tree *tree,
   node = get_node(impl, *out_node_id);
   if (node == NULL) return SALTS_EINVAL;
   node->halt = ops->halt;
+  return SALTS_OK;
+}
+
+int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
+                                 salts_bt_node_id parent_id,
+                                 salts_bt_node_kind kind,
+                                 uint64_t duration_ns,
+                                 salts_bt_node_id *out_node_id) {
+  salts_bt_impl *impl;
+  salts_bt_node *node;
+  int status;
+  if (out_node_id == NULL ||
+      (kind != SALTS_BT_NODE_TIMEOUT && kind != SALTS_BT_NODE_DELAY))
+    return SALTS_EINVAL;
+  status = salts_bt_tree_add_node(tree, parent_id, kind, NULL, NULL, out_node_id);
+  if (status != SALTS_OK) return status;
+  impl = tree_impl(tree);
+  node = get_node(impl, *out_node_id);
+  if (node == NULL) return SALTS_EINVAL;
+  node->duration_ns = duration_ns;
   return SALTS_OK;
 }
 
