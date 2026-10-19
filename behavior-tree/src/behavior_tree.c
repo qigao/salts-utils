@@ -75,7 +75,8 @@ static bool node_kind_valid(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_IF_THEN_ELSE ||
          kind == SALTS_BT_NODE_PRECONDITION ||
          kind == SALTS_BT_NODE_WHILE_DO ||
-         kind == SALTS_BT_NODE_SWITCH;
+         kind == SALTS_BT_NODE_SWITCH ||
+         kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE;
 }
 
 static bool node_kind_accepts_children(salts_bt_node_kind kind) {
@@ -94,7 +95,8 @@ static bool node_kind_accepts_children(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_IF_THEN_ELSE ||
          kind == SALTS_BT_NODE_PRECONDITION ||
          kind == SALTS_BT_NODE_WHILE_DO ||
-         kind == SALTS_BT_NODE_SWITCH;
+         kind == SALTS_BT_NODE_SWITCH ||
+         kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE;
 }
 
 static bool node_kind_is_single_child(salts_bt_node_kind kind) {
@@ -107,7 +109,8 @@ static bool node_kind_is_single_child(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_DELAY ||
          kind == SALTS_BT_NODE_RUN_ONCE ||
          kind == SALTS_BT_NODE_PRECONDITION ||
-         kind == SALTS_BT_NODE_WHILE_DO;
+         kind == SALTS_BT_NODE_WHILE_DO ||
+         kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE;
 }
 
 static void reset_node_state(salts_bt_impl *impl, salts_bt_node_id id) {
@@ -206,6 +209,37 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
     } else {
       reset_node_state(impl, id);
       node->last_status = *out_status;
+    }
+    return SALTS_OK;
+  }
+
+  if (node->kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE) {
+    salts_bt_node_status child_status = SALTS_BT_FAILURE;
+    int status;
+    if (child_id == SALTS_BT_INVALID_NODE_ID || node->limit == 0u)
+      return SALTS_EINVAL;
+    status = tick_node(impl, child_id, depth + 1u, &child_status);
+    if (status != SALTS_OK) return status;
+    if (child_status == SALTS_BT_RUNNING) {
+      node->last_status = SALTS_BT_RUNNING;
+      *out_status = SALTS_BT_RUNNING;
+      return SALTS_OK;
+    }
+    if (child_status == SALTS_BT_FAILURE) {
+      reset_node_state(impl, id);
+      node->last_status = SALTS_BT_SUCCESS;
+      *out_status = SALTS_BT_SUCCESS;
+      return SALTS_OK;
+    }
+    ++node->counter;
+    reset_node_state(impl, child_id);
+    if (node->counter >= node->limit) {
+      reset_node_state(impl, id);
+      node->last_status = SALTS_BT_FAILURE;
+      *out_status = SALTS_BT_FAILURE;
+    } else {
+      node->last_status = SALTS_BT_RUNNING;
+      *out_status = SALTS_BT_RUNNING;
     }
     return SALTS_OK;
   }
@@ -667,7 +701,8 @@ int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
   if ((kind == SALTS_BT_NODE_LEAF && handler == NULL) ||
       (kind != SALTS_BT_NODE_LEAF && handler != NULL))
     return SALTS_EINVAL;
-  if (kind == SALTS_BT_NODE_RETRY || kind == SALTS_BT_NODE_WHILE_DO) {
+  if (kind == SALTS_BT_NODE_RETRY || kind == SALTS_BT_NODE_WHILE_DO ||
+      kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE) {
     if (limit == 0u || limit > impl->max_control_iterations) return SALTS_EINVAL;
   } else if (kind == SALTS_BT_NODE_REPEAT) {
     if (limit > impl->max_control_iterations) return SALTS_EINVAL;
@@ -763,6 +798,8 @@ static int validate_impl(const salts_bt_impl *impl) {
     if ((node->kind == SALTS_BT_NODE_RETRY &&
          (node->limit == 0u || node->limit > impl->max_control_iterations)) ||
         (node->kind == SALTS_BT_NODE_WHILE_DO &&
+         (node->limit == 0u || node->limit > impl->max_control_iterations)) ||
+        (node->kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE &&
          (node->limit == 0u || node->limit > impl->max_control_iterations)) ||
         (node->kind == SALTS_BT_NODE_REPEAT &&
          node->limit > impl->max_control_iterations))
