@@ -10,7 +10,7 @@ The current C11 implementation provides:
 
 - Bounded, caller-configured tree allocation, a single root and parent-before-child construction.
 - Leaf callbacks plus Sequence, Fallback, cooperative Parallel/ReactiveSequence/ReactiveFallback, Inverter, ForceSuccess/ForceFailure, bounded Retry/Repeat/KeepRunningUntilFailure, RunOnce, cooperative Timeout and non-blocking Delay.
-- Status-predicate/selector-driven IfThenElse, Precondition, WhileDo and Switch; condition callbacks can themselves return RUNNING.
+- Status-predicate/selector-driven IfThenElse, Precondition, WhileDo and Switch. IfThenElse, Precondition and WhileDo also accept an in-tree condition child, keeping condition state and cancellation in the same tree.
 - Host-context adapters for PipelineSequence, EntryUpdated and ConsumeQueue. They use typed callbacks; optional abort hooks clean adapter-owned state on interrupted pipeline/queue work. The library does not impose Praktor's blackboard or workflow value representation.
 - SUCCESS / FAILURE / RUNNING transitions with per-control-node state retained across ticks. Retry attempts, Repeat cycles, KeepRunningUntilFailure iterations and WhileDo iterations are bounded by the tree configuration (default 64, hard maximum 4096).
 - Full topology validation before leaf side effects, plus explicit cancel/reset/destruction; API errors abort active execution, clear persistent caches and halt descendants. Cancel halts active descendants and retains tree topology for reuse.
