@@ -93,9 +93,10 @@ int salts_bt_tree_init(salts_bt_tree *tree,
 /*
  * Add a node. parent_id == SALTS_BT_INVALID_NODE_ID declares the single root;
  * otherwise the node is appended to its parent's child list. Parents must be
- * created before children. Sequence/Fallback may have many children; Inverter,
- * ForceSuccess and ForceFailure require exactly one child. Leaves cannot have
- * children. Leaves require a handler; control-flow nodes require a NULL handler.
+ * created before children. Sequence/Fallback/Parallel/ReactiveSequence/Switch
+ * accept multiple children; single-child decorators enforce their arity, and
+ * IfThenElse accepts one or two branches. Leaves cannot have children. Leaves
+ * require a handler; control nodes use typed predicate/selector APIs where needed.
  * IDs are stable for the lifetime of the tree and are not reused after reset.
  *
  * Capacity exhaustion returns SALTS_ENOBUFS. Invalid topology/contracts return
@@ -112,8 +113,9 @@ int salts_bt_tree_add_node(salts_bt_tree *tree,
  * Parameterized single-child nodes use limit: RETRY means maximum attempts
  * including the first attempt (must be positive); REPEAT means completed child
  * cycles (zero is a valid immediate SUCCESS). KeepRunningUntilFailure counts
- * successful child ticks and returns FAILURE when the budget is exhausted. The value is bounded by the tree
- * configuration. Other node kinds require limit == 0.
+ * successful child ticks and returns FAILURE when the budget is exhausted.
+ * The value is bounded by the tree configuration. Other node kinds require
+ * limit == 0.
  */
 int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
                                       salts_bt_node_id parent_id,
