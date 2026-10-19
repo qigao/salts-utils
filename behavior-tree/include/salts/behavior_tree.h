@@ -40,7 +40,10 @@ typedef enum salts_bt_node_kind {
   SALTS_BT_NODE_PRECONDITION = 14,
   SALTS_BT_NODE_WHILE_DO = 15,
   SALTS_BT_NODE_SWITCH = 16,
-  SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE = 17
+  SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE = 17,
+  SALTS_BT_NODE_PIPELINE_SEQUENCE = 18,
+  SALTS_BT_NODE_ENTRY_UPDATED = 19,
+  SALTS_BT_NODE_CONSUME_QUEUE = 20
 } salts_bt_node_kind;
 
 typedef enum salts_bt_node_status {
@@ -72,6 +75,12 @@ typedef void (*salts_bt_leaf_halt_fn)(void *user);
  * out parameter is valid. They run synchronously on the tree driver thread. */
 typedef int (*salts_bt_condition_fn)(void *user, bool *out_condition);
 typedef int (*salts_bt_selector_fn)(void *user, size_t *out_child_index);
+typedef int (*salts_bt_pipeline_prepare_fn)(void *user, size_t child_index);
+typedef int (*salts_bt_pipeline_complete_fn)(void *user, size_t child_index,
+                                             salts_bt_node_status child_status);
+typedef int (*salts_bt_entry_changed_fn)(void *user, bool *out_changed);
+typedef int (*salts_bt_queue_begin_fn)(void *user, bool *out_has_item);
+typedef int (*salts_bt_queue_finish_fn)(void *user, bool *out_has_more);
 
 typedef struct salts_bt_leaf_ops {
   salts_bt_leaf_fn tick;
@@ -176,6 +185,47 @@ int salts_bt_tree_add_switch_node(salts_bt_tree *tree,
                                   salts_bt_selector_fn selector,
                                   void *user,
                                   salts_bt_node_id *out_node_id);
+
+/*
+ * PipelineSequence invokes prepare before first ticking each child and complete
+ * when that child becomes terminal. SUCCESS advances to the next child;
+ * FAILURE terminates; RUNNING resumes the same child next tick without another
+ * prepare call. Empty pipelines succeed. This lets a host bridge pipeline data
+ * through its own context/blackboard without coupling this library to it.
+ */
+int salts_bt_tree_add_pipeline_node(salts_bt_tree *tree,
+                                    salts_bt_node_id parent_id,
+                                    salts_bt_pipeline_prepare_fn prepare,
+                                    salts_bt_pipeline_complete_fn complete,
+                                    void *user,
+                                    salts_bt_node_id *out_node_id);
+
+/*
+ * EntryUpdated asks changed on each tick. The first tick always executes the
+ * child. A changed result resets/halts the old child and reruns it. If unchanged,
+ * an active RUNNING child continues; otherwise its last terminal result is
+ * cached until the next change. The callback owns and updates its comparison
+ * snapshot.
+ */
+int salts_bt_tree_add_entry_updated_node(salts_bt_tree *tree,
+                                         salts_bt_node_id parent_id,
+                                         salts_bt_entry_changed_fn changed,
+                                         void *user,
+                                         salts_bt_node_id *out_node_id);
+
+/*
+ * ConsumeQueue calls begin before each child iteration. begin returns has_item
+ * and prepares the current item in host-owned context. On child FAILURE the
+ * node fails; on RUNNING it resumes the same child; on SUCCESS, finish reports
+ * whether another item exists. If more items exist, the node yields RUNNING and
+ * begins the next iteration on the next tick; an exhausted queue succeeds.
+ */
+int salts_bt_tree_add_consume_queue_node(salts_bt_tree *tree,
+                                         salts_bt_node_id parent_id,
+                                         salts_bt_queue_begin_fn begin,
+                                         salts_bt_queue_finish_fn finish,
+                                         void *user,
+                                         salts_bt_node_id *out_node_id);
 
 /*
  * Tick the root once. Sequence stops at FAILURE or RUNNING and resumes the
