@@ -10,7 +10,7 @@ The first implementation provides:
 
 - Bounded, caller-configured tree allocation.
 - A single root and parent-before-child construction.
-- Leaf callbacks plus Sequence and Fallback control nodes.
+- Leaf callbacks plus Sequence, Fallback, Inverter, ForceSuccess and ForceFailure control nodes.
 - SUCCESS / FAILURE / RUNNING status transitions.
 - Per-control-node cursor state retained across RUNNING ticks.
 - Explicit whole-tree reset and destruction.
