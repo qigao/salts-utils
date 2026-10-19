@@ -88,6 +88,46 @@ static int probe_selector(void *user, size_t *out_index) {
 }
 
 
+typedef struct parallel_probe {
+  size_t enter_calls[4];
+  size_t first_activations[4];
+  size_t resumes[4];
+  size_t finish_calls[4];
+  size_t abort_calls[4];
+  salts_bt_node_status terminal_status[4];
+  int enter_status;
+  int finish_status;
+} parallel_probe;
+
+static int parallel_enter(void *user, size_t child_index,
+                          bool first_activation) {
+  parallel_probe *probe = (parallel_probe *)user;
+  if (probe == NULL || child_index >= 4u) return SALTS_EINVAL;
+  ++probe->enter_calls[child_index];
+  if (first_activation) ++probe->first_activations[child_index];
+  else ++probe->resumes[child_index];
+  return probe->enter_status;
+}
+
+static int parallel_finish(void *user, size_t child_index,
+                           salts_bt_node_status child_status) {
+  parallel_probe *probe = (parallel_probe *)user;
+  if (probe == NULL || child_index >= 4u) return SALTS_EINVAL;
+  ++probe->finish_calls[child_index];
+  probe->terminal_status[child_index] = child_status;
+  return probe->finish_status;
+}
+
+static void parallel_abort(void *user, size_t child_index) {
+  parallel_probe *probe = (parallel_probe *)user;
+  if (probe != NULL && child_index < 4u) ++probe->abort_calls[child_index];
+}
+
+static salts_bt_node_status invalid_status_leaf(void *user) {
+  (void)user;
+  return (salts_bt_node_status)99;
+}
+
 typedef struct pipeline_probe {
   size_t prepare_calls;
   size_t complete_calls;
@@ -1124,6 +1164,105 @@ spec("Salts C11 Behavior Tree") {
     check_equal(state.reentrant_reset_status, SALTS_EBUSY);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
     check_equal(state.halt_calls, 2u);
+  }
+
+
+
+  it("preserves per-branch activation until terminal finish and merges via host hooks") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id first = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id second = SALTS_BT_INVALID_NODE_ID;
+    parallel_probe context = {0};
+    const salts_bt_node_status first_steps[] = {
+        SALTS_BT_RUNNING, SALTS_BT_SUCCESS};
+    const salts_bt_node_status second_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe first_probe = {first_steps, 2u, 0u};
+    leaf_probe second_probe = {second_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                               parallel_enter, parallel_finish,
+                                               parallel_abort, &context, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &first_probe, &first), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &second_probe, &second), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(context.enter_calls[0], 1u);
+    check_equal(context.first_activations[0], 1u);
+    check_equal(context.resumes[0], 0u);
+    check_equal(context.finish_calls[0], 0u);
+    check_equal(context.enter_calls[1], 1u);
+    check_equal(context.finish_calls[1], 1u);
+    check_equal(context.terminal_status[1], SALTS_BT_SUCCESS);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(context.enter_calls[0], 2u);
+    check_equal(context.first_activations[0], 1u);
+    check_equal(context.resumes[0], 1u);
+    check_equal(context.finish_calls[0], 1u);
+    check_equal(context.terminal_status[0], SALTS_BT_SUCCESS);
+    check_equal(context.abort_calls[0], 0u);
+    check_equal(context.abort_calls[1], 0u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("aborts prepared Parallel branches after halting them on cancellation") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id first = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id second = SALTS_BT_INVALID_NODE_ID;
+    parallel_probe context = {0};
+    const salts_bt_leaf_ops ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state first_leaf = {&tree, 0u, 0u, SALTS_OK};
+    running_leaf_state second_leaf = {&tree, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_parallel_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                               parallel_enter, parallel_finish,
+                                               parallel_abort, &context, &root),
+                SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &ops, &first_leaf, &first), SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &ops, &second_leaf, &second), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(salts_bt_tree_cancel(&tree), SALTS_OK);
+    check_equal(first_leaf.halt_calls, 1u);
+    check_equal(second_leaf.halt_calls, 1u);
+    check_equal(context.abort_calls[0], 1u);
+    check_equal(context.abort_calls[1], 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(context.abort_calls[0], 1u);
+    check_equal(context.abort_calls[1], 1u);
+  }
+
+  it("cleans remaining running branches when a leaf returns an invalid status") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id running = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id invalid = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_leaf_ops ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state state = {&tree, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_PARALLEL, NULL, NULL, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &ops, &state, &running), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      invalid_status_leaf, NULL, &invalid), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_EINVAL);
+    check_equal(state.tick_calls, 1u);
+    check_equal(state.halt_calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(state.halt_calls, 1u);
   }
 
 
