@@ -1198,6 +1198,11 @@ int salts_bt_tree_reset(salts_bt_tree *tree) {
   return SALTS_OK;
 }
 
+int salts_bt_tree_cancel(salts_bt_tree *tree) {
+  /* reset performs the same lifecycle cleanup while retaining tree topology. */
+  return salts_bt_tree_reset(tree);
+}
+
 int salts_bt_tree_get_root(const salts_bt_tree *tree,
                            salts_bt_node_id *out_root) {
   const salts_bt_impl *impl = tree_const_impl(tree);
