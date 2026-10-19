@@ -10,7 +10,7 @@ The first implementation provides:
 
 - Bounded, caller-configured tree allocation.
 - A single root and parent-before-child construction.
-- Leaf callbacks plus Sequence, Fallback, cooperative Parallel/ReactiveSequence, Inverter, ForceSuccess/ForceFailure, bounded Retry/Repeat, RunOnce, cooperative Timeout and non-blocking Delay.
+- Leaf callbacks plus Sequence, Fallback, cooperative Parallel/ReactiveSequence, Inverter, ForceSuccess/ForceFailure, bounded Retry/Repeat/KeepRunningUntilFailure, RunOnce, cooperative Timeout and non-blocking Delay.
 - SUCCESS / FAILURE / RUNNING status transitions.
 - Per-control-node cursor/counter state retained across RUNNING ticks. Retry attempts and Repeat cycles are bounded by a caller-configured control-iteration budget (default 64, hard maximum 4096).
 - Explicit whole-tree validation before leaf side effects, reset and destruction.
@@ -25,7 +25,7 @@ The first implementation provides:
 - Cooperative Parallel advances each branch at most once per parent tick and
   retains terminal branch results. ReactiveSequence reticks conditions from the
   first child and halts children to the right when an earlier child blocks or fails.
-- CTest coverage for sequence resumption, fallback advancement, predicate/selector routing, cooperative WhileDo, status decorators,
+- CTest coverage for sequence resumption, fallback advancement, predicate/selector routing, cooperative WhileDo and KeepRunningUntilFailure, status decorators,
   terminal reset, preflight-before-side-effects, invalid topology, and capacity boundaries.
 
 Tree node IDs are stable for the tree lifetime. Root depth counts as one. Retry's limit is maximum attempts including the first attempt; a success ends retrying, a failure consumes an attempt, and RUNNING preserves the current child. Repeat's limit is its terminal child-cycle count; RUNNING resumes the same cycle, while terminal child outcomes consume a cycle.
