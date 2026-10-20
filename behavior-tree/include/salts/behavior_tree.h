@@ -118,9 +118,10 @@ typedef struct salts_bt_leaf_ops {
 void salts_bt_tree_config_init(salts_bt_tree_config *config);
 
 /*
- * Initialize a zero-initialized tree. The implementation allocates exactly
- * max_nodes node slots during initialization and does not grow them later.
- * Returns SALTS_OK, SALTS_EINVAL for an invalid contract or SALTS_ENOMEM.
+ * Initialize a zero-initialized tree. The implementation allocates a fixed
+ * table for max_nodes valid node IDs plus the reserved invalid-ID slot during
+ * initialization and does not grow it later. Returns SALTS_OK, SALTS_EINVAL
+ * for an invalid contract or SALTS_ENOMEM.
  */
 int salts_bt_tree_init(salts_bt_tree *tree,
                        const salts_bt_tree_config *config);
@@ -337,9 +338,10 @@ int salts_bt_tree_get_node_count(const salts_bt_tree *tree,
                                  size_t *out_count);
 
 /*
- * Destroy an initialized tree. It returns SALTS_EBUSY if called reentrantly
- * from a leaf handler; otherwise it frees only tree-owned memory and clears
- * the handle. User pointers remain caller-owned.
+ * Destroy an initialized tree. It returns SALTS_EBUSY if called while any
+ * tree operation or synchronous callback is active; otherwise it halts and
+ * cleans active descendants/adapter contexts, frees only tree-owned memory,
+ * and clears the handle. User pointers remain caller-owned.
  */
 int salts_bt_tree_destroy(salts_bt_tree *tree);
 
