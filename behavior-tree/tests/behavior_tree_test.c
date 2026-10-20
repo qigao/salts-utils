@@ -1799,6 +1799,39 @@ spec("Salts C11 Behavior Tree") {
     check_equal(condition_state.halt_calls, 1u);
   }
 
+  it("halts a RUNNING in-tree WhileDo condition on cancellation") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id condition = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id body = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_leaf_ops running_ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state condition_state = {&tree, 0u, 0u, SALTS_OK};
+    const salts_bt_node_status body_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe body_probe = {body_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node_with_limit(&tree, SALTS_BT_INVALID_NODE_ID,
+                                                  SALTS_BT_NODE_WHILE_DO, NULL, NULL,
+                                                  4u, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &running_ops,
+                                      &condition_state, &condition), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &body_probe, &body), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(condition_state.tick_calls, 1u);
+    check_equal(condition_state.halt_calls, 0u);
+    check_equal(body_probe.calls, 0u);
+
+    check_equal(salts_bt_tree_cancel(&tree), SALTS_OK);
+    check_equal(condition_state.halt_calls, 1u);
+    check_equal(condition_state.reentrant_reset_status, SALTS_EBUSY);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(condition_state.halt_calls, 1u);
+  }
+
   it("halts a RUNNING WhileDo body when its in-tree condition becomes FAILURE") {
     salts_bt_tree tree = {0};
     salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
