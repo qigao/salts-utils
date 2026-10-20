@@ -197,10 +197,15 @@ int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
  * IfThenElse takes condition + then + optional else; Precondition and WhileDo
  * take condition + body. All children then share the same tree lifecycle.
  *
- * WhileDo limit is the maximum number of successful body iterations and must
- * be positive and bounded by max_control_iterations. Successful iterations
- * continue in the same tick until the condition fails, the body fails/returns
- * RUNNING, or the iteration limit is reached; this preserves Praktor semantics.
+ * WhileDo limit is the maximum number of successful body iterations per
+ * activation and must be positive and bounded by max_control_iterations.
+ * WhileDo is cooperative: each tick evaluates the condition and ticks at most
+ * one body iteration. After a successful body iteration it returns RUNNING
+ * unless the limit is reached; a false condition returns SUCCESS and a failed
+ * body returns FAILURE. The activation counter survives RUNNING ticks and is
+ * cleared by terminal completion or explicit reset/cancel. This bounds work per
+ * driver tick; it differs from the legacy Praktor loop, which may run multiple
+ * successful iterations in one call.
  */
 int salts_bt_tree_add_condition_node(salts_bt_tree *tree,
                                      salts_bt_node_id parent_id,
