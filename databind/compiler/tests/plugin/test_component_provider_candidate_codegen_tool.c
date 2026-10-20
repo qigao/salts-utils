@@ -31,10 +31,12 @@ int main(int argc, char **argv) {
   int rc = 1;
   const int verify_typed_error_reject =
       argc == 7 && strcmp(argv[6], "--verify-typed-error-reject") == 0;
+  const int canonical_provider_abi =
+      argc == 7 && strcmp(argv[6], "--canonical-provider-abi") == 0;
 
-  if (argc != 6 && !verify_typed_error_reject) {
+  if (argc != 6 && !verify_typed_error_reject && !canonical_provider_abi) {
     fprintf(stderr,
-        "usage: %s <schema> <canonical component> <original service-header basename> <candidate-header> <candidate-source>\n",
+        "usage: %s <schema> <canonical component> <original service-header basename> <candidate-header> <candidate-source> [--canonical-provider-abi|--verify-typed-error-reject]\n",
         argc > 0 ? argv[0] : "component-provider-codegen");
     return 2;
   }
@@ -111,6 +113,8 @@ int main(int argc, char **argv) {
     name = name != NULL ? name + 1 : argv[4];
     if (databind_component_provider_candidate_render(
             header, source, component, &ir, argv[3], name,
+            canonical_provider_abi ? "component_provider_abi.h"
+                                   : "component_plugin_abi.h",
             1u, 0u, 0u) != 0)
       goto cleanup;
   }
