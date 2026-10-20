@@ -348,7 +348,7 @@ jobs:
       QIGAO_HOST_TRIPLET: x64-linux
       CCACHE_DIR: build/installed-servicehost/ccache
       CCACHE_COMPILERCHECK: content
-      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-servicehost-fr2-v1
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-servicehost-fr2-v2
     steps:
       - name: Checkout exact SaltsUtils FR2 candidate
         uses: actions/checkout@v4
