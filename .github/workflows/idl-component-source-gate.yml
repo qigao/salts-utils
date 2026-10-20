@@ -5,6 +5,14 @@ name: IDL ComponentProvider exact-source DSO candidate
     paths:
       - ".github/workflows/idl-component-source-gate.yml"
       - "databind/compiler/**"
+  # These draft qualification heads need their updated workflow definition to
+  # run before the workflow change reaches the base branch.
+  push:
+    branches:
+      - "review/idlc-servicehost-generation-handoff"
+    paths:
+      - ".github/workflows/idl-component-source-gate.yml"
+      - "databind/compiler/**"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +20,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: idl-component-dso-${{ github.head_ref || github.ref_name }}
+  group: idl-component-dso-${{ github.head_ref || github.ref_name }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
