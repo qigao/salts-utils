@@ -175,6 +175,7 @@ jobs:
             | tee build/component-macos/provenance.txt
       - name: Build exact Salts ComponentPlugin and install private SDK
         shell: bash
+        timeout-minutes: 30
         run: |
           set -euo pipefail
           export SALTS_ROOT="$RUNNER_TEMP/idl-component-salts-macos"
@@ -292,6 +293,7 @@ jobs:
             Set-Content build/component-windows/provenance.txt
       - name: Build/install exact Salts ComponentPlugin source with MSVC
         shell: cmd
+        timeout-minutes: 30
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
