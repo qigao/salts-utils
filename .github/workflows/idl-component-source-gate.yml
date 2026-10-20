@@ -122,3 +122,332 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
           test -z "$(git status --porcelain --untracked-files=no)"
+
+
+  macos:
+    name: Exact Salts arm64 macOS generated FR2 DSO/Scope
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      EXPECTED_SALTS: 23032bfe124df327317ce9b4d132054e99b2c0cb
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: macos-arm64
+      QIGAO_TARGET_TRIPLET: arm64-osx
+      QIGAO_HOST_TRIPLET: arm64-osx
+      CCACHE_DIR: ${{ github.workspace }}/build/component-macos/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-macos-dso-v1
+    steps:
+      - name: Checkout exact SaltsUtils candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - name: Checkout exact Salts ComponentPlugin source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: 23032bfe124df327317ce9b4d132054e99b2c0cb
+          path: build/component-macos/salts
+          persist-credentials: false
+      - name: Restore pinned vendor graph
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - name: Restore immutable re2c Unicode tool
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - name: Prepare native C11/C++17 macOS host
+        uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Verify immutable source inputs and original ABI owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test "$(git -C build/component-macos/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
+          test -f build/component-macos/salts/component-plugin/include/salts/component_plugin_abi.h
+          test -f build/component-macos/salts/component-plugin/src/component_plugin.c
+          mkdir -p build/component-macos
+          printf 'salts=%s\nsaltsutils=%s\nmacos_arm64_real_dso=true\nsdk_publication=false\n' \
+            "$EXPECTED_SALTS" "$EXPECTED_SU" \
+            | tee build/component-macos/provenance.txt
+      - name: Build exact Salts ComponentPlugin and install private SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SALTS_ROOT="$RUNNER_TEMP/idl-component-salts-macos"
+          echo "SALTS_ROOT=$SALTS_ROOT" >> "$GITHUB_ENV"
+          cmake --preset mac-arm64-clang-release-ci \
+            -S "$GITHUB_WORKSPACE/build/component-macos/salts" \
+            -B build/component-macos/build-salts \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$SALTS_ROOT" \
+            -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          cmake --build build/component-macos/build-salts --parallel 2
+          cmake --install build/component-macos/build-salts
+          test -f "$SALTS_ROOT/include/salts/component_plugin_abi.h"
+          grep -q 'ComponentPluginABI' "$SALTS_ROOT/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -q 'ComponentPlugin' "$SALTS_ROOT/lib/cmake/Salts/SaltsTargets.cmake"
+      - name: Compile and execute generated FR2 Provider DSO on macOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SALTS_ROOT="$RUNNER_TEMP/idl-component-salts-macos"
+          export PKG_ROOT="$RUNNER_TEMP/idl-component-utils-macos"
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          export DYLD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_ROOT/bin:${DYLD_LIBRARY_PATH:-}"
+          cmake --preset ci-macos-release-user \
+            -B build/component-macos/build-utils \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/arm64-osx" \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON
+          cmake --build build/component-macos/build-utils --parallel 2 \
+            --target databind_component_candidate_provider \
+                     test_databind_component_candidate_dso_c11 \
+                     test_databind_component_candidate_header_cpp \
+                     databind_component_candidate_multi_provider \
+                     test_databind_component_candidate_multi_dso_c11 \
+                     test_databind_component_candidate_multi_header_cpp
+          ctest --test-dir build/component-macos/build-utils \
+            -R '^test_databind_component_candidate_' \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+      - name: Preserve source-only macOS qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idl-component-macos-fr2-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            build/component-macos/provenance.txt
+            build/component-macos/build-utils/Testing/Temporary/LastTest.log
+      - name: Verify source checkout unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+
+  windows:
+    name: Exact Salts Windows x64 MSVC ComponentProvider FR2 DSO/Scope
+    runs-on: windows-2025
+    timeout-minutes: 120
+    env:
+      EXPECTED_SALTS: 23032bfe124df327317ce9b4d132054e99b2c0cb
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: windows-x64
+      CCACHE_DIR: ${{ github.workspace }}/build/component-windows/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-windows-dso-v1
+    steps:
+      - name: Checkout exact SaltsUtils candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - name: Checkout exact upstream Salts ComponentPlugin source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: 23032bfe124df327317ce9b4d132054e99b2c0cb
+          path: build/component-windows/salts
+          persist-credentials: false
+      - name: Restore exact shared vcpkg dependencies
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - name: Restore original pinned re2c host generator
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - name: Prepare original Windows native host
+        uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Select immutable Windows host triplet and source graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not $env:VCPKG_ROOT -or -not $env:QIGAO_VCPKG_WINDOWS_TRIPLET) {
+            throw "Exact qigao Windows triplet/cache source was not selected"
+          }
+          "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          "VCPKG_WINDOWS_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          $head = git rev-parse HEAD
+          $salts = git -C build/component-windows/salts rev-parse HEAD
+          if ($head -ne $env:EXPECTED_SU -or $salts -ne $env:EXPECTED_SALTS) {
+            throw "Immutable Salts/SaltsUtils source check failed"
+          }
+          if (-not (Test-Path "build/component-windows/salts/component-plugin/src/component_plugin.c")) {
+            throw "Missing original Salts ComponentPlugin"
+          }
+          New-Item -ItemType Directory -Force build/component-windows | Out-Null
+          @("salts=$salts", "saltsutils=$head", "triplet=$env:QIGAO_VCPKG_WINDOWS_TRIPLET", "sdk_publication=false") |
+            Set-Content build/component-windows/provenance.txt
+      - name: Build/install exact Salts ComponentPlugin source with MSVC
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "SALTS_ROOT=%RUNNER_TEMP%\idl-component-salts-win"
+          echo SALTS_ROOT=%SALTS_ROOT%>> "%GITHUB_ENV%"
+          cmake --preset win-release-ci -S "%GITHUB_WORKSPACE%\build\component-windows\salts" -B "build\component-windows\build-salts" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%SALTS_ROOT%" -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build "build\component-windows\build-salts" --parallel 2
+          if errorlevel 1 exit /b 1
+          cmake --install "build\component-windows\build-salts"
+          if errorlevel 1 exit /b 1
+          if not exist "%SALTS_ROOT%\include\salts\component_plugin_abi.h" exit /b 1
+      - name: Build/execute generated C11/C++17 FR2 DSOs with exact Salts MSVC owner
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "SALTS_ROOT=%RUNNER_TEMP%\idl-component-salts-win"
+          set "PKG_ROOT=%RUNNER_TEMP%\idl-component-utils-win"
+          set "VCPKG_INSTALLED_DIR=%GITHUB_WORKSPACE%\vcpkg_installed"
+          set "PATH=%SALTS_ROOT%\bin;%PATH%"
+          cmake --preset ci-win-release-user -B "build\component-windows\build-utils" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON
+          if errorlevel 1 exit /b 1
+          cmake --build "build\component-windows\build-utils" --parallel 2 --target databind_component_candidate_provider test_databind_component_candidate_dso_c11 test_databind_component_candidate_header_cpp databind_component_candidate_multi_provider test_databind_component_candidate_multi_dso_c11 test_databind_component_candidate_multi_header_cpp
+          if errorlevel 1 exit /b 1
+          ctest --test-dir "build\component-windows\build-utils" -R "^test_databind_component_candidate_" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+          if errorlevel 1 exit /b 1
+      - name: Preserve private Windows source-graph conformance proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idl-component-windows-fr2-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            build/component-windows/provenance.txt
+            build/component-windows/build-utils/Testing/Temporary/LastTest.log
+      - name: Require original source checkout unchanged
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_SU) {
+            throw "Source HEAD changed during exact Windows qualification"
+          }
+          if (git status --porcelain --untracked-files=no) {
+            throw "Unexpected tracked source modification"
+          }
+
+
+  linux_servicehost:
+    name: Generated FR2 Provider through installed Salts ServiceHost
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      EXPECTED_SALTS: ec46ffb6328489d5febb9fba052b30f663ee677e
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: linux-x64
+      QIGAO_TARGET_TRIPLET: x64-linux
+      QIGAO_HOST_TRIPLET: x64-linux
+      CCACHE_DIR: build/installed-servicehost/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-servicehost-fr2-v3
+    steps:
+      - name: Checkout exact SaltsUtils FR2 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - name: Checkout exact Salts strict ServiceHost SDK source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ec46ffb6328489d5febb9fba052b30f663ee677e
+          path: build/installed-servicehost/salts
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Assert immutable producer and compiler identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test "$(git -C build/installed-servicehost/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
+          test -f build/installed-servicehost/salts/component-runtime/include/salts/service_host.h
+          test -f build/installed-servicehost/salts/component-runtime/src/service_host.c
+          mkdir -p build/installed-servicehost
+          printf 'salts=%s\nsaltsutils=%s\nprobe_only=true\npublish=false\n' \
+            "$EXPECTED_SALTS" "$EXPECTED_SU" | tee build/installed-servicehost/provenance.txt
+      - name: Install exact strict Salts Configurator/ServiceHost SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/idl-servicehost-native-sdk"
+          echo "SALTS_ROOT=$prefix" >> "$GITHUB_ENV"
+          cmake --preset linux-release-ci \
+            -S "$GITHUB_WORKSPACE/build/installed-servicehost/salts" \
+            -B build/installed-servicehost/build-salts \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" \
+            -DSALTS_ENABLE_COMPONENT_RUNTIME_CANDIDATE=ON \
+            -DSALTS_ENABLE_COMPONENT_RUNTIME_INSTALLED_ABI_PROBE=ON \
+            -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          cmake --build build/installed-servicehost/build-salts --parallel 2
+          cmake --install build/installed-servicehost/build-salts
+          test -f "$prefix/include/salts/service_host.h"
+          test -f "$prefix/include/salts/configurator.h"
+          test -f "$prefix/include/salts/component_runtime_abi.h"
+          grep -Fq 'Salts::ServiceHost' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -Fq 'Salts::Configurator' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -Fq 'Salts::ComponentProviderABI' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -Fq 'Salts::Core' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          ! grep -Fq 'Salts::ComponentPlugin' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          ! grep -Fq 'Salts::ServiceHostCandidate' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+      - name: Execute unchanged generated dual-operation FR2 through installed ServiceHost
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SALTS_ROOT="$RUNNER_TEMP/idl-servicehost-native-sdk"
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          export PKG_ROOT="$RUNNER_TEMP/idl-servicehost-utils"
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_ROOT/bin"
+          cmake --preset ci-linux-release-user \
+            -B build/installed-servicehost/build-utils \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=OFF \
+            -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build build/installed-servicehost/build-utils --parallel 2 \
+            --target databind_component_candidate_multi_servicehost_provider \
+                     test_databind_component_candidate_servicehost_c11
+          ctest --test-dir build/installed-servicehost/build-utils \
+            -R '^test_databind_component_candidate_(servicehost_c11|servicehost_multi_codegen_content)$' \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+      - name: Preserve exact generated Provider integration proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idlc-fr2-installed-servicehost-${{ github.run_id }}
+          path: |
+            build/installed-servicehost/provenance.txt
+            build/installed-servicehost/build-utils/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Confirm original SaltsUtils source unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test -z "$(git status --porcelain --untracked-files=no)"
