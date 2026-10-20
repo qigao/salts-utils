@@ -76,15 +76,15 @@ if(SALTS_UTILS_ENABLE_CFLOW_USB)
 endif()
 add_subdirectory(cron)
 add_subdirectory(mustache)
-# The exact-source #620 DSO qualification intentionally links the one
-# upstream Salts::Unicode implementation already exported by Salts #1234.
-# Its native source ABI supersedes the duplicate SaltsUtils Unicode target
-# name in that *isolated test graph*. Normal/public SaltsUtils builds remain
-# unchanged and still build/export their own Unicode target.
-if(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO)
+# The isolated exact-source Provider DSO gates use the one upstream
+# Salts::Unicode implementation exported by the installed Salts SDK. This
+# avoids defining the same imported alias a second time in the qualification
+# graph. Normal/public SaltsUtils builds still build/export their own Unicode.
+if(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO OR
+   DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
   if(NOT TARGET Salts::Unicode)
     message(FATAL_ERROR
-      "Exact-source ComponentProvider DSO requires upstream Salts::Unicode; no fallback")
+      "Exact-source Provider DSO qualification requires upstream Salts::Unicode; no fallback")
   endif()
 else()
   add_subdirectory(unicode)
