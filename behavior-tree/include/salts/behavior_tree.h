@@ -64,10 +64,16 @@ typedef struct salts_bt_tree_config {
 } salts_bt_tree_config;
 
 /*
- * Leaf handlers run synchronously on the thread calling salts_bt_tree_tick().
- * They may return RUNNING to be ticked again on a later call. user is borrowed
- * until tree destruction; the tree never frees it. A handler must not destroy,
- * reset, mutate, or recursively tick the same tree.
+ * All callback user contexts are borrowed: the tree never frees them, and they
+ * must remain valid until salts_bt_tree_destroy() returns SALTS_OK. Callbacks
+ * run synchronously on the tree driver thread. They must not recursively tick,
+ * mutate, reset, cancel, or destroy the same tree; reentrant operations are
+ * rejected while a tree operation is active (with SALTS_EBUSY where applicable).
+ *
+ * Leaf handlers return behavior-tree status only, not a Salts error code.
+ * Represent an operational leaf failure as SALTS_BT_FAILURE and retain any
+ * detailed error in caller-owned state. An invalid leaf status returns
+ * SALTS_EINVAL and aborts the current tick with normal lifecycle cleanup.
  */
 typedef salts_bt_node_status (*salts_bt_leaf_fn)(void *user);
 typedef void (*salts_bt_leaf_halt_fn)(void *user);
@@ -134,7 +140,9 @@ int salts_bt_tree_init(salts_bt_tree *tree,
  * single-child arity. IfThenElse accepts callback + 1-2 branches or an in-tree
  * condition + 1-2 branches. Precondition/WhileDo accept callback + one body or
  * an in-tree condition + body. Leaves cannot have children. Leaves require a
- * handler; control nodes use typed predicate/selector APIs where needed.
+ * handler. Switch, PipelineSequence, EntryUpdated, and ConsumeQueue require
+ * their typed add_* factories because their callback configuration cannot be
+ * attached later; the generic add functions reject those node kinds.
  * IDs are stable for the lifetime of the tree and are not reused after reset.
  *
  * Capacity exhaustion returns SALTS_ENOBUFS. Invalid topology/contracts return
