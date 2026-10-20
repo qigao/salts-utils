@@ -549,15 +549,52 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
       "Generated ServiceHost gate requires exact installed Salts::ServiceHost, Salts::Configurator, Salts::ComponentProviderABI and Salts::PluginABI targets; no ComponentPlugin fallback or shadow ABI")
   endif()
 
+  # Re-project the canonical Contract/NativeSourceIR with the ABI header
+  # installed by Salts #1260. Do not mutate or alias the legacy output.
+  set(_databind_servicehost_candidate_dir
+    "${CMAKE_CURRENT_BINARY_DIR}/servicehost-component-candidate")
+  file(MAKE_DIRECTORY "${_databind_servicehost_candidate_dir}")
+  set(_databind_servicehost_candidate_multi_header
+    "${_databind_servicehost_candidate_dir}/contract_multi.component.h")
+  set(_databind_servicehost_candidate_multi_source
+    "${_databind_servicehost_candidate_dir}/contract_multi.component.c")
+  add_custom_command(
+    OUTPUT
+      "${_databind_servicehost_candidate_multi_header}"
+      "${_databind_servicehost_candidate_multi_source}"
+    COMMAND
+      $<TARGET_FILE:databind_component_candidate_codegen_tool>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_component_multi.schema"
+      "ComponentOps.MathProvider"
+      "contract_multi.plugin.h"
+      "${_databind_servicehost_candidate_multi_header}"
+      "${_databind_servicehost_candidate_multi_source}"
+      --canonical-provider-abi
+    DEPENDS
+      databind_component_candidate_codegen_tool
+      databind_component_multi_plugin_fixture_idl_codegen
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_component_multi.schema"
+    VERBATIM
+    COMMENT "Generating FR2 Provider against canonical ComponentProviderABI")
+  add_custom_target(databind_component_candidate_multi_servicehost_generated
+    DEPENDS
+      "${_databind_servicehost_candidate_multi_header}"
+      "${_databind_servicehost_candidate_multi_source}")
+  set_source_files_properties(
+    "${_databind_servicehost_candidate_multi_header}"
+    "${_databind_servicehost_candidate_multi_source}"
+    PROPERTIES GENERATED TRUE)
+
   add_library(databind_component_candidate_multi_servicehost_provider SHARED
-    "${_databind_component_candidate_multi_header}"
-    "${_databind_component_candidate_multi_source}"
+    "${_databind_servicehost_candidate_multi_header}"
+    "${_databind_servicehost_candidate_multi_source}"
     test_component_multi_business.c)
   add_dependencies(databind_component_candidate_multi_servicehost_provider
-    databind_component_candidate_multi_generated)
+    databind_component_candidate_multi_servicehost_generated)
   target_compile_features(databind_component_candidate_multi_servicehost_provider PRIVATE
     c_std_11)
   target_include_directories(databind_component_candidate_multi_servicehost_provider PRIVATE
+    "${_databind_servicehost_candidate_dir}"
     "${_databind_component_candidate_multi_dir}")
   target_link_libraries(databind_component_candidate_multi_servicehost_provider PRIVATE
     Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
@@ -571,6 +608,7 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
   add_dependencies(test_databind_component_candidate_servicehost_c11
     databind_component_candidate_multi_servicehost_provider)
   target_include_directories(test_databind_component_candidate_servicehost_c11 PRIVATE
+    "${_databind_servicehost_candidate_dir}"
     "${_databind_component_candidate_multi_dir}")
   target_compile_definitions(test_databind_component_candidate_servicehost_c11 PRIVATE
     GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_multi_servicehost_provider>")
@@ -583,4 +621,13 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     COMMAND test_databind_component_candidate_servicehost_c11)
   set_tests_properties(test_databind_component_candidate_servicehost_c11 PROPERTIES
     LABELS "databind;compiler;component;servicehost;fr2;real-dso;no-fallback")
+
+  add_test(NAME test_databind_component_candidate_servicehost_multi_codegen_content
+    COMMAND "${CMAKE_COMMAND}"
+      "-DHEADER=${_databind_servicehost_candidate_multi_header}"
+      "-DSOURCE=${_databind_servicehost_candidate_multi_source}"
+      "-DEXPECTED_PROVIDER_ABI_HEADER=component_provider_abi.h"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_multi_content.cmake")
+  set_tests_properties(test_databind_component_candidate_servicehost_multi_codegen_content PROPERTIES
+    LABELS "databind;compiler;component;servicehost;multi;codegen;provider-abi;no-fallback")
 endif()
