@@ -30,6 +30,7 @@ int databind_component_provider_candidate_render(
     const databind_compiler_service_native_ir *ir,
     const char *native_service_header,
     const char *component_header,
+    const char *provider_abi_header,
     uint32_t major,
     uint32_t minor,
     uint32_t patch);
