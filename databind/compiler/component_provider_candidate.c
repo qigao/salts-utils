@@ -179,6 +179,7 @@ static int candidate_render_multi(
     FILE *header, FILE *source, const IdlComponent *component,
     const databind_compiler_service_native_ir *ir,
     const char *native_service_header, const char *component_header,
+    const char *provider_abi_header,
     uint32_t major, uint32_t minor, uint32_t patch) {
   const char *first = ir->operations[0].symbol;
   size_t i;
@@ -186,9 +187,9 @@ static int candidate_render_multi(
       "#ifndef %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#define %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#include \"%s\"\n"
-      "#include <salts/component_plugin_abi.h>\n"
+      "#include <salts/%s>\n"
       "#include <cmeta/object_interface.h>\n\n",
-      first, first, native_service_header) < 0)
+      first, first, native_service_header, provider_abi_header) < 0)
     return -1;
 
   for (i = 0u; i < ir->operation_count; ++i)
@@ -266,6 +267,7 @@ int databind_component_provider_candidate_render(
     const databind_compiler_service_native_ir *ir,
     const char *native_service_header,
     const char *component_header,
+    const char *provider_abi_header,
     uint32_t major,
     uint32_t minor,
     uint32_t patch) {
@@ -278,11 +280,13 @@ int databind_component_provider_candidate_render(
       header == source ||
       !databind_component_provider_candidate_admitted(component, ir) ||
       !candidate_basename(native_service_header) ||
-      !candidate_basename(component_header))
+      !candidate_basename(component_header) ||
+      !candidate_basename(provider_abi_header))
     return -1;
   if (ir->operation_count > 1u)
     return candidate_render_multi(header, source, component, ir,
-        native_service_header, component_header, major, minor, patch);
+        native_service_header, component_header, provider_abi_header,
+        major, minor, patch);
 
   op = &ir->operations[0];
   sym = op->symbol;
@@ -293,9 +297,9 @@ int databind_component_provider_candidate_render(
       "#ifndef %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#define %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#include \"%s\"\n"
-      "#include <salts/component_plugin_abi.h>\n"
+      "#include <salts/%s>\n"
       "#include <cmeta/object_interface.h>\n\n",
-      sym, sym, native_service_header) < 0) return -1;
+      sym, sym, native_service_header, provider_abi_header) < 0) return -1;
 
   /* A Contract-only ServiceNativeIR already has exact NativeSourceIR record
    * identities. Reuse its canonical CMeta storage descriptors; re-declaring
