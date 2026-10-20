@@ -544,7 +544,8 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
       Salts::ComponentProviderABI
       Salts::PluginABI
       Salts::Plugin
-      Salts::CMeta)
+      Salts::CMeta
+      Salts::Core)
     if(NOT TARGET ${_required_target})
       message(FATAL_ERROR
         "Installed ServiceHost qualification requires exported target ${_required_target}; no legacy/fallback target is permitted")
