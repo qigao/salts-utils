@@ -627,6 +627,7 @@ jobs:
           if errorlevel 1 exit /b 1
           if not exist "%SALTS_ROOT%\include\salts\service_host.h" exit /b 1
           if not exist "%SALTS_ROOT%\include\salts\component_runtime_abi.h" exit /b 1
+          if not exist "%SALTS_ROOT%\include\salts\component_provider_abi.h" exit /b 1
           findstr /c:"Salts::ServiceHost" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
           if errorlevel 1 exit /b 1
           findstr /c:"Salts::Configurator" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
@@ -635,7 +636,9 @@ jobs:
           if errorlevel 1 exit /b 1
           findstr /c:"Salts::PluginABI" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
           if errorlevel 1 exit /b 1
-          findstr /c:"Salts::ComponentPlugin" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul && exit /b 1
+          findstr /c:"Salts::ComponentPlugin" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if not errorlevel 1 exit /b 1
+          exit /b 0
       - name: Configure generated FR2 through exact installed MSVC ServiceHost
         shell: cmd
         run: |
