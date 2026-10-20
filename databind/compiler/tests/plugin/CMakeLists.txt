@@ -531,27 +531,71 @@ set_tests_properties(test_databind_component_candidate_typed_error_reject PROPER
   LABELS "databind;compiler;component;typed-error;reject;no-output")
 
 
-# Experimental Salts #1153 installed runtime migration proof. This uses the
-# exact existing generated multi-operation FR2 Provider and its original
-# NativeSourceIR; it does not add a second compiler, Plugin loader or ABI.
+# Experimental installed-runtime qualification. The ServiceHost path is
+# independent of the retired ComponentPlugin runtime: it links only the
+# canonical ComponentProviderABI/PluginABI on generated DSOs and the one
+# installed ServiceHost + Plugin loader on the host.
 option(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO
   "Qualify generated FR2 Provider through real installed Salts::ServiceHost" OFF)
 if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
-  if(NOT DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO OR
-     NOT TARGET Salts::ServiceHost OR NOT TARGET Salts::Configurator)
-    message(FATAL_ERROR
-      "Generated ServiceHost gate requires the exact installed Salts ABI and opt-in existing Provider generation")
-  endif()
+  foreach(_required_target
+      Salts::ServiceHost
+      Salts::Configurator
+      Salts::ComponentProviderABI
+      Salts::PluginABI
+      Salts::Plugin
+      Salts::CMeta
+      Salts::DataBind)
+    if(NOT TARGET ${_required_target})
+      message(FATAL_ERROR
+        "Installed ServiceHost qualification requires exported target ${_required_target}; no legacy/fallback target is permitted")
+    endif()
+  endforeach()
+
+  # Generate separate DSOs so this source gate remains usable when the
+  # ComponentPlugin targets are intentionally absent from the installed SDK.
+  add_library(databind_servicehost_component_candidate_provider SHARED
+    "${_databind_component_candidate_header}"
+    "${_databind_component_candidate_source}"
+    "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_business.c")
+  add_dependencies(databind_servicehost_component_candidate_provider
+    databind_component_candidate_generated)
+  target_compile_features(databind_servicehost_component_candidate_provider PRIVATE c_std_11)
+  target_include_directories(databind_servicehost_component_candidate_provider PRIVATE
+    "${_databind_component_candidate_dir}")
+  target_link_libraries(databind_servicehost_component_candidate_provider PRIVATE
+    Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
+  set_target_properties(databind_servicehost_component_candidate_provider PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    PREFIX "" OUTPUT_NAME "contract_component_servicehost"
+    FOLDER "databind/compiler/generated/servicehost")
+
+  add_library(databind_servicehost_component_candidate_multi_provider SHARED
+    "${_databind_component_candidate_multi_header}"
+    "${_databind_component_candidate_multi_source}"
+    test_component_multi_business.c)
+  add_dependencies(databind_servicehost_component_candidate_multi_provider
+    databind_component_candidate_multi_generated)
+  target_compile_features(databind_servicehost_component_candidate_multi_provider PRIVATE c_std_11)
+  target_include_directories(databind_servicehost_component_candidate_multi_provider PRIVATE
+    "${_databind_component_candidate_multi_dir}")
+  target_link_libraries(databind_servicehost_component_candidate_multi_provider PRIVATE
+    Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
+  set_target_properties(databind_servicehost_component_candidate_multi_provider PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    PREFIX "" OUTPUT_NAME "contract_component_multi_servicehost"
+    FOLDER "databind/compiler/generated/servicehost")
+
   add_executable(test_databind_component_candidate_servicehost_c11
     test_component_multi_service_host.c)
   add_dependencies(test_databind_component_candidate_servicehost_c11
-    databind_component_candidate_multi_provider)
+    databind_servicehost_component_candidate_multi_provider)
   target_include_directories(test_databind_component_candidate_servicehost_c11 PRIVATE
     "${_databind_component_candidate_multi_dir}")
   target_compile_definitions(test_databind_component_candidate_servicehost_c11 PRIVATE
-    GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_multi_provider>")
+    GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_servicehost_component_candidate_multi_provider>")
   target_link_libraries(test_databind_component_candidate_servicehost_c11 PRIVATE
-    Salts::ServiceHost Salts::DataBind)
+    Salts::ServiceHost Salts::Plugin Salts::PluginABI Salts::CMeta Salts::DataBind)
   set_target_properties(test_databind_component_candidate_servicehost_c11 PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     FOLDER "databind/compiler/tests/plugin")
@@ -559,27 +603,24 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     COMMAND test_databind_component_candidate_servicehost_c11)
   set_tests_properties(test_databind_component_candidate_servicehost_c11 PROPERTIES
     LABELS "databind;compiler;component;servicehost;fr2;real-dso;no-fallback")
-endif()
 
-
-# Independent generated old-N/new-N+1 conformance through the already
-# installed Salts::ServiceHost. No new IR, compiler or provider loader.
-if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
+  # Real N -> N+1 handoff uses two different generated Provider DSOs with the
+  # same canonical Plugin registry. The old scope pins N until explicit release.
   add_executable(test_databind_component_candidate_servicehost_switch_c11
     test_component_generation_service_host.c)
   add_dependencies(test_databind_component_candidate_servicehost_switch_c11
-    databind_component_candidate_provider
-    databind_component_candidate_multi_provider
+    databind_servicehost_component_candidate_provider
+    databind_servicehost_component_candidate_multi_provider
     databind_component_candidate_generated
     databind_component_candidate_multi_generated)
   target_include_directories(test_databind_component_candidate_servicehost_switch_c11 PRIVATE
     "${_databind_component_candidate_dir}"
     "${_databind_component_candidate_multi_dir}")
   target_compile_definitions(test_databind_component_candidate_servicehost_switch_c11 PRIVATE
-    GENERATED_COMPONENT_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_provider>"
-    GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_multi_provider>")
+    GENERATED_COMPONENT_PROVIDER_PATH="$<TARGET_FILE:databind_servicehost_component_candidate_provider>"
+    GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_servicehost_component_candidate_multi_provider>")
   target_link_libraries(test_databind_component_candidate_servicehost_switch_c11 PRIVATE
-    Salts::ServiceHost Salts::DataBind)
+    Salts::ServiceHost Salts::Plugin Salts::PluginABI Salts::CMeta Salts::DataBind)
   set_target_properties(test_databind_component_candidate_servicehost_switch_c11 PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     FOLDER "databind/compiler/tests/plugin")
