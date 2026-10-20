@@ -307,6 +307,7 @@ jobs:
           if not exist "%SALTS_ROOT%\include\salts\component_plugin_abi.h" exit /b 1
       - name: Build/execute generated C11/C++17 FR2 DSOs with exact Salts MSVC owner
         shell: cmd
+        timeout-minutes: 30
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
