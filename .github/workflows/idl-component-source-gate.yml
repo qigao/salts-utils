@@ -411,6 +411,7 @@ jobs:
           grep -Fq 'Salts::Configurator' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
           grep -Fq 'Salts::ComponentProviderABI' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
           grep -Fq 'Salts::PluginABI' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -Fq 'Salts::Core' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
           ! grep -Fq 'Salts::ComponentPlugin' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
           ! grep -Fq 'Salts::ServiceHostCandidate' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
       - name: Execute unchanged generated dual-operation FR2 through installed ServiceHost
@@ -521,6 +522,7 @@ jobs:
           grep -Fq 'Salts::Configurator' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
           grep -Fq 'Salts::ComponentProviderABI' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
           grep -Fq 'Salts::PluginABI' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -Fq 'Salts::Core' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
           ! grep -Fq 'Salts::ComponentPlugin' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
           ! grep -Fq 'Salts::ServiceHostCandidate' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
       - name: Run generated dual-operation FR2 via installed macOS ServiceHost
@@ -645,6 +647,8 @@ jobs:
           findstr /c:"Salts::ComponentProviderABI" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
           if errorlevel 1 exit /b 1
           findstr /c:"Salts::PluginABI" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::Core" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
           if errorlevel 1 exit /b 1
           findstr /c:"Salts::ComponentPlugin" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
           if not errorlevel 1 exit /b 1
