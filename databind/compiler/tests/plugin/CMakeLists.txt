@@ -537,6 +537,9 @@ set_tests_properties(test_databind_component_candidate_typed_error_reject PROPER
 # compatibility adapter and never links/exports Salts::ComponentPluginABI.
 option(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO
   "Qualify generated FR2 Provider through real installed Salts::ServiceHost" OFF)
+# This gate is independent of the retired ComponentPlugin DSO gate above.
+# Salts #1260 exposes the typed Provider ABI used by ServiceHost, not a legacy
+# ComponentPlugin compatibility target; keep the two consumers separately built.
 if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
   if(NOT TARGET Salts::ServiceHost OR
      NOT TARGET Salts::Configurator OR
