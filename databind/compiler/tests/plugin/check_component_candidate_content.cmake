@@ -6,6 +6,18 @@ if(NOT DEFINED HEADER OR NOT DEFINED SOURCE OR
 endif()
 file(READ "${HEADER}" _header)
 file(READ "${SOURCE}" _source)
+if(DEFINED EXPECTED_PROVIDER_ABI_HEADER)
+  string(FIND "${_header}" "#include <salts/${EXPECTED_PROVIDER_ABI_HEADER}>" _abi_pos)
+  if(_abi_pos EQUAL -1)
+    message(FATAL_ERROR "Generated Provider includes the wrong ABI header; expected ${EXPECTED_PROVIDER_ABI_HEADER}")
+  endif()
+  if(EXPECTED_PROVIDER_ABI_HEADER STREQUAL "component_provider_abi.h")
+    string(FIND "${_header}" "component_plugin_abi.h" _legacy_abi_pos)
+    if(NOT _legacy_abi_pos EQUAL -1)
+      message(FATAL_ERROR "ServiceHost Provider must not include retired ComponentPlugin ABI")
+    endif()
+  endif()
+endif()
 
 foreach(_needle IN ITEMS
     "CMETA_INTERFACE("
