@@ -2032,5 +2032,47 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
+  it("rejects callback-only node kinds through the generic constructor") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id node = 42u;
+    salts_bt_node_id leaf = SALTS_BT_INVALID_NODE_ID;
+    size_t count = 0u;
+    size_t i;
+    const salts_bt_node_kind callback_only_kinds[] = {
+        SALTS_BT_NODE_SWITCH,
+        SALTS_BT_NODE_PIPELINE_SEQUENCE,
+        SALTS_BT_NODE_ENTRY_UPDATED,
+        SALTS_BT_NODE_CONSUME_QUEUE};
+    const salts_bt_node_status success_steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe probe = {success_steps, 1u, 0u};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 8u, 8u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_SEQUENCE, NULL, NULL,
+                                      &root), SALTS_OK);
+
+    for (i = 0u; i < sizeof(callback_only_kinds) / sizeof(callback_only_kinds[0]);
+         ++i) {
+      node = 42u;
+      check_equal(salts_bt_tree_add_node_with_limit(&tree, root,
+                                                    callback_only_kinds[i],
+                                                    NULL, NULL, 0u, &node),
+                  SALTS_EINVAL);
+      check_equal(node, SALTS_BT_INVALID_NODE_ID);
+      check_equal(salts_bt_tree_get_node_count(&tree, &count), SALTS_OK);
+      check_equal(count, 1u);
+    }
+
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &probe, &leaf), SALTS_OK);
+    check_equal(salts_bt_tree_validate(&tree), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(probe.calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
 
 }
