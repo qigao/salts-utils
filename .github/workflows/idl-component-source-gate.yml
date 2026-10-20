@@ -420,7 +420,7 @@ jobs:
             --target databind_component_candidate_multi_servicehost_provider \
                      test_databind_component_candidate_servicehost_c11
           ctest --test-dir build/installed-servicehost/build-utils \
-            -R '^test_databind_component_candidate_servicehost_c11
+            -R '^test_databind_component_candidate_servicehost_c11$' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
       - name: Preserve exact generated Provider integration proof
         if: always()
