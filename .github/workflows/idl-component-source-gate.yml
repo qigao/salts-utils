@@ -341,7 +341,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      EXPECTED_SALTS: a6d1f7c6b81c72dfcdcab9a5ea8f72244ab3079a
+      EXPECTED_SALTS: 57b1128dff79654088dc6e874d6e8d0978ffb06d
       EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
       QIGAO_SDK_RID: linux-x64
       QIGAO_TARGET_TRIPLET: x64-linux
@@ -359,7 +359,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: a6d1f7c6b81c72dfcdcab9a5ea8f72244ab3079a
+          ref: 57b1128dff79654088dc6e874d6e8d0978ffb06d
           path: build/installed-servicehost/salts
           persist-credentials: false
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
