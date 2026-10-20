@@ -6,6 +6,18 @@ if(NOT DEFINED HEADER OR NOT DEFINED SOURCE OR
 endif()
 file(READ "${HEADER}" _h)
 file(READ "${SOURCE}" _s)
+if(DEFINED EXPECTED_PROVIDER_ABI_HEADER)
+  string(FIND "${_h}" "#include <salts/${EXPECTED_PROVIDER_ABI_HEADER}>" _abi_pos)
+  if(_abi_pos EQUAL -1)
+    message(FATAL_ERROR "Generated multi-operation Provider includes the wrong ABI header; expected ${EXPECTED_PROVIDER_ABI_HEADER}")
+  endif()
+  if(EXPECTED_PROVIDER_ABI_HEADER STREQUAL "component_provider_abi.h")
+    string(FIND "${_h}" "component_plugin_abi.h" _legacy_abi_pos)
+    if(NOT _legacy_abi_pos EQUAL -1)
+      message(FATAL_ERROR "ServiceHost multi-operation Provider must not include retired ComponentPlugin ABI")
+    endif()
+  endif()
+endif()
 foreach(_needle IN ITEMS
     "invoke_Add"
     "invoke_Multiply"
