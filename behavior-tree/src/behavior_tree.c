@@ -98,6 +98,13 @@ static bool node_kind_valid(salts_bt_node_kind kind) {
          kind == SALTS_BT_NODE_CONSUME_QUEUE;
 }
 
+static bool node_kind_requires_typed_constructor(salts_bt_node_kind kind) {
+  return kind == SALTS_BT_NODE_SWITCH ||
+         kind == SALTS_BT_NODE_PIPELINE_SEQUENCE ||
+         kind == SALTS_BT_NODE_ENTRY_UPDATED ||
+         kind == SALTS_BT_NODE_CONSUME_QUEUE;
+}
+
 static bool node_kind_accepts_children(salts_bt_node_kind kind) {
   return kind == SALTS_BT_NODE_SEQUENCE ||
          kind == SALTS_BT_NODE_FALLBACK ||
@@ -1104,13 +1111,14 @@ int salts_bt_tree_init(salts_bt_tree *tree,
   return SALTS_OK;
 }
 
-int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
-                                      salts_bt_node_id parent_id,
-                                      salts_bt_node_kind kind,
-                                      salts_bt_leaf_fn handler,
-                                      void *user,
-                                      size_t limit,
-                                      salts_bt_node_id *out_node_id) {
+static int add_node_with_limit_internal(salts_bt_tree *tree,
+                                         salts_bt_node_id parent_id,
+                                         salts_bt_node_kind kind,
+                                         salts_bt_leaf_fn handler,
+                                         void *user,
+                                         size_t limit,
+                                         salts_bt_node_id *out_node_id,
+                                         bool allow_typed_constructor) {
   salts_bt_impl *impl = tree_impl(tree);
   salts_bt_node *parent = NULL;
   salts_bt_node *node;
@@ -1120,7 +1128,9 @@ int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
   if (out_node_id != NULL) *out_node_id = SALTS_BT_INVALID_NODE_ID;
   if (impl == NULL || out_node_id == NULL) return SALTS_EINVAL;
   if (impl->busy) return SALTS_EBUSY;
-  if (!node_kind_valid(kind)) return SALTS_EINVAL;
+  if (!node_kind_valid(kind) ||
+      (!allow_typed_constructor && node_kind_requires_typed_constructor(kind)))
+    return SALTS_EINVAL;
   if ((kind == SALTS_BT_NODE_LEAF && handler == NULL) ||
       (kind != SALTS_BT_NODE_LEAF && handler != NULL))
     return SALTS_EINVAL;
@@ -1184,6 +1194,17 @@ int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
   return SALTS_OK;
 }
 
+
+int salts_bt_tree_add_node_with_limit(salts_bt_tree *tree,
+                                      salts_bt_node_id parent_id,
+                                      salts_bt_node_kind kind,
+                                      salts_bt_leaf_fn handler,
+                                      void *user,
+                                      size_t limit,
+                                      salts_bt_node_id *out_node_id) {
+  return add_node_with_limit_internal(tree, parent_id, kind, handler, user,
+                                      limit, out_node_id, false);
+}
 
 static int tick_node(salts_bt_impl *impl, salts_bt_node_id id,
                      size_t depth, salts_bt_node_status *out_status) {
@@ -1297,9 +1318,9 @@ int salts_bt_tree_add_parallel_node(salts_bt_tree *tree,
   if (enter == NULL || step == NULL || join == NULL || finish == NULL ||
       out_node_id == NULL)
     return SALTS_EINVAL;
-  status = salts_bt_tree_add_node_with_limit(tree, parent_id,
-                                             SALTS_BT_NODE_PARALLEL, NULL,
-                                             user, 0u, out_node_id);
+  status = add_node_with_limit_internal(tree, parent_id,
+                                        SALTS_BT_NODE_PARALLEL, NULL, user,
+                                        0u, out_node_id, true);
   if (status != SALTS_OK) return status;
   impl = tree_impl(tree);
   node = get_node(impl, *out_node_id);
@@ -1324,9 +1345,9 @@ int salts_bt_tree_add_pipeline_node(salts_bt_tree *tree,
   int status;
   if (prepare == NULL || complete == NULL || out_node_id == NULL)
     return SALTS_EINVAL;
-  status = salts_bt_tree_add_node_with_limit(tree, parent_id,
-                                             SALTS_BT_NODE_PIPELINE_SEQUENCE,
-                                             NULL, user, 0u, out_node_id);
+  status = add_node_with_limit_internal(tree, parent_id,
+                                        SALTS_BT_NODE_PIPELINE_SEQUENCE,
+                                        NULL, user, 0u, out_node_id, true);
   if (status != SALTS_OK) return status;
   impl = tree_impl(tree);
   node = get_node(impl, *out_node_id);
@@ -1346,9 +1367,9 @@ int salts_bt_tree_add_entry_updated_node(salts_bt_tree *tree,
   salts_bt_node *node;
   int status;
   if (changed == NULL || out_node_id == NULL) return SALTS_EINVAL;
-  status = salts_bt_tree_add_node_with_limit(tree, parent_id,
-                                             SALTS_BT_NODE_ENTRY_UPDATED,
-                                             NULL, user, 0u, out_node_id);
+  status = add_node_with_limit_internal(tree, parent_id,
+                                        SALTS_BT_NODE_ENTRY_UPDATED,
+                                        NULL, user, 0u, out_node_id, true);
   if (status != SALTS_OK) return status;
   impl = tree_impl(tree);
   node = get_node(impl, *out_node_id);
@@ -1369,9 +1390,9 @@ int salts_bt_tree_add_consume_queue_node(salts_bt_tree *tree,
   int status;
   if (begin == NULL || finish == NULL || out_node_id == NULL)
     return SALTS_EINVAL;
-  status = salts_bt_tree_add_node_with_limit(tree, parent_id,
-                                             SALTS_BT_NODE_CONSUME_QUEUE,
-                                             NULL, user, 0u, out_node_id);
+  status = add_node_with_limit_internal(tree, parent_id,
+                                        SALTS_BT_NODE_CONSUME_QUEUE,
+                                        NULL, user, 0u, out_node_id, true);
   if (status != SALTS_OK) return status;
   impl = tree_impl(tree);
   node = get_node(impl, *out_node_id);
@@ -1397,8 +1418,8 @@ int salts_bt_tree_add_condition_node(salts_bt_tree *tree,
        kind != SALTS_BT_NODE_PRECONDITION &&
        kind != SALTS_BT_NODE_WHILE_DO))
     return SALTS_EINVAL;
-  status = salts_bt_tree_add_node_with_limit(tree, parent_id, kind, NULL,
-                                             user, limit, out_node_id);
+  status = add_node_with_limit_internal(tree, parent_id, kind, NULL, user,
+                                        limit, out_node_id, true);
   if (status != SALTS_OK) return status;
   impl = tree_impl(tree);
   node = get_node(impl, *out_node_id);
@@ -1416,9 +1437,9 @@ int salts_bt_tree_add_switch_node(salts_bt_tree *tree,
   salts_bt_node *node;
   int status;
   if (selector == NULL || out_node_id == NULL) return SALTS_EINVAL;
-  status = salts_bt_tree_add_node_with_limit(tree, parent_id,
-                                             SALTS_BT_NODE_SWITCH, NULL,
-                                             user, 0u, out_node_id);
+  status = add_node_with_limit_internal(tree, parent_id,
+                                        SALTS_BT_NODE_SWITCH, NULL, user,
+                                        0u, out_node_id, true);
   if (status != SALTS_OK) return status;
   impl = tree_impl(tree);
   node = get_node(impl, *out_node_id);
