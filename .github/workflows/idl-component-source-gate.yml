@@ -423,7 +423,7 @@ jobs:
             --target databind_servicehost_component_candidate_provider \
                      databind_servicehost_component_candidate_multi_provider \
                      test_databind_component_candidate_servicehost_c11 \
-                     test_databind_component_candidate_servicehost_switch_c11 \
+                     test_databind_component_candidate_servicehost_switch_c11
           ctest --test-dir build/installed-servicehost/build-utils \
             -R '^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|servicehost_codegen_content|servicehost_multi_codegen_content)$' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
