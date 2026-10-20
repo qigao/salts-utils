@@ -21,14 +21,23 @@ add_library(
   src/salts_unicode_bidi.c src/unicode_bidi_data.h
   src/salts_unicode_emoji.c src/salts_unicode_emoji.h src/unicode_emoji_data.h
   src/salts_unicode_names.c ${SALTS_UNICODE_LEXER_GEN})
-cmake_config_target(
-  salts_unicode
-  ALIAS
-  Salts::Unicode
-  FOLDER
-  "unicode"
-  EXPORT_NAME
-  Unicode)
+# The canonical Salts SDK already exports the Unicode 17 implementation
+# as Salts::Unicode. When building SaltsUtils against that SDK in one CMake
+# configure (as downstream SDK qualification does), do not define the same
+# alias a second time. The Salts implementation is a strict API superset; in
+# this case downstream targets resolve Salts::Unicode to the canonical target.
+if(TARGET Salts::Unicode)
+  cmake_config_target(
+    salts_unicode
+    FOLDER "unicode"
+    EXPORT_NAME Unicode)
+else()
+  cmake_config_target(
+    salts_unicode
+    ALIAS Salts::Unicode
+    FOLDER "unicode"
+    EXPORT_NAME Unicode)
+endif()
 
 target_include_directories(
   salts_unicode
