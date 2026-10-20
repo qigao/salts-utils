@@ -529,8 +529,10 @@ jobs:
                         -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           cmake --build build/installed-servicehost-macos/build-utils --parallel 2 \
-            --target databind_servicehost_component_candidate_multi_provider \
+            --target databind_servicehost_component_candidate_provider \
+                     databind_servicehost_component_candidate_multi_provider \
                      test_databind_component_candidate_servicehost_c11 \
+                     test_databind_component_candidate_servicehost_switch_c11
           ctest --test-dir build/installed-servicehost-macos/build-utils \
             -R '^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11)$' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
@@ -627,6 +629,13 @@ jobs:
           if not exist "%SALTS_ROOT%\include\salts\component_runtime_abi.h" exit /b 1
           findstr /c:"Salts::ServiceHost" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
           if errorlevel 1 exit /b 1
+          findstr /c:"Salts::Configurator" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::ComponentProviderABI" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::PluginABI" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::ComponentPlugin" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul && exit /b 1
       - name: Configure generated FR2 through exact installed MSVC ServiceHost
         shell: cmd
         run: |
@@ -677,7 +686,8 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          cmake --build "build\installed-servicehost-windows\build-utils" --parallel 2 --target databind_servicehost_component_candidate_multi_provider test_databind_component_candidate_servicehost_c11           if errorlevel 1 exit /b 1
+          cmake --build "build\installed-servicehost-windows\build-utils" --parallel 2 --target databind_servicehost_component_candidate_provider databind_servicehost_component_candidate_multi_provider test_databind_component_candidate_servicehost_c11 test_databind_component_candidate_servicehost_switch_c11
+          if errorlevel 1 exit /b 1
       - name: Stage exact DLL identities beside generated Provider (no fallback PATH)
         shell: pwsh
         run: |
