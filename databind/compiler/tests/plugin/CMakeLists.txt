@@ -595,7 +595,8 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     c_std_11)
   target_include_directories(databind_component_candidate_multi_servicehost_provider PRIVATE
     "${_databind_servicehost_candidate_dir}"
-    "${_databind_component_candidate_multi_dir}")
+    "${_databind_component_candidate_multi_dir}"
+    "${DATABIND_SOURCE_ROOT}/runtime")
   target_link_libraries(databind_component_candidate_multi_servicehost_provider PRIVATE
     Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta)
   set_target_properties(databind_component_candidate_multi_servicehost_provider PROPERTIES
@@ -609,7 +610,8 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     databind_component_candidate_multi_servicehost_provider)
   target_include_directories(test_databind_component_candidate_servicehost_c11 PRIVATE
     "${_databind_servicehost_candidate_dir}"
-    "${_databind_component_candidate_multi_dir}")
+    "${_databind_component_candidate_multi_dir}"
+    "${DATABIND_SOURCE_ROOT}/runtime")
   target_compile_definitions(test_databind_component_candidate_servicehost_c11 PRIVATE
     GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_multi_servicehost_provider>")
   target_link_libraries(test_databind_component_candidate_servicehost_c11 PRIVATE
