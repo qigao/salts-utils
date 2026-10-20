@@ -425,7 +425,8 @@ jobs:
             -B build/installed-servicehost/build-utils \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
-                        -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
+                        -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=OFF \
+            -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           cmake --build build/installed-servicehost/build-utils --parallel 2 \
             --target databind_servicehost_component_candidate_provider \
@@ -534,7 +535,8 @@ jobs:
             -B build/installed-servicehost-macos/build-utils \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/arm64-osx" \
-                        -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
+                        -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=OFF \
+            -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           cmake --build build/installed-servicehost-macos/build-utils --parallel 2 \
             --target databind_servicehost_component_candidate_provider \
@@ -656,7 +658,7 @@ jobs:
           set "SALTS_ROOT=%RUNNER_TEMP%\idl-servicehost-windows-sdk"
           set "PKG_ROOT=%RUNNER_TEMP%\idl-servicehost-utils-windows"
           set "VCPKG_INSTALLED_DIR=%GITHUB_WORKSPACE%\vcpkg_installed"
-          cmake --preset ci-win-release-user -B "build\installed-servicehost-windows\build-utils" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --preset ci-win-release-user -B "build\installed-servicehost-windows\build-utils" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=OFF -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           if errorlevel 1 exit /b 1
       - name: Stage exact installed SDK runtime DLLs before host IDL code generation
         shell: pwsh
