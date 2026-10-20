@@ -424,6 +424,7 @@ jobs:
             -B build/installed-servicehost/build-utils \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=OFF \
             -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           cmake --build build/installed-servicehost/build-utils --parallel 2 \
