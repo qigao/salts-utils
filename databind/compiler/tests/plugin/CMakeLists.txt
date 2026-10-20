@@ -695,4 +695,22 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     COMMAND test_databind_component_candidate_servicehost_switch_c11)
   set_tests_properties(test_databind_component_candidate_servicehost_switch_c11 PROPERTIES
     LABELS "databind;compiler;component;servicehost;fr2;handoff;real-dso;no-fallback")
+
+  add_test(NAME test_databind_component_candidate_servicehost_codegen_content
+    COMMAND "${CMAKE_COMMAND}"
+      "-DHEADER=${_databind_servicehost_candidate_header}"
+      "-DSOURCE=${_databind_servicehost_candidate_source}"
+      "-DEXPECTED_PROVIDER_ABI_HEADER=component_provider_abi.h"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_candidate_content.cmake")
+  set_tests_properties(test_databind_component_candidate_servicehost_codegen_content PROPERTIES
+    LABELS "databind;compiler;component;servicehost;codegen;provider-abi;no-fallback")
+
+  add_test(NAME test_databind_component_candidate_servicehost_multi_codegen_content
+    COMMAND "${CMAKE_COMMAND}"
+      "-DHEADER=${_databind_servicehost_candidate_multi_header}"
+      "-DSOURCE=${_databind_servicehost_candidate_multi_source}"
+      "-DEXPECTED_PROVIDER_ABI_HEADER=component_provider_abi.h"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/check_component_multi_content.cmake")
+  set_tests_properties(test_databind_component_candidate_servicehost_multi_codegen_content PROPERTIES
+    LABELS "databind;compiler;component;servicehost;multi;codegen;provider-abi;no-fallback")
 endif()
