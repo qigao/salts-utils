@@ -552,16 +552,81 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     endif()
   endforeach()
 
+  # Re-project the same canonical Contract/NativeSourceIR with the ABI
+  # header selected by this installed SDK. The default generator output remains
+  # untouched for the separately pinned legacy ComponentPlugin jobs.
+  set(_databind_servicehost_candidate_dir
+    "${CMAKE_CURRENT_BINARY_DIR}/servicehost-component-candidate")
+  file(MAKE_DIRECTORY "${_databind_servicehost_candidate_dir}")
+  set(_databind_servicehost_candidate_header
+    "${_databind_servicehost_candidate_dir}/contract_plugin.component.h")
+  set(_databind_servicehost_candidate_source
+    "${_databind_servicehost_candidate_dir}/contract_plugin.component.c")
+  set(_databind_servicehost_candidate_multi_header
+    "${_databind_servicehost_candidate_dir}/contract_multi.component.h")
+  set(_databind_servicehost_candidate_multi_source
+    "${_databind_servicehost_candidate_dir}/contract_multi.component.c")
+
+  add_custom_command(
+    OUTPUT
+      "${_databind_servicehost_candidate_header}"
+      "${_databind_servicehost_candidate_source}"
+    COMMAND
+      $<TARGET_FILE:databind_component_candidate_codegen_tool>
+      "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/native_contract_service.schema"
+      "WasmRuntime.Calculator"
+      "contract_plugin.plugin.h"
+      "${_databind_servicehost_candidate_header}"
+      "${_databind_servicehost_candidate_source}"
+      --canonical-provider-abi
+    DEPENDS
+      databind_component_candidate_codegen_tool
+      databind_contract_plugin_lease_fixture_idl_codegen
+      "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/native_contract_service.schema"
+    VERBATIM
+    COMMENT "Generating FR2 Provider against canonical ComponentProviderABI")
+  add_custom_command(
+    OUTPUT
+      "${_databind_servicehost_candidate_multi_header}"
+      "${_databind_servicehost_candidate_multi_source}"
+    COMMAND
+      $<TARGET_FILE:databind_component_candidate_codegen_tool>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_component_multi.schema"
+      "ComponentOps.MathProvider"
+      "contract_multi.plugin.h"
+      "${_databind_servicehost_candidate_multi_header}"
+      "${_databind_servicehost_candidate_multi_source}"
+      --canonical-provider-abi
+    DEPENDS
+      databind_component_candidate_codegen_tool
+      databind_component_multi_plugin_fixture_idl_codegen
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_component_multi.schema"
+    VERBATIM
+    COMMENT "Generating multi-operation FR2 Provider against canonical ComponentProviderABI")
+  add_custom_target(databind_servicehost_component_candidate_generated
+    DEPENDS
+      "${_databind_servicehost_candidate_header}"
+      "${_databind_servicehost_candidate_source}"
+      "${_databind_servicehost_candidate_multi_header}"
+      "${_databind_servicehost_candidate_multi_source}")
+  set_source_files_properties(
+    "${_databind_servicehost_candidate_header}"
+    "${_databind_servicehost_candidate_source}"
+    "${_databind_servicehost_candidate_multi_header}"
+    "${_databind_servicehost_candidate_multi_source}"
+    PROPERTIES GENERATED TRUE)
+
   # Generate separate DSOs so this source gate remains usable when the
   # ComponentPlugin targets are intentionally absent from the installed SDK.
   add_library(databind_servicehost_component_candidate_provider SHARED
-    "${_databind_component_candidate_header}"
-    "${_databind_component_candidate_source}"
+    "${_databind_servicehost_candidate_header}"
+    "${_databind_servicehost_candidate_source}"
     "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_business.c")
   add_dependencies(databind_servicehost_component_candidate_provider
-    databind_component_candidate_generated)
+    databind_servicehost_component_candidate_generated)
   target_compile_features(databind_servicehost_component_candidate_provider PRIVATE c_std_11)
   target_include_directories(databind_servicehost_component_candidate_provider PRIVATE
+    "${_databind_servicehost_candidate_dir}"
     "${_databind_component_candidate_dir}")
   target_link_libraries(databind_servicehost_component_candidate_provider PRIVATE
     Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
@@ -571,13 +636,14 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     FOLDER "databind/compiler/generated/servicehost")
 
   add_library(databind_servicehost_component_candidate_multi_provider SHARED
-    "${_databind_component_candidate_multi_header}"
-    "${_databind_component_candidate_multi_source}"
+    "${_databind_servicehost_candidate_multi_header}"
+    "${_databind_servicehost_candidate_multi_source}"
     test_component_multi_business.c)
   add_dependencies(databind_servicehost_component_candidate_multi_provider
-    databind_component_candidate_multi_generated)
+    databind_servicehost_component_candidate_generated)
   target_compile_features(databind_servicehost_component_candidate_multi_provider PRIVATE c_std_11)
   target_include_directories(databind_servicehost_component_candidate_multi_provider PRIVATE
+    "${_databind_servicehost_candidate_dir}"
     "${_databind_component_candidate_multi_dir}")
   target_link_libraries(databind_servicehost_component_candidate_multi_provider PRIVATE
     Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
@@ -591,6 +657,7 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
   add_dependencies(test_databind_component_candidate_servicehost_c11
     databind_servicehost_component_candidate_multi_provider)
   target_include_directories(test_databind_component_candidate_servicehost_c11 PRIVATE
+    "${_databind_servicehost_candidate_dir}"
     "${_databind_component_candidate_multi_dir}")
   target_compile_definitions(test_databind_component_candidate_servicehost_c11 PRIVATE
     GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_servicehost_component_candidate_multi_provider>")
@@ -611,9 +678,9 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
   add_dependencies(test_databind_component_candidate_servicehost_switch_c11
     databind_servicehost_component_candidate_provider
     databind_servicehost_component_candidate_multi_provider
-    databind_component_candidate_generated
-    databind_component_candidate_multi_generated)
+    databind_servicehost_component_candidate_generated)
   target_include_directories(test_databind_component_candidate_servicehost_switch_c11 PRIVATE
+    "${_databind_servicehost_candidate_dir}"
     "${_databind_component_candidate_dir}"
     "${_databind_component_candidate_multi_dir}")
   target_compile_definitions(test_databind_component_candidate_servicehost_switch_c11 PRIVATE
