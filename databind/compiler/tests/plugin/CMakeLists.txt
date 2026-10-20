@@ -544,8 +544,7 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
       Salts::ComponentProviderABI
       Salts::PluginABI
       Salts::Plugin
-      Salts::CMeta
-      Salts::DataBind)
+      Salts::CMeta)
     if(NOT TARGET ${_required_target})
       message(FATAL_ERROR
         "Installed ServiceHost qualification requires exported target ${_required_target}; no legacy/fallback target is permitted")
@@ -629,7 +628,7 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     "${_databind_servicehost_candidate_dir}"
     "${_databind_component_candidate_dir}")
   target_link_libraries(databind_servicehost_component_candidate_provider PRIVATE
-    Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
+    Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta)
   set_target_properties(databind_servicehost_component_candidate_provider PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     PREFIX "" OUTPUT_NAME "contract_component_servicehost"
@@ -646,7 +645,7 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     "${_databind_servicehost_candidate_dir}"
     "${_databind_component_candidate_multi_dir}")
   target_link_libraries(databind_servicehost_component_candidate_multi_provider PRIVATE
-    Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
+    Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta)
   set_target_properties(databind_servicehost_component_candidate_multi_provider PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     PREFIX "" OUTPUT_NAME "contract_component_multi_servicehost"
@@ -662,7 +661,7 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
   target_compile_definitions(test_databind_component_candidate_servicehost_c11 PRIVATE
     GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_servicehost_component_candidate_multi_provider>")
   target_link_libraries(test_databind_component_candidate_servicehost_c11 PRIVATE
-    Salts::ServiceHost Salts::Plugin Salts::PluginABI Salts::CMeta Salts::DataBind)
+    Salts::ServiceHost Salts::Plugin Salts::PluginABI Salts::CMeta)
   set_target_properties(test_databind_component_candidate_servicehost_c11 PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     FOLDER "databind/compiler/tests/plugin")
@@ -687,7 +686,7 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
     GENERATED_COMPONENT_PROVIDER_PATH="$<TARGET_FILE:databind_servicehost_component_candidate_provider>"
     GENERATED_COMPONENT_MULTI_PROVIDER_PATH="$<TARGET_FILE:databind_servicehost_component_candidate_multi_provider>")
   target_link_libraries(test_databind_component_candidate_servicehost_switch_c11 PRIVATE
-    Salts::ServiceHost Salts::Plugin Salts::PluginABI Salts::CMeta Salts::DataBind)
+    Salts::ServiceHost Salts::Plugin Salts::PluginABI Salts::CMeta)
   set_target_properties(test_databind_component_candidate_servicehost_switch_c11 PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     FOLDER "databind/compiler/tests/plugin")
