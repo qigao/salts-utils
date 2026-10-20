@@ -544,7 +544,8 @@ if(DATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO)
   if(NOT TARGET Salts::ServiceHost OR
      NOT TARGET Salts::Configurator OR
      NOT TARGET Salts::ComponentProviderABI OR
-     NOT TARGET Salts::PluginABI)
+     NOT TARGET Salts::PluginABI OR
+     NOT TARGET Salts::Core)
     message(FATAL_ERROR
       "Generated ServiceHost gate requires exact installed Salts::ServiceHost, Salts::Configurator, Salts::ComponentProviderABI and Salts::PluginABI targets; no ComponentPlugin fallback or shadow ABI")
   endif()
