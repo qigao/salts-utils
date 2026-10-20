@@ -1872,9 +1872,14 @@ spec("Salts C11 Behavior Tree") {
 
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
     check_equal(result, SALTS_BT_RUNNING);
-    check_equal(failure_leaf.calls, 1u);
+    /* A terminal branch is finished and reactivated while a sibling runs. */
+    check_equal(failure_leaf.calls, 2u);
     check_equal(running_leaf.tick_calls, 2u);
-    check_equal(context.step_calls[0], 1u);
+    check_equal(context.enter_calls[0], 2u);
+    check_equal(context.first_activations[0], 2u);
+    check_equal(context.step_calls[0], 2u);
+    check_equal(context.step_status[0], SALTS_BT_FAILURE);
+    check_equal(context.finish_calls[0], 2u);
     check_equal(context.step_calls[1], 2u);
     check_equal(context.step_status[1], SALTS_BT_RUNNING);
     check_equal(context.join_calls, 2u);
