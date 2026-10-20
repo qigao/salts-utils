@@ -425,7 +425,7 @@ jobs:
                      test_databind_component_candidate_servicehost_c11 \
                      test_databind_component_candidate_servicehost_switch_c11 \
           ctest --test-dir build/installed-servicehost/build-utils \
-            -R '^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11)$' \
+            -R '^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|servicehost_codegen_content|servicehost_multi_codegen_content) \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
       - name: Preserve exact generated Provider integration proof
         if: always()
@@ -716,12 +716,533 @@ jobs:
             }
           }
           Write-Host "Exact installed DLLs staged beside original Provider: $($installedDlls.Count)"
+      - name: Execute generated ServiceHost, handoff and ABI codegen checks 10x
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          ctest --test-dir "build\installed-servicehost-windows\build-utils" -R "^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|servicehost_codegen_content|servicehost_multi_codegen_content)$" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+          if errorlevel 1 exit /b 1
+      - name: Preserve strict Windows generated-Provider proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idlc-fr2-installed-servicehost-windows-${{ github.run_id }}
+          path: |
+            build/installed-servicehost-windows/provenance.txt
+            build/installed-servicehost-windows/build-utils/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Assert SaltsUtils original source unchanged
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_SU) { throw "Unpinned SaltsUtils HEAD" }
+          if (git status --porcelain --untracked-files=no) { throw "Unexpected source modification" }
+ \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+      - name: Preserve exact generated Provider integration proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idlc-fr2-installed-servicehost-${{ github.run_id }}
+          path: |
+            build/installed-servicehost/provenance.txt
+            build/installed-servicehost/build-utils/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Confirm original SaltsUtils source unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  macos_servicehost:
+    name: Apple ARM64 generated FR2 through installed Salts ServiceHost
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      EXPECTED_SALTS: ec46ffb6328489d5febb9fba052b30f663ee677e
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: macos-arm64
+      QIGAO_TARGET_TRIPLET: arm64-osx
+      QIGAO_HOST_TRIPLET: arm64-osx
+      CCACHE_DIR: ${{ github.workspace }}/build/installed-servicehost-macos/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-servicehost-fr2-mac-v2
+    steps:
+      - name: Checkout exact SaltsUtils generated FR2 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - name: Checkout exact Salts strict ServiceHost SDK source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ec46ffb6328489d5febb9fba052b30f663ee677e
+          path: build/installed-servicehost-macos/salts
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Assert immutable Apple Silicon sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test "$(git -C build/installed-servicehost-macos/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
+          test -f build/installed-servicehost-macos/salts/component-runtime/src/service_host.c
+          mkdir -p build/installed-servicehost-macos
+          printf 'salts=%s\nsaltsutils=%s\nmacos_arm64=true\npublish=false\n' \
+            "$EXPECTED_SALTS" "$EXPECTED_SU" \
+            | tee build/installed-servicehost-macos/provenance.txt
+      - name: Install exact macOS Configurator/ServiceHost candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/idl-servicehost-macos-sdk"
+          echo "SALTS_ROOT=$prefix" >> "$GITHUB_ENV"
+          cmake --preset mac-arm64-clang-release-ci \
+            -S "$GITHUB_WORKSPACE/build/installed-servicehost-macos/salts" \
+            -B build/installed-servicehost-macos/build-salts \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" \
+            -DSALTS_ENABLE_COMPONENT_RUNTIME_CANDIDATE=ON \
+            -DSALTS_ENABLE_COMPONENT_RUNTIME_INSTALLED_ABI_PROBE=ON \
+            -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          cmake --build build/installed-servicehost-macos/build-salts --parallel 2
+          cmake --install build/installed-servicehost-macos/build-salts
+          test -f "$prefix/include/salts/service_host.h"
+          test -f "$prefix/include/salts/configurator.h"
+          test -f "$prefix/include/salts/component_runtime_abi.h"
+          grep -Fq 'Salts::ServiceHost' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -Fq 'Salts::Configurator' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -Fq 'Salts::ComponentProviderABI' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          grep -Fq 'Salts::PluginABI' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          ! grep -Fq 'Salts::ComponentPlugin' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          ! grep -Fq 'Salts::ServiceHostCandidate' "$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+      - name: Run generated dual-operation FR2 via installed macOS ServiceHost
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SALTS_ROOT="$RUNNER_TEMP/idl-servicehost-macos-sdk"
+          export PKG_ROOT="$RUNNER_TEMP/idl-servicehost-utils-macos"
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          export DYLD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_ROOT/bin:${DYLD_LIBRARY_PATH:-}"
+          cmake --preset ci-macos-release-user \
+            -B build/installed-servicehost-macos/build-utils \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/arm64-osx" \
+                        -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build build/installed-servicehost-macos/build-utils --parallel 2 \
+            --target databind_servicehost_component_candidate_provider \
+                     databind_servicehost_component_candidate_multi_provider \
+                     test_databind_component_candidate_servicehost_c11 \
+                     test_databind_component_candidate_servicehost_switch_c11
+          ctest --test-dir build/installed-servicehost-macos/build-utils \
+            -R '^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|servicehost_codegen_content|servicehost_multi_codegen_content) \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+      - name: Preserve native Apple ARM64 conformance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idlc-fr2-installed-servicehost-macos-${{ github.run_id }}
+          path: |
+            build/installed-servicehost-macos/provenance.txt
+            build/installed-servicehost-macos/build-utils/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Check exact original SaltsUtils source identity
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+
+  windows_servicehost:
+    name: Generated FR2 through installed Windows MSVC v145 ServiceHost
+    runs-on: windows-2025
+    timeout-minutes: 120
+    env:
+      EXPECTED_SALTS: ec46ffb6328489d5febb9fba052b30f663ee677e
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: windows-x64
+      CCACHE_DIR: ${{ github.workspace }}/build/installed-servicehost-windows/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-servicehost-fr2-msvc-v145-v2
+    steps:
+      - name: Checkout immutable SaltsUtils generated FR2 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - name: Checkout immutable Salts strict ServiceHost source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ec46ffb6328489d5febb9fba052b30f663ee677e
+          path: build/installed-servicehost-windows/salts
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Assert one exact MSVC v145 SDK/Provider source graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not $env:VCPKG_ROOT -or -not $env:QIGAO_VCPKG_WINDOWS_TRIPLET) {
+            throw "Required exact Windows toolchain cache/triplet missing"
+          }
+          if ($env:QIGAO_VCPKG_WINDOWS_TRIPLET -ne 'qigao-x64-windows-v145') {
+            throw "Unexpected Windows ABI triplet: $env:QIGAO_VCPKG_WINDOWS_TRIPLET"
+          }
+          "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          "VCPKG_WINDOWS_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          $su = git rev-parse HEAD
+          $salts = git -C build/installed-servicehost-windows/salts rev-parse HEAD
+          if ($su -ne $env:EXPECTED_SU -or $salts -ne $env:EXPECTED_SALTS) {
+            throw "Mismatched source graph for installed ServiceHost Provider"
+          }
+          if (-not (Test-Path build/installed-servicehost-windows/salts/component-runtime/src/service_host.c)) {
+            throw "Expected strict Salts ServiceHost source missing"
+          }
+          New-Item -ItemType Directory -Force build/installed-servicehost-windows | Out-Null
+          @("salts=$salts", "saltsutils=$su", "triplet=$env:QIGAO_VCPKG_WINDOWS_TRIPLET", "sdk_publication=false") |
+            Set-Content build/installed-servicehost-windows/provenance.txt
+      - name: Install exact Salts ServiceHost ABI SDK using MSVC
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "SALTS_ROOT=%RUNNER_TEMP%\idl-servicehost-windows-sdk"
+          cmake --preset win-release-ci -S "%GITHUB_WORKSPACE%\build\installed-servicehost-windows\salts" -B "build\installed-servicehost-windows\build-salts" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%SALTS_ROOT%" -DSALTS_ENABLE_COMPONENT_RUNTIME_CANDIDATE=ON -DSALTS_ENABLE_COMPONENT_RUNTIME_INSTALLED_ABI_PROBE=ON -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build "build\installed-servicehost-windows\build-salts" --parallel 2
+          if errorlevel 1 exit /b 1
+          cmake --install "build\installed-servicehost-windows\build-salts"
+          if errorlevel 1 exit /b 1
+          if not exist "%SALTS_ROOT%\include\salts\service_host.h" exit /b 1
+          if not exist "%SALTS_ROOT%\include\salts\component_runtime_abi.h" exit /b 1
+          if not exist "%SALTS_ROOT%\include\salts\component_provider_abi.h" exit /b 1
+          findstr /c:"Salts::ServiceHost" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::Configurator" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::ComponentProviderABI" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::PluginABI" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::ComponentPlugin" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if not errorlevel 1 exit /b 1
+          exit /b 0
+      - name: Configure generated FR2 through exact installed MSVC ServiceHost
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "SALTS_ROOT=%RUNNER_TEMP%\idl-servicehost-windows-sdk"
+          set "PKG_ROOT=%RUNNER_TEMP%\idl-servicehost-utils-windows"
+          set "VCPKG_INSTALLED_DIR=%GITHUB_WORKSPACE%\vcpkg_installed"
+          cmake --preset ci-win-release-user -B "build\installed-servicehost-windows\build-utils" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          if errorlevel 1 exit /b 1
+      - name: Stage exact installed SDK runtime DLLs before host IDL code generation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "idl-servicehost-windows-sdk"
+          $directory = Join-Path $env:GITHUB_WORKSPACE "build/installed-servicehost-windows/build-utils/bin"
+          $sourceDirectory = Join-Path $root "bin"
+          if (-not (Test-Path -LiteralPath $sourceDirectory -PathType Container)) {
+            throw "Exact installed SDK bin directory missing: $sourceDirectory"
+          }
+          $dlls = @(Get-ChildItem -LiteralPath $sourceDirectory -Filter '*.dll' -File)
+          if ($dlls.Count -eq 0) { throw "Exact installed SDK has no runtime DLLs" }
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $byName = @{}
+          foreach ($dll in $dlls) {
+            $key = $dll.Name.ToLowerInvariant()
+            $sha = (Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256).Hash
+            if ($byName.ContainsKey($key) -and $byName[$key] -ne $sha) {
+              throw "Case-insensitive installed SDK DLL collision: $($dll.Name)"
+            }
+            $byName[$key] = $sha
+            $dest = Join-Path $directory $dll.Name
+            if (Test-Path -LiteralPath $dest) {
+              $existingHash = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
+              if ($existingHash -ne $sha) {
+                throw "Host codegen DLL conflicts with exact installed SDK: $($dll.Name)"
+              }
+            } else {
+              Copy-Item -LiteralPath $dll.FullName -Destination $dest
+            }
+            Write-Host "Exact SDK DLL $($dll.Name): $sha"
+          }
+          Write-Host "Pre-staged $($byName.Count) exact installed DLLs beside host codegen tool; no PATH/cwd fallback."
+      - name: Compile and execute exact installed-SDK host FR2 generator
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          cmake --build "build\installed-servicehost-windows\build-utils" --parallel 2 --target databind_servicehost_component_candidate_provider databind_servicehost_component_candidate_multi_provider test_databind_component_candidate_servicehost_c11 test_databind_component_candidate_servicehost_switch_c11
+          if errorlevel 1 exit /b 1
+      - name: Stage exact DLL identities beside generated Provider (no fallback PATH)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "idl-servicehost-windows-sdk"
+          $directory = Join-Path $env:GITHUB_WORKSPACE "build/installed-servicehost-windows/build-utils/bin"
+          if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            throw "Expected generated DSO/executable output directory missing: $directory"
+          }
+          $provider = Get-ChildItem -LiteralPath $directory -Filter 'contract_component_multi_servicehost.dll' -File
+          if (@($provider).Count -ne 1) { throw "Generated FR2 Provider DSO missing" }
+          $installedDlls = @(Get-ChildItem -LiteralPath (Join-Path $root "bin") -Filter '*.dll' -File)
+          if ($installedDlls.Count -eq 0) { throw "Installed Salts dependency DLLs absent" }
+          foreach ($dll in $installedDlls) {
+            $dest = Join-Path $directory $dll.Name
+            if (Test-Path -LiteralPath $dest) {
+              if ((Get-FileHash $dll.FullName -Algorithm SHA256).Hash -ne
+                  (Get-FileHash $dest -Algorithm SHA256).Hash) {
+                throw "Case-insensitive SDK DLL identity collision: $($dll.Name)"
+              }
+            } else {
+              Copy-Item -LiteralPath $dll.FullName -Destination $dest
+            }
+          }
+          Write-Host "Exact installed DLLs staged beside original Provider: $($installedDlls.Count)"
       - name: Execute real generated two-method ServiceHost and legacy consumers 10x
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
-          ctest --test-dir "build\installed-servicehost-windows\build-utils" -R "^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11)$" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+          ctest --test-dir "build\installed-servicehost-windows\build-utils" -R "^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|servicehost_codegen_content|servicehost_multi_codegen_content)$" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+          if errorlevel 1 exit /b 1
+      - name: Preserve strict Windows generated-Provider proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idlc-fr2-installed-servicehost-windows-${{ github.run_id }}
+          path: |
+            build/installed-servicehost-windows/provenance.txt
+            build/installed-servicehost-windows/build-utils/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Assert SaltsUtils original source unchanged
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_SU) { throw "Unpinned SaltsUtils HEAD" }
+          if (git status --porcelain --untracked-files=no) { throw "Unexpected source modification" }
+ \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
+      - name: Preserve native Apple ARM64 conformance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idlc-fr2-installed-servicehost-macos-${{ github.run_id }}
+          path: |
+            build/installed-servicehost-macos/provenance.txt
+            build/installed-servicehost-macos/build-utils/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Check exact original SaltsUtils source identity
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+
+  windows_servicehost:
+    name: Generated FR2 through installed Windows MSVC v145 ServiceHost
+    runs-on: windows-2025
+    timeout-minutes: 120
+    env:
+      EXPECTED_SALTS: ec46ffb6328489d5febb9fba052b30f663ee677e
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: windows-x64
+      CCACHE_DIR: ${{ github.workspace }}/build/installed-servicehost-windows/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-servicehost-fr2-msvc-v145-v2
+    steps:
+      - name: Checkout immutable SaltsUtils generated FR2 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - name: Checkout immutable Salts strict ServiceHost source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ec46ffb6328489d5febb9fba052b30f663ee677e
+          path: build/installed-servicehost-windows/salts
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-build-host
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Assert one exact MSVC v145 SDK/Provider source graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not $env:VCPKG_ROOT -or -not $env:QIGAO_VCPKG_WINDOWS_TRIPLET) {
+            throw "Required exact Windows toolchain cache/triplet missing"
+          }
+          if ($env:QIGAO_VCPKG_WINDOWS_TRIPLET -ne 'qigao-x64-windows-v145') {
+            throw "Unexpected Windows ABI triplet: $env:QIGAO_VCPKG_WINDOWS_TRIPLET"
+          }
+          "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          "VCPKG_WINDOWS_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          $su = git rev-parse HEAD
+          $salts = git -C build/installed-servicehost-windows/salts rev-parse HEAD
+          if ($su -ne $env:EXPECTED_SU -or $salts -ne $env:EXPECTED_SALTS) {
+            throw "Mismatched source graph for installed ServiceHost Provider"
+          }
+          if (-not (Test-Path build/installed-servicehost-windows/salts/component-runtime/src/service_host.c)) {
+            throw "Expected strict Salts ServiceHost source missing"
+          }
+          New-Item -ItemType Directory -Force build/installed-servicehost-windows | Out-Null
+          @("salts=$salts", "saltsutils=$su", "triplet=$env:QIGAO_VCPKG_WINDOWS_TRIPLET", "sdk_publication=false") |
+            Set-Content build/installed-servicehost-windows/provenance.txt
+      - name: Install exact Salts ServiceHost ABI SDK using MSVC
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "SALTS_ROOT=%RUNNER_TEMP%\idl-servicehost-windows-sdk"
+          cmake --preset win-release-ci -S "%GITHUB_WORKSPACE%\build\installed-servicehost-windows\salts" -B "build\installed-servicehost-windows\build-salts" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%SALTS_ROOT%" -DSALTS_ENABLE_COMPONENT_RUNTIME_CANDIDATE=ON -DSALTS_ENABLE_COMPONENT_RUNTIME_INSTALLED_ABI_PROBE=ON -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build "build\installed-servicehost-windows\build-salts" --parallel 2
+          if errorlevel 1 exit /b 1
+          cmake --install "build\installed-servicehost-windows\build-salts"
+          if errorlevel 1 exit /b 1
+          if not exist "%SALTS_ROOT%\include\salts\service_host.h" exit /b 1
+          if not exist "%SALTS_ROOT%\include\salts\component_runtime_abi.h" exit /b 1
+          if not exist "%SALTS_ROOT%\include\salts\component_provider_abi.h" exit /b 1
+          findstr /c:"Salts::ServiceHost" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::Configurator" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::ComponentProviderABI" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::PluginABI" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if errorlevel 1 exit /b 1
+          findstr /c:"Salts::ComponentPlugin" "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" >nul
+          if not errorlevel 1 exit /b 1
+          exit /b 0
+      - name: Configure generated FR2 through exact installed MSVC ServiceHost
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "SALTS_ROOT=%RUNNER_TEMP%\idl-servicehost-windows-sdk"
+          set "PKG_ROOT=%RUNNER_TEMP%\idl-servicehost-utils-windows"
+          set "VCPKG_INSTALLED_DIR=%GITHUB_WORKSPACE%\vcpkg_installed"
+          cmake --preset ci-win-release-user -B "build\installed-servicehost-windows\build-utils" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_SERVICEHOST_INSTALLED_PROVIDER_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          if errorlevel 1 exit /b 1
+      - name: Stage exact installed SDK runtime DLLs before host IDL code generation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "idl-servicehost-windows-sdk"
+          $directory = Join-Path $env:GITHUB_WORKSPACE "build/installed-servicehost-windows/build-utils/bin"
+          $sourceDirectory = Join-Path $root "bin"
+          if (-not (Test-Path -LiteralPath $sourceDirectory -PathType Container)) {
+            throw "Exact installed SDK bin directory missing: $sourceDirectory"
+          }
+          $dlls = @(Get-ChildItem -LiteralPath $sourceDirectory -Filter '*.dll' -File)
+          if ($dlls.Count -eq 0) { throw "Exact installed SDK has no runtime DLLs" }
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $byName = @{}
+          foreach ($dll in $dlls) {
+            $key = $dll.Name.ToLowerInvariant()
+            $sha = (Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256).Hash
+            if ($byName.ContainsKey($key) -and $byName[$key] -ne $sha) {
+              throw "Case-insensitive installed SDK DLL collision: $($dll.Name)"
+            }
+            $byName[$key] = $sha
+            $dest = Join-Path $directory $dll.Name
+            if (Test-Path -LiteralPath $dest) {
+              $existingHash = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
+              if ($existingHash -ne $sha) {
+                throw "Host codegen DLL conflicts with exact installed SDK: $($dll.Name)"
+              }
+            } else {
+              Copy-Item -LiteralPath $dll.FullName -Destination $dest
+            }
+            Write-Host "Exact SDK DLL $($dll.Name): $sha"
+          }
+          Write-Host "Pre-staged $($byName.Count) exact installed DLLs beside host codegen tool; no PATH/cwd fallback."
+      - name: Compile and execute exact installed-SDK host FR2 generator
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          cmake --build "build\installed-servicehost-windows\build-utils" --parallel 2 --target databind_servicehost_component_candidate_provider databind_servicehost_component_candidate_multi_provider test_databind_component_candidate_servicehost_c11 test_databind_component_candidate_servicehost_switch_c11
+          if errorlevel 1 exit /b 1
+      - name: Stage exact DLL identities beside generated Provider (no fallback PATH)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "idl-servicehost-windows-sdk"
+          $directory = Join-Path $env:GITHUB_WORKSPACE "build/installed-servicehost-windows/build-utils/bin"
+          if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            throw "Expected generated DSO/executable output directory missing: $directory"
+          }
+          $provider = Get-ChildItem -LiteralPath $directory -Filter 'contract_component_multi_servicehost.dll' -File
+          if (@($provider).Count -ne 1) { throw "Generated FR2 Provider DSO missing" }
+          $installedDlls = @(Get-ChildItem -LiteralPath (Join-Path $root "bin") -Filter '*.dll' -File)
+          if ($installedDlls.Count -eq 0) { throw "Installed Salts dependency DLLs absent" }
+          foreach ($dll in $installedDlls) {
+            $dest = Join-Path $directory $dll.Name
+            if (Test-Path -LiteralPath $dest) {
+              if ((Get-FileHash $dll.FullName -Algorithm SHA256).Hash -ne
+                  (Get-FileHash $dest -Algorithm SHA256).Hash) {
+                throw "Case-insensitive SDK DLL identity collision: $($dll.Name)"
+              }
+            } else {
+              Copy-Item -LiteralPath $dll.FullName -Destination $dest
+            }
+          }
+          Write-Host "Exact installed DLLs staged beside original Provider: $($installedDlls.Count)"
+      - name: Execute real generated two-method ServiceHost and legacy consumers 10x
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          ctest --test-dir "build\installed-servicehost-windows\build-utils" -R "^test_databind_component_candidate_(servicehost_c11|servicehost_switch_c11|servicehost_codegen_content|servicehost_multi_codegen_content)$" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
           if errorlevel 1 exit /b 1
       - name: Preserve strict Windows generated-Provider proof
         if: always()
