@@ -422,44 +422,7 @@ jobs:
             --target databind_component_candidate_multi_servicehost_provider \
                      test_databind_component_candidate_servicehost_c11
           ctest --test-dir build/installed-servicehost/build-utils \
-            -R '^test_databind_component_candidate_(servicehost_c11|servicehost_multi_codegen_content)            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
-      - name: Preserve exact generated Provider integration proof
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: idlc-fr2-installed-servicehost-${{ github.run_id }}
-          path: |
-            build/installed-servicehost/provenance.txt
-            build/installed-servicehost/build-utils/Testing/Temporary/LastTest.log
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Confirm original SaltsUtils source unchanged
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
-          test -z "$(git status --porcelain --untracked-files=no)"
- \
-            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
-      - name: Preserve exact generated Provider integration proof
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: idlc-fr2-installed-servicehost-${{ github.run_id }}
-          path: |
-            build/installed-servicehost/provenance.txt
-            build/installed-servicehost/build-utils/Testing/Temporary/LastTest.log
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Confirm original SaltsUtils source unchanged
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
-          test -z "$(git status --porcelain --untracked-files=no)"
- \
+            -R '^test_databind_component_candidate_(servicehost_c11|servicehost_multi_codegen_content)$' \
             --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 90
       - name: Preserve exact generated Provider integration proof
         if: always()
