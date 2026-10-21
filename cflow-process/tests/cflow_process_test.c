@@ -326,7 +326,18 @@ spec("CFlow subprocess adapter") {
       int status = cflow_process_shutdown_step(&process, 1u, &advanced, &quiescent);
       check_true(status == SALTS_OK || status == SALTS_EBUSY);
       check_true(advanced <= 1u);
-      if (!quiescent) check_equal(cflow_process_destroy(&process), SALTS_EBUSY);
+      /*
+       * Quiescence is an observation, not an irrevocable "not ready" state.
+       * The Core process monitor can finish between shutdown_step() and a
+       * later destroy(). Only a live Actor request is authoritative evidence
+       * that destroy must still refuse ownership release.
+       */
+      if (!quiescent) {
+        cflow_process_stats stats;
+        check_true(cflow_process_get_stats(&process, &stats));
+        if (stats.io.active_requests != 0u)
+          check_equal(cflow_process_destroy(&process), SALTS_EBUSY);
+      }
       check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
       if (advanced == 0u) cmeta_thread_yield();
     } while (!quiescent);
