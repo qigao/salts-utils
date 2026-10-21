@@ -2214,6 +2214,39 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
+  it("restores constructor limits when detaching a dynamic resolver") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status steps[] = {SALTS_BT_SUCCESS};
+    leaf_probe leaf = {steps, 1u, 0u};
+    dynamic_parameter_probe dynamic = {0u, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_RUNNING;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node_with_limit(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_RETRY,
+                    NULL, NULL, 2u, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &leaf, &child), SALTS_OK);
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, SALTS_BT_DYNAMIC_PARAMETER_LIMIT,
+                    resolve_dynamic_parameters, &dynamic), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(leaf.calls, 0u);
+    check_equal(dynamic.calls, 1u);
+
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, 0u, NULL, NULL), SALTS_OK);
+    check_equal(salts_bt_tree_validate(&tree), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(leaf.calls, 1u);
+    check_equal(dynamic.calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
   it("cleans up active leaves when a dynamic parameter resolver fails") {
     salts_bt_tree tree = {0};
     salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
