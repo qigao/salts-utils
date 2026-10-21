@@ -35,6 +35,9 @@ static int fault_native_observe(
 #undef cflow_io_actor_acknowledge
 #undef cflow_io_actor_close
 
+/* The retainer calls the same injected Process code and is test-local. */
+#include "../src/process_retainer.c"
+
 static int fault_actor_close(cflow_io_actor *actor) {
   if (inject_close_error) {
     inject_close_error = false;
@@ -56,6 +59,15 @@ static int fault_native_observe(
     return SALTS_EIO;
   }
   return cflow_io_native_adapter_observe(adapter, timeout_ms, completed);
+}
+
+typedef struct retained_test_payload retained_test_payload;
+
+static size_t retained_test_releases;
+
+static void retained_test_payload_release(void *p) {
+  ++retained_test_releases;
+  free(p);
 }
 
 typedef struct fault_probe {
@@ -306,6 +318,77 @@ spec("CFlow Process private lifecycle faults") {
     check_equal(probe.kinds[0], CFLOW_IO_COMPLETION_CANCELLED);
     check_equal(cflow_process_destroy(&process), SALTS_OK);
     check_null(process.impl);
+  }
+
+  it("transfers closing Process and borrowed buffers to a bounded explicit owner") {
+    cflow_process_retainer owner = {0};
+    cflow_process_retainer_token token = {0};
+    cflow_process_retainer_token second = {0};
+    cflow_process process = {0};
+    cmeta_process_options_t options;
+    fault_probe *probe = (fault_probe *)calloc(1u, sizeof(*probe) + 8u);
+    cflow_process_config config;
+    cflow_process_submit_result read;
+    char *buffer;
+    size_t reaped = 0u, pending = 0u, tries = 0u;
+    const uint64_t started = cmeta_hrtime();
+
+    check_not_null(probe);
+    buffer = (char *)(probe + 1);
+    config = fault_config(probe);
+    retained_test_releases = 0u;
+    check_equal(cflow_process_retainer_init(&owner, 1u), SALTS_OK);
+    check_equal(cflow_process_retainer_reserve(&owner, &token), SALTS_OK);
+    check_equal(cflow_process_retainer_reserve(&owner, &second), SALTS_ENOBUFS);
+    check_equal(cflow_process_retainer_destroy(&owner), SALTS_EBUSY);
+
+    fault_process_options(&options);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    read = cflow_process_try_read_stdout(&process, 7u, buffer, 1u);
+    check_equal(read.status, CFLOW_PROCESS_SUBMIT_ACCEPTED);
+    check_equal(cflow_process_retainer_adopt(
+        &owner, token, &process, probe, retained_test_payload_release), SALTS_EBUSY);
+    check_not_null(process.impl);
+    check_equal(cflow_process_close(&process), SALTS_OK);
+    check_equal(cflow_process_retainer_adopt(
+        &owner, token, &process, probe, retained_test_payload_release), SALTS_OK);
+    check_null(process.impl);
+    check_equal(cflow_process_retainer_release(&owner, token), SALTS_EINVAL);
+
+    inject_ack_error = true;
+    do {
+      const int status = cflow_process_retainer_run_ready(
+          &owner, 64u, &reaped, &pending);
+      check_true(status == SALTS_EPROTO || status == SALTS_EBUSY);
+      check_equal(reaped, (size_t)0u);
+      check_equal(pending, (size_t)1u);
+      check_equal(retained_test_releases, (size_t)0u);
+      check_equal(cflow_process_retainer_destroy(&owner), SALTS_EBUSY);
+      check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+      ++tries;
+      if (status == SALTS_EPROTO) break;
+      cmeta_thread_yield();
+    } while (true);
+    check_greater(tries, (size_t)0u);
+    check_equal(probe->callbacks, (size_t)1u);
+    check_equal(probe->ids[0], read.request_id);
+
+    inject_ack_error = false;
+    do {
+      const int status = cflow_process_retainer_run_ready(
+          &owner, 64u, &reaped, &pending);
+      check_true(status == SALTS_OK || status == SALTS_EBUSY);
+      check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+      if (pending == 0u) {
+        check_equal(status, SALTS_OK);
+        check_equal(reaped, (size_t)1u);
+        break;
+      }
+      cmeta_thread_yield();
+    } while (true);
+    check_equal(retained_test_releases, (size_t)1u);
+    check_equal(cflow_process_retainer_destroy(&owner), SALTS_OK);
+    check_null(owner.impl);
   }
 
   it("reports persistent NativeIO observe faults without discarding the read") {
