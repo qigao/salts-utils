@@ -121,6 +121,24 @@ bool cflow_process_get_stats(const cflow_process *process, cflow_process_stats *
  */
 int cflow_process_close(cflow_process *process);
 
+/*
+ * One bounded, single-driver shutdown phase. The caller MUST retain the
+ * process handle, completion_user, all accepted I/O buffers, and any other
+ * borrowed state whenever this returns an error or SALTS_EBUSY. The function
+ * never destroys the process and never transfers its ownership.
+ *
+ * max_steps bounds Actor/Executor transitions; NativeIO observation is
+ * nonblocking. A user callback or OS termination call is not subject to a
+ * wall-clock deadline, so this is NOT a lease-safe asynchronous handoff.
+ *
+ * SALTS_OK means quiescent and eligible for a separate destroy().
+ * SALTS_EBUSY means more work remains, with no terminal driver error.
+ * Other statuses report close/driver errors; retained ownership is required.
+ * out_quiescent is set even on a reported close/driver error.
+ */
+int cflow_process_shutdown_step(cflow_process *process, size_t max_steps,
+                                size_t *out_progressed, bool *out_quiescent);
+
 bool cflow_process_is_quiescent(const cflow_process *process);
 
 /** Destroys only after close, I/O drain, endpoint close, and process terminal. */
