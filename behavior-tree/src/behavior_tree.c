@@ -1572,6 +1572,9 @@ int salts_bt_tree_set_node_parameters_resolver(
     return SALTS_EINVAL;
   if (resolver == NULL) {
     if (parameter_mask != 0u || user != NULL) return SALTS_EINVAL;
+    if (node->parameter_resolver == NULL &&
+        node->dynamic_parameter_mask == 0u)
+      return SALTS_OK;
     /* Removing a resolver is a lifecycle boundary: halt active descendants
      * before restoring each parameter's constructor-time value. */
     reset_node_state_impl(impl, node_id, true);
