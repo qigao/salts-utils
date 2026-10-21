@@ -235,6 +235,79 @@ spec("CFlow Process private lifecycle faults") {
     check_null(process.impl);
   }
 
+  it("returns promptly from each shutdown step while a delivered lease is stuck") {
+    cmeta_process_options_t options;
+    cflow_process process = {0};
+    fault_probe probe = {0};
+    cflow_process_config config = fault_config(&probe);
+    cflow_process_submit_result read;
+    cflow_process_stats stats;
+    char borrowed_buffer = 0;
+    size_t round;
+
+    fault_process_options(&options);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    read = cflow_process_try_read_stdout(&process, 4u, &borrowed_buffer, 1u);
+    check_equal(read.status, CFLOW_PROCESS_SUBMIT_ACCEPTED);
+    check_equal(cflow_process_close(&process), SALTS_OK);
+
+    inject_ack_error = true;
+    {
+      const uint64_t started = cmeta_hrtime();
+      for (;;) {
+        size_t advanced = 0u;
+        int status = cflow_process_run_ready(&process, 64u, &advanced);
+        check_true(status == SALTS_OK || status == SALTS_EPROTO);
+        if (status == SALTS_EPROTO) break;
+        check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+        if (advanced == 0u) cmeta_thread_yield();
+      }
+    }
+    check_equal(probe.callbacks, (size_t)1u);
+
+    {
+      const uint64_t started = cmeta_hrtime();
+      for (round = 0u; round < 32u; ++round) {
+        size_t progressed = SIZE_MAX;
+        bool quiescent = true;
+        check_equal(cflow_process_shutdown_step(
+            &process, 8u, &progressed, &quiescent), SALTS_EPROTO);
+        check_true(progressed <= 8u);
+        check_false(quiescent);
+        check_equal(probe.callbacks, (size_t)1u);
+        check_true(cflow_process_get_stats(&process, &stats));
+        check_equal(stats.io.active_requests, (size_t)1u);
+        check_equal(stats.io.delivered_unacknowledged, (size_t)1u);
+        check_equal(cflow_process_destroy(&process), SALTS_EBUSY);
+        check_not_null(process.impl);
+      }
+      check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+    }
+
+    inject_ack_error = false;
+    {
+      const uint64_t started = cmeta_hrtime();
+      for (;;) {
+        size_t progressed = 0u;
+        bool quiescent = false;
+        const int status = cflow_process_shutdown_step(
+            &process, 64u, &progressed, &quiescent);
+        check_true(status == SALTS_OK || status == SALTS_EBUSY);
+        if (quiescent) {
+          check_equal(status, SALTS_OK);
+          break;
+        }
+        check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+        if (progressed == 0u) cmeta_thread_yield();
+      }
+    }
+    check_equal(probe.callbacks, (size_t)1u);
+    check_equal(probe.ids[0], read.request_id);
+    check_equal(probe.kinds[0], CFLOW_IO_COMPLETION_CANCELLED);
+    check_equal(cflow_process_destroy(&process), SALTS_OK);
+    check_null(process.impl);
+  }
+
   it("reports persistent NativeIO observe faults without discarding the read") {
     cmeta_process_options_t options;
     cflow_process process = {0};
