@@ -635,11 +635,18 @@ int cflow_process_close(cflow_process *process) {
   int process_status;
   if (impl == NULL) return SALTS_EINVAL;
   actor_status = cflow_io_actor_close(&impl->actor);
-  if (actor_status != SALTS_OK && actor_status != SALTS_EALREADY) return actor_status;
+  /*
+   * A failed Actor close must not skip the native process termination request.
+   * Record the lifecycle transition independently before reporting the first
+   * error. Destroy still requires the Actor to be quiescent and every borrowed
+   * I/O lease to have been acknowledged; this does not bypass that gate.
+   */
   cmeta_mutex_lock(&impl->gate);
   impl->close_requested = true;
   cmeta_mutex_unlock(&impl->gate);
   process_status = cmeta_process_terminate(impl->native_process);
+  if (actor_status != SALTS_OK && actor_status != SALTS_EALREADY)
+    return actor_status;
   return process_status == SALTS_OK ? SALTS_OK : process_status;
 }
 
