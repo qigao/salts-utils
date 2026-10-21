@@ -1568,23 +1568,28 @@ int salts_bt_tree_set_node_parameters_resolver(
   node = get_node(impl, node_id);
   if (node == NULL) return SALTS_EINVAL;
   if ((parameter_mask & ~valid_mask) != 0u ||
-      (parameter_mask == valid_mask))
+      parameter_mask == valid_mask)
     return SALTS_EINVAL;
+
   if (resolver == NULL) {
     if (parameter_mask != 0u || user != NULL) return SALTS_EINVAL;
     if (node->parameter_resolver == NULL &&
         node->dynamic_parameter_mask == 0u)
       return SALTS_OK;
-    /* Removing a resolver is a lifecycle boundary: halt active descendants
-     * before restoring each parameter's constructor-time value. */
+
+    /* Removing a resolver resets the activation, synchronously halts any
+     * running descendant, and restores the constructor-time parameter value. */
+    impl->busy = true;
     reset_node_state_impl(impl, node_id, true);
     node->limit = node->configured_limit;
     node->duration_ns = node->configured_duration_ns;
     node->dynamic_parameter_mask = 0u;
     node->parameter_resolver = NULL;
     node->parameter_user = NULL;
+    impl->busy = false;
     return SALTS_OK;
   }
+
   if (parameter_mask == 0u) return SALTS_EINVAL;
   if ((parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_LIMIT) != 0u &&
       node->kind != SALTS_BT_NODE_RETRY && node->kind != SALTS_BT_NODE_REPEAT &&
@@ -1594,6 +1599,17 @@ int salts_bt_tree_set_node_parameters_resolver(
   if ((parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_DURATION_NS) != 0u &&
       node->kind != SALTS_BT_NODE_TIMEOUT && node->kind != SALTS_BT_NODE_DELAY)
     return SALTS_EINVAL;
+  if (node->parameter_resolver == resolver &&
+      node->parameter_user == user &&
+      node->dynamic_parameter_mask == parameter_mask)
+    return SALTS_OK;
+
+  /* Resolver replacement also starts a clean activation. */
+  impl->busy = true;
+  reset_node_state_impl(impl, node_id, true);
+  node->limit = node->configured_limit;
+  node->duration_ns = node->configured_duration_ns;
+  impl->busy = false;
   node->dynamic_parameter_mask = parameter_mask;
   node->parameter_resolver = resolver;
   node->parameter_user = user;
