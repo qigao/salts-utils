@@ -221,8 +221,12 @@ int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
  * run the normal descendant/host-resource cleanup. Dynamic limit zero means
  * Retry/KeepRunningUntilFailure -> FAILURE, Repeat -> SUCCESS, WhileDo ->
  * SUCCESS without evaluating its condition/body. Values above the tree's hard
- * control-iteration limit are rejected before child side effects. Set resolver
- * to NULL with mask 0 and user NULL to remove a previously attached resolver.
+ * control-iteration limit are rejected before child side effects. Attaching,
+ * replacing, or removing a resolver is an activation boundary: the affected
+ * subtree is reset before the new configuration is installed, running leaves
+ * are halted synchronously, and persistent caches in that subtree are cleared.
+ * Set resolver to NULL with mask 0 and user NULL to restore constructor-time
+ * parameters and detach a previously attached resolver.
  */
 int salts_bt_tree_set_node_parameters_resolver(
     salts_bt_tree *tree, salts_bt_node_id node_id, uint32_t parameter_mask,
