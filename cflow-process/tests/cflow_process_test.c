@@ -1,4 +1,5 @@
 #include <salts/process.h>
+#include <salts/process_retainer.h>
 
 #include <salts/clock.h>
 #include <salts/error_codes.h>
@@ -22,6 +23,17 @@ typedef struct process_completion_probe {
   cflow_io_completion completions[PROCESS_TEST_COMPLETION_CAPACITY];
   size_t count;
 } process_completion_probe;
+
+typedef struct retained_probe_payload {
+  process_completion_probe probe;
+  char read_buffer;
+} retained_probe_payload;
+
+static size_t retained_probe_release_count;
+static void release_retained_probe(void *payload) {
+  ++retained_probe_release_count;
+  free(payload);
+}
 
 static void process_completion(void *user, cflow_io_request_id request_id,
                                cflow_io_lease_id lease_id, cflow_process_stream stream,
@@ -296,6 +308,80 @@ spec("CFlow subprocess adapter") {
     check_equal(close_and_drain(&process), SALTS_OK);
   }
 
+  it("drains an accepted request through bounded public shutdown steps") {
+    cmeta_process_options_t options;
+    cflow_process process = {0};
+    process_completion_probe probe = {0};
+    cflow_process_config config = process_test_config(&probe);
+    cflow_process_submit_result request;
+    char buffer = 0;
+    bool quiescent = false;
+    size_t advanced = 0u;
+    const uint64_t started = cmeta_hrtime();
+    init_process_options(&options, true);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    request = cflow_process_try_read_stdout(&process, 17u, &buffer, 1u);
+    check_equal(request.status, CFLOW_PROCESS_SUBMIT_ACCEPTED);
+    do {
+      int status = cflow_process_shutdown_step(&process, 1u, &advanced, &quiescent);
+      check_true(status == SALTS_OK || status == SALTS_EBUSY);
+      check_true(advanced <= 1u);
+      if (!quiescent) check_equal(cflow_process_destroy(&process), SALTS_EBUSY);
+      check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+      if (advanced == 0u) cmeta_thread_yield();
+    } while (!quiescent);
+    check_equal(probe.count, (size_t)1u);
+    check_equal(probe.request_ids[0], request.request_id);
+    check_equal(cflow_process_destroy(&process), SALTS_OK);
+    check_null(process.impl);
+  }
+  it("moves a live callback payload into the installed bounded Process owner") {
+    cflow_process_retainer owner = {0};
+    cflow_process_retainer_token reservation = {0};
+    cflow_process_retainer_token overflow = {0};
+    cflow_process process = {0};
+    cmeta_process_options_t options;
+    retained_probe_payload *payload =
+        (retained_probe_payload *)calloc(1u, sizeof(*payload));
+    cflow_process_config config;
+    cflow_process_submit_result admitted;
+    size_t reaped = 0u, pending = 0u;
+    const uint64_t started = cmeta_hrtime();
+
+    check_not_null(payload);
+    config = process_test_config(&payload->probe);
+    retained_probe_release_count = 0u;
+    check_equal(cflow_process_retainer_init(&owner, 1u), SALTS_OK);
+    check_equal(cflow_process_retainer_reserve(&owner, &reservation), SALTS_OK);
+    check_equal(cflow_process_retainer_reserve(&owner, &overflow), SALTS_ENOBUFS);
+    init_process_options(&options, true);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    admitted = cflow_process_try_read_stdout(
+        &process, 44u, &payload->read_buffer, sizeof(payload->read_buffer));
+    check_equal(admitted.status, CFLOW_PROCESS_SUBMIT_ACCEPTED);
+    check_equal(cflow_process_close(&process), SALTS_OK);
+    check_equal(cflow_process_retainer_adopt(
+        &owner, reservation, &process, payload, release_retained_probe), SALTS_OK);
+    check_null(process.impl);
+    check_equal(cflow_process_retainer_destroy(&owner), SALTS_EBUSY);
+
+    do {
+      const int status = cflow_process_retainer_run_ready(
+          &owner, 8u, &reaped, &pending);
+      check_true(status == SALTS_OK || status == SALTS_EBUSY);
+      check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+      if (pending == 0u) {
+        check_equal(reaped, (size_t)1u);
+        check_equal(status, SALTS_OK);
+        break;
+      }
+      cmeta_thread_yield();
+    } while (true);
+    check_equal(retained_probe_release_count, (size_t)1u);
+    check_equal(cflow_process_retainer_destroy(&owner), SALTS_OK);
+    check_null(owner.impl);
+  }
+
   it("waits for authoritative cancellation of a pending stdout read") {
     cmeta_process_options_t options;
     cflow_process process = {0};
@@ -319,6 +405,61 @@ spec("CFlow subprocess adapter") {
     check_equal(completion->kind, CFLOW_IO_COMPLETION_CANCELLED);
     check_equal(completion->bytes, (size_t)0u);
     check_equal(close_and_drain(&process), SALTS_OK);
+  }
+
+  it("keeps repeated close idempotent and forbids destroy before I/O acknowledgments") {
+    static const char payload[] = "closing-input";
+    cmeta_process_options_t options;
+    cflow_process process = {0};
+    process_completion_probe probe = {0};
+    cflow_process_config config = process_test_config(&probe);
+    cflow_process_submit_result submitted[3];
+    cflow_process_stats stats;
+    char stdout_buffer = 0;
+    char stderr_buffer = 0;
+    bool seen[3] = {false, false, false};
+    size_t index;
+
+    init_process_options(&options, true);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    submitted[0] = cflow_process_try_write_stdin(
+        &process, 1u, payload, sizeof(payload) - 1u);
+    submitted[1] = cflow_process_try_read_stdout(
+        &process, 2u, &stdout_buffer, sizeof(stdout_buffer));
+    submitted[2] = cflow_process_try_read_stderr(
+        &process, 3u, &stderr_buffer, sizeof(stderr_buffer));
+    for (index = 0u; index < 3u; ++index)
+      check_equal(submitted[index].status, CFLOW_PROCESS_SUBMIT_ACCEPTED);
+
+    check_equal(cflow_process_close(&process), SALTS_OK);
+    check_equal(cflow_process_close(&process), SALTS_OK);
+    check_true(cflow_process_get_stats(&process, &stats));
+    check_true(stats.close_requested);
+    check_equal(stats.io.active_requests, (size_t)3u);
+    check_false(cflow_process_is_quiescent(&process));
+    check_equal(cflow_process_destroy(&process), SALTS_EBUSY);
+    check_not_null(process.impl);
+
+    check_equal(drive_until(&process, &probe, 3u), SALTS_OK);
+    check_equal(probe.count, (size_t)3u);
+    for (index = 0u; index < 3u; ++index) {
+      size_t submitted_index;
+      bool matched = false;
+      check_equal(probe.completions[index].kind, CFLOW_IO_COMPLETION_CANCELLED);
+      for (submitted_index = 0u; submitted_index < 3u; ++submitted_index) {
+        if (probe.request_ids[index] == submitted[submitted_index].request_id) {
+          check_false(seen[submitted_index]);
+          seen[submitted_index] = true;
+          matched = true;
+          break;
+        }
+      }
+      check_true(matched);
+    }
+    for (index = 0u; index < 3u; ++index) check_true(seen[index]);
+    check_equal(close_and_drain(&process), SALTS_OK);
+    check_null(process.impl);
+    check_equal(probe.count, (size_t)3u);
   }
 
   it("settles queued cancellation for all three standard streams exactly once") {
