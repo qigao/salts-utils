@@ -650,6 +650,31 @@ int cflow_process_close(cflow_process *process) {
   return process_status == SALTS_OK ? SALTS_OK : process_status;
 }
 
+int cflow_process_shutdown_step(cflow_process *process, size_t max_steps,
+                                size_t *out_progressed, bool *out_quiescent) {
+  int close_status;
+  int drive_status;
+  size_t progressed = 0u;
+  if (out_progressed != NULL) *out_progressed = 0u;
+  if (out_quiescent != NULL) *out_quiescent = false;
+  if (process == NULL || process->impl == NULL || max_steps == 0u ||
+      out_progressed == NULL || out_quiescent == NULL)
+    return SALTS_EINVAL;
+
+  /* No loop: failures must return to the owner while leases remain live.
+   * Calling destroy() or releasing completion_user here would be unsafe. */
+  close_status = cflow_process_close(process);
+  drive_status = cflow_process_run_ready(process, max_steps, &progressed);
+  *out_progressed = progressed;
+  *out_quiescent = cflow_process_is_quiescent(process);
+
+  if (close_status != SALTS_OK && close_status != SALTS_EALREADY)
+    return close_status;
+  if (drive_status != SALTS_OK)
+    return drive_status;
+  return *out_quiescent ? SALTS_OK : SALTS_EBUSY;
+}
+
 bool cflow_process_is_quiescent(const cflow_process *process) {
   const cflow_process_impl *impl = process_const_impl(process);
   cmeta_process_result_t result;
