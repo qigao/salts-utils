@@ -152,6 +152,25 @@ static salts_bt_node_status invalid_status_leaf(void *user) {
   return (salts_bt_node_status)99;
 }
 
+typedef struct dynamic_parameter_probe {
+  size_t calls;
+  size_t limit;
+  uint64_t duration_ns;
+  int return_status;
+} dynamic_parameter_probe;
+
+static int resolve_dynamic_parameters(void *user, salts_bt_node_id node_id,
+                                      salts_bt_node_parameters *out_params) {
+  dynamic_parameter_probe *probe = (dynamic_parameter_probe *)user;
+  (void)node_id;
+  if (probe == NULL || out_params == NULL) return SALTS_EINVAL;
+  ++probe->calls;
+  if (probe->return_status != SALTS_OK) return probe->return_status;
+  out_params->limit = probe->limit;
+  out_params->duration_ns = probe->duration_ns;
+  return SALTS_OK;
+}
+
 typedef struct pipeline_probe {
   size_t prepare_calls;
   size_t complete_calls;
@@ -2071,6 +2090,101 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
     check_equal(result, SALTS_BT_SUCCESS);
     check_equal(probe.calls, 1u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+
+  it("re-resolves Retry limits on each tick before ticking the child") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_node_status steps[] = {SALTS_BT_RUNNING, SALTS_BT_FAILURE};
+    leaf_probe leaf = {steps, 2u, 0u};
+    dynamic_parameter_probe dynamic = {0u, 2u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node_with_limit(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_RETRY,
+                    NULL, NULL, 2u, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_node(&tree, root, SALTS_BT_NODE_LEAF,
+                                      probe_leaf, &leaf, &child), SALTS_OK);
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, SALTS_BT_DYNAMIC_PARAMETER_LIMIT,
+                    resolve_dynamic_parameters, &dynamic), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(leaf.calls, 1u);
+    check_equal(dynamic.calls, 1u);
+
+    /* Shrinking the live budget to one makes the next failed attempt terminal. */
+    dynamic.limit = 1u;
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(leaf.calls, 2u);
+    check_equal(dynamic.calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+  }
+
+  it("re-resolves a Timeout deadline and halts a running child once") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_leaf_ops running_ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state running = {&tree, 0u, 0u, SALTS_OK};
+    dynamic_parameter_probe dynamic = {0u, 0u, UINT64_MAX, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_timed_node(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_TIMEOUT,
+                    UINT64_MAX, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &running_ops,
+                                      &running, &child), SALTS_OK);
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, SALTS_BT_DYNAMIC_PARAMETER_DURATION_NS,
+                    resolve_dynamic_parameters, &dynamic), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(running.tick_calls, 1u);
+    check_equal(running.halt_calls, 0u);
+    check_equal(dynamic.calls, 1u);
+
+    dynamic.duration_ns = 0u;
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_FAILURE);
+    check_equal(running.tick_calls, 1u);
+    check_equal(running.halt_calls, 1u);
+    check_equal(running.reentrant_reset_status, SALTS_EBUSY);
+    check_equal(dynamic.calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(running.halt_calls, 1u);
+  }
+
+  it("rejects invalid dynamic parameter resolver contracts") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    dynamic_parameter_probe dynamic = {0u, 1u, 0u, SALTS_OK};
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node(&tree, SALTS_BT_INVALID_NODE_ID,
+                                      SALTS_BT_NODE_SEQUENCE, NULL, NULL,
+                                      &root), SALTS_OK);
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, SALTS_BT_DYNAMIC_PARAMETER_LIMIT,
+                    resolve_dynamic_parameters, &dynamic), SALTS_EINVAL);
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, SALTS_BT_DYNAMIC_PARAMETER_LIMIT,
+                    NULL, &dynamic), SALTS_EINVAL);
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, 0u, resolve_dynamic_parameters, &dynamic),
+                SALTS_EINVAL);
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, SALTS_BT_DYNAMIC_PARAMETER_LIMIT |
+                                     SALTS_BT_DYNAMIC_PARAMETER_DURATION_NS,
+                    resolve_dynamic_parameters, &dynamic), SALTS_EINVAL);
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
