@@ -152,6 +152,22 @@ spec("CFlow Process private lifecycle faults") {
     check_not_null(process.impl);
     check_equal(probe.callbacks, (size_t)0u);
 
+    /* Even though Actor close reported an error, the native child must
+     * already have received its termination request (before a second close). */
+    {
+      const uint64_t started = cmeta_hrtime();
+      cmeta_process_result_t terminal;
+      int poll_status;
+      do {
+        poll_status = cflow_process_poll(&process, &terminal);
+        check_true(poll_status == SALTS_OK || poll_status == SALTS_EBUSY);
+        if (poll_status == SALTS_OK) break;
+        check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+        cmeta_thread_yield();
+      } while (true);
+      check_equal(poll_status, SALTS_OK);
+    }
+
     /* The same owner may retry, then deliver/acknowledge the cancelled read. */
     check_equal(cflow_process_close(&process), SALTS_OK);
     check_equal(fault_drive_to_quiescence(&process), SALTS_OK);
@@ -179,6 +195,25 @@ spec("CFlow Process private lifecycle faults") {
     check_equal(cflow_process_close(&process), SALTS_OK);
 
     inject_ack_error = true;
+    /* A native backend can take several driver turns to publish cancellation.
+     * Start counting errors only after an authoritative terminal callback has
+     * reached the acknowledgment boundary. */
+    {
+      const uint64_t started = cmeta_hrtime();
+      bool observed_error = false;
+      do {
+        size_t progressed = 0u;
+        const int status = cflow_process_run_ready(&process, 64u, &progressed);
+        check_true(status == SALTS_OK || status == SALTS_EPROTO);
+        if (status == SALTS_EPROTO) {
+          observed_error = true;
+          break;
+        }
+        check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+        if (progressed == 0u) cmeta_thread_yield();
+      } while (true);
+      check_true(observed_error);
+    }
     for (round = 0u; round < 4u; ++round) {
       size_t progressed = 0u;
       check_equal(cflow_process_run_ready(&process, 64u, &progressed), SALTS_EPROTO);
