@@ -296,6 +296,33 @@ spec("CFlow subprocess adapter") {
     check_equal(close_and_drain(&process), SALTS_OK);
   }
 
+  it("drains an accepted request through bounded public shutdown steps") {
+    cmeta_process_options_t options;
+    cflow_process process = {0};
+    process_completion_probe probe = {0};
+    cflow_process_config config = process_test_config(&probe);
+    cflow_process_submit_result request;
+    char buffer = 0;
+    bool quiescent = false;
+    size_t advanced = 0u;
+    const uint64_t started = cmeta_hrtime();
+    init_process_options(&options, true);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    request = cflow_process_try_read_stdout(&process, 17u, &buffer, 1u);
+    check_equal(request.status, CFLOW_PROCESS_SUBMIT_ACCEPTED);
+    do {
+      int status = cflow_process_shutdown_step(&process, 1u, &advanced, &quiescent);
+      check_true(status == SALTS_OK || status == SALTS_EBUSY);
+      check_true(advanced <= 1u);
+      if (!quiescent) check_equal(cflow_process_destroy(&process), SALTS_EBUSY);
+      check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+      if (advanced == 0u) cmeta_thread_yield();
+    } while (!quiescent);
+    check_equal(probe.count, (size_t)1u);
+    check_equal(probe.request_ids[0], request.request_id);
+    check_equal(cflow_process_destroy(&process), SALTS_OK);
+    check_null(process.impl);
+  }
   it("waits for authoritative cancellation of a pending stdout read") {
     cmeta_process_options_t options;
     cflow_process process = {0};
