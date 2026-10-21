@@ -321,6 +321,49 @@ spec("CFlow subprocess adapter") {
     check_equal(close_and_drain(&process), SALTS_OK);
   }
 
+  it("keeps repeated close idempotent and forbids destroy before I/O acknowledgments") {
+    static const char payload[] = "closing-input";
+    cmeta_process_options_t options;
+    cflow_process process = {0};
+    process_completion_probe probe = {0};
+    cflow_process_config config = process_test_config(&probe);
+    cflow_process_submit_result submitted[3];
+    cflow_process_stats stats;
+    char stdout_buffer = 0;
+    char stderr_buffer = 0;
+    size_t index;
+
+    init_process_options(&options, true);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    submitted[0] = cflow_process_try_write_stdin(
+        &process, 1u, payload, sizeof(payload) - 1u);
+    submitted[1] = cflow_process_try_read_stdout(
+        &process, 2u, &stdout_buffer, sizeof(stdout_buffer));
+    submitted[2] = cflow_process_try_read_stderr(
+        &process, 3u, &stderr_buffer, sizeof(stderr_buffer));
+    for (index = 0u; index < 3u; ++index)
+      check_equal(submitted[index].status, CFLOW_PROCESS_SUBMIT_ACCEPTED);
+
+    check_equal(cflow_process_close(&process), SALTS_OK);
+    check_equal(cflow_process_close(&process), SALTS_OK);
+    check_true(cflow_process_get_stats(&process, &stats));
+    check_true(stats.close_requested);
+    check_equal(stats.io.active_requests, (size_t)3u);
+    check_false(cflow_process_is_quiescent(&process));
+    check_equal(cflow_process_destroy(&process), SALTS_EBUSY);
+    check_not_null(process.impl);
+
+    check_equal(drive_until(&process, &probe, 3u), SALTS_OK);
+    check_equal(probe.count, (size_t)3u);
+    for (index = 0u; index < 3u; ++index) {
+      check_equal(probe.request_ids[index], submitted[index].request_id);
+      check_equal(probe.completions[index].kind, CFLOW_IO_COMPLETION_CANCELLED);
+    }
+    check_equal(close_and_drain(&process), SALTS_OK);
+    check_null(process.impl);
+    check_equal(probe.count, (size_t)3u);
+  }
+
   it("settles queued cancellation for all three standard streams exactly once") {
     static const char payload[] = "cancelled-input";
     cmeta_process_options_t options;
