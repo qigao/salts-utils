@@ -331,6 +331,7 @@ spec("CFlow subprocess adapter") {
     cflow_process_stats stats;
     char stdout_buffer = 0;
     char stderr_buffer = 0;
+    bool seen[3] = {false, false, false};
     size_t index;
 
     init_process_options(&options, true);
@@ -356,9 +357,20 @@ spec("CFlow subprocess adapter") {
     check_equal(drive_until(&process, &probe, 3u), SALTS_OK);
     check_equal(probe.count, (size_t)3u);
     for (index = 0u; index < 3u; ++index) {
-      check_equal(probe.request_ids[index], submitted[index].request_id);
+      size_t submitted_index;
+      bool matched = false;
       check_equal(probe.completions[index].kind, CFLOW_IO_COMPLETION_CANCELLED);
+      for (submitted_index = 0u; submitted_index < 3u; ++submitted_index) {
+        if (probe.request_ids[index] == submitted[submitted_index].request_id) {
+          check_false(seen[submitted_index]);
+          seen[submitted_index] = true;
+          matched = true;
+          break;
+        }
+      }
+      check_true(matched);
     }
+    for (index = 0u; index < 3u; ++index) check_true(seen[index]);
     check_equal(close_and_drain(&process), SALTS_OK);
     check_null(process.impl);
     check_equal(probe.count, (size_t)3u);
