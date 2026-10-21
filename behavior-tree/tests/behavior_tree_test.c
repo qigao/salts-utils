@@ -2247,6 +2247,61 @@ spec("Salts C11 Behavior Tree") {
     check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
   }
 
+  it("reconfigures a dynamic resolver as a clean activation boundary") {
+    salts_bt_tree tree = {0};
+    salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
+    salts_bt_node_id child = SALTS_BT_INVALID_NODE_ID;
+    const salts_bt_leaf_ops running_ops = {always_running_leaf, halt_running_leaf};
+    running_leaf_state running = {&tree, 0u, 0u, SALTS_OK};
+    dynamic_parameter_probe first = {0u, 2u, 0u, SALTS_OK};
+    dynamic_parameter_probe second = {0u, 0u, 0u, SALTS_OK};
+    salts_bt_node_status result = SALTS_BT_FAILURE;
+
+    init_tree(&tree, 4u, 4u);
+    check_equal(salts_bt_tree_add_node_with_limit(
+                    &tree, SALTS_BT_INVALID_NODE_ID, SALTS_BT_NODE_REPEAT,
+                    NULL, NULL, 2u, &root), SALTS_OK);
+    check_equal(salts_bt_tree_add_leaf(&tree, root, &running_ops, &running,
+                                      &child), SALTS_OK);
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, SALTS_BT_DYNAMIC_PARAMETER_LIMIT,
+                    resolve_dynamic_parameters, &first), SALTS_OK);
+
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(running.tick_calls, 1u);
+    check_equal(running.halt_calls, 0u);
+    check_equal(first.calls, 1u);
+
+    /* Replacing the resolver must halt the active child before switching users. */
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, SALTS_BT_DYNAMIC_PARAMETER_LIMIT,
+                    resolve_dynamic_parameters, &second), SALTS_OK);
+    check_equal(running.halt_calls, 1u);
+    check_equal(running.reentrant_reset_status, SALTS_EBUSY);
+    check_equal(second.calls, 0u);
+
+    /* The replacement takes effect on the next visit and zero Repeat succeeds. */
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_SUCCESS);
+    check_equal(running.tick_calls, 1u);
+    check_equal(second.calls, 1u);
+
+    /* Detaching restores the constructor limit (2) and stops calling the resolver. */
+    check_equal(salts_bt_tree_set_node_parameters_resolver(
+                    &tree, root, 0u, NULL, NULL), SALTS_OK);
+    check_equal(salts_bt_tree_validate(&tree), SALTS_OK);
+    check_equal(salts_bt_tree_tick(&tree, &result), SALTS_OK);
+    check_equal(result, SALTS_BT_RUNNING);
+    check_equal(running.tick_calls, 2u);
+    check_equal(second.calls, 1u);
+
+    check_equal(salts_bt_tree_reset(&tree), SALTS_OK);
+    check_equal(running.halt_calls, 2u);
+    check_equal(salts_bt_tree_destroy(&tree), SALTS_OK);
+    check_equal(running.halt_calls, 2u);
+  }
+
   it("cleans up active leaves when a dynamic parameter resolver fails") {
     salts_bt_tree tree = {0};
     salts_bt_node_id root = SALTS_BT_INVALID_NODE_ID;
