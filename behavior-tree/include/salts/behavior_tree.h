@@ -95,6 +95,22 @@ typedef int (*salts_bt_queue_begin_fn)(void *user, bool *out_has_item);
 typedef int (*salts_bt_queue_finish_fn)(void *user, bool *out_has_more);
 typedef void (*salts_bt_queue_abort_fn)(void *user);
 
+/*
+ * Optional per-tick values for control nodes whose parameter may be read from
+ * a live host context (for example, a Praktor Blackboard). A resolver updates
+ * only the fields named by the mask registered on its node. The runtime calls
+ * it before any node/descendant side effects on every visit/tick of that node.
+ */
+#define SALTS_BT_DYNAMIC_PARAMETER_LIMIT ((uint32_t)0x01u)
+#define SALTS_BT_DYNAMIC_PARAMETER_DURATION_NS ((uint32_t)0x02u)
+typedef struct salts_bt_node_parameters {
+  size_t limit;
+  uint64_t duration_ns;
+} salts_bt_node_parameters;
+typedef int (*salts_bt_node_parameters_fn)(void *user,
+                                           salts_bt_node_id node_id,
+                                           salts_bt_node_parameters *out_params);
+
 /* Parallel host-context hooks run on the single tree driver thread.
  * Enter selects/prepares branch-local context before every active branch tick;
  * first_activation is true once per activation. Step runs after each branch tick,
@@ -195,6 +211,22 @@ int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
                                  salts_bt_node_kind kind,
                                  uint64_t duration_ns,
                                  salts_bt_node_id *out_node_id);
+
+/*
+ * Attach a per-tick parameter resolver to an existing node. LIMIT is valid for
+ * Retry, Repeat, WhileDo and KeepRunningUntilFailure; DURATION_NS is valid for
+ * Timeout and Delay. These flags are mutually exclusive for current node kinds.
+ * The callback is called on the tree driver thread before the node is executed.
+ * It may return SALTS_OK or a Salts error; callback errors abort the tick and
+ * run the normal descendant/host-resource cleanup. Dynamic limit zero means
+ * Retry/KeepRunningUntilFailure -> FAILURE, Repeat -> SUCCESS, WhileDo ->
+ * SUCCESS without evaluating its condition/body. Values above the tree's hard
+ * control-iteration limit are rejected before child side effects. Set resolver
+ * to NULL with mask 0 and user NULL to remove a previously attached resolver.
+ */
+int salts_bt_tree_set_node_parameters_resolver(
+    salts_bt_tree *tree, salts_bt_node_id node_id, uint32_t parameter_mask,
+    salts_bt_node_parameters_fn resolver, void *user);
 
 /*
  * Add an IfThenElse, Precondition, or WhileDo node with a status predicate.
