@@ -21,6 +21,10 @@ typedef struct salts_bt_node {
   size_t counter;
   uint64_t duration_ns;
   uint64_t deadline_ns;
+  uint64_t timer_started_ns;
+  uint32_t dynamic_parameter_mask;
+  salts_bt_node_parameters_fn parameter_resolver;
+  void *parameter_user;
   bool timer_started;
   bool delay_elapsed;
   bool evaluated;
@@ -170,6 +174,7 @@ static void reset_node_state_impl(salts_bt_impl *impl,
   node->cursor = SALTS_BT_INVALID_NODE_ID;
   node->counter = 0u;
   node->deadline_ns = 0u;
+  node->timer_started_ns = 0u;
   node->timer_started = false;
   node->delay_elapsed = false;
   node->evaluated = false;
@@ -223,6 +228,29 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
   salts_bt_node_id child_id;
   if (node == NULL || out_status == NULL || depth > impl->max_depth)
     return SALTS_EINVAL;
+
+  if (node->parameter_resolver != NULL) {
+    salts_bt_node_parameters params;
+    int resolve_status;
+    params.limit = node->limit;
+    params.duration_ns = node->duration_ns;
+    resolve_status = node->parameter_resolver(node->parameter_user, id, &params);
+    if (resolve_status != SALTS_OK) return resolve_status;
+    if ((node->dynamic_parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_LIMIT) != 0u &&
+        params.limit > impl->max_control_iterations)
+      return SALTS_EINVAL;
+    if ((node->dynamic_parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_LIMIT) != 0u)
+      node->limit = params.limit;
+    if ((node->dynamic_parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_DURATION_NS) != 0u) {
+      node->duration_ns = params.duration_ns;
+      if (node->timer_started) {
+        node->deadline_ns = node->duration_ns > UINT64_MAX - node->timer_started_ns
+                                ? UINT64_MAX
+                                : node->timer_started_ns + node->duration_ns;
+      }
+    }
+  }
+
   node->evaluated = false;
 
   if (node->kind == SALTS_BT_NODE_LEAF) {
@@ -493,8 +521,13 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
   if (node->kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE) {
     salts_bt_node_status child_status = SALTS_BT_FAILURE;
     int status;
-    if (child_id == SALTS_BT_INVALID_NODE_ID || node->limit == 0u)
-      return SALTS_EINVAL;
+    if (child_id == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
+    if (node->limit == 0u || node->counter >= node->limit) {
+      reset_node_state(impl, id);
+      node->last_status = SALTS_BT_FAILURE;
+      *out_status = SALTS_BT_FAILURE;
+      return SALTS_OK;
+    }
     status = tick_node(impl, child_id, depth + 1u, &child_status);
     if (status != SALTS_OK) return status;
     if (child_status == SALTS_BT_RUNNING) {
@@ -677,6 +710,7 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
     if (child_id == SALTS_BT_INVALID_NODE_ID) return SALTS_EINVAL;
     now = cmeta_hrtime();
     if (!node->timer_started) {
+      node->timer_started_ns = now;
       node->deadline_ns = node->duration_ns > UINT64_MAX - now
                               ? UINT64_MAX
                               : now + node->duration_ns;
@@ -716,6 +750,7 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
     if (!node->delay_elapsed) {
       now = cmeta_hrtime();
       if (!node->timer_started) {
+        node->timer_started_ns = now;
         node->deadline_ns = node->duration_ns > UINT64_MAX - now
                                 ? UINT64_MAX
                                 : now + node->duration_ns;
@@ -729,6 +764,7 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
       node->delay_elapsed = true;
       node->timer_started = false;
       node->deadline_ns = 0u;
+      node->timer_started_ns = 0u;
     }
     status = tick_node(impl, child_id, depth + 1u, &child_status);
     if (status != SALTS_OK) return status;
@@ -772,6 +808,12 @@ static int tick_node_impl(salts_bt_impl *impl, salts_bt_node_id id,
   }
 
   if (node->kind == SALTS_BT_NODE_RETRY) {
+    if (node->limit == 0u || node->counter >= node->limit) {
+      reset_node_state(impl, id);
+      node->last_status = SALTS_BT_FAILURE;
+      *out_status = SALTS_BT_FAILURE;
+      return SALTS_OK;
+    }
     while (node->counter < node->limit) {
       salts_bt_node_status child_status = SALTS_BT_FAILURE;
       int status;
@@ -1257,6 +1299,22 @@ static int validate_impl(const salts_bt_impl *impl) {
     }
     if (node->kind == SALTS_BT_NODE_SWITCH && node->selector == NULL)
       return SALTS_EINVAL;
+    if ((node->dynamic_parameter_mask &
+         ~(SALTS_BT_DYNAMIC_PARAMETER_LIMIT |
+           SALTS_BT_DYNAMIC_PARAMETER_DURATION_NS)) != 0u)
+      return SALTS_EINVAL;
+    if ((node->dynamic_parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_LIMIT) != 0u &&
+        (node->kind != SALTS_BT_NODE_RETRY &&
+         node->kind != SALTS_BT_NODE_REPEAT &&
+         node->kind != SALTS_BT_NODE_WHILE_DO &&
+         node->kind != SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE))
+      return SALTS_EINVAL;
+    if ((node->dynamic_parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_DURATION_NS) != 0u &&
+        (node->kind != SALTS_BT_NODE_TIMEOUT &&
+         node->kind != SALTS_BT_NODE_DELAY))
+      return SALTS_EINVAL;
+    if ((node->dynamic_parameter_mask == 0u) != (node->parameter_resolver == NULL))
+      return SALTS_EINVAL;
     if ((node->parallel_enter == NULL) != (node->parallel_step == NULL) ||
         (node->parallel_enter == NULL) != (node->parallel_join == NULL) ||
         (node->parallel_enter == NULL) != (node->parallel_finish == NULL))
@@ -1277,11 +1335,17 @@ static int validate_impl(const salts_bt_impl *impl) {
         (node->queue_begin == NULL || node->queue_finish == NULL))
       return SALTS_EINVAL;
     if ((node->kind == SALTS_BT_NODE_RETRY &&
-         (node->limit == 0u || node->limit > impl->max_control_iterations)) ||
+         ((node->limit == 0u &&
+           (node->dynamic_parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_LIMIT) == 0u) ||
+          node->limit > impl->max_control_iterations)) ||
         (node->kind == SALTS_BT_NODE_WHILE_DO &&
-         (node->limit == 0u || node->limit > impl->max_control_iterations)) ||
+         ((node->limit == 0u &&
+           (node->dynamic_parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_LIMIT) == 0u) ||
+          node->limit > impl->max_control_iterations)) ||
         (node->kind == SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE &&
-         (node->limit == 0u || node->limit > impl->max_control_iterations)) ||
+         ((node->limit == 0u &&
+           (node->dynamic_parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_LIMIT) == 0u) ||
+          node->limit > impl->max_control_iterations)) ||
         (node->kind == SALTS_BT_NODE_REPEAT &&
          node->limit > impl->max_control_iterations))
       return SALTS_EINVAL;
@@ -1485,6 +1549,42 @@ int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
   node = get_node(impl, *out_node_id);
   if (node == NULL) return SALTS_EINVAL;
   node->duration_ns = duration_ns;
+  return SALTS_OK;
+}
+
+int salts_bt_tree_set_node_parameters_resolver(
+    salts_bt_tree *tree, salts_bt_node_id node_id, uint32_t parameter_mask,
+    salts_bt_node_parameters_fn resolver, void *user) {
+  salts_bt_impl *impl = tree_impl(tree);
+  salts_bt_node *node;
+  const uint32_t valid_mask = SALTS_BT_DYNAMIC_PARAMETER_LIMIT |
+                              SALTS_BT_DYNAMIC_PARAMETER_DURATION_NS;
+  if (impl == NULL) return SALTS_EINVAL;
+  if (impl->busy) return SALTS_EBUSY;
+  node = get_node(impl, node_id);
+  if (node == NULL) return SALTS_EINVAL;
+  if ((parameter_mask & ~valid_mask) != 0u ||
+      (parameter_mask == valid_mask))
+    return SALTS_EINVAL;
+  if (resolver == NULL) {
+    if (parameter_mask != 0u || user != NULL) return SALTS_EINVAL;
+    node->dynamic_parameter_mask = 0u;
+    node->parameter_resolver = NULL;
+    node->parameter_user = NULL;
+    return SALTS_OK;
+  }
+  if (parameter_mask == 0u) return SALTS_EINVAL;
+  if ((parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_LIMIT) != 0u &&
+      node->kind != SALTS_BT_NODE_RETRY && node->kind != SALTS_BT_NODE_REPEAT &&
+      node->kind != SALTS_BT_NODE_WHILE_DO &&
+      node->kind != SALTS_BT_NODE_KEEP_RUNNING_UNTIL_FAILURE)
+    return SALTS_EINVAL;
+  if ((parameter_mask & SALTS_BT_DYNAMIC_PARAMETER_DURATION_NS) != 0u &&
+      node->kind != SALTS_BT_NODE_TIMEOUT && node->kind != SALTS_BT_NODE_DELAY)
+    return SALTS_EINVAL;
+  node->dynamic_parameter_mask = parameter_mask;
+  node->parameter_resolver = resolver;
+  node->parameter_user = user;
   return SALTS_OK;
 }
 
