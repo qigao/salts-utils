@@ -635,12 +635,44 @@ int cflow_process_close(cflow_process *process) {
   int process_status;
   if (impl == NULL) return SALTS_EINVAL;
   actor_status = cflow_io_actor_close(&impl->actor);
-  if (actor_status != SALTS_OK && actor_status != SALTS_EALREADY) return actor_status;
+  /*
+   * A failed Actor close must not skip the native process termination request.
+   * Record the lifecycle transition independently before reporting the first
+   * error. Destroy still requires the Actor to be quiescent and every borrowed
+   * I/O lease to have been acknowledged; this does not bypass that gate.
+   */
   cmeta_mutex_lock(&impl->gate);
   impl->close_requested = true;
   cmeta_mutex_unlock(&impl->gate);
   process_status = cmeta_process_terminate(impl->native_process);
+  if (actor_status != SALTS_OK && actor_status != SALTS_EALREADY)
+    return actor_status;
   return process_status == SALTS_OK ? SALTS_OK : process_status;
+}
+
+int cflow_process_shutdown_step(cflow_process *process, size_t max_steps,
+                                size_t *out_progressed, bool *out_quiescent) {
+  int close_status;
+  int drive_status;
+  size_t progressed = 0u;
+  if (out_progressed != NULL) *out_progressed = 0u;
+  if (out_quiescent != NULL) *out_quiescent = false;
+  if (process == NULL || process->impl == NULL || max_steps == 0u ||
+      out_progressed == NULL || out_quiescent == NULL)
+    return SALTS_EINVAL;
+
+  /* No loop: failures must return to the owner while leases remain live.
+   * Calling destroy() or releasing completion_user here would be unsafe. */
+  close_status = cflow_process_close(process);
+  drive_status = cflow_process_run_ready(process, max_steps, &progressed);
+  *out_progressed = progressed;
+  *out_quiescent = cflow_process_is_quiescent(process);
+
+  if (close_status != SALTS_OK && close_status != SALTS_EALREADY)
+    return close_status;
+  if (drive_status != SALTS_OK)
+    return drive_status;
+  return *out_quiescent ? SALTS_OK : SALTS_EBUSY;
 }
 
 bool cflow_process_is_quiescent(const cflow_process *process) {
