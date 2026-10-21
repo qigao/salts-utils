@@ -18,8 +18,10 @@ typedef struct salts_bt_node {
   size_t depth;
   size_t child_count;
   size_t limit;
+  size_t configured_limit;
   size_t counter;
   uint64_t duration_ns;
+  uint64_t configured_duration_ns;
   uint64_t deadline_ns;
   uint64_t timer_started_ns;
   uint32_t dynamic_parameter_mask;
@@ -1212,6 +1214,7 @@ static int add_node_with_limit_internal(salts_bt_tree *tree,
   node->depth = depth;
   node->last_status = SALTS_BT_FAILURE;
   node->limit = limit;
+  node->configured_limit = limit;
   ++impl->node_count;
 
   if (parent == NULL) {
@@ -1549,6 +1552,7 @@ int salts_bt_tree_add_timed_node(salts_bt_tree *tree,
   node = get_node(impl, *out_node_id);
   if (node == NULL) return SALTS_EINVAL;
   node->duration_ns = duration_ns;
+  node->configured_duration_ns = duration_ns;
   return SALTS_OK;
 }
 
@@ -1568,6 +1572,11 @@ int salts_bt_tree_set_node_parameters_resolver(
     return SALTS_EINVAL;
   if (resolver == NULL) {
     if (parameter_mask != 0u || user != NULL) return SALTS_EINVAL;
+    /* Removing a resolver is a lifecycle boundary: halt active descendants
+     * before restoring each parameter's constructor-time value. */
+    reset_node_state_impl(impl, node_id, true);
+    node->limit = node->configured_limit;
+    node->duration_ns = node->configured_duration_ns;
     node->dynamic_parameter_mask = 0u;
     node->parameter_resolver = NULL;
     node->parameter_user = NULL;
