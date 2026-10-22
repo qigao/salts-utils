@@ -58,8 +58,8 @@ jobs:
       SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-dso-v1-${{ matrix.os }}
       SALTS_PRESET: ${{ matrix.salts_preset }}
       UTILS_PRESET: ${{ matrix.utils_preset }}
-      SALTS_ROOT: ${{ runner.temp }}/idl-component-salts
-      PKG_ROOT: ${{ runner.temp }}/idl-component-utils
+      SALTS_ROOT: ${{ github.workspace }}/build/component-platform/install-salts
+      PKG_ROOT: ${{ github.workspace }}/build/component-platform/install-utils
       SALTS_SOURCE: ${{ github.workspace }}/build/component-platform/salts
       SALTS_BUILD: ${{ github.workspace }}/build/component-platform/build-salts
       UTILS_BUILD: ${{ github.workspace }}/build/component-platform/build-utils
