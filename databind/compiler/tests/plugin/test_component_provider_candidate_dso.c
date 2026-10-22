@@ -3,6 +3,8 @@
 #include <salts/component_runtime_abi.h>
 #include <salts/plugin.h>
 #include <salts/service_host.h>
+#include <salts/thread.h>
+#include <salts/clock.h>
 
 #include <stdio.h>
 #include <stdint.h>
@@ -20,6 +22,90 @@ CMETA_FUNCTION_METADATA_AS_ABI_RESULT(
   (AddResponse *, response, CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,
    &databind_11_WasmRuntime_4_Calc_3_Add__component_resp_ptr_type,
    CMETA_ABI_OBJECT_POINTER));
+
+typedef struct provider_worker_context {
+  salts_service_host_runtime *runtime;
+  const cmeta_interface_desc *interface_desc;
+  cmeta_mutex_t gate;
+  bool ready;
+  bool stop;
+  bool close_observed;
+  bool failed;
+  size_t invocations;
+  size_t post_close_invocations;
+} provider_worker_context;
+
+static void provider_worker_fail(provider_worker_context *context) {
+  cmeta_mutex_lock(&context->gate);
+  context->failed = true;
+  context->ready = true;
+  cmeta_mutex_unlock(&context->gate);
+}
+
+static void provider_worker_main(void *user) {
+  provider_worker_context *context = (provider_worker_context *)user;
+  salts_service_host_scope scope = SALTS_SERVICE_HOST_SCOPE_INIT;
+  salts_configurator_service service = {0};
+  databind_11_WasmRuntime_4_Calc_3_Add__component_service port =
+      databind_11_WasmRuntime_4_Calc_3_Add__component_service_bind(NULL, NULL);
+  AddRequest request = {0};
+  AddResponse response = {0};
+  salts_service_host_status host_status;
+
+  host_status = salts_service_host_scope_acquire(context->runtime, &scope);
+  if (host_status != SALTS_SERVICE_HOST_OK) {
+    provider_worker_fail(context);
+    return;
+  }
+  host_status = salts_service_host_scope_find_service(
+      &scope, context->interface_desc, &service);
+  if (host_status != SALTS_SERVICE_HOST_OK ||
+      databind_11_WasmRuntime_4_Calc_3_Add__component_service_borrow_from_object(
+          service.object, service.interfaces, &port) != CMETA_OK) {
+    (void)salts_service_host_scope_release(&scope);
+    provider_worker_fail(context);
+    return;
+  }
+
+  request.left = 5u;
+  request.right = 6u;
+  cmeta_mutex_lock(&context->gate);
+  context->ready = true;
+  cmeta_mutex_unlock(&context->gate);
+
+  for (;;) {
+    bool stop;
+    bool close_observed;
+    int invoke_status;
+
+    cmeta_mutex_lock(&context->gate);
+    stop = context->stop;
+    close_observed = context->close_observed;
+    cmeta_mutex_unlock(&context->gate);
+    if (stop) break;
+
+    memset(&response, 0, sizeof(response));
+    invoke_status = databind_11_WasmRuntime_4_Calc_3_Add__component_service_invoke(
+        &port, &request, &response);
+
+    cmeta_mutex_lock(&context->gate);
+    if (invoke_status != 0 || response.sum != 11u || response.product != 30u)
+      context->failed = true;
+    else
+      ++context->invocations;
+    if (close_observed && invoke_status == 0 &&
+        response.sum == 11u && response.product == 30u)
+      ++context->post_close_invocations;
+    cmeta_mutex_unlock(&context->gate);
+    cmeta_thread_yield();
+  }
+
+  if (salts_service_host_scope_release(&scope) != SALTS_SERVICE_HOST_OK) {
+    cmeta_mutex_lock(&context->gate);
+    context->failed = true;
+    cmeta_mutex_unlock(&context->gate);
+  }
+}
 
 #define REQUIRE(expr) do { \
   if (!(expr)) { \
@@ -54,6 +140,8 @@ int main(void) {
   AddRequest request = {0};
   AddResponse response = {0};
   bool quiet = false;
+  provider_worker_context worker = {0};
+  cmeta_thread_t worker_thread = NULL;
 
   /* Verify the actual source-built library's runtime epoch and layouts. */
   REQUIRE(salts_configurator_abi_version() ==
@@ -123,9 +211,55 @@ int main(void) {
   REQUIRE(response.sum == 11u);
   REQUIRE(response.product == 30u);
 
+  /* A second thread owns a separate live Scope and continuously invokes the
+   * same Provider while the owner closes admission and attempts to drain.
+   * This exercises the canonical runtime's synchronization, lease protection,
+   * and the contract that already-acquired scopes remain valid after close. */
+  worker.runtime = &runtime;
+  worker.interface_desc = iface;
+  cmeta_mutex_init(&worker.gate);
+  REQUIRE(worker.gate != NULL);
+  REQUIRE(cmeta_thread_create(&worker_thread, provider_worker_main, &worker) ==
+      SALTS_OK);
+  {
+    const uint64_t deadline = cmeta_hrtime() + UINT64_C(5000000000);
+    for (;;) {
+      bool ready;
+      bool failed;
+      size_t calls;
+      cmeta_mutex_lock(&worker.gate);
+      ready = worker.ready;
+      failed = worker.failed;
+      calls = worker.invocations;
+      cmeta_mutex_unlock(&worker.gate);
+      if (ready && (failed || calls != 0u)) {
+        REQUIRE(!failed);
+        REQUIRE(calls != 0u);
+        break;
+      }
+      REQUIRE(cmeta_hrtime() < deadline);
+      cmeta_thread_yield();
+    }
+  }
+
   REQUIRE(salts_service_host_runtime_close(
       &runtime, &previous) == SALTS_SERVICE_HOST_OK);
   REQUIRE(previous == &generation);
+  cmeta_mutex_lock(&worker.gate);
+  worker.close_observed = true;
+  cmeta_mutex_unlock(&worker.gate);
+  {
+    const uint64_t deadline = cmeta_hrtime() + UINT64_C(5000000000);
+    for (;;) {
+      size_t calls_after_close;
+      cmeta_mutex_lock(&worker.gate);
+      calls_after_close = worker.post_close_invocations;
+      cmeta_mutex_unlock(&worker.gate);
+      if (calls_after_close != 0u) break;
+      REQUIRE(cmeta_hrtime() < deadline);
+      cmeta_thread_yield();
+    }
+  }
   REQUIRE(salts_service_host_generation_drain(
       &runtime, previous) == SALTS_SERVICE_HOST_BUSY);
   REQUIRE(cmeta_plugin_registry_get_lifecycle(
@@ -136,7 +270,17 @@ int main(void) {
   REQUIRE(cmeta_plugin_registry_unload(
       &registry, ref) == CMETA_PLUGIN_BUSY);
 
-  /* Borrowed service views must expire before the Provider DSO is retired. */
+  cmeta_mutex_lock(&worker.gate);
+  worker.stop = true;
+  cmeta_mutex_unlock(&worker.gate);
+  REQUIRE(cmeta_thread_join(&worker_thread) == SALTS_OK);
+  cmeta_thread_destroy(&worker_thread);
+  cmeta_mutex_lock(&worker.gate);
+  REQUIRE(!worker.failed);
+  REQUIRE(worker.post_close_invocations != 0u);
+  cmeta_mutex_unlock(&worker.gate);
+
+  /* Both caller-owned borrowed service views must expire before unload. */
   REQUIRE(salts_service_host_scope_release(&scope) ==
       SALTS_SERVICE_HOST_OK);
   REQUIRE(salts_service_host_generation_drain(
@@ -153,5 +297,6 @@ int main(void) {
       &registry, ref) == CMETA_PLUGIN_OK);
   REQUIRE(cmeta_plugin_registry_destroy(
       &registry) == CMETA_PLUGIN_OK);
+  cmeta_mutex_destroy(&worker.gate);
   return 0;
 }
