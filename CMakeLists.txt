@@ -77,7 +77,17 @@ if(SALTS_UTILS_ENABLE_CFLOW_USB)
 endif()
 add_subdirectory(cron)
 add_subdirectory(mustache)
-add_subdirectory(unicode)
+# Salts owns Unicode 17. The released Salts SDK must provide the one
+# canonical imported target before Jinja or any other consumer is configured.
+# Never compile or export the legacy local Unicode implementation here.
+if(NOT TARGET Salts::Unicode)
+  message(FATAL_ERROR "SaltsUtils requires a published Salts SDK with Salts::Unicode")
+endif()
+get_target_property(_salts_utils_unicode_imported Salts::Unicode IMPORTED)
+if(NOT _salts_utils_unicode_imported)
+  message(FATAL_ERROR "Salts::Unicode must be imported from the Salts SDK")
+endif()
+unset(_salts_utils_unicode_imported)
 add_subdirectory(jinja)
 add_subdirectory(databind)
 
