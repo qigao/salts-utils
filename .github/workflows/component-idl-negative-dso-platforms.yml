@@ -7,6 +7,14 @@ name: Canonical Component IDL negative DSO platform gate
       - "databind/compiler/**"
       - "databind/runtime/**"
       - "cmake/ci/verify-component-provider-sanitizers.py"
+  push:
+    branches:
+      - "test/component-idl-canonical-runtime-sanitizers"
+    paths:
+      - ".github/workflows/component-idl-negative-dso-platforms.yml"
+      - "databind/compiler/**"
+      - "databind/runtime/**"
+      - "cmake/ci/verify-component-provider-sanitizers.py"
   workflow_dispatch: {}
 
 permissions:
