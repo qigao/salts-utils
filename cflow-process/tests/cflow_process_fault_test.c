@@ -20,18 +20,22 @@
 static bool inject_close_error;
 static bool inject_ack_error;
 static bool inject_observe_error;
+static bool inject_adapter_destroy_error;
 
 static int fault_actor_close(cflow_io_actor *actor);
 static cflow_io_ack_status fault_actor_acknowledge(
     cflow_io_actor *actor, cflow_io_request_id request_id);
 static int fault_native_observe(
     cflow_io_native_adapter *adapter, uint32_t timeout_ms, size_t *completed);
+static int fault_adapter_destroy(cflow_io_native_adapter *adapter);
 
 #define cflow_io_actor_close fault_actor_close
 #define cflow_io_actor_acknowledge fault_actor_acknowledge
 #define cflow_io_native_adapter_observe fault_native_observe
+#define cflow_io_native_adapter_destroy fault_adapter_destroy
 #include "../src/process.c"
 #undef cflow_io_native_adapter_observe
+#undef cflow_io_native_adapter_destroy
 #undef cflow_io_actor_acknowledge
 #undef cflow_io_actor_close
 
@@ -59,6 +63,11 @@ static int fault_native_observe(
     return SALTS_EIO;
   }
   return cflow_io_native_adapter_observe(adapter, timeout_ms, completed);
+}
+
+static int fault_adapter_destroy(cflow_io_native_adapter *adapter) {
+  if (inject_adapter_destroy_error) return SALTS_EBUSY;
+  return cflow_io_native_adapter_destroy(adapter);
 }
 
 typedef struct retained_test_payload retained_test_payload;
@@ -389,6 +398,53 @@ spec("CFlow Process private lifecycle faults") {
     check_equal(retained_test_releases, (size_t)1u);
     check_equal(cflow_process_retainer_destroy(&owner), SALTS_OK);
     check_null(owner.impl);
+  }
+
+  it("keeps the bounded Process recovery owner on refused native backend destroy") {
+    cflow_process_retainer owner = {0};
+    cflow_process_retainer_token token = {0};
+    cflow_process process = {0};
+    cmeta_process_options_t options;
+    fault_probe *probe = (fault_probe *)calloc(1u, sizeof(*probe) + 8u);
+    cflow_process_config config;
+    cflow_process_submit_result read;
+    size_t reaped = SIZE_MAX, pending = SIZE_MAX;
+
+    check_not_null(probe);
+    retained_test_releases = 0u;
+    config = fault_config(probe);
+    fault_process_options(&options);
+    check_equal(cflow_process_retainer_init(&owner, 1u), SALTS_OK);
+    check_equal(cflow_process_retainer_reserve(&owner, &token), SALTS_OK);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    read = cflow_process_try_read_stdout(&process, 11u, probe + 1, 1u);
+    check_equal(read.status, CFLOW_PROCESS_SUBMIT_ACCEPTED);
+    check_equal(cflow_process_close(&process), SALTS_OK);
+    check_equal(fault_drive_to_quiescence(&process), SALTS_OK);
+    check_equal(probe->callbacks, (size_t)1u);
+    check_equal(probe->ids[0], read.request_id);
+
+    check_equal(cflow_process_retainer_adopt(
+        &owner, token, &process, probe, retained_test_payload_release), SALTS_OK);
+    check_null(process.impl);
+    inject_adapter_destroy_error = true;
+    check_equal(cflow_process_retainer_run_ready(
+        &owner, 1u, &reaped, &pending), SALTS_EBUSY);
+    check_equal(reaped, (size_t)0u);
+    check_equal(pending, (size_t)1u);
+    check_equal(retained_test_releases, (size_t)0u);
+    check_equal(cflow_process_retainer_destroy(&owner), SALTS_EBUSY);
+
+    /* A later owner turn retries precisely the refused native teardown.
+     * Neither a quiescence snapshot nor a failed destroy is permission to
+     * force-free the borrowed callback payload or its Process. */
+    inject_adapter_destroy_error = false;
+    check_equal(cflow_process_retainer_run_ready(
+        &owner, 1u, &reaped, &pending), SALTS_OK);
+    check_equal(reaped, (size_t)1u);
+    check_equal(pending, (size_t)0u);
+    check_equal(retained_test_releases, (size_t)1u);
+    check_equal(cflow_process_retainer_destroy(&owner), SALTS_OK);
   }
 
   it("reports persistent NativeIO observe faults without discarding the read") {
