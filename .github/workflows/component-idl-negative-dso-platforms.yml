@@ -109,7 +109,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DCMAKE_INSTALL_PREFIX="$SALTS_ROOT" \
             -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
-          cmake --build "$SALTS_BUILD" --target salts_service_host --parallel 2
+          cmake --build "$SALTS_BUILD" --target salts_service_host cmeta_cserde --parallel 2
           test -f "$SALTS_BUILD/SaltsConfig.cmake"
           test -f "$SALTS_BUILD/SaltsTargets.cmake"
           test -f "$SALTS_SOURCE/component-runtime/include/salts/service_host.h"
@@ -122,7 +122,7 @@ jobs:
           if errorlevel 1 exit /b 1
           cmake --preset "%SALTS_PRESET%" -S "%SALTS_SOURCE%" -B "%SALTS_BUILD%" -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DCMAKE_INSTALL_PREFIX="%SALTS_ROOT%" -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
           if errorlevel 1 exit /b 1
-          cmake --build "%SALTS_BUILD%" --config Release --target salts_service_host --parallel 2
+          cmake --build "%SALTS_BUILD%" --config Release --target salts_service_host cmeta_cserde --parallel 2
           if errorlevel 1 exit /b 1
           if not exist "%SALTS_BUILD%\SaltsConfig.cmake" exit /b 1
           if not exist "%SALTS_BUILD%\SaltsTargets.cmake" exit /b 1
