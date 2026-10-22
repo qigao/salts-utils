@@ -400,6 +400,26 @@ spec("CFlow Process private lifecycle faults") {
     check_equal(probe->callbacks, (size_t)1u);
     check_equal(probe->ids[0], read.request_id);
 
+    /* An indefinitely failing provider consumes exactly one bounded slot,
+     * never invents completion and never exposes this callback buffer to a
+     * second admission. Repeat many owner turns before lifting the fault. */
+    {
+      const uint64_t fault_started = cmeta_hrtime();
+      size_t round;
+      for (round = 0u; round < 64u; ++round) {
+        check_equal(cflow_process_retainer_run_ready(
+            &owner, 8u, &reaped, &pending), SALTS_EPROTO);
+        check_equal(reaped, (size_t)0u);
+        check_equal(pending, (size_t)1u);
+        check_equal(retained_test_releases, (size_t)0u);
+        check_equal(probe->callbacks, (size_t)1u);
+        check_equal(cflow_process_retainer_reserve(&owner, &second),
+                    SALTS_ENOBUFS);
+        check_equal(cflow_process_retainer_destroy(&owner), SALTS_EBUSY);
+      }
+      check_true(cmeta_hrtime() - fault_started < UINT64_C(5000000000));
+    }
+
     inject_ack_error = false;
     do {
       const int status = cflow_process_retainer_run_ready(
