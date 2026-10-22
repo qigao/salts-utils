@@ -58,8 +58,7 @@ jobs:
       SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-dso-v1-${{ matrix.os }}
       SALTS_PRESET: ${{ matrix.salts_preset }}
       UTILS_PRESET: ${{ matrix.utils_preset }}
-      SALTS_ROOT: ${{ github.workspace }}/build/component-platform/install-salts
-      PKG_ROOT: ${{ github.workspace }}/build/component-platform/install-utils
+      SALTS_ROOT: ${{ github.workspace }}/build/component-platform/build-salts
       SALTS_SOURCE: ${{ github.workspace }}/build/component-platform/salts
       SALTS_BUILD: ${{ github.workspace }}/build/component-platform/build-salts
       UTILS_BUILD: ${{ github.workspace }}/build/component-platform/build-utils
@@ -110,11 +109,11 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DCMAKE_INSTALL_PREFIX="$SALTS_ROOT" \
             -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
-          cmake --build "$SALTS_BUILD" --parallel 2
-          cmake --install "$SALTS_BUILD"
-          test -f "$SALTS_ROOT/include/salts/service_host.h"
-          test -f "$SALTS_ROOT/include/salts/component_provider_abi.h"
-          test -f "$SALTS_ROOT/lib/cmake/Salts/SaltsTargets.cmake"
+          cmake --build "$SALTS_BUILD" --target salts_service_host --parallel 2
+          test -f "$SALTS_BUILD/SaltsConfig.cmake"
+          test -f "$SALTS_BUILD/SaltsTargets.cmake"
+          test -f "$SALTS_SOURCE/component-runtime/include/salts/service_host.h"
+          test -f "$SALTS_SOURCE/component-plugin/include/salts/component_provider_abi.h"
       - name: Build and install exact Salts source (Windows)
         if: matrix.os == 'windows'
         shell: cmd
@@ -123,19 +122,18 @@ jobs:
           if errorlevel 1 exit /b 1
           cmake --preset "%SALTS_PRESET%" -S "%SALTS_SOURCE%" -B "%SALTS_BUILD%" -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DCMAKE_INSTALL_PREFIX="%SALTS_ROOT%" -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
           if errorlevel 1 exit /b 1
-          cmake --build "%SALTS_BUILD%" --config Release --parallel 2
+          cmake --build "%SALTS_BUILD%" --config Release --target salts_service_host --parallel 2
           if errorlevel 1 exit /b 1
-          cmake --install "%SALTS_BUILD%" --config Release
-          if errorlevel 1 exit /b 1
-          if not exist "%SALTS_ROOT%\include\salts\service_host.h" exit /b 1
-          if not exist "%SALTS_ROOT%\include\salts\component_provider_abi.h" exit /b 1
-          if not exist "%SALTS_ROOT%\lib\cmake\Salts\SaltsTargets.cmake" exit /b 1
+          if not exist "%SALTS_BUILD%\SaltsConfig.cmake" exit /b 1
+          if not exist "%SALTS_BUILD%\SaltsTargets.cmake" exit /b 1
+          if not exist "%SALTS_SOURCE%\component-runtime\include\salts\service_host.h" exit /b 1
+          if not exist "%SALTS_SOURCE%\component-plugin\include\salts\component_provider_abi.h" exit /b 1
       - name: Build positive and negative Provider DSOs against source-built Salts (macOS)
         if: matrix.os == 'macos'
         shell: bash
         run: |
           set -euo pipefail
-          export DYLD_LIBRARY_PATH="$SALTS_ROOT/lib:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib"
+          export DYLD_LIBRARY_PATH="$SALTS_BUILD/lib:$SALTS_BUILD/bin:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib"
           cmake --preset "$UTILS_PRESET" -S "$GITHUB_WORKSPACE" -B "$UTILS_BUILD" \
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET" \
             -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON \
@@ -155,7 +153,8 @@ jobs:
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
-          cmake --preset "%UTILS_PRESET%" -S "%GITHUB_WORKSPACE%" -B "%UTILS_BUILD%" "-DCMAKE_PREFIX_PATH=%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%/%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          set "PATH=%SALTS_BUILD%\\bin;%SALTS_BUILD%\\Release;%VCPKG_INSTALLED_DIR%\\%QIGAO_TARGET_TRIPLET%\\bin;%PATH%"
+          cmake --preset "%UTILS_PRESET%" -S "%GITHUB_WORKSPACE%" -B "%UTILS_BUILD%" "-DCMAKE_PREFIX_PATH=%SALTS_BUILD%;%VCPKG_INSTALLED_DIR%/%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           if errorlevel 1 exit /b 1
           cmake --build "%UTILS_BUILD%" --config Release --parallel 2 --target databind_component_candidate_provider test_databind_component_candidate_dso_c11 test_databind_component_candidate_negative_dso_c11 test_databind_component_candidate_header_cpp databind_component_candidate_codegen_tool
           if errorlevel 1 exit /b 1
@@ -177,4 +176,6 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if ((git rev-parse HEAD).Trim() -ne $env:EXPECTED_SU) { throw 'SaltsUtils source changed' }
           if ((git -C $env:SALTS_SOURCE rev-parse HEAD).Trim() -ne $env:EXPECTED_SALTS) { throw 'Salts source changed' }
-          if ((git status --porcelain --untracked-files=no).Trim()) { throw 'SaltsUtils tracked source tree changed' }
+          $status = git status --porcelain --untracked-files=no
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify SaltsUtils source status' }
+          if ($status) { throw 'SaltsUtils tracked source tree changed' }
