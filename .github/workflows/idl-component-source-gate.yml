@@ -121,3 +121,11 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
           test -z "$(git status --porcelain --untracked-files=no)"
+
+  canonical-runtime-sanitizers:
+    name: Canonical ServiceHost + Provider ASan/UBSan and TSan
+    uses: ./.github/workflows/component-idl-canonical-sanitizers.yml
+    permissions:
+      contents: read
+      packages: read
+
