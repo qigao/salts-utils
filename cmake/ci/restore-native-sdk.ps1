@@ -29,7 +29,8 @@ New-Item -ItemType Directory -Path $restoreRoot -Force | Out-Null
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
+    <!-- Exact immutable released Salts 2.3 Unicode owner; no stable 2.2 fallback. -->
+    <PackageReference Include="Salts.Native" Version="[2.3.0-rc.17]" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -49,6 +50,9 @@ function Get-RestoredPackage([string]$name) {
 }
 
 $saltsPackage = Get-RestoredPackage "Salts.Native"
+if ((Split-Path $saltsPackage -Leaf) -ne '2.3.0-rc.17') {
+  throw "wrong canonical Salts.Native release: $saltsPackage"
+}
 $saltsRoot = Join-Path $saltsPackage "sdk\$SaltsRid"
 $saltsHostRoot = Join-Path $saltsPackage "sdk\$Re2cRid"
 $re2cRoot = Join-Path (Get-RestoredPackage "Qigao.Re2c.Binary") "tools\$Re2cRid"
@@ -57,6 +61,8 @@ $turbowasmRoot = if ($WithTurboWasm) { Join-Path $turbowasmPackage "sdk\$SaltsRi
 $required = @(
   (Join-Path $saltsRoot "lib\cmake\Salts\SaltsConfig.cmake"),
   (Join-Path $saltsRoot "include\cmeta\function.h"),
+  (Join-Path $saltsRoot "include\unicode\salts_unicode.h"),
+  (Join-Path $saltsRoot "salts-sdk-manifest.txt"),
   (Join-Path $saltsHostRoot "lib\cmake\Salts\SaltsConfig.cmake"),
   (Join-Path $re2cRoot "bin\re2c.exe"),
   (Join-Path $re2cRoot "share\re2c\stdlib\unicode_categories.re"),
@@ -64,6 +70,13 @@ $required = @(
 )
 foreach ($path in $required) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "missing restored SDK file: $path" }
+}
+$saltsTargets = Join-Path $saltsRoot "lib\cmake\Salts\SaltsTargets.cmake"
+if (-not (Select-String -LiteralPath $saltsTargets -SimpleMatch 'Salts::Unicode' -Quiet)) {
+  throw "official Salts.Native 2.3 must export the canonical Unicode target"
+}
+if (-not (Select-String -LiteralPath (Join-Path $saltsRoot "salts-sdk-manifest.txt") -SimpleMatch 'version=2.3.0-rc.17' -Quiet)) {
+  throw "official Salts.Native 2.3 version/provenance mismatch"
 }
 & (Join-Path $re2cRoot "bin\re2c.exe") --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "restored re2c executable cannot run" }

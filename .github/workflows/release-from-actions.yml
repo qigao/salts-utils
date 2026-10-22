@@ -10,10 +10,9 @@ name: Release SaltsUtils SDK (Actions UI)
         required: true
         type: string
       source_branch:
-        description: 'Qualified source branch (RC: release/*; stable: master)'
+        description: 'Reviewed source (RC: release/salts-utils-4.3-*; stable: master)'
         required: true
         type: string
-        default: release/salts-utils-4.3-idlc-606
       stable_qualified:
         description: 'For stable only: downstream integration gates are signed off'
         required: true
@@ -58,8 +57,8 @@ jobs:
           [[ "$SOURCE_BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]
           [[ "$SOURCE_BRANCH" != *..* ]]
           if [[ "$RELEASE_TAG" == *-rc.* ]]; then
-            [[ "$SOURCE_BRANCH" == release/* ]] ||
-              { echo "RC source must be a release/* branch" >&2; exit 1; }
+            [[ "$SOURCE_BRANCH" == release/salts-utils-4.3-* ]] ||
+              { echo "RC source must match the six-RID CI release/salts-utils-4.3-* branch policy" >&2; exit 1; }
           else
             test "$SOURCE_BRANCH" = master ||
               { echo "Stable source must be master" >&2; exit 1; }
@@ -69,6 +68,16 @@ jobs:
 
           git fetch --no-tags origin "refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
           sha="$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH^{commit}")"
+          # rc.12 and newer MUST descend from the audited master that
+          # includes the private Monocypher and typed RPC collision repairs.
+          # Do not publish a frozen rc.11 overlay as a new release source.
+          if [[ "$RELEASE_TAG" =~ ^v4[.]3[.]0-rc[.]([1-9][0-9]*)$ ]]; then
+            rc_number="${BASH_REMATCH[1]}"
+            if (( rc_number >= 12 )); then
+              git merge-base --is-ancestor 096bca0b5411732e947ecffd9d2da8e6da164810 "$sha" ||
+                { echo "RC source must descend from audited master including #676" >&2; exit 1; }
+            fi
+          fi
           cmake_version="$(git show "$sha:CMakeLists.txt" |
             awk '/^[[:space:]]*VERSION[[:space:]]+[0-9]/{print $2; exit}')"
           vcpkg_version="$(git show "$sha:vcpkg.json" |
@@ -96,6 +105,14 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "source=$SOURCE_BRANCH @ $sha" >> "$GITHUB_STEP_SUMMARY"
           echo "nuget=SaltsUtils.Native $version" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify reviewed private DataBind and RPC error contracts at exact source SHA
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          python3 cmake/ci/verify_databind_release_source.py --commit "$SOURCE_SHA" --self-test
 
       - name: Require exact-source successful CI, native CTests and six-RID package
         id: qualified

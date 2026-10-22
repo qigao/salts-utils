@@ -41,6 +41,20 @@ jobs:
         if: matrix.family != 'windows'
         shell: bash
         run: ctest --preset '${{ matrix.preset }}' --no-tests=error --output-on-failure --timeout 180 --parallel 2
+      - name: Run DataBind and Process fault-path tests with ASan/UBSan
+        if: matrix.id == 'linux-release'
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          set -euo pipefail
+          # Use the dedicated debug/sanitizer tree; do not mutate the archived
+          # Release graph exercised by the full CTest job.
+          cmake --preset ci-linux-dev-user -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build build/ci-linux-dev --target test_databind_service_native_cleanup_runtime test_databind_service_native_cleanup_success test_databind_service_native_cleanup_init_failure cflow_process_test cflow_process_fault_test --parallel 2
+          export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/build/ci-linux-dev/bin:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/debug/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:$SALTS_ROOT/lib:${LD_LIBRARY_PATH:-}"
+          ctest --test-dir build/ci-linux-dev -R '^(test_databind_service_native_cleanup_(runtime|success|init_failure)|cflow_process_(fault_)?test)$' --no-tests=error --output-on-failure --timeout 180 --parallel 1
       - name: Qualify relocated installed DataBind MethodPlan C11 consumer
         if: matrix.id == 'linux-release'
         shell: bash
@@ -67,6 +81,53 @@ jobs:
           cmake --build "$build" --target installed_service_consumer --parallel 2
           ctest --test-dir "$build" -R '^installed_service_consumer$' \
             --no-tests=error --output-on-failure --timeout 180
+      - name: Qualify installed C11 BehaviorTree consumer
+        if: matrix.id == 'linux-release'
+        shell: bash
+        env:
+          NATIVE_BUILD_DIR: ${{ matrix.build_dir }}
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/behavior-tree-installed-sdk"
+          cmake --install "$NATIVE_BUILD_DIR" --prefix "$prefix"
+          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$prefix/include/salts/behavior_tree.h"
+          export SALTS_UTILS_ROOT="$prefix"
+          consumer="$GITHUB_WORKSPACE/behavior-tree/package_config"
+          build="$RUNNER_TEMP/behavior-tree-installed-consumer"
+          cmake -S "$consumer" -B "$build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$GITHUB_WORKSPACE/vcpkg_installed/$QIGAO_TARGET_TRIPLET"
+          cmake --build "$build" --parallel 2
+          ctest --test-dir "$build" -R '^behavior_tree_installed_consumer$' --no-tests=error --output-on-failure --timeout 180
+      - name: Verify official Salts Unicode is sole installed C11/C++17 owner
+        if: matrix.id == 'linux-release'
+        shell: bash
+        env:
+          NATIVE_BUILD_DIR: ${{ matrix.build_dir }}
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/saltsutils-canonical-unicode-installed"
+          cmake --install "$NATIVE_BUILD_DIR" --prefix "$prefix"
+          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test ! -e "$prefix/include/unicode/salts_unicode.h"
+          test ! -e "$prefix/lib/libsalts_unicode.a"
+          test -f "$SALTS_ROOT/include/unicode/salts_unicode.h"
+          export SALTS_UTILS_CANDIDATE_ROOT="$prefix"
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          export LD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib:${LD_LIBRARY_PATH:-}"
+          cmake -S "$GITHUB_WORKSPACE/cmake/ci/unicode-paired-installed" \
+            -B "$RUNNER_TEMP/unicode-paired-installed-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET="$QIGAO_TARGET_TRIPLET" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$prefix;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET"
+          cmake --build "$RUNNER_TEMP/unicode-paired-installed-build" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/unicode-paired-installed-build" \
+            -R '^unicode_paired_(c11|cpp17)$' \
+            --no-tests=error --output-on-failure --timeout 120
+
       - name: Run complete Windows CTest graph
         if: matrix.family == 'windows'
         shell: cmd

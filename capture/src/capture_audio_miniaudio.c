@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdatomic.h>
+#include <stdbool.h>
 
 /* =============================================================================
  * Context Structure
@@ -28,6 +30,12 @@ typedef struct {
 
     salts_audio_capture_config_t config;
     salts_capture_t *capture;
+
+    /* PRIVATE C11 callback admission gate. The public capture->state is a
+     * control-plane field (plain enum) and must never be read by the native
+     * miniaudio callback concurrently with start/stop writes. This private
+     * atomic does not change the published salts_capture_t ABI. */
+    atomic_bool callback_admitted;
 
     /* Monotonic sample counter for timestamp derivation, owned per device. */
     uint64_t sample_counter;
@@ -46,8 +54,13 @@ static void audio_capture_callback(ma_device *pDevice, void *pOutput,
     miniaudio_capture_ctx_t *ctx = (miniaudio_capture_ctx_t *)pDevice->pUserData;
     (void)pOutput;
 
-    if (!ctx || !ctx->capture || !ctx->capture->audio_cb) return;
-    if (ctx->capture->state != SALTS_CAPTURE_STATE_RUNNING) return;
+    if (!ctx || !ctx->capture) return;
+    if (!atomic_load_explicit(&ctx->callback_admitted,
+                              memory_order_acquire)) return;
+    /* Hosts install callbacks before start and do not mutate their callback
+     * registration while a native device callback is in flight. */
+    salts_audio_capture_cb cb = ctx->capture->audio_cb;
+    if (!cb) return;
 
     size_t bytes_per_sample = (ctx->config.bits_per_sample == 32) ? 4 : 2;
     size_t len = frameCount * ctx->config.channels * bytes_per_sample;
@@ -56,8 +69,8 @@ static void audio_capture_callback(ma_device *pDevice, void *pOutput,
     uint64_t timestamp = (ctx->sample_counter * 1000000ULL) / ctx->config.sample_rate;
     ctx->sample_counter += frameCount;
 
-    ctx->capture->audio_cb(ctx->capture, (const uint8_t *)pInput, len,
-                           timestamp, ctx->capture->user_data);
+    cb(ctx->capture, (const uint8_t *)pInput, len,
+       timestamp, ctx->capture->user_data);
 }
 
 /* =============================================================================
@@ -135,6 +148,7 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
         free(capture);
         return NULL;
     }
+    atomic_init(&ctx->callback_admitted, false);
 
     capture->type = SALTS_CAPTURE_TYPE_AUDIO;
     capture->state = SALTS_CAPTURE_STATE_STOPPED;
@@ -238,13 +252,18 @@ int miniaudio_audio_start(salts_capture_t *capture) {
     if (!capture || !capture->platform_ctx) return -1;
     miniaudio_capture_ctx_t *ctx = (miniaudio_capture_ctx_t *)capture->platform_ctx;
 
-    /* Restart resets the per-device timestamp origin. */
+    /* Reset the timestamp origin while callbacks cannot be admitted.
+     * Keep admission closed until ma_device_start succeeds, mirroring the
+     * prior STARTING state behavior without racing a plain public enum. */
+    atomic_store_explicit(&ctx->callback_admitted, false,
+                          memory_order_release);
     ctx->sample_counter = 0;
 
     if (ma_device_start(&ctx->device) != MA_SUCCESS) {
         return SALTS_CAPTURE_ERR_DEVICE;
     }
-
+    atomic_store_explicit(&ctx->callback_admitted, true,
+                          memory_order_release);
     return SALTS_CAPTURE_OK;
 }
 
@@ -252,6 +271,11 @@ void miniaudio_audio_stop(salts_capture_t *capture) {
     if (!capture || !capture->platform_ctx) return;
     miniaudio_capture_ctx_t *ctx = (miniaudio_capture_ctx_t *)capture->platform_ctx;
 
+    /* Close callback admission before stopping and joining the real device.
+     * An already-running callback may finish, but after stop returns none
+     * can run or borrow capture state. */
+    atomic_store_explicit(&ctx->callback_admitted, false,
+                          memory_order_release);
     ma_device_stop(&ctx->device);
 }
 
@@ -260,6 +284,10 @@ void miniaudio_audio_destroy(salts_capture_t *capture) {
 
     miniaudio_capture_ctx_t *ctx = (miniaudio_capture_ctx_t *)capture->platform_ctx;
     if (ctx) {
+        /* Destroy also supports the caller who did not explicitly stop.
+         * Never let a native callback read a free owner. */
+        atomic_store_explicit(&ctx->callback_admitted, false,
+                              memory_order_release);
         ma_device_uninit(&ctx->device);
         if (ctx->context_initialized) {
             ma_context_uninit(&ctx->context);

@@ -66,6 +66,7 @@ add_subdirectory(tools/junit_to_html)
 add_subdirectory(crypto)
 add_subdirectory(cflow-fs)
 add_subdirectory(cflow-process)
+add_subdirectory(behavior-tree)
 if(SALTS_UTILS_ENABLE_CAPTURE)
   add_subdirectory(playback)
   add_subdirectory(capture)
@@ -76,19 +77,17 @@ if(SALTS_UTILS_ENABLE_CFLOW_USB)
 endif()
 add_subdirectory(cron)
 add_subdirectory(mustache)
-# The exact-source #620 DSO qualification intentionally links the one
-# upstream Salts::Unicode implementation already exported by Salts #1234.
-# Its native source ABI supersedes the duplicate SaltsUtils Unicode target
-# name in that *isolated test graph*. Normal/public SaltsUtils builds remain
-# unchanged and still build/export their own Unicode target.
-if(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO)
-  if(NOT TARGET Salts::Unicode)
-    message(FATAL_ERROR
-      "Exact-source ComponentProvider DSO requires upstream Salts::Unicode; no fallback")
-  endif()
-else()
-  add_subdirectory(unicode)
+# Salts owns Unicode 17. The released Salts SDK must provide the one
+# canonical imported target before Jinja or any other consumer is configured.
+# Never compile or export the legacy local Unicode implementation here.
+if(NOT TARGET Salts::Unicode)
+  message(FATAL_ERROR "SaltsUtils requires a published Salts SDK with Salts::Unicode")
 endif()
+get_target_property(_salts_utils_unicode_imported Salts::Unicode IMPORTED)
+if(NOT _salts_utils_unicode_imported)
+  message(FATAL_ERROR "Salts::Unicode must be imported from the Salts SDK")
+endif()
+unset(_salts_utils_unicode_imported)
 add_subdirectory(jinja)
 add_subdirectory(databind)
 

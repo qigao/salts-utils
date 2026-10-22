@@ -595,8 +595,8 @@
             "name": "ci-macos-release-user",
             "inherits": "ci-native-release-user",
             "cacheVariables": {
-                "CMAKE_C_COMPILER": "gcc-15",
-                "CMAKE_CXX_COMPILER": "g++-15",
+                "CMAKE_C_COMPILER": "$penv{QIGAO_APPLE_CLANG}",
+                "CMAKE_CXX_COMPILER": "$penv{QIGAO_APPLE_CLANGXX}",
                 "CMAKE_OBJC_COMPILER": "$penv{QIGAO_APPLE_CLANG}"
             }
         },

@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-      - release/salts-utils-4.3-idlc-606
+      - 'release/salts-utils-4.3-*'
   workflow_dispatch:
     inputs:
       prepare_release:
@@ -52,7 +52,7 @@ jobs:
           if ($project -notmatch '(?m)^\s*VERSION\s+([0-9][^\s)]*)' -or $Matches[1] -ne $version) {
             throw 'CMake and package versions differ'
           }
-          if ($env:GITHUB_REF -eq 'refs/heads/release/salts-utils-4.3-idlc-606') {
+          if ($env:GITHUB_REF -match '^refs/heads/release/salts-utils-4\.3-[^/]+$') {
             $channel = (Get-Content cmake/ci/rc-channel.txt -Raw).Trim()
             if ($channel -notmatch '^rc\.[1-9][0-9]*$') { throw "Invalid RC channel: $channel" }
             $version = "$version-$channel"
@@ -61,6 +61,12 @@ jobs:
       - name: Qualify nupkg permission rewrite
         shell: bash
         run: python3 packaging/nuget/test_preserve_nupkg_permissions.py
+      - name: Qualify immutable release asset identity
+        shell: bash
+        run: bash .github/scripts/test-release-asset-identity.sh
+      - name: Verify private DataBind source and typed-error uniqueness contracts
+        shell: bash
+        run: python3 cmake/ci/verify_databind_release_source.py --self-test
   native:
     needs: scope
     if: needs.scope.outputs.has_builds == 'true'
@@ -77,7 +83,7 @@ jobs:
       tests: ${{ needs.scope.outputs.tests }}
   package:
     needs: [scope, native, tests]
-    if: (github.event_name == 'workflow_dispatch' && inputs.prepare_release) || (github.event_name == 'push' && github.ref == 'refs/heads/release/salts-utils-4.3-idlc-606')
+    if: (github.event_name == 'workflow_dispatch' && inputs.prepare_release) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/salts-utils-4.3-'))
     uses: ./.github/workflows/sdk-package.yml
     with:
       version: ${{ needs.scope.outputs.version }}
@@ -97,7 +103,7 @@ jobs:
           BUILD_RESULT: ${{ needs.native.result }}
           TEST_RESULT: ${{ needs.tests.result }}
           PREPARE_RELEASE: ${{ inputs.prepare_release || false }}
-          RC_BRANCH_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/release/salts-utils-4.3-idlc-606' }}
+          RC_BRANCH_PUSH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/salts-utils-4.3-') }}
           PACKAGE_RESULT: ${{ needs.package.result }}
         run: |
           set -euo pipefail
