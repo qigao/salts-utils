@@ -378,7 +378,7 @@ add_dependencies(test_databind_component_candidate_header_cpp
 target_include_directories(test_databind_component_candidate_header_cpp PRIVATE
   "${_databind_component_candidate_dir}")
 target_link_libraries(test_databind_component_candidate_header_cpp PRIVATE
-  Salts::ComponentPluginABI Salts::CMeta Salts::DataBind)
+  Salts::ComponentProviderABI Salts::CMeta Salts::DataBind)
 set_target_properties(test_databind_component_candidate_header_cpp PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
   FOLDER "databind/compiler/tests/plugin")
