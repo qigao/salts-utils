@@ -227,7 +227,8 @@ static int rpc_config_valid(const DataBindRpcProjectionConfig *config) {
         left->error_type[0] == '\0' || left->code == 0)
       return 0;
     for (j = 0u; j < i; ++j)
-      if (strcmp(left->error_type, config->errors[j].error_type) == 0)
+      if (strcmp(left->error_type, config->errors[j].error_type) == 0 ||
+          left->code == config->errors[j].code)
         return 0;
   }
   return 1;
@@ -502,10 +503,12 @@ static DataBindStatus http_errors_build(
 }
 
 static DataBindStatus rpc_errors_build(
-    DataBindRpcMethodPlan *plan, const DataBindRpcProjectionConfig *config) {
+    DataBindRpcMethodPlan *plan, const DataBindRpcProjectionConfig *config,
+    const char **schema_message) {
   size_t count = data_bind_binding_plan_error_count(plan->binding);
   size_t i, j;
   unsigned char *used = NULL;
+  if (schema_message != NULL) *schema_message = NULL;
   plan->error_count = count;
   if (count != 0u) {
     plan->errors = (DataBindRpcErrorMapping *)calloc(count, sizeof(*plan->errors));
@@ -528,9 +531,23 @@ static DataBindStatus rpc_errors_build(
   }
   if (!config_fields_consumed(used, config != NULL ? config->error_count : 0u)) {
     free(used);
+    if (schema_message != NULL)
+      *schema_message =
+          "RPC typed-error projection references an error not thrown by the Service operation";
     return DATA_BIND_ERR_SCHEMA;
   }
   free(used);
+  /* A wire RPC numeric code is the only remote typed-error discriminator.
+   * Reject aliases after applying implicit defaults as well as explicit
+   * projections: a first-match decoder cannot safely choose the error type. */
+  for (i = 0u; i < count; ++i)
+    for (j = 0u; j < i; ++j)
+      if (plan->errors[i].code == plan->errors[j].code) {
+        if (schema_message != NULL)
+          *schema_message =
+              "RPC typed-error numeric code collision between distinct Service errors";
+        return DATA_BIND_ERR_SCHEMA;
+      }
   return DATA_BIND_OK;
 }
 
@@ -884,14 +901,16 @@ DataBindStatus data_bind_rpc_method_plan_compile_service(
                               "Could not materialize RPC MethodPlan");
     goto fail;
   }
-  status = rpc_errors_build(plan, config);
-  if (status != DATA_BIND_OK) {
-    status = method_plan_fail(
-        diagnostic, status,
-        status == DATA_BIND_ERR_SCHEMA
-            ? "RPC typed-error projection references an error not thrown by the Service operation"
-            : "Could not allocate RPC typed-error mappings");
-    goto fail;
+  {
+    const char *schema_message = NULL;
+    status = rpc_errors_build(plan, config, &schema_message);
+    if (status != DATA_BIND_OK) {
+      status = method_plan_fail(
+          diagnostic, status,
+          status == DATA_BIND_ERR_SCHEMA ? schema_message
+                                        : "Could not allocate RPC typed-error mappings");
+      goto fail;
+    }
   }
 
   free(used);

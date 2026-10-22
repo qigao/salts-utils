@@ -1,3 +1,11 @@
+# Salts core owns the canonical Unicode 17 API. If that target was
+# imported before entering this directory, reuse it rather than compiling and
+# exporting a second implementation under the same Salts::Unicode name.
+# The local implementation remains available for older/minimal core SDKs.
+if(TARGET Salts::Unicode)
+  return()
+endif()
+
 set(SALTS_UNICODE_LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/src/salts_unicode.re)
 set(SALTS_UNICODE_LEXER_GEN ${CMAKE_CURRENT_BINARY_DIR}/salts_unicode_gen.c)
 

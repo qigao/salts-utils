@@ -694,6 +694,93 @@ spec("DataBind canonical Service native lowering") {
     data_bind_free(codec);
   }
 
+  it("rejects ambiguous RPC typed-error numeric codes before native decoding") {
+    const DataBindRpcErrorMapping duplicate_codes[] = {
+        {sizeof(DataBindRpcErrorMapping), "NotFound", -32004},
+        {sizeof(DataBindRpcErrorMapping), "PermissionDenied", -32004}};
+    const DataBindRpcErrorMapping mapped_to_default = {
+        sizeof(DataBindRpcErrorMapping), "NotFound", -32000};
+    const DataBindRpcErrorMapping unique_first = {
+        sizeof(DataBindRpcErrorMapping), "NotFound", -32004};
+    const DataBindRpcErrorMapping unique_both[] = {
+        {sizeof(DataBindRpcErrorMapping), "NotFound", -32004},
+        {sizeof(DataBindRpcErrorMapping), "PermissionDenied", -32003}};
+    DataBindRpcProjectionConfig config =
+        (DataBindRpcProjectionConfig)DATA_BIND_RPC_PROJECTION_CONFIG_INIT;
+    DataBindNativeTypeBinding request = {0};
+    DataBindNativeTypeBinding response = {0};
+    DataBindServiceNativeBinding native = {0};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindRpcMethodPlan *plan = NULL;
+    DataBindRpcErrorMapping mapped =
+        (DataBindRpcErrorMapping)DATA_BIND_RPC_ERROR_MAPPING_INIT;
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_4_Find__databind_native_binding(
+            &request, &response, &native, &error), DATA_BIND_OK);
+    check_equal(ServiceNative_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+
+    /* The projection itself aliases different declared errors, independent
+     * of allocator state or transport runtime: INVALID_ARG, no partial plan. */
+    config.errors = duplicate_codes;
+    config.error_count = 2u;
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Find", &config, &native,
+        &plan, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    check_null(plan);
+
+    /* The default -32000 for each unmapped thrown error is noninjective.
+     * This must reject with a precise SCHEMA diagnostic, not decode as the
+     * first error type or silently turn into an untyped/fallback outcome. */
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Find", NULL, &native,
+        &plan, &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+    check_equal(diagnostic.status, DATA_BIND_ERR_SCHEMA);
+    check_true(strstr(diagnostic.message, "numeric code collision") != NULL);
+
+    /* One explicit mapping can still alias an implicitly defaulted error. */
+    config.errors = &mapped_to_default;
+    config.error_count = 1u;
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Find", &config, &native,
+        &plan, &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+    check_true(strstr(diagnostic.message, "numeric code collision") != NULL);
+
+    /* A nondefault explicit code and the other default are distinct. */
+    config.errors = &unique_first;
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Find", &config, &native,
+        &plan, &diagnostic), DATA_BIND_OK);
+    check_not_null(plan);
+    check_equal(data_bind_rpc_method_plan_error_count(plan), (size_t)2u);
+    check(data_bind_rpc_method_plan_error_at(plan, 0u, &mapped));
+    check_equal(mapped.code, -32004);
+    check(data_bind_rpc_method_plan_error_at(plan, 1u, &mapped));
+    check_equal(mapped.code, -32000);
+    data_bind_rpc_method_plan_free(plan);
+    plan = NULL;
+
+    /* Fully specified unique codes preserve the existing typed ABI. */
+    config.errors = unique_both;
+    config.error_count = 2u;
+    check_equal(data_bind_rpc_method_plan_compile_service(
+        codec, "Calc", "Find", &config, &native,
+        &plan, &diagnostic), DATA_BIND_OK);
+    check_not_null(plan);
+    check(data_bind_rpc_method_plan_error_at(plan, 0u, &mapped));
+    check_equal(mapped.code, -32004);
+    check(data_bind_rpc_method_plan_error_at(plan, 1u, &mapped));
+    check_equal(mapped.code, -32003);
+    data_bind_rpc_method_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("maps canonical BindingPlan outcomes through HTTP and RPC MethodPlans") {
     const DataBindHttpErrorMapping http_errors[] = {
         {sizeof(DataBindHttpErrorMapping), "NotFound", 404},
