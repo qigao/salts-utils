@@ -84,6 +84,11 @@ target_include_directories(
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
           ${CMAKE_CURRENT_SOURCE_DIR}/src/parser
           ${CMAKE_CURRENT_BINARY_DIR})
+# Jinja borrows the sole Unicode 17 owner from the imported Salts SDK.
+# Reject a missing local-build dependency instead of synthesizing any fallback.
+if(NOT TARGET Salts::Unicode)
+  message(FATAL_ERROR "Jinja requires canonical Salts::Unicode from Salts.Native")
+endif()
 target_link_libraries(jinja_cmeta
   PUBLIC Salts::CMeta Salts::Core
   PRIVATE Salts::Unicode Salts::CSTL)
