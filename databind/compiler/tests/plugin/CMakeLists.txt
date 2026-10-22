@@ -371,6 +371,84 @@ add_test(NAME test_databind_component_candidate_dso_c11
 set_tests_properties(test_databind_component_candidate_dso_c11 PROPERTIES
   LABELS "databind;compiler;component;real-dso;no-fallback;c11")
 
+# Real negative Provider DSOs are derived from the exact canonical generated
+# source. Each variant changes exactly one manifest/binding token; the host
+# still uses the canonical Salts ServiceHost and never a copied runtime.
+set(_databind_component_candidate_negative_dir
+  "${_databind_component_candidate_dir}/negative")
+foreach(mode IN ITEMS export contract binding)
+  set(_negative_source
+    "${_databind_component_candidate_negative_dir}/contract_plugin.component.bad_${mode}.c")
+  add_custom_command(
+    OUTPUT "${_negative_source}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+      "${_databind_component_candidate_negative_dir}"
+    COMMAND "${CMAKE_COMMAND}"
+      "-DSOURCE=${_databind_component_candidate_source}"
+      "-DOUTPUT=${_negative_source}"
+      "-DMODE=${mode}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/make_component_provider_negative.cmake"
+    DEPENDS "${_databind_component_candidate_source}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/make_component_provider_negative.cmake"
+    VERBATIM)
+  set_source_files_properties("${_negative_source}" PROPERTIES GENERATED TRUE)
+  add_library(databind_component_candidate_bad_${mode}_provider SHARED
+    "${_databind_component_candidate_header}"
+    "${_negative_source}"
+    "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_business.c")
+  add_dependencies(databind_component_candidate_bad_${mode}_provider
+    databind_component_candidate_generated)
+  target_compile_features(databind_component_candidate_bad_${mode}_provider
+    PRIVATE c_std_11)
+  target_include_directories(databind_component_candidate_bad_${mode}_provider
+    PRIVATE "${_databind_component_candidate_dir}")
+  target_link_libraries(databind_component_candidate_bad_${mode}_provider PRIVATE
+    Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
+  set_target_properties(databind_component_candidate_bad_${mode}_provider PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    PREFIX "" OUTPUT_NAME "contract_component_candidate_bad_${mode}"
+    FOLDER "databind/compiler/tests/plugin/negative-dso")
+endforeach()
+
+add_library(databind_component_candidate_bad_kind_provider SHARED
+  test_component_provider_candidate_negative_kind.c)
+target_compile_features(databind_component_candidate_bad_kind_provider
+  PRIVATE c_std_11)
+target_link_libraries(databind_component_candidate_bad_kind_provider PRIVATE
+  Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta)
+set_target_properties(databind_component_candidate_bad_kind_provider PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  PREFIX "" OUTPUT_NAME "contract_component_candidate_bad_kind"
+  FOLDER "databind/compiler/tests/plugin/negative-dso")
+
+add_executable(test_databind_component_candidate_negative_dso_c11
+  test_component_provider_candidate_negative_dso.c)
+target_include_directories(test_databind_component_candidate_negative_dso_c11
+  PRIVATE "${_databind_component_candidate_dir}")
+target_compile_definitions(test_databind_component_candidate_negative_dso_c11
+  PRIVATE
+  DATABIND_COMPONENT_PROVIDER_GOOD_DSO_PATH="$<TARGET_FILE:databind_component_candidate_provider>"
+  DATABIND_COMPONENT_PROVIDER_BAD_EXPORT_DSO_PATH="$<TARGET_FILE:databind_component_candidate_bad_export_provider>"
+  DATABIND_COMPONENT_PROVIDER_BAD_CONTRACT_DSO_PATH="$<TARGET_FILE:databind_component_candidate_bad_contract_provider>"
+  DATABIND_COMPONENT_PROVIDER_BAD_BINDING_DSO_PATH="$<TARGET_FILE:databind_component_candidate_bad_binding_provider>"
+  DATABIND_COMPONENT_PROVIDER_BAD_KIND_DSO_PATH="$<TARGET_FILE:databind_component_candidate_bad_kind_provider>")
+target_link_libraries(test_databind_component_candidate_negative_dso_c11 PRIVATE
+  Salts::ServiceHost Salts::Plugin Salts::CMeta Salts::DataBind)
+add_dependencies(test_databind_component_candidate_negative_dso_c11
+  databind_component_candidate_provider
+  databind_component_candidate_bad_export_provider
+  databind_component_candidate_bad_contract_provider
+  databind_component_candidate_bad_binding_provider
+  databind_component_candidate_bad_kind_provider)
+set_target_properties(test_databind_component_candidate_negative_dso_c11 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  FOLDER "databind/compiler/tests/plugin")
+add_test(NAME test_databind_component_candidate_negative_dso_c11
+  COMMAND test_databind_component_candidate_negative_dso_c11)
+set_tests_properties(test_databind_component_candidate_negative_dso_c11 PROPERTIES
+  LABELS "databind;compiler;component;real-dso;negative;rollback;recovery;c11"
+  TIMEOUT 90)
+
 add_executable(test_databind_component_candidate_header_cpp
   test_component_provider_candidate_cpp.cpp)
 add_dependencies(test_databind_component_candidate_header_cpp
