@@ -41,7 +41,7 @@ jobs:
         if: matrix.family != 'windows'
         shell: bash
         run: ctest --preset '${{ matrix.preset }}' --no-tests=error --output-on-failure --timeout 180 --parallel 2
-      - name: Run DataBind typed-error cleanup tests with ASan/UBSan
+      - name: Run DataBind and Process fault-path tests with ASan/UBSan
         if: matrix.id == 'linux-release'
         shell: bash
         env:
@@ -52,9 +52,9 @@ jobs:
           # Use the dedicated debug/sanitizer tree; do not mutate the archived
           # Release graph exercised by the full CTest job.
           cmake --preset ci-linux-dev-user -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
-          cmake --build build/ci-linux-dev --target test_databind_service_native_cleanup_runtime test_databind_service_native_cleanup_success test_databind_service_native_cleanup_init_failure --parallel 2
+          cmake --build build/ci-linux-dev --target test_databind_service_native_cleanup_runtime test_databind_service_native_cleanup_success test_databind_service_native_cleanup_init_failure cflow_process_test cflow_process_fault_test --parallel 2
           export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/build/ci-linux-dev/bin:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/debug/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:$SALTS_ROOT/lib:${LD_LIBRARY_PATH:-}"
-          ctest --test-dir build/ci-linux-dev -R '^test_databind_service_native_cleanup_(runtime|success|init_failure)$' --no-tests=error --output-on-failure --timeout 180 --parallel 1
+          ctest --test-dir build/ci-linux-dev -R '^(test_databind_service_native_cleanup_(runtime|success|init_failure)|cflow_process_(fault_)?test)$' --no-tests=error --output-on-failure --timeout 180 --parallel 1
       - name: Qualify relocated installed DataBind MethodPlan C11 consumer
         if: matrix.id == 'linux-release'
         shell: bash
@@ -125,7 +125,20 @@ jobs:
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$prefix;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET"
           cmake --build "$RUNNER_TEMP/unicode-paired-installed-build" --parallel 2
           ctest --test-dir "$RUNNER_TEMP/unicode-paired-installed-build" \
-            -R '^unicode_paired_(c11|cpp17)$' \
+            -R '^unicode_paired_(c11|cpp17)        if: matrix.family == 'windows'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          ctest --preset "${{ matrix.preset }}" --no-tests=error --output-on-failure --timeout 180 --parallel 2
+          if errorlevel 1 exit /b 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ctest-${{ matrix.id }}
+          path: ${{ matrix.build_dir }}/Testing/Temporary
+          if-no-files-found: warn
+ \
             --no-tests=error --output-on-failure --timeout 120
 
       - name: Run complete Windows CTest graph

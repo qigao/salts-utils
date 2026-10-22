@@ -58,6 +58,15 @@ typedef struct cflow_process_stats {
   int cleanup_error;
 } cflow_process_stats;
 
+/*
+ * One lifecycle driver owns submit/cancel, run_ready, close, shutdown_step,
+ * quiescence and destroy, including retainer transfer. Do not interleave
+ * native owner turns or destroy while a caller or observer is active.
+ * Concurrent read-only get_stats() is supported while the Process is live,
+ * but observers must be stopped/joined BEFORE destroy()/owner handoff.
+ * Callback and buffer lifetimes end only after terminal acknowledgment.
+ */
+
 /**
  * Starts one process with three adapter-owned asynchronous standard streams.
  * options and config are borrowed only for the call. Capture/pipe flags,
@@ -112,6 +121,8 @@ int cflow_process_run_ready(cflow_process *process, size_t max_steps, size_t *pr
  * The Actor counters and endpoint fields are individually consistent; callers
  * coordinating concurrent producers must treat the combined value as an
  * observational snapshot rather than one cross-component transaction.
+ * Endpoint and cleanup-error fields are synchronized with owner publication;
+ * this call is not safe concurrently with Process destruction.
  */
 bool cflow_process_get_stats(const cflow_process *process, cflow_process_stats *out);
 
@@ -121,9 +132,36 @@ bool cflow_process_get_stats(const cflow_process *process, cflow_process_stats *
  */
 int cflow_process_close(cflow_process *process);
 
+/*
+ * One bounded, single-driver shutdown phase. The caller MUST retain the
+ * process handle, completion_user, all accepted I/O buffers, and any other
+ * borrowed state whenever this returns an error or SALTS_EBUSY. The function
+ * never destroys the process and never transfers its ownership.
+ *
+ * max_steps bounds Actor/Executor transitions; NativeIO observation is
+ * nonblocking. A user callback or OS termination call is not subject to a
+ * wall-clock deadline, so this is NOT a lease-safe asynchronous handoff.
+ *
+ * SALTS_OK means quiescent and eligible for a separate destroy().
+ * SALTS_EBUSY means more work remains, with no terminal driver error.
+ * Other statuses report close/driver errors; retained ownership is required.
+ * out_quiescent is set even on a reported close/driver error.
+ */
+int cflow_process_shutdown_step(cflow_process *process, size_t max_steps,
+                                size_t *out_progressed, bool *out_quiescent);
+
 bool cflow_process_is_quiescent(const cflow_process *process);
 
-/** Destroys only after close, I/O drain, endpoint close, and process terminal. */
+/**
+ * Destroys only after close, I/O drain, endpoint close, and process terminal.
+ * If final NativeIO/Executor teardown refuses destruction, the Process
+ * handle and all borrowed callback/buffer storage remain owned by the caller.
+ * Retain it in the same owner/retainer and retry on a later owner turn; never
+ * force-free it on SALTS_EBUSY or another native error. After finalization
+ * begins, use shutdown_step/is_quiescent/destroy only, not new I/O admission.
+ * A concurrent driver turn or post-finalization run_ready fails closed with
+ * SALTS_EBUSY; all lifecycle mutation still requires exclusive owner turns.
+ */
 int cflow_process_destroy(cflow_process *process);
 
 #ifdef __cplusplus
