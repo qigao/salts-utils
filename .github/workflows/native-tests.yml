@@ -125,20 +125,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$prefix;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET"
           cmake --build "$RUNNER_TEMP/unicode-paired-installed-build" --parallel 2
           ctest --test-dir "$RUNNER_TEMP/unicode-paired-installed-build" \
-            -R '^unicode_paired_(c11|cpp17)        if: matrix.family == 'windows'
-        shell: cmd
-        run: |
-          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-          if errorlevel 1 exit /b 1
-          ctest --preset "${{ matrix.preset }}" --no-tests=error --output-on-failure --timeout 180 --parallel 2
-          if errorlevel 1 exit /b 1
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ctest-${{ matrix.id }}
-          path: ${{ matrix.build_dir }}/Testing/Temporary
-          if-no-files-found: warn
- \
+            -R '^unicode_paired_(c11|cpp17)$' \
             --no-tests=error --output-on-failure --timeout 120
 
       - name: Run complete Windows CTest graph
