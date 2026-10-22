@@ -30,13 +30,13 @@ string(REPLACE "${old}" "${new}" content "${content}")
 # Each loaded DSO needs a unique Plugin identity so duplicate-plugin rejection
 # cannot mask the one negative condition under test. The component stable ID
 # remains canonical; replace only the second occurrence used as Plugin ID.
-set(plugin_id_old "\\"WasmRuntime.Calculator\\"")
+set(plugin_id_old "\"WasmRuntime.Calculator\"")
 if(MODE STREQUAL "export")
-  set(plugin_id_new "\\"WasmRuntime.Calculator.NegativeExport\\"")
+  set(plugin_id_new "\"WasmRuntime.Calculator.NegativeExport\"")
 elseif(MODE STREQUAL "contract")
-  set(plugin_id_new "\\"WasmRuntime.Calculator.NegativeContract\\"")
+  set(plugin_id_new "\"WasmRuntime.Calculator.NegativeContract\"")
 else()
-  set(plugin_id_new "\\"WasmRuntime.Calculator.NegativeBinding\\"")
+  set(plugin_id_new "\"WasmRuntime.Calculator.NegativeBinding\"")
 endif()
 string(FIND "${content}" "${plugin_id_old}" plugin_first)
 if(plugin_first LESS 0)
