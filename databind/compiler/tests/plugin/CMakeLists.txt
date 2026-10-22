@@ -325,16 +325,16 @@ set_source_files_properties(
   "${_databind_component_candidate_header}"
   "${_databind_component_candidate_source}" PROPERTIES GENERATED TRUE)
 
-# Real DSO/host test requires an explicitly supplied upstream Salts
-# ComponentPlugin source/package target. Its ABI is deliberately not part
-# of the currently published Salts.Native SDK and must not be shadowed here.
+# Real DSO/host test requires the exact upstream Salts ServiceHost and
+# ComponentProviderABI targets. The canonical runtime is source-built by the
+# separate exact-source gate; never shadow its ABI or add a second runtime.
 option(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO
-  "Run source-qualified unpublished Salts ComponentPlugin DSO tests" OFF)
+  "Run source-qualified canonical Salts ServiceHost Provider DSO tests" OFF)
 if(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO)
-  if(NOT TARGET Salts::ComponentPluginABI OR
-     NOT TARGET Salts::ComponentPlugin)
+  if(NOT TARGET Salts::ComponentProviderABI OR
+     NOT TARGET Salts::ServiceHost)
     message(FATAL_ERROR
-      "ComponentProvider DSO gate requires exact Salts ComponentPluginABI and ComponentPlugin targets; no fallback or shadow ABI allowed")
+      "ComponentProvider DSO gate requires exact Salts::ComponentProviderABI and Salts::ServiceHost targets; no fallback or shadow ABI allowed")
   endif()
 add_library(databind_component_candidate_provider SHARED
   "${_databind_component_candidate_header}"
@@ -346,7 +346,7 @@ target_compile_features(databind_component_candidate_provider PRIVATE c_std_11)
 target_include_directories(databind_component_candidate_provider PRIVATE
   "${_databind_component_candidate_dir}")
 target_link_libraries(databind_component_candidate_provider PRIVATE
-  Salts::ComponentPluginABI Salts::PluginABI Salts::CMeta Salts::DataBind)
+  Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
 set_target_properties(databind_component_candidate_provider PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   PREFIX "" OUTPUT_NAME "contract_component_candidate"
@@ -362,7 +362,7 @@ target_compile_definitions(test_databind_component_candidate_dso_c11 PRIVATE
   GENERATED_COMPONENT_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_provider>"
   DATABIND_COMPONENT_PROVIDER_STRICT_SOURCE=1)
 target_link_libraries(test_databind_component_candidate_dso_c11 PRIVATE
-  Salts::ComponentPlugin Salts::Plugin Salts::CMeta Salts::DataBind)
+  Salts::ServiceHost Salts::Plugin Salts::CMeta Salts::DataBind)
 set_target_properties(test_databind_component_candidate_dso_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   FOLDER "databind/compiler/tests/plugin")
