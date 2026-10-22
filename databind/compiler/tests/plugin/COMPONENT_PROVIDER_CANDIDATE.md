@@ -23,7 +23,7 @@ FunctionMeta/FunctionAbi remains authoritative; no new atom/type identity is
 synthesized from Binary-facing naming or display strings. The canonical
 `cmeta_component_desc.stable_id` remains `WasmRuntime.Calculator`.
 Its original `salts.component.provider.v1` binding is leased and exercised
-by the existing Salts ComponentPlugin generation/Scope/drain host.
+by the canonical Salts ServiceHost generation/Scope/drain host.
 
 **Bounded first slice:** one selected Service with exactly one non-throwing
 operation. Multiple operations, typed errors, empty/ambiguous Components,
@@ -35,11 +35,11 @@ The **default source-only** qualification runs the generator and checks
 complete FR2/ProviderBinding emission and negative shape admission. The
 **real DSO qualification is a separate explicit opt-in**:
 `-DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON`, and requires the
-exact unpublished upstream `Salts::ComponentPluginABI` and
-`Salts::ComponentPlugin` targets; missing targets are a configuration error,
+exact source-built upstream `Salts::ComponentProviderABI` and
+`Salts::ServiceHost` targets; missing targets are a configuration error,
 not permission to invent duplicate ABI headers or a fallback runtime. When
 those targets are supplied, C11/C++17 and real Plugin load/lease,
-Component graph, typed invocation, Scope BUSY→drain and unload are exercised. Candidate
+Configurator graph, typed invocation, Scope BUSY→drain and unload are exercised. Candidate
 runtime ownership stays in Salts. Public `salts-idlc` flags and CMake
 `salts_idl_target` semantics remain unchanged until a separate integration
 review grants an additive opt-in artifact entry.
@@ -62,16 +62,18 @@ normal CI. No alternate C++ record runtime or type provider is introduced.
 
 ## Current-master owner refresh (2026-10-22)
 
-The test-only branch has been refreshed on current SaltsUtils master
-`ad56e12da102c51206f5b37731456780d248b9f4` at merge head
-`d8b1575b3facc6b951c3e0b85491d41059a98d93`. The root CMake file is the
-current master version: SaltsUtils requires the **single imported**
-`Salts::Unicode` target and does not rebuild or export the legacy local
-Unicode implementation. The old conditional `add_subdirectory(unicode)`
-hunk was intentionally dropped during the refresh.
+The test-only branch is based on current SaltsUtils master
+`ad56e12da102c51206f5b37731456780d248b9f4`. The exact-source Provider gate
+now pins current Salts master `a51947d241a60bc92e92efa8fd6de1d0bb2fbac2`
+rather than the stale pre-ServiceHost source
+`23032bfe124df327317ce9b4d132054e99b2c0cb`. It builds and installs the
+canonical `Salts::Configurator`, `Salts::ServiceHost`, and
+`Salts::ComponentProviderABI` from that exact source, verifies the installed
+ABI epoch/layout markers and exported targets, then compiles the generated
+Provider DSO and host against those installed exports.
 
-This is only a branch refresh; exact-head native/CTest and the explicit
-ComponentProvider DSO gate must run again. The official published Salts SDK
-still does not contain the required ComponentPlugin ABI for this candidate,
-so the PR remains **DRAFT / DO NOT MERGE / DO NOT PUBLISH**. No production
-default or installed package changes are authorized.
+The official published Salts SDK still does not contain the current canonical
+ServiceHost/Configurator ABI. Therefore this remains an exact-source candidate
+gate, not an installed immutable-SDK release claim. The PR remains
+**DRAFT / DO NOT MERGE / DO NOT PUBLISH**; production defaults and package
+publication are unchanged.
