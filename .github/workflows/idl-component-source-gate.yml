@@ -70,6 +70,7 @@ jobs:
           cmake --preset release-linux-ninja \
             -S "$GITHUB_WORKSPACE/build/component-source/salts" \
             -B build/component-source/build-salts \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" \
             -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
           cmake --build build/component-source/build-salts --parallel 2
