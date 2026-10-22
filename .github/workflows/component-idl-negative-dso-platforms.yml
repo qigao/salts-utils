@@ -14,13 +14,13 @@ permissions:
   packages: read
 
 concurrency:
-  group: component-idl-negative-dso-platforms-${ github.head_ref || github.ref_name }}
+  group: component-idl-negative-dso-platforms-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   native-hosts:
-    name: Exact Salts source + negative Provider DSO (${ matrix.os }})
-    runs-on: ${ matrix.runner }}
+    name: Exact Salts source + negative Provider DSO (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     strategy:
       fail-fast: false
@@ -40,25 +40,25 @@ jobs:
             utils_preset: ci-win-release-user
     env:
       EXPECTED_SALTS: a51947d241a60bc92e92efa8fd6de1d0bb2fbac2
-      EXPECTED_SU: ${ github.event.pull_request.head.sha || github.sha }}
-      QIGAO_SDK_RID: ${ matrix.rid }}
-      QIGAO_TARGET_TRIPLET: ${ matrix.triplet }}
-      QIGAO_HOST_TRIPLET: ${ matrix.triplet }}
-      VCPKG_INSTALLED_DIR: ${ github.workspace }}/vcpkg_installed
-      CCACHE_DIR: ${ github.workspace }}/build/component-platform/ccache
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: ${{ matrix.rid }}
+      QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
+      QIGAO_HOST_TRIPLET: ${{ matrix.triplet }}
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
+      CCACHE_DIR: ${{ github.workspace }}/build/component-platform/ccache
       CCACHE_COMPILERCHECK: content
-      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-dso-v1-${ matrix.os }}
-      SALTS_PRESET: ${ matrix.salts_preset }}
-      UTILS_PRESET: ${ matrix.utils_preset }}
-      SALTS_ROOT: ${ runner.temp }}/idl-component-salts
-      PKG_ROOT: ${ runner.temp }}/idl-component-utils
-      SALTS_SOURCE: ${ github.workspace }}/build/component-platform/salts
-      SALTS_BUILD: ${ github.workspace }}/build/component-platform/build-salts
-      UTILS_BUILD: ${ github.workspace }}/build/component-platform/build-utils
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-dso-v1-${{ matrix.os }}
+      SALTS_PRESET: ${{ matrix.salts_preset }}
+      UTILS_PRESET: ${{ matrix.utils_preset }}
+      SALTS_ROOT: ${{ runner.temp }}/idl-component-salts
+      PKG_ROOT: ${{ runner.temp }}/idl-component-utils
+      SALTS_SOURCE: ${{ github.workspace }}/build/component-platform/salts
+      SALTS_BUILD: ${{ github.workspace }}/build/component-platform/build-salts
+      UTILS_BUILD: ${{ github.workspace }}/build/component-platform/build-utils
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${ env.EXPECTED_SU }}
+          ref: ${{ env.EXPECTED_SU }}
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
@@ -156,7 +156,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: component-idl-negative-dso-${ matrix.os }}-${ github.run_id }}
+          name: component-idl-negative-dso-${{ matrix.os }}-${{ github.run_id }}
           path: |
             build/component-platform/evidence/
             build/component-platform/build-utils/Testing/Temporary/
