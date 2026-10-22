@@ -98,10 +98,12 @@ def audit_compiles(build_dir, roots, mode, required_relpaths=(), expected_counts
     if checked == 0:
         fail(f"no built objects audited under {[str(r) for r in roots]}")
     if expected_counts:
-        for root, minimum in expected_counts.items():
-            count = len(compiled.get(root, {}))
+        source_root = roots[0]
+        paths = set(compiled.get(source_root, {}))
+        for prefix, minimum in expected_counts.items():
+            count = sum(1 for rel in paths if rel.startswith(prefix.rstrip("/") + "/"))
             if count < minimum:
-                fail(f"{root}: only {count} built instrumented source objects; need >= {minimum}")
+                fail(f"{prefix}: only {count} built instrumented source objects; need >= {minimum}")
     for rel in required_relpaths:
         source = (roots[0] / rel).resolve()
         if rel not in compiled.get(roots[0], {}):
@@ -157,9 +159,8 @@ def main():
     if sha != EXACT_SALTS:
         fail(f"unexpected Salts SHA {sha}; expected {EXACT_SALTS}")
     if args.phase == "salts":
-        report = audit_compiles(build_dir, [source_root], args.mode, expected_counts={
-            (source_root / prefix).resolve(): minimum for prefix, minimum in EXPECTED_UNITS.items()
-        })
+        report = audit_compiles(build_dir, [source_root], args.mode,
+                                expected_counts=EXPECTED_UNITS)
         for target in ("salts", "salts_service_host", "salts_configurator", "cmeta_plugin", "cmeta_cmeta", "cmeta_platform"):
             detail, artifacts, link_text = target_detail(build_dir, target)
             if target == "salts":
