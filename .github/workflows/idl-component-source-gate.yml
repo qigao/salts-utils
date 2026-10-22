@@ -235,6 +235,7 @@ jobs:
           cmake --build "$utils_build" --parallel 2 \
             --target databind_component_candidate_provider \
                      test_databind_component_candidate_dso_c11 \
+                     test_databind_component_candidate_negative_dso_c11 \
                      test_databind_component_candidate_header_cpp \
                      databind_component_candidate_codegen_tool
           python3 cmake/ci/verify-component-provider-sanitizers.py \
@@ -289,4 +290,3 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
           test "$(git -C build/component-sanitizer/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
           test -z "$(git status --porcelain --untracked-files=no)"
-
