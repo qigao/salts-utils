@@ -141,7 +141,14 @@ int cflow_process_shutdown_step(cflow_process *process, size_t max_steps,
 
 bool cflow_process_is_quiescent(const cflow_process *process);
 
-/** Destroys only after close, I/O drain, endpoint close, and process terminal. */
+/**
+ * Destroys only after close, I/O drain, endpoint close, and process terminal.
+ * If final NativeIO/Executor teardown refuses destruction, the Process
+ * handle and all borrowed callback/buffer storage remain owned by the caller.
+ * Retain it in the same owner/retainer and retry on a later owner turn; never
+ * force-free it on SALTS_EBUSY or another native error. After finalization
+ * begins, use shutdown_step/is_quiescent/destroy only, not new I/O admission.
+ */
 int cflow_process_destroy(cflow_process *process);
 
 #ifdef __cplusplus
