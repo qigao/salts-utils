@@ -143,7 +143,29 @@ jobs:
             --salts-prefix "$SALTS_ROOT" \
             --evidence "build/component-sanitizer/evidence/consumer-${{ matrix.mode }}.json"
           ctest --test-dir "$utils_build" \
-            -R '^test_databind_component_candidate_(dso_c11|header_cpp|codegen_content)$' \
+            -R '^test_databind_component_candidate_(dso_c11|negative_dso_c11|header_cpp|codegen_content) \
+            --repeat until-fail:5 --no-tests=error \
+            --output-on-failure --timeout 120 \
+            --output-log "build/component-sanitizer/evidence/ctest-${{ matrix.mode }}.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: component-idl-sanitizers-${{ matrix.mode }}-${{ github.run_id }}
+          path: |
+            build/component-sanitizer/evidence/
+            build/component-sanitizer/salts-build/compile_commands.json
+            build/component-sanitizer/utils-${{ matrix.mode }}/compile_commands.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Assert source checkout unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test "$(git -C build/component-sanitizer/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
+          test -z "$(git status --porcelain --untracked-files=no)"
+ \
             --repeat until-fail:5 --no-tests=error \
             --output-on-failure --timeout 120 \
             --output-log "build/component-sanitizer/evidence/ctest-${{ matrix.mode }}.log"
