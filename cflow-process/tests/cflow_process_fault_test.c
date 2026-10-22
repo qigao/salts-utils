@@ -118,6 +118,33 @@ static void fault_completed(void *user, cflow_io_request_id request_id,
   ++probe->callbacks;
 }
 
+typedef struct fault_stats_observer {
+  cflow_process *process;
+  cmeta_mutex_t gate;
+  bool stop;
+  bool failed;
+  size_t samples;
+} fault_stats_observer;
+
+static void fault_collect_stats(void *user) {
+  fault_stats_observer *observer = (fault_stats_observer *)user;
+  for (;;) {
+    cflow_process_stats stats = {0};
+    bool stop;
+    bool valid;
+    cmeta_mutex_lock(&observer->gate);
+    stop = observer->stop;
+    cmeta_mutex_unlock(&observer->gate);
+    if (stop) break;
+    valid = cflow_process_get_stats(observer->process, &stats);
+    cmeta_mutex_lock(&observer->gate);
+    if (!valid) observer->failed = true;
+    ++observer->samples;
+    cmeta_mutex_unlock(&observer->gate);
+    cmeta_thread_yield();
+  }
+}
+
 static void fault_process_options(cmeta_process_options_t *options) {
 #if defined(_WIN32)
   static const char *args[] = {
@@ -343,6 +370,77 @@ spec("CFlow Process private lifecycle faults") {
     check_equal(probe.callbacks, (size_t)1u);
     check_equal(probe.ids[0], read.request_id);
     check_equal(probe.kinds[0], CFLOW_IO_COMPLETION_CANCELLED);
+    check_equal(cflow_process_destroy(&process), SALTS_OK);
+    check_null(process.impl);
+  }
+
+  it("publishes consistent status snapshots to a concurrent observer during close") {
+    cmeta_process_options_t options;
+    cflow_process process = {0};
+    fault_probe probe = {0};
+    cflow_process_config config = fault_config(&probe);
+    fault_stats_observer observer = {0};
+    cmeta_thread_t watcher = NULL;
+    size_t attempts;
+    const uint64_t started = cmeta_hrtime();
+
+    fault_process_options(&options);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    observer.process = &process;
+    cmeta_mutex_init(&observer.gate);
+    check_not_null(observer.gate);
+    check_equal(cmeta_thread_create(&watcher, fault_collect_stats, &observer), SALTS_OK);
+    for (attempts = 0u; attempts < 64u; ++attempts) cmeta_thread_yield();
+    check_equal(cflow_process_close(&process), SALTS_OK);
+    while (!cflow_process_is_quiescent(&process)) {
+      size_t progressed = 0u;
+      bool quiescent = false;
+      const int status = cflow_process_shutdown_step(
+          &process, 32u, &progressed, &quiescent);
+      check_true(status == SALTS_OK || status == SALTS_EBUSY);
+      check_true(cmeta_hrtime() - started < UINT64_C(5000000000));
+      if (progressed == 0u) cmeta_thread_yield();
+    }
+    cmeta_mutex_lock(&observer.gate);
+    observer.stop = true;
+    cmeta_mutex_unlock(&observer.gate);
+    check_equal(cmeta_thread_join(&watcher), SALTS_OK);
+    cmeta_thread_destroy(&watcher);
+    check_false(observer.failed);
+    check_greater(observer.samples, (size_t)0u);
+    cmeta_mutex_destroy(&observer.gate);
+    check_equal(cflow_process_destroy(&process), SALTS_OK);
+    check_null(process.impl);
+  }
+
+  it("refuses Process destruction during a live driver turn") {
+    cmeta_process_options_t options;
+    cflow_process process = {0};
+    fault_probe probe = {0};
+    cflow_process_config config = fault_config(&probe);
+    cflow_process_impl *impl;
+    size_t progressed = SIZE_MAX;
+    bool quiescent = true;
+
+    fault_process_options(&options);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    check_equal(cflow_process_close(&process), SALTS_OK);
+    check_equal(fault_drive_to_quiescence(&process), SALTS_OK);
+    impl = (cflow_process_impl *)process.impl;
+    check_not_null(impl);
+    cmeta_mutex_lock(&impl->gate);
+    impl->driver_active = true; /* test-only reentrant driver ownership */
+    cmeta_mutex_unlock(&impl->gate);
+    check_false(cflow_process_is_quiescent(&process));
+    check_equal(cflow_process_destroy(&process), SALTS_EBUSY);
+    check_not_null(process.impl);
+    check_equal(cflow_process_shutdown_step(
+        &process, 1u, &progressed, &quiescent), SALTS_EBUSY);
+    check_false(quiescent);
+    cmeta_mutex_lock(&impl->gate);
+    impl->driver_active = false;
+    cmeta_mutex_unlock(&impl->gate);
+    check_true(cflow_process_is_quiescent(&process));
     check_equal(cflow_process_destroy(&process), SALTS_OK);
     check_null(process.impl);
   }

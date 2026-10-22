@@ -56,6 +56,7 @@ struct cflow_process_impl {
   int cleanup_error;
   bool close_requested;
   bool driver_active;
+  bool teardown_started;
 };
 
 typedef struct cflow_process_pipe_pair {
@@ -208,7 +209,10 @@ static bool process_native_backend_kind(cflow_io_native_backend_kind kind,
   return false;
 }
 
-static void process_record_cleanup_error(cflow_process_impl *impl, int status) {
+/* All endpoint fields and cleanup_error are published under impl->gate.
+ * Only the lifecycle owner mutates them. A parallel stats observer may read
+ * an individually consistent snapshot, but must stop before destroy(). */
+static void process_record_cleanup_error_locked(cflow_process_impl *impl, int status) {
   if (status != SALTS_OK && status != SALTS_ENOENT && impl->cleanup_error == SALTS_OK)
     impl->cleanup_error = status;
 }
@@ -218,15 +222,17 @@ static void process_close_parent_endpoint(cflow_process_impl *impl,
                                           native_io_endpoint *native) {
   int status;
   if (impl == NULL || endpoint == NULL || native == NULL) return;
+  cmeta_mutex_lock(&impl->gate);
   if (cflow_io_pipe_endpoint_is_valid(endpoint)) {
     status = cflow_io_pipe_endpoint_close(endpoint);
-    process_record_cleanup_error(impl, status);
+    process_record_cleanup_error_locked(impl, status);
   }
   if (native_io_endpoint_valid(*native)) {
     status = cflow_io_native_adapter_release_pipe(&impl->adapter, *native);
-    process_record_cleanup_error(impl, status);
+    process_record_cleanup_error_locked(impl, status);
     if (status == SALTS_OK || status == SALTS_ENOENT) *native = (native_io_endpoint){0};
   }
+  cmeta_mutex_unlock(&impl->gate);
 }
 
 static void process_slot_release(void *operation_user) {
@@ -509,6 +515,7 @@ cflow_io_cancel_status cflow_process_try_cancel(cflow_process *process,
 int cflow_process_close_stdin(cflow_process *process) {
   cflow_process_impl *impl = process_impl(process);
   size_t index;
+  int cleanup_error;
   if (impl == NULL) return SALTS_EINVAL;
   cmeta_mutex_lock(&impl->gate);
   for (index = 0u; index < impl->slot_capacity; ++index) {
@@ -519,7 +526,10 @@ int cflow_process_close_stdin(cflow_process *process) {
   }
   cmeta_mutex_unlock(&impl->gate);
   process_close_parent_endpoint(impl, &impl->stdin_endpoint, &impl->stdin_native);
-  return impl->cleanup_error;
+  cmeta_mutex_lock(&impl->gate);
+  cleanup_error = impl->cleanup_error;
+  cmeta_mutex_unlock(&impl->gate);
+  return cleanup_error;
 }
 
 int cflow_process_poll(const cflow_process *process, cmeta_process_result_t *out_result) {
@@ -550,9 +560,10 @@ int cflow_process_run_ready(cflow_process *process, size_t max_steps, size_t *pr
   cflow_process_impl *impl = process_impl(process);
   size_t count = 0u;
   int status = SALTS_OK;
+  bool closing;
   if (impl == NULL || max_steps == 0u || progressed == NULL) return SALTS_EINVAL;
   cmeta_mutex_lock(&impl->gate);
-  if (impl->driver_active) {
+  if (impl->driver_active || impl->teardown_started) {
     cmeta_mutex_unlock(&impl->gate);
     return SALTS_EBUSY;
   }
@@ -603,8 +614,9 @@ int cflow_process_run_ready(cflow_process *process, size_t max_steps, size_t *pr
   }
   cmeta_mutex_lock(&impl->gate);
   impl->driver_active = false;
+  closing = impl->close_requested;
   cmeta_mutex_unlock(&impl->gate);
-  if (impl->close_requested && cflow_io_actor_is_quiescent(&impl->actor)) {
+  if (closing && cflow_io_actor_is_quiescent(&impl->actor)) {
     process_close_parent_endpoint(impl, &impl->stdin_endpoint, &impl->stdin_native);
     process_close_parent_endpoint(impl, &impl->stdout_endpoint, &impl->stdout_native);
     process_close_parent_endpoint(impl, &impl->stderr_endpoint, &impl->stderr_native);
@@ -633,7 +645,12 @@ int cflow_process_close(cflow_process *process) {
   cflow_process_impl *impl = process_impl(process);
   int actor_status;
   int process_status;
+  bool teardown_started;
   if (impl == NULL) return SALTS_EINVAL;
+  cmeta_mutex_lock(&impl->gate);
+  teardown_started = impl->teardown_started;
+  cmeta_mutex_unlock(&impl->gate);
+  if (teardown_started) return SALTS_EBUSY;
   actor_status = cflow_io_actor_close(&impl->actor);
   /*
    * A failed Actor close must not skip the native process termination request.
@@ -684,12 +701,19 @@ int cflow_process_shutdown_step(cflow_process *process, size_t max_steps,
 }
 
 bool cflow_process_is_quiescent(const cflow_process *process) {
-  const cflow_process_impl *impl = process_const_impl(process);
+  cflow_process_impl *impl = process != NULL ? (cflow_process_impl *)process->impl : NULL;
   cmeta_process_result_t result;
-  if (impl == NULL || !impl->close_requested || !cflow_io_actor_is_quiescent(&impl->actor) ||
-      cflow_io_pipe_endpoint_is_valid(&impl->stdin_endpoint) ||
-      cflow_io_pipe_endpoint_is_valid(&impl->stdout_endpoint) ||
-      cflow_io_pipe_endpoint_is_valid(&impl->stderr_endpoint))
+  bool close_requested, driver_active, stdin_open, stdout_open, stderr_open;
+  if (impl == NULL) return false;
+  cmeta_mutex_lock(&impl->gate);
+  close_requested = impl->close_requested;
+  driver_active = impl->driver_active;
+  stdin_open = cflow_io_pipe_endpoint_is_valid(&impl->stdin_endpoint);
+  stdout_open = cflow_io_pipe_endpoint_is_valid(&impl->stdout_endpoint);
+  stderr_open = cflow_io_pipe_endpoint_is_valid(&impl->stderr_endpoint);
+  cmeta_mutex_unlock(&impl->gate);
+  if (!close_requested || driver_active || stdin_open || stdout_open || stderr_open ||
+      !cflow_io_actor_is_quiescent(&impl->actor))
     return false;
   return cmeta_process_poll(impl->native_process, &result) == SALTS_OK;
 }
@@ -700,7 +724,17 @@ int cflow_process_destroy(cflow_process *process) {
   int status;
   if (impl == NULL) return SALTS_EINVAL;
   if (!cflow_process_is_quiescent(process)) return SALTS_EBUSY;
+  /* Re-check the owner turn before beginning irreversible teardown. After a
+   * refused native destroy, allow only subsequent destroy retries; run_ready
+   * must never touch an already destroyed NativeIO adapter. */
+  cmeta_mutex_lock(&impl->gate);
+  if (impl->driver_active) {
+    cmeta_mutex_unlock(&impl->gate);
+    return SALTS_EBUSY;
+  }
+  impl->teardown_started = true;
   result = impl->cleanup_error;
+  cmeta_mutex_unlock(&impl->gate);
   /* Fail closed before freeing any Process-owned callback/slot state.
    * An unsuccessful Executor shutdown or NativeIO backend destroy retains
    * ownership. In particular, native_io_backend_destroy() can return EBUSY
