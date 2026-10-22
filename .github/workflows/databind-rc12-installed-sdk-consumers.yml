@@ -1,0 +1,155 @@
+name: New canonical-Unicode rc.12 actual NuGet installed consumers (#647)
+'on':
+  pull_request:
+    paths:
+      - '.github/workflows/databind-rc12-installed-sdk-consumers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+concurrency:
+  group: reviewed-rc12-unicode-owner-647-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  external-installed-consumers:
+    if: >-
+      github.repository == 'qigao/salts-utils' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.ref == 'test/databind-rc12-installed-sdk-647-unicode-owner' &&
+        github.event.pull_request.head.repo.full_name == 'qigao/salts-utils') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/test/databind-rc12-installed-sdk-647-unicode-owner'))
+    name: Exact rc.12 candidate NuGet real C11 C++17 and Provider DSO leases
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SRC_RUN: '39712009702'
+      SRC_SHA: '8d56e7330d2d21ac6df2d72da27e03d191efda59'
+      SRC_BRANCH: 'release/salts-utils-4.3-databind-rc12-unicode-owner-610'
+      SALTS_TAG: 'v2.3.0-rc.17'
+      SALTS_SOURCE: '6d6fd387cb245be8d7b0d866f9babad026a26832'
+      PKG_ROOT: /tmp/saltsutils-reviewed-rc12-unicode-owner-647
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+    steps:
+      - name: Checkout test harness only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - name: Linux C11/C++17 consumer host
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ninja-build pkg-config binutils unzip
+          mkdir -p "$PKG_ROOT/candidate-download" "$PKG_ROOT/candidate" "$PKG_ROOT/salts-download" "$PKG_ROOT/salts"
+      - name: Fetch only verified exact-source six-RID CI artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/qigao/salts-utils/actions/runs/$SRC_RUN" > "$PKG_ROOT/source-run.json"
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          run=json.loads((Path(os.environ['PKG_ROOT'])/'source-run.json').read_text())
+          want={'head_sha':os.environ['SRC_SHA'],
+                'head_branch':os.environ['SRC_BRANCH'],
+                'event':'push','path':'.github/workflows/ci.yml',
+                'status':'completed','conclusion':'success'}
+          for key,value in want.items():
+              if run.get(key)!=value:
+                  raise SystemExit(f"Candidate CI {key}: {run.get(key)!r} != {value!r}")
+          PY
+          gh run download "$SRC_RUN" --repo qigao/salts-utils \
+            --name salts-utils-native-nuget --dir "$PKG_ROOT/candidate-download"
+          archive="$PKG_ROOT/candidate-download/SaltsUtils.Native.4.3.0-rc.12.nupkg"
+          test -s "$archive"
+          sha256sum "$archive" > "$PKG_ROOT/candidate-inner-nupkg.sha256"
+          python3 - "$archive" <<'PY'
+          import os,sys,zipfile
+          archive,sha=sys.argv[1],os.environ['SRC_SHA']
+          rids={'linux-x64','linux-arm64','windows-x64','macos-arm64','android-arm64-v8a','ios-arm64'}
+          with zipfile.ZipFile(archive) as z:
+              paths=set(z.namelist())
+              found={p for p in paths if p.endswith('/salts-utils-sdk-manifest.txt')}
+              expected={f'sdk/{rid}/salts-utils-sdk-manifest.txt' for rid in rids}
+              if found!=expected:
+                  raise SystemExit(f'Unexpected installed RID manifests: {found ^ expected}')
+              for path in expected:
+                  values=dict(line.split('=',1) for line in z.read(path).decode('utf-8-sig').splitlines() if '=' in line)
+                  for key,want in {'version':'4.3.0-rc.12','commit':sha,'profile':'release'}.items():
+                      if values.get(key)!=want: raise SystemExit(f'{path}: {key} mismatch')
+              needed={'sdk/linux-x64/bin/salts-idlc',
+                      'sdk/linux-x64/include/data_bind_method_plan.h',
+                      'sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake',
+                      'sdk/linux-x64/lib/libdata_bind.so'}
+              if needed-paths: raise SystemExit(f'Missing required original SDK bytes: {needed-paths}')
+          print('PASS: exact six RID source-manifest and packaged DataBind/IDL bytes')
+          PY
+          unzip -q "$archive" -d "$PKG_ROOT/candidate"
+          chmod +x "$PKG_ROOT/candidate/sdk/linux-x64/bin/salts-idlc"
+          echo "SALTS_UTILS_ROOT=$PKG_ROOT/candidate/sdk/linux-x64" >> "$GITHUB_ENV"
+      - name: Restore immutable published Salts native SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(gh api "repos/qigao/salts/git/ref/tags/$SALTS_TAG" --jq .object.sha)"
+          test "$actual" = "$SALTS_SOURCE"
+          gh release download "$SALTS_TAG" --repo qigao/salts \
+            --pattern 'Salts.Native.2.3.0-rc.17.nupkg' --dir "$PKG_ROOT/salts-download"
+          package="$PKG_ROOT/salts-download/Salts.Native.2.3.0-rc.17.nupkg"
+          test -s "$package"
+          sha256sum "$package" > "$PKG_ROOT/published-salts-nupkg.sha256"
+          unzip -q "$package" -d "$PKG_ROOT/salts"
+          root="$PKG_ROOT/salts/sdk/linux-x64"
+          test -f "$root/lib/cmake/Salts/SaltsConfig.cmake"
+          echo "SALTS_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Compile and execute real out-of-tree installed C11 C++17 and Provider-lease fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          export LD_LIBRARY_PATH="$SALTS_UTILS_ROOT/lib:$SALTS_ROOT/lib:$VCPKG_INSTALLED_DIR/x64-linux/lib"
+          test -f "$SALTS_UTILS_ROOT/lib/libdata_bind.so"
+          test -x "$SALTS_UTILS_ROOT/bin/salts-idlc"
+          cmake --preset ci-native-release-user \
+            -S "$GITHUB_WORKSPACE/databind/compiler/package_config/databind_target" \
+            -B "$PKG_ROOT/installed-consumer-build" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$SALTS_UTILS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts" \
+            -DSaltsUtils_DIR="$SALTS_UTILS_ROOT/lib/cmake/SaltsUtils" \
+            -DSaltsUtils_IDLC_EXECUTABLE="$SALTS_UTILS_ROOT/bin/salts-idlc"
+          cmake --build "$PKG_ROOT/installed-consumer-build" --parallel 2 \
+            --target installed_service_consumer installed_service_consumer_cpp \
+                     installed_contract_plugin_consumer installed_contract_plugin_lease_consumer
+          ctest --test-dir "$PKG_ROOT/installed-consumer-build" \
+            -R '^(installed_service_consumer|installed_service_consumer_cpp|installed_contract_plugin_consumer|installed_contract_plugin_lease_consumer)$' \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 120
+          ldd "$PKG_ROOT/installed-consumer-build/bin/installed_service_consumer" \
+            | tee "$PKG_ROOT/installed-consumer.ldd.txt"
+          grep -F "$SALTS_UTILS_ROOT/lib/libdata_bind.so" "$PKG_ROOT/installed-consumer.ldd.txt"
+          ! grep -Fq 'not found' "$PKG_ROOT/installed-consumer.ldd.txt"
+      - name: Preserve immutable candidate package and external consumer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saltsutils-reviewed-rc12-installed-package-qualification
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            /tmp/saltsutils-reviewed-rc12-unicode-owner-647/source-run.json
+            /tmp/saltsutils-reviewed-rc12-unicode-owner-647/candidate-inner-nupkg.sha256
+            /tmp/saltsutils-reviewed-rc12-unicode-owner-647/published-salts-nupkg.sha256
+            /tmp/saltsutils-reviewed-rc12-unicode-owner-647/installed-consumer.ldd.txt
+            /tmp/saltsutils-reviewed-rc12-unicode-owner-647/installed-consumer-build/Testing/Temporary/LastTest.log
