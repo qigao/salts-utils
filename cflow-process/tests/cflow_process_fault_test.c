@@ -381,7 +381,6 @@ spec("CFlow Process private lifecycle faults") {
     cflow_process_config config = fault_config(&probe);
     fault_stats_observer observer = {0};
     cmeta_thread_t watcher = NULL;
-    size_t attempts;
     const uint64_t started = cmeta_hrtime();
 
     fault_process_options(&options);
@@ -394,13 +393,14 @@ spec("CFlow Process private lifecycle faults") {
      * scheduled. Wait for its first published sample before racing close
      * against the observer; this makes the concurrency assertion deterministic
      * without relying on runner scheduling luck. Keep the wait bounded. */
-    for (attempts = 0u; attempts < 5000u; ++attempts) {
+    for (;;) {
       size_t samples;
       cmeta_mutex_lock(&observer.gate);
       samples = observer.samples;
       cmeta_mutex_unlock(&observer.gate);
-      if (samples != 0u) break;
-      if (cmeta_hrtime() - started >= UINT64_C(5000000000)) break;
+      if (samples != 0u ||
+          cmeta_hrtime() - started >= UINT64_C(5000000000))
+        break;
       cmeta_thread_yield();
     }
     cmeta_mutex_lock(&observer.gate);
