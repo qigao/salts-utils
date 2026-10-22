@@ -167,6 +167,7 @@ def main():
                 check_flags(shlex.split(link_text), args.mode, "link Salts::Core")
             report.setdefault("targets", {})[target] = {
                 "artifacts": [str(p) for p in artifacts],
+                "link_command_fragments": link_text,
                 "link_sha256": hashlib.sha256(link_text.encode()).hexdigest() if link_text else None,
             }
         runtime_artifacts = []
@@ -197,6 +198,7 @@ def main():
                     fail("consumer link does not point to the per-mode source-built Salts prefix")
             report.setdefault("targets", {})[target] = {
                 "artifacts": [str(p) for p in artifacts],
+                "link_command_fragments": link_text,
                 "link_sha256": hashlib.sha256(link_text.encode()).hexdigest(),
                 "link_contains_sanitizer": all(
                     f"-fsanitize={name}" in link_text for name in sanitizer_set(args.mode)),
