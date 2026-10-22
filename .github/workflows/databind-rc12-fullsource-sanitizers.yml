@@ -1,0 +1,235 @@
+name: Exact new canonical-Unicode rc.12 DataBind and CNet original-source TSan ASan gate
+
+'on':
+  pull_request:
+    paths:
+      - '.github/workflows/databind-rc12-fullsource-sanitizers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: databind-reviewed-rc12-unicode-owner-647-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-source:
+    if: >-
+      github.repository == 'qigao/salts-utils' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.ref == 'test/databind-rc12-fullsource-sanitizers-647-unicode-owner' &&
+        github.event.pull_request.head.repo.full_name == 'qigao/salts-utils') ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/test/databind-rc12-fullsource-sanitizers-647-unicode-owner'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [thread, address]
+    env:
+      CC: gcc
+      CXX: g++
+      GRAPH_ROOT: /tmp/saltsutils-647-${{ matrix.sanitizer }}
+      ASAN_OPTIONS: detect_odr_violation=2:detect_leaks=1:halt_on_error=1:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      TSAN_OPTIONS: halt_on_error=1:exitcode=66
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      CCACHE_DIR: ${{ github.workspace }}/.cache/saltsutils-647-${{ matrix.sanitizer }}
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - name: Checkout test-only source qualification harness
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Checkout exact new reviewed rc.12 source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts-utils
+          ref: 8d56e7330d2d21ac6df2d72da27e03d191efda59
+          path: build/odr-input/utils
+          persist-credentials: false
+      - name: Checkout immutable published Salts rc.17 source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: v2.3.0-rc.17
+          path: build/odr-input/salts
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        with:
+          mode: read
+      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - name: Prepare actual source toolchain
+        uses: ./build/odr-input/salts/.github/actions/setup-build-host
+
+      - name: Attest source owners and isolated sanitizer install roots
+        shell: bash
+        env:
+          EXPECTED_UTILS: '8d56e7330d2d21ac6df2d72da27e03d191efda59'
+          KIND: ${{ matrix.sanitizer }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ninja-build nasm pkg-config ccache binutils
+          mkdir -p "$GRAPH_ROOT"
+          test "$(git -C build/odr-input/utils rev-parse HEAD)" = "$EXPECTED_UTILS"
+          python3 build/odr-input/utils/cmake/ci/verify_databind_release_source.py --commit "$EXPECTED_UTILS" --self-test
+          test "$(git -C build/odr-input/salts rev-parse HEAD)" = "6d6fd387cb245be8d7b0d866f9babad026a26832"
+          if [ "$KIND" = thread ]; then
+            printf '%s\n' 'SAN_THREAD=ON' 'SAN_ADDRESS=OFF' 'SAN_UNDEFINED=OFF' \
+              'SAN_FLAGS=-fsanitize=thread -g -fno-omit-frame-pointer' \
+              'SAN_LINK=-fsanitize=thread' >> "$GITHUB_ENV"
+          else
+            printf '%s\n' 'SAN_THREAD=OFF' 'SAN_ADDRESS=ON' 'SAN_UNDEFINED=ON' \
+              'SAN_FLAGS=-fsanitize=address -fsanitize=undefined -g -fno-omit-frame-pointer' \
+              'SAN_LINK=-fsanitize=address -fsanitize=undefined' >> "$GITHUB_ENV"
+          fi
+          {
+            echo "SALTS_ROOT=$GRAPH_ROOT/prefix/salts"
+            echo "SALTS_UTILS_ROOT=$GRAPH_ROOT/prefix/salts-utils"
+            echo "LD_LIBRARY_PATH=$GRAPH_ROOT/prefix/salts-utils/lib:$GRAPH_ROOT/prefix/salts/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          } >> "$GITHUB_ENV"
+          {
+            echo "salts_release_tag=v2.3.0-rc.17"
+            echo "salts_source_sha=6d6fd387cb245be8d7b0d866f9babad026a26832"
+            echo "saltsutils_release_base=a41907fc987aab4008ed0fee2f7232f505625255"
+            echo "saltsutils_candidate_source=$EXPECTED_UTILS"
+            echo "sanitizer=$KIND"
+            echo "source_test=exact_unpublished_rc12_candidate"
+            echo "private_monocypher_namespace=verified_53_private_symbols"
+            echo "typed_errors=verified_explicit_implicit_code_uniqueness"
+            echo "ODR_suppression=none"
+          } | tee "$GRAPH_ROOT/provenance.txt"
+
+      - name: Build source-instrumented released Salts CNet and private CSTL
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset linux-dev-ci -S "$GITHUB_WORKSPACE/build/odr-input/salts" \
+            -B "$GRAPH_ROOT/build-salts" -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$SALTS_ROOT" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DENABLE_SANITIZER_THREAD="$SAN_THREAD" \
+            -DENABLE_SANITIZER_ADDRESS="$SAN_ADDRESS" \
+            -DENABLE_SANITIZER_UNDEFINED="$SAN_UNDEFINED" \
+            -DCMAKE_C_FLAGS="$SAN_FLAGS" -DCMAKE_CXX_FLAGS="$SAN_FLAGS" \
+            -DCMAKE_SHARED_LINKER_FLAGS="$SAN_LINK" -DCMAKE_EXE_LINKER_FLAGS="$SAN_LINK"
+          cmake --build "$GRAPH_ROOT/build-salts" --parallel 2
+          cmake --install "$GRAPH_ROOT/build-salts"
+          test -f "$SALTS_ROOT/lib/libcnet.so"
+          test -f "$SALTS_ROOT/lib/libsalts.so"
+
+      - name: Build source-instrumented master-derived rc.12 DataBind and native IDLC
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset ci-linux-release-user -S "$GITHUB_WORKSPACE/build/odr-input/utils" \
+            -B "$GRAPH_ROOT/build-utils" -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$SALTS_UTILS_ROOT" \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DENABLE_SANITIZER_THREAD="$SAN_THREAD" \
+            -DENABLE_SANITIZER_ADDRESS="$SAN_ADDRESS" \
+            -DENABLE_SANITIZER_UNDEFINED="$SAN_UNDEFINED" \
+            -DCMAKE_C_FLAGS="$SAN_FLAGS" -DCMAKE_CXX_FLAGS="$SAN_FLAGS" \
+            -DCMAKE_SHARED_LINKER_FLAGS="$SAN_LINK" -DCMAKE_EXE_LINKER_FLAGS="$SAN_LINK"
+          cmake --build "$GRAPH_ROOT/build-utils" --parallel 2
+          cmake --install "$GRAPH_ROOT/build-utils"
+          test -f "$SALTS_UTILS_ROOT/lib/libdata_bind.so"
+          test -x "$SALTS_UTILS_ROOT/bin/salts-idlc"
+
+      - name: Fail-closed audit of actual source objects and private ELF symbols
+        shell: bash
+        env:
+          KIND: ${{ matrix.sanitizer }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee "$GRAPH_ROOT/source-compiler-audit.json"
+          import json, os, pathlib, shlex
+          root = pathlib.Path(os.environ["GRAPH_ROOT"])
+          kind = os.environ["KIND"]
+          flags = ("-fsanitize=thread",) if kind == "thread" else ("-fsanitize=address", "-fsanitize=undefined")
+          required = {
+              "salts": ("cnet/src/cnet_module.c", "vendor/monocypher/cnet_monocypher.c", "cstl/src/associative_meta.c"),
+              "utils": ("vendor/monocypher/databind_monocypher.c", "databind/runtime/data_bind_contract_fingerprint.c", "databind/runtime/data_bind_method_plan.c", "databind/compiler/main.c"),
+          }
+          report = {}
+          for name, paths in required.items():
+              build = root / ("build-salts" if name == "salts" else "build-utils")
+              rows = json.loads((build / "compile_commands.json").read_text())
+              for source in paths:
+                  matched = [x for x in rows if x.get("file","").replace("\\","/").endswith("/"+source)]
+                  if len(matched) != 1:
+                      raise SystemExit(f"{name}: missing/duplicate required compiled source {source}")
+                  row = matched[0]
+                  cmd = row.get("command") or " ".join(row.get("arguments", []))
+                  if not all(f in cmd for f in flags):
+                      raise SystemExit(f"{name}: missing sanitizer flags for {source}")
+                  args = row.get("arguments") or shlex.split(cmd)
+                  if "-o" not in args:
+                      raise SystemExit(f"{name}: compiler object output missing for {source}")
+                  obj = pathlib.Path(args[args.index("-o")+1])
+                  if not obj.is_absolute(): obj = pathlib.Path(row["directory"]) / obj
+                  if not obj.is_file():
+                      raise SystemExit(f"{name}: source object was configured but not built: {source}")
+              report[name]={"required_built_sources":list(paths),"configured_compiler_commands":len(rows),"sanitizer_flags":flags}
+          print(json.dumps(report,indent=2))
+          PY
+          nm --defined-only "$GRAPH_ROOT/build-utils/lib/libdatabind_monocypher.a" \
+            > "$GRAPH_ROOT/private-vendor-symbols.txt"
+          grep -q 'databind_private_crypto_argon2_no_extras' "$GRAPH_ROOT/private-vendor-symbols.txt"
+          for lib in "$SALTS_ROOT/lib/libcnet.so" "$SALTS_UTILS_ROOT/lib/libdata_bind.so"; do
+            nm -D --defined-only "$lib" > "$GRAPH_ROOT/$(basename "$lib").exports.txt"
+            if awk '{print $3}' "$GRAPH_ROOT/$(basename "$lib").exports.txt" | \
+              grep -Eq '^(crypto_|salts_cnet_private_crypto_|databind_private_crypto_)'; then
+              echo "Private Monocypher API escaped native DSO: $lib" >&2
+              exit 1
+            fi
+          done
+
+      - name: Exercise source-built IDLC and CNet/DataBind shared DSOs in both orders
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GRAPH_ROOT/generated"
+          "$SALTS_UTILS_ROOT/bin/salts-idlc" \
+            "$GITHUB_WORKSPACE/build/odr-input/utils/databind/compiler/package_config/databind_target/service.schema" \
+            --lang c --output "$GRAPH_ROOT/generated/service.h" \
+            --source-output "$GRAPH_ROOT/generated/service.c"
+          test -s "$GRAPH_ROOT/generated/service.h"
+          test -s "$GRAPH_ROOT/generated/service.c"
+          gcc -std=c11 -Wall -Wextra -Werror $SAN_LINK \
+            -g -fno-omit-frame-pointer "$GITHUB_WORKSPACE/build/odr-input/utils/cmake/ci/probe_monocypher_odr.c" \
+            -ldl -o "$GRAPH_ROOT/dual-dso-probe"
+          ldd "$SALTS_UTILS_ROOT/lib/libdata_bind.so" \
+            | tee "$GRAPH_ROOT/databind-linked-libraries.txt"
+          for order in cnet-first data-first; do
+            "$GRAPH_ROOT/dual-dso-probe" \
+              "$SALTS_ROOT/lib/libcnet.so" \
+              "$SALTS_UTILS_ROOT/lib/libdata_bind.so" "$order"
+          done
+          sha256sum "$GRAPH_ROOT/generated/service.h" "$GRAPH_ROOT/generated/service.c" \
+            | tee "$GRAPH_ROOT/generated-idl.sha256"
+
+      - name: Preserve exact source provenance and sanitizer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saltsutils-reviewed-rc12-fullsource-${{ matrix.sanitizer }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ env.GRAPH_ROOT }}/provenance.txt
+            ${{ env.GRAPH_ROOT }}/source-compiler-audit.json
+            ${{ env.GRAPH_ROOT }}/private-vendor-symbols.txt
+            ${{ env.GRAPH_ROOT }}/*.exports.txt
+            ${{ env.GRAPH_ROOT }}/databind-linked-libraries.txt
+            ${{ env.GRAPH_ROOT }}/generated-idl.sha256
+            ${{ env.GRAPH_ROOT }}/build-salts/compile_commands.json
+            ${{ env.GRAPH_ROOT }}/build-utils/compile_commands.json
