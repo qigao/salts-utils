@@ -85,8 +85,11 @@ jobs:
                   raise SystemExit(f'Unexpected installed RID manifests: {found ^ expected}')
               for path in expected:
                   values=dict(line.split('=',1) for line in z.read(path).decode('utf-8-sig').splitlines() if '=' in line)
-                  for key,want in {'version':'4.3.0-rc.12','commit':sha,'profile':'release'}.items():
-                      if values.get(key)!=want: raise SystemExit(f'{path}: {key} mismatch')
+                  rid=path.split('/')[1]
+                  for key,want in {'version':'4.3.0-rc.12','commit':sha,'profile':'release',
+                                   'rid':rid,'salts_version':'2.3.0-rc.17'}.items():
+                      if values.get(key)!=want:
+                          raise SystemExit(f'{path}: {key}={values.get(key)!r}, expected {want!r}')
               needed={'sdk/linux-x64/bin/salts-idlc',
                       'sdk/linux-x64/include/data_bind_method_plan.h',
                       'sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake',
