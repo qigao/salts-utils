@@ -1,9 +1,7 @@
 name: Canonical Component IDL Provider source sanitizers
 
 'on':
-  pull_request:
-    branches:
-      - "feature/idl-component-fr-provider-candidate"
+  workflow_call:
   workflow_dispatch:
 
 permissions:
