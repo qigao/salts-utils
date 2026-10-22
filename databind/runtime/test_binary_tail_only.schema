@@ -140,6 +140,12 @@ message CountedRecordWire {
     uint16 last;
 }
 
+// Scalar Message booleans share the canonical Bool8 descriptor used by collections.
+message BooleanWire {
+    bool enabled;
+    optional bool flag;
+}
+
 // A variable nested record has no admitted fixed inline Binary representation.
 message UnavailableNested {
     TailOnly child;
