@@ -1,4 +1,4 @@
-add_library(salts_cflow_process STATIC src/process.c)
+add_library(salts_cflow_process STATIC src/process.c src/process_retainer.c)
 cmake_config_target(
   salts_cflow_process
   ALIAS Salts::Process
