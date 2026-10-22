@@ -59,3 +59,19 @@ execution target or default artifact selection). The isolated real DSO
 qualification enforces `-std=c++17 -pedantic-errors` for the generated header.
 Existing Native/Plugin generated output is separately requalified as part of
 normal CI. No alternate C++ record runtime or type provider is introduced.
+
+## Current-master owner refresh (2026-10-22)
+
+The test-only branch has been refreshed on current SaltsUtils master
+`ad56e12da102c51206f5b37731456780d248b9f4` at merge head
+`d8b1575b3facc6b951c3e0b85491d41059a98d93`. The root CMake file is the
+current master version: SaltsUtils requires the **single imported**
+`Salts::Unicode` target and does not rebuild or export the legacy local
+Unicode implementation. The old conditional `add_subdirectory(unicode)`
+hunk was intentionally dropped during the refresh.
+
+This is only a branch refresh; exact-head native/CTest and the explicit
+ComponentProvider DSO gate must run again. The official published Salts SDK
+still does not contain the required ComponentPlugin ABI for this candidate,
+so the PR remains **DRAFT / DO NOT MERGE / DO NOT PUBLISH**. No production
+default or installed package changes are authorized.
