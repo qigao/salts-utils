@@ -661,6 +661,14 @@ int cflow_process_shutdown_step(cflow_process *process, size_t max_steps,
       out_progressed == NULL || out_quiescent == NULL)
     return SALTS_EINVAL;
 
+  /* A previous finalization attempt may have reached an entirely
+   * quiescent Process before a lower-level owner refused destruction.
+   * Do not drive the already-closed backend while retrying finalization. */
+  if (cflow_process_is_quiescent(process)) {
+    *out_quiescent = true;
+    return SALTS_OK;
+  }
+
   /* No loop: failures must return to the owner while leases remain live.
    * Calling destroy() or releasing completion_user here would be unsafe. */
   close_status = cflow_process_close(process);
@@ -693,13 +701,26 @@ int cflow_process_destroy(cflow_process *process) {
   if (impl == NULL) return SALTS_EINVAL;
   if (!cflow_process_is_quiescent(process)) return SALTS_EBUSY;
   result = impl->cleanup_error;
-  status = cflow_io_native_adapter_close(&impl->adapter);
-  if (status != SALTS_OK && status != SALTS_EALREADY) return status;
+  /* Fail closed before freeing any Process-owned callback/slot state.
+   * An unsuccessful Executor shutdown or NativeIO backend destroy retains
+   * ownership. In particular, native_io_backend_destroy() can return EBUSY
+   * while coroutine frames remain live, leaving adapter->impl intact.
+   *
+   * Destroy the adapter before its quiescent Actor so a native failure leaves
+   * both available for an explicit later owner-driven retry. If a later Actor
+   * destroy refuses, adapter.impl is already NULL and the next attempt skips
+   * that completed stage rather than closing a freed backend. */
+  if (impl->adapter.impl != NULL) {
+    status = cflow_io_native_adapter_close(&impl->adapter);
+    if (status != SALTS_OK && status != SALTS_EALREADY) return status;
+  }
+  if (!cflow_executor_shutdown(&impl->executor)) return SALTS_EBUSY;
+  if (impl->adapter.impl != NULL) {
+    status = cflow_io_native_adapter_destroy(&impl->adapter);
+    if (status != SALTS_OK) return status;
+  }
   status = cflow_io_actor_destroy(&impl->actor);
   if (status != SALTS_OK) return status;
-  status = cflow_io_native_adapter_destroy(&impl->adapter);
-  if (status != SALTS_OK && result == SALTS_OK) result = status;
-  if (!cflow_executor_shutdown(&impl->executor) && result == SALTS_OK) result = SALTS_EBUSY;
   cflow_executor_destroy(&impl->executor);
   cmeta_process_destroy(impl->native_process);
   cmeta_mutex_destroy(&impl->gate);
