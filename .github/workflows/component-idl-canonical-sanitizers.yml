@@ -98,7 +98,7 @@ jobs:
           python3 cmake/ci/verify-component-provider-sanitizers.py \
             --phase salts --mode "${{ matrix.mode }}" \
             --source-root "$salts_source" --build-dir "$salts_build" \
-            --evidence "build/component-sanitizer/evidence/salts-${{ matrix.mode }.json"
+            --evidence "build/component-sanitizer/evidence/salts-${{ matrix.mode }}.json"
           cmake --install "$salts_build"
           test -f "$salts_prefix/include/salts/service_host.h"
           test -f "$salts_prefix/lib/libsalts_service_host.a"
@@ -108,7 +108,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          utils_build="$GITHUB_WORKSPACE/build/component-sanitizer/utils-${{ matrix.mode }"
+          utils_build="$GITHUB_WORKSPACE/build/component-sanitizer/utils-${{ matrix.mode }}"
           mkdir -p "$utils_build/.cmake/api/v1/query"
           : > "$utils_build/.cmake/api/v1/query/codemodel-v2"
           export SALTS_ROOT="$SALTS_SANITIZER_PREFIX"
@@ -141,20 +141,20 @@ jobs:
             --build-dir "$GITHUB_WORKSPACE/build/component-sanitizer/salts-build" \
             --consumer-root "$GITHUB_WORKSPACE" --consumer-build "$utils_build" \
             --salts-prefix "$SALTS_ROOT" \
-            --evidence "build/component-sanitizer/evidence/consumer-${{ matrix.mode }.json"
+            --evidence "build/component-sanitizer/evidence/consumer-${{ matrix.mode }}.json"
           ctest --test-dir "$utils_build" \
             -R '^test_databind_component_candidate_(dso_c11|header_cpp|codegen_content)$' \
             --repeat until-fail:5 --no-tests=error \
             --output-on-failure --timeout 120 \
-            --output-log "build/component-sanitizer/evidence/ctest-${{ matrix.mode }.log"
+            --output-log "build/component-sanitizer/evidence/ctest-${{ matrix.mode }}.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: component-idl-sanitizers-${{ matrix.mode }-${{ github.run_id }}
+          name: component-idl-sanitizers-${{ matrix.mode }}-${{ github.run_id }}
           path: |
             build/component-sanitizer/evidence/
             build/component-sanitizer/salts-build/compile_commands.json
-            build/component-sanitizer/utils-${{ matrix.mode }/compile_commands.json
+            build/component-sanitizer/utils-${{ matrix.mode }}/compile_commands.json
           if-no-files-found: warn
           retention-days: 14
       - name: Assert source checkout unchanged
