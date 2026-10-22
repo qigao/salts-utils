@@ -265,11 +265,6 @@ int main(void) {
   REQUIRE(cmeta_plugin_registry_get_lifecycle(
       &registry, ref, &info) == CMETA_PLUGIN_OK);
   REQUIRE(info.active_leases == 1u);
-  REQUIRE(cmeta_plugin_registry_request_stop(
-      &registry, ref) == CMETA_PLUGIN_OK);
-  REQUIRE(cmeta_plugin_registry_unload(
-      &registry, ref) == CMETA_PLUGIN_BUSY);
-
   cmeta_mutex_lock(&worker.gate);
   worker.stop = true;
   cmeta_mutex_unlock(&worker.gate);
@@ -279,8 +274,16 @@ int main(void) {
   REQUIRE(!worker.failed);
   REQUIRE(worker.post_close_invocations != 0u);
   cmeta_mutex_unlock(&worker.gate);
+  REQUIRE(salts_service_host_generation_drain(
+      &runtime, previous) == SALTS_SERVICE_HOST_BUSY);
 
-  /* Both caller-owned borrowed service views must expire before unload. */
+  /* No callback is executing after the worker joined. Requesting stop while
+   * the main thread still owns a Scope must keep unload BUSY; only after that
+   * borrowed service view is released may the generation and DSO be retired. */
+  REQUIRE(cmeta_plugin_registry_request_stop(
+      &registry, ref) == CMETA_PLUGIN_OK);
+  REQUIRE(cmeta_plugin_registry_unload(
+      &registry, ref) == CMETA_PLUGIN_BUSY);
   REQUIRE(salts_service_host_scope_release(&scope) ==
       SALTS_SERVICE_HOST_OK);
   REQUIRE(salts_service_host_generation_drain(
