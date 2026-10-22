@@ -390,7 +390,25 @@ spec("CFlow Process private lifecycle faults") {
     cmeta_mutex_init(&observer.gate);
     check_not_null(observer.gate);
     check_equal(cmeta_thread_create(&watcher, fault_collect_stats, &observer), SALTS_OK);
-    for (attempts = 0u; attempts < 64u; ++attempts) cmeta_thread_yield();
+    /* Yielding a fixed number of times does not prove that the worker was
+     * scheduled. Wait for its first published sample before racing close
+     * against the observer; this makes the concurrency assertion deterministic
+     * without relying on runner scheduling luck. Keep the wait bounded. */
+    for (attempts = 0u; attempts < 5000u; ++attempts) {
+      size_t samples;
+      cmeta_mutex_lock(&observer.gate);
+      samples = observer.samples;
+      cmeta_mutex_unlock(&observer.gate);
+      if (samples != 0u) break;
+      if (cmeta_hrtime() - started >= UINT64_C(5000000000)) break;
+      cmeta_thread_yield();
+    }
+    cmeta_mutex_lock(&observer.gate);
+    {
+      const size_t samples = observer.samples;
+      cmeta_mutex_unlock(&observer.gate);
+      check_greater(samples, (size_t)0u);
+    }
     check_equal(cflow_process_close(&process), SALTS_OK);
     while (!cflow_process_is_quiescent(&process)) {
       size_t progressed = 0u;
