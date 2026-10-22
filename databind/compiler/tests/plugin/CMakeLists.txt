@@ -362,7 +362,7 @@ target_compile_definitions(test_databind_component_candidate_dso_c11 PRIVATE
   GENERATED_COMPONENT_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_provider>"
   DATABIND_COMPONENT_PROVIDER_STRICT_SOURCE=1)
 target_link_libraries(test_databind_component_candidate_dso_c11 PRIVATE
-  Salts::ServiceHost Salts::Plugin Salts::CMeta Salts::DataBind)
+  Salts::ServiceHost Salts::Plugin Salts::Platform Salts::CMeta Salts::DataBind)
 set_target_properties(test_databind_component_candidate_dso_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   FOLDER "databind/compiler/tests/plugin")
