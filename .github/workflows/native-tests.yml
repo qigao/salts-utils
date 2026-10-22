@@ -100,6 +100,47 @@ jobs:
             -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$GITHUB_WORKSPACE/vcpkg_installed/$QIGAO_TARGET_TRIPLET"
           cmake --build "$build" --parallel 2
           ctest --test-dir "$build" -R '^behavior_tree_installed_consumer$' --no-tests=error --output-on-failure --timeout 180
+      - name: Verify official Salts Unicode is sole installed C11/C++17 owner
+        if: matrix.id == 'linux-release'
+        shell: bash
+        env:
+          NATIVE_BUILD_DIR: ${{ matrix.build_dir }}
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/saltsutils-canonical-unicode-installed"
+          cmake --install "$NATIVE_BUILD_DIR" --prefix "$prefix"
+          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test ! -e "$prefix/include/unicode/salts_unicode.h"
+          test ! -e "$prefix/lib/libsalts_unicode.a"
+          test -f "$SALTS_ROOT/include/unicode/salts_unicode.h"
+          export SALTS_UTILS_CANDIDATE_ROOT="$prefix"
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          export LD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib:${LD_LIBRARY_PATH:-}"
+          cmake -S "$GITHUB_WORKSPACE/cmake/ci/unicode-paired-installed" \
+            -B "$RUNNER_TEMP/unicode-paired-installed-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET="$QIGAO_TARGET_TRIPLET" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$prefix;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET"
+          cmake --build "$RUNNER_TEMP/unicode-paired-installed-build" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/unicode-paired-installed-build" \
+            -R '^unicode_paired_(c11|cpp17)        if: matrix.family == 'windows'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          ctest --preset "${{ matrix.preset }}" --no-tests=error --output-on-failure --timeout 180 --parallel 2
+          if errorlevel 1 exit /b 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ctest-${{ matrix.id }}
+          path: ${{ matrix.build_dir }}/Testing/Temporary
+          if-no-files-found: warn
+ \
+            --no-tests=error --output-on-failure --timeout 120
+
       - name: Run complete Windows CTest graph
         if: matrix.family == 'windows'
         shell: cmd
