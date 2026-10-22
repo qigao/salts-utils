@@ -16,6 +16,8 @@ EXPECTED_UNITS = {
 }
 REQUIRED_CONSUMER_SOURCES = (
     "databind/compiler/tests/plugin/test_component_provider_candidate_dso.c",
+    "databind/compiler/tests/plugin/test_component_provider_candidate_negative_dso.c",
+    "databind/compiler/tests/plugin/test_component_provider_candidate_negative_kind.c",
     "databind/compiler/tests/plugin/test_component_provider_candidate_codegen_tool.c",
     "databind/compiler/package_config/databind_target/contract_plugin_business.c",
     "databind/compiler/native_source_ir.c",
@@ -187,6 +189,11 @@ def main():
         for target in ("databind_component_candidate_provider",
                        "test_databind_component_candidate_dso_c11",
                        "test_databind_component_candidate_header_cpp",
+                       "test_databind_component_candidate_negative_dso_c11",
+                       "databind_component_candidate_bad_export_provider",
+                       "databind_component_candidate_bad_contract_provider",
+                       "databind_component_candidate_bad_binding_provider",
+                       "databind_component_candidate_bad_kind_provider",
                        "databind_component_candidate_codegen_tool"):
             detail, artifacts, link_text = target_detail(consumer_build, target)
             check_flags(shlex.split(link_text), args.mode, f"link {target}")
