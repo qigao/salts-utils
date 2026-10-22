@@ -446,7 +446,7 @@ set_target_properties(test_databind_component_candidate_negative_dso_c11 PROPERT
 add_test(NAME test_databind_component_candidate_negative_dso_c11
   COMMAND test_databind_component_candidate_negative_dso_c11)
 set_tests_properties(test_databind_component_candidate_negative_dso_c11 PROPERTIES
-  LABELS "databind;compiler;component;real-dso;negative;rollback;recovery;c11"
+  LABELS "databind;compiler;component;real-dso;negative;failure-atomic;rollback;generation-recovery;c11"
   TIMEOUT 90)
 
 add_executable(test_databind_component_candidate_header_cpp
