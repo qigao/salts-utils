@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 import shlex
 import subprocess
+import os
 
-EXACT_SALTS = "a51947d241a60bc92e92efa8fd6de1d0bb2fbac2"
 EXPECTED_UNITS = {
     "plugin/src": 3, "component-runtime/src": 5, "cmeta/src": 19,
     "platform/src": 6, "utils/src": 20, "concurrency/src": 6,
@@ -158,8 +158,11 @@ def main():
     source_root = args.source_root.resolve()
     build_dir = args.build_dir.resolve()
     sha = subprocess.check_output(["git", "-C", str(source_root), "rev-parse", "HEAD"], text=True).strip()
-    if sha != EXACT_SALTS:
-        fail(f"unexpected Salts SHA {sha}; expected {EXACT_SALTS}")
+    expected_salts = os.environ.get("EXPECTED_SALTS", "").strip()
+    if not expected_salts:
+        fail("EXPECTED_SALTS environment variable is required")
+    if sha != expected_salts:
+        fail(f"unexpected Salts SHA {sha}; expected {expected_salts}")
     if args.phase == "salts":
         report = audit_compiles(build_dir, [source_root], args.mode,
                                 expected_counts=EXPECTED_UNITS)
