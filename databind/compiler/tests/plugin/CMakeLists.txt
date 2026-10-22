@@ -280,7 +280,7 @@ cmake_add_executable(databind_component_candidate_codegen_tool
     "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c"
   LIBS
-    Salts::IDL ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+    Salts::IDL ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core Salts::PluginABI
   INCLUDES
     "${DATABIND_SOURCE_ROOT}/idl/contract"
     "${DATABIND_COMPILER_SOURCE_DIR}"
