@@ -37,7 +37,8 @@ cat > "$project" <<'EOF'
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
+    <!-- Exact immutable released Salts 2.3 Unicode owner. Never restore stable 2.2. -->
+    <PackageReference Include="Salts.Native" Version="[2.3.0-rc.17]" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
     <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
@@ -72,6 +73,10 @@ PY
 
 salts_package="$(restored_package_dir Salts.Native)"
 salts_version="$(basename "$salts_package")"
+[ "$salts_version" = "2.3.0-rc.17" ] || {
+  echo "wrong canonical Salts.Native release: $salts_version" >&2
+  exit 1
+}
 re2c_package="$(restored_package_dir Qigao.Re2c.Binary)"
 turbowasm_package=""
 if [ "$with_turbowasm" = "1" ]; then
@@ -88,6 +93,14 @@ fail() { printf 'native SDK restore error: %s\n' "$*" >&2; exit 1; }
 
 [ -f "$salts_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing SaltsConfig.cmake under $salts_root"
 [ -f "$salts_root/include/cmeta/function.h" ] || fail "missing CMeta function reflection under $salts_root"
+[ -f "$salts_root/include/unicode/salts_unicode.h" ] ||
+  fail "missing canonical Salts Unicode header for $salts_rid"
+grep -Fq 'Salts::Unicode' "$salts_root/lib/cmake/Salts/SaltsTargets.cmake" ||
+  fail "published Salts.Native 2.3 SDK must export exactly the canonical Unicode owner"
+[ -f "$salts_root/salts-sdk-manifest.txt" ] ||
+  fail "canonical Salts Native release provenance manifest absent"
+grep -Fxq 'version=2.3.0-rc.17' "$salts_root/salts-sdk-manifest.txt" ||
+  fail "canonical Salts Native release version/provenance mismatch"
 [ -f "$salts_host_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing host SaltsConfig.cmake under $salts_host_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_categories.re" ] || fail "missing unicode_categories.re under $re2c_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_properties.re" ] || fail "missing unicode_properties.re under $re2c_root"

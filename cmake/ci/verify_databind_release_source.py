@@ -18,6 +18,11 @@ PATHS = (
     "databind/runtime/data_bind_contract_fingerprint.c",
     "databind/runtime/data_bind_method_plan.c",
     "databind/compiler/tests/native/test_service_native_lowering.c",
+    "CMakeLists.txt",
+    "cmake/SaltsUtilsConfig.cmake.in",
+    "jinja/CMakeLists.txt",
+    "cmake/ci/restore-native-sdk.sh",
+    "cmake/ci/restore-native-sdk.ps1",
 )
 
 def read_source(root: Path, name: str, commit: str | None) -> str:
@@ -35,6 +40,11 @@ def violations(source: dict[str, str]) -> list[str]:
     fingerprint = source["databind/runtime/data_bind_contract_fingerprint.c"]
     method = source["databind/runtime/data_bind_method_plan.c"]
     fixture = source["databind/compiler/tests/native/test_service_native_lowering.c"]
+    root_cmake = source["CMakeLists.txt"]
+    installed_config = source["cmake/SaltsUtilsConfig.cmake.in"]
+    jinja_cmake = source["jinja/CMakeLists.txt"]
+    restore_unix = source["cmake/ci/restore-native-sdk.sh"]
+    restore_windows = source["cmake/ci/restore-native-sdk.ps1"]
 
     if not re.search(
         r"add_library\(\s*databind_monocypher\s+STATIC\s+databind_monocypher\.c\b",
@@ -72,6 +82,31 @@ def violations(source: dict[str, str]) -> list[str]:
         errors.append("RPC typed-error collision must have a specific SCHEMA diagnostic")
     if "rejects ambiguous RPC typed-error numeric codes before native decoding" not in fixture:
         errors.append("Generated native RPC typed-error collision regression is absent")
+
+    # Paired installed NuGet acceptance exposed the previous partial target-set
+    # crash: official Salts already exports Salts::Unicode, while an older
+    # SaltsUtils package independently exported the same CMake target.
+    if re.search(r"add_subdirectory\(\s*unicode\s*\)", root_cmake):
+        errors.append("Local Unicode producer must not be built or exported from SaltsUtils")
+    for label, value in (("source", root_cmake), ("installed", installed_config)):
+        if "Salts::Unicode" not in value or (
+            "get_target_property(_salts_utils_unicode_imported Salts::Unicode IMPORTED)"
+            not in value
+        ):
+            errors.append(f"Canonical Unicode imported target missing from {label} SDK contract")
+    if "PRIVATE Salts::Unicode Salts::CSTL" not in jinja_cmake:
+        errors.append("Jinja must depend directly on the canonical Salts Unicode owner")
+    if not re.search(
+        r'PackageReference Include="Salts\.Native" Version="\[2\.3\.0(?:-rc\.\d+)?\]"',
+        restore_unix
+    ) or not re.search(
+        r'PackageReference Include="Salts\.Native" Version="\[2\.3\.0(?:-rc\.\d+)?\]"',
+        restore_windows
+    ):
+        errors.append("Both SDK restores must use an explicit official Salts.Native 2.3 release")
+    for label, value in (("Unix", restore_unix), ("Windows", restore_windows)):
+        if "Salts::Unicode" not in value or "salts-sdk-manifest.txt" not in value:
+            errors.append(f"{label} SDK restore lacks canonical Unicode/provenance admission")
     return errors
 
 def exercise_negative_cases(source: dict[str, str]) -> None:
@@ -94,6 +129,22 @@ def exercise_negative_cases(source: dict[str, str]) -> None:
         broken[path] = source[path].replace(token, "", 1)
         if not violations(broken):
             raise AssertionError(f"Source gate failed open after dropping {token}")
+    # Negative producer-owner/source-pin regression: never accept a revived
+    # local implementation or a floating/stable-2.2 Salts restore.
+    for path, old, replacement in (
+        ("CMakeLists.txt", "add_subdirectory(jinja)",
+         "add_subdirectory(unicode)\nadd_subdirectory(jinja)"),
+        ("cmake/ci/restore-native-sdk.sh", 'Version="[2.3.0-rc.17]"',
+         'Version="*"'),
+        ("cmake/ci/restore-native-sdk.ps1", 'Version="[2.3.0-rc.17]"',
+         'Version="*"'),
+    ):
+        if old not in source[path]:
+            raise AssertionError(f"Missing fail-closed Unicode fixture in {path}")
+        broken = source.copy()
+        broken[path] = source[path].replace(old, replacement, 1)
+        if not violations(broken):
+            raise AssertionError(f"Unicode owner gate failed open in {path}")
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -115,7 +166,7 @@ def main() -> int:
         return 1
     if args.self_test:
         exercise_negative_cases(source)
-    print("PASS: source contains the reviewed private Monocypher and RPC typed-error contracts"
+    print("PASS: source contains private Monocypher, RPC typed-error and canonical Unicode SDK contracts"
           + (f" at {args.commit}" if args.commit else " in current checkout"))
     return 0
 
