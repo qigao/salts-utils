@@ -136,6 +136,8 @@ jobs:
           export DYLD_LIBRARY_PATH="$SALTS_BUILD/lib:$SALTS_BUILD/bin:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib"
           cmake --preset "$UTILS_PRESET" -S "$GITHUB_WORKSPACE" -B "$UTILS_BUILD" \
             -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET" \
+            -DCMAKE_C_FLAGS="-I$SALTS_SOURCE/plugin/include" \
+            -DCMAKE_CXX_FLAGS="-I$SALTS_SOURCE/plugin/include" \
             -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           cmake --build "$UTILS_BUILD" --parallel 2 \
@@ -154,7 +156,7 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "PATH=%SALTS_BUILD%\\bin;%SALTS_BUILD%\\Release;%VCPKG_INSTALLED_DIR%\\%QIGAO_TARGET_TRIPLET%\\bin;%PATH%"
-          cmake --preset "%UTILS_PRESET%" -S "%GITHUB_WORKSPACE%" -B "%UTILS_BUILD%" "-DCMAKE_PREFIX_PATH=%SALTS_BUILD%;%VCPKG_INSTALLED_DIR%/%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --preset "%UTILS_PRESET%" -S "%GITHUB_WORKSPACE%" -B "%UTILS_BUILD%" "-DCMAKE_PREFIX_PATH=%SALTS_BUILD%;%VCPKG_INSTALLED_DIR%/%QIGAO_TARGET_TRIPLET%" "-DCMAKE_C_FLAGS=/I%SALTS_SOURCE%/plugin/include" "-DCMAKE_CXX_FLAGS=/I%SALTS_SOURCE%/plugin/include" -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           if errorlevel 1 exit /b 1
           cmake --build "%UTILS_BUILD%" --config Release --parallel 2 --target databind_component_candidate_provider test_databind_component_candidate_dso_c11 test_databind_component_candidate_negative_dso_c11 test_databind_component_candidate_header_cpp databind_component_candidate_codegen_tool
           if errorlevel 1 exit /b 1
