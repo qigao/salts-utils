@@ -114,10 +114,10 @@ def audit_compiles(build_dir, roots, mode, required_relpaths=(), expected_counts
 
 def codemodel(build_dir):
     reply = build_dir / ".cmake/api/v1/reply"
-    indexes = sorted(reply.glob("index-*.json"))
+    indexes = list(reply.glob("index-*.json"))
     if not indexes:
         fail(f"missing CMake File API index under {reply}")
-    index = json.loads(indexes[-1].read_text())
+    index = json.loads(max(indexes, key=lambda p: p.stat().st_mtime_ns).read_text())
     ref = index.get("reply", {}).get("codemodel-v2")
     if not ref:
         fail("CMake File API codemodel-v2 response missing")
@@ -169,16 +169,11 @@ def main():
                 "artifacts": [str(p) for p in artifacts],
                 "link_sha256": hashlib.sha256(link_text.encode()).hexdigest() if link_text else None,
             }
-        required = (
-            build_dir / "lib/libsalts.so",
-            build_dir / "lib/libsalts_service_host.a",
-            build_dir / "lib/libsalts_configurator.a",
-        )
-        for path in required:
-            if not path.is_file():
-                fail(f"required source-built runtime artifact missing: {path}")
+        runtime_artifacts = []
+        for target in ("salts", "salts_service_host", "salts_configurator"):
+            runtime_artifacts.extend(report["targets"][target]["artifacts"])
         report.update({"phase": "salts", "mode": args.mode, "salts_sha": sha,
-                       "runtime_artifacts": [str(p) for p in required]})
+                       "runtime_artifacts": runtime_artifacts})
     else:
         if not all((args.consumer_root, args.consumer_build, args.salts_prefix)):
             fail("consumer phase requires --consumer-root, --consumer-build and --salts-prefix")
