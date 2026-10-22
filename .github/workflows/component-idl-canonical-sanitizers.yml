@@ -2,23 +2,6 @@ name: Canonical Component IDL Provider source sanitizers
 
 'on':
   pull_request:
-    paths:
-      - ".github/workflows/component-idl-canonical-sanitizers.yml"
-      - "cmake/ci/verify-component-provider-sanitizers.py"
-      - "databind/compiler/tests/plugin/test_component_provider_candidate_dso.c"
-      - "databind/compiler/tests/plugin/test_component_provider_candidate_negative_dso.c"
-      - "databind/compiler/tests/plugin/test_component_provider_candidate_negative_kind.c"
-      - "databind/compiler/tests/plugin/CMakeLists.txt"
-      - "databind/compiler/**"
-      - "databind/runtime/**"
-  push:
-    branches:
-      - "test/component-idl-negative-dso-canonical"
-    paths:
-      - ".github/workflows/component-idl-canonical-sanitizers.yml"
-      - "cmake/ci/verify-component-provider-sanitizers.py"
-      - "databind/compiler/**"
-      - "databind/runtime/**"
   workflow_dispatch:
 
 permissions:
