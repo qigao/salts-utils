@@ -173,9 +173,8 @@ class PackageTests(unittest.TestCase):
             server.server_close()
 
     def test_authentication_failure_does_not_expose_token(self):
-        client = Packages(self.feed.base + "/index.json", "wrong-secret")
         with self.assertRaises(PackageMissing) as error:
-            client.versions("missing.native")
+            Packages(self.feed.base + "/index.json", "wrong-secret")
         self.assertNotIn("wrong-secret", str(error.exception))
 
 
