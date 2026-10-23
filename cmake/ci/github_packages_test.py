@@ -155,7 +155,7 @@ class PackageTests(unittest.TestCase):
                 prefix + "include/salts/component_runtime_abi.h": "",
                 prefix + "include/salts/configurator.h": "",
                 prefix + "include/salts/service_host.h": "",
-                prefix + "salts-sdk-manifest.txt": "version=2.3.0-rc.18\\n",
+                prefix + "salts-sdk-manifest.txt": "version=2.3.0-rc.18\n",
             })
         self.feed.add("Salts.Native", version, files)
         self.feed.add("Qigao.Re2c.Binary", "1.0.0", {
