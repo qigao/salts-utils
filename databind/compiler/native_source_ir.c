@@ -270,7 +270,8 @@ fail:
 
 
 /* Deliberately private: the public C/codec entry still uses Binary admission.
- * This writes only the lossless fixed-width scalar subset accepted by build(). */
+ * The Contract-only renderer admits only scalar and owning layouts whose
+ * CMeta/CSTL lifecycle and provider identity are explicitly known. */
 static int native_c_type(const char *name) {
   size_t i;
   if (name == NULL) return 0;
