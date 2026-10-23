@@ -38,13 +38,10 @@ jobs:
         if: matrix.family == 'ios'
         shell: bash
         run: echo 'X_VCPKG_NUGET_ID_PREFIX=vcpkg-cache' >> "$GITHUB_ENV"
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-native-ci
         with:
-          mode: read
+          re2c: 'false'
       - uses: ./.github/actions/setup-build-host
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
       - name: Select Windows dependency triplet
         if: matrix.family == 'windows'
         shell: pwsh

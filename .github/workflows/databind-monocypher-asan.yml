@@ -79,12 +79,10 @@ jobs:
           # The normal SaltsUtils master CI separately exercises the new patch
           # with its current 2.2 compatibility input. Do not add Unicode
           # compatibility/fallback branches to this exact 2.3 consumer gate.
-      - name: Restore pinned shared vcpkg graph
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@0dc254695917bc180504d916240292e9096e9da5
+      - name: Restore pinned shared vcpkg graph and re2c with curl
+        uses: ./.github/actions/setup-native-ci
         with:
-          mode: read
-      - name: Restore pinned re2c generator
-        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@0dc254695917bc180504d916240292e9096e9da5
+          contract-ref: 0dc254695917bc180504d916240292e9096e9da5
       - name: Prepare Salts Linux build host
         uses: ./build/monocypher-source/salts/.github/actions/setup-build-host
       - name: Attest source identities and native host prerequisites

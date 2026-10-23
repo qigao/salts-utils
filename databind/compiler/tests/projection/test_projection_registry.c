@@ -1950,7 +1950,8 @@ describe("compiler integration") {
     check_true(file_contains(output, "bool active;"));
     check_true(file_contains(output, "Packet_init(Packet *value)"));
     check_true(file_contains(output, "Packet_clear(Packet *value)"));
-    check_true(file_contains(output, "*value = (Packet){0};"));
+    check_true(file_contains(output, "const Packet zero = {0}; *value = zero;"));
+    check_false(file_contains(output, "*value = (Packet){0};"));
     check_false(file_contains(output, "binary_wire"));
     (void)remove(output);
     (void)remove(schema_path);
