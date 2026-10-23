@@ -1,6 +1,10 @@
 name: Native CI dependencies with curl
 description: Pinned vcpkg contract and GitHub package downloads without Mono, NuGet or .NET.
 inputs:
+  contract-ref:
+    description: Immutable qigao/vcpkg-cache contract commit.
+    required: false
+    default: fafb1efe5ac2440bfd7a08e493988d0459d89e51
   re2c:
     description: Restore the host re2c package in this job.
     required: false
@@ -12,7 +16,7 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: qigao/vcpkg-cache
-        ref: fafb1efe5ac2440bfd7a08e493988d0459d89e51
+        ref: ${{ inputs.contract-ref }}
         path: build/ci-vcpkg-contract
         persist-credentials: false
     - uses: actions/setup-python@v5
