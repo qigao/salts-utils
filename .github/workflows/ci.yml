@@ -64,6 +64,9 @@ jobs:
       - name: Qualify immutable release asset identity
         shell: bash
         run: bash .github/scripts/test-release-asset-identity.sh
+      - name: Qualify curl GitHub Packages restore
+        shell: bash
+        run: python3 cmake/ci/github_packages_test.py
       - name: Verify private DataBind source and typed-error uniqueness contracts
         shell: bash
         run: python3 cmake/ci/verify_databind_release_source.py --self-test
