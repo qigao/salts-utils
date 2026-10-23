@@ -28,6 +28,7 @@ PATHS = (
     ".github/workflows/native-build.yml",
     ".github/workflows/native-tests.yml",
     ".github/workflows/idl-component-source-gate.yml",
+    ".github/workflows/idl-component-published-sdk-gate.yml",
     ".github/workflows/databind-monocypher-asan.yml",
     ".github/workflows/sdk-package.yml",
     "CMakeUserPresets.json",
@@ -58,6 +59,7 @@ def violations(source: dict[str, str]) -> list[str]:
     native_build = source[".github/workflows/native-build.yml"]
     native_tests = source[".github/workflows/native-tests.yml"]
     component_gate = source[".github/workflows/idl-component-source-gate.yml"]
+    published_component_gate = source[".github/workflows/idl-component-published-sdk-gate.yml"]
     monocypher_gate = source[".github/workflows/databind-monocypher-asan.yml"]
     sdk_package = source[".github/workflows/sdk-package.yml"]
     user_presets = source["CMakeUserPresets.json"]
@@ -127,6 +129,7 @@ def violations(source: dict[str, str]) -> list[str]:
         ("native build workflow", native_build),
         ("native test workflow", native_tests),
         ("ComponentProvider source gate", component_gate),
+        ("published ComponentProvider SDK gate", published_component_gate),
         ("Monocypher sanitizer gate", monocypher_gate),
     )
     forbidden_ci = (
@@ -144,12 +147,17 @@ def violations(source: dict[str, str]) -> list[str]:
         ("native build workflow", native_build),
         ("native test workflow", native_tests),
         ("ComponentProvider source gate", component_gate),
+        ("published ComponentProvider SDK gate", published_component_gate),
         ("Monocypher sanitizer gate", monocypher_gate),
     ):
         if "./.github/actions/setup-native-ci" not in value:
             errors.append(f"{label} must consume the curl-only native CI action")
     if "cmake/ci/setup_native_ci.py" not in native_setup or "github_packages.py" not in native_setup:
         errors.append("native setup action must bootstrap the curl cache and curl re2c restore")
+    if ("workflow_dispatch" not in published_component_gate
+            or "--salts-version" not in published_component_gate
+            or "--require-component-runtime" not in published_component_gate):
+        errors.append("published ComponentProvider SDK gate must require an exact dispatched runtime package")
     if "nugetconfig" in user_presets.lower() or "nugettimeout" in user_presets.lower():
         errors.append("root user presets must not configure a NuGet-backed vcpkg binary source")
     if "dotnet restore" not in sdk_package or "<clear />" not in sdk_package:

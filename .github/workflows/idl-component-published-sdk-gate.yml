@@ -1,0 +1,164 @@
+name: Published Salts Component Runtime SDK gate
+
+'on':
+  workflow_dispatch:
+    inputs:
+      salts_version:
+        description: Exact immutable Salts.Native version (for example 2.3.0-rc.18)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: component-published-sdk-${{ inputs.salts_version }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-hosts:
+    name: Published Salts.Native ${{ inputs.salts_version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-24.04
+            rid: linux-x64
+            triplet: x64-linux
+            preset: ci-linux-release-user
+          - os: windows
+            runner: windows-2025
+            rid: windows-x64
+            triplet: ""
+            preset: ci-win-release-user
+          - os: macos
+            runner: macos-15
+            rid: macos-arm64
+            triplet: arm64-osx
+            preset: ci-macos-release-user
+    env:
+      EXPECTED_SU: ${{ github.sha }}
+      QIGAO_SDK_RID: ${{ matrix.rid }}
+      QIGAO_HOST_RID: ${{ matrix.rid }}
+      QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
+      QIGAO_HOST_TRIPLET: ${{ matrix.triplet }}
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
+      CCACHE_DIR: ${{ github.workspace }}/build/component-published/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-published-v1-${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-native-ci
+        with:
+          re2c: 'false'
+
+      - uses: ./.github/actions/setup-build-host
+
+      - name: Select canonical Windows vcpkg triplet
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:VCPKG_ROOT -or -not $env:QIGAO_VCPKG_WINDOWS_TRIPLET) { throw 'Shared Windows vcpkg environment is missing' }
+          "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+
+      - name: Restore exact published Salts Component Runtime SDK with curl
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SALTS_VERSION_INPUT: ${{ inputs.salts_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:SALTS_VERSION_INPUT
+          if ($version -notmatch '^2[.]3[.]0-rc[.][1-9][0-9]*$') { throw "Expected an exact Salts 2.3 release-candidate version, got: $version" }
+          if ($version -eq '2.3.0-rc.17') { throw 'rc.17 predates the canonical ServiceHost/Configurator SDK; select the next immutable release' }
+          $packages = Join-Path $env:RUNNER_TEMP "component-published-packages"
+          $result = Join-Path $env:RUNNER_TEMP "component-published-sdk.json"
+          python cmake/ci/github_packages.py native-sdk `
+            --packages $packages `
+            --salts-rid $env:QIGAO_SDK_RID `
+            --host-rid $env:QIGAO_HOST_RID `
+            --salts-version $version `
+            --require-component-runtime `
+            --result $result
+          if ($LASTEXITCODE -ne 0) { throw 'Published Salts.Native restore/validation failed' }
+          $resolved = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
+          if ($resolved.SALTS_VERSION -ne $version) { throw 'Resolved Salts.Native version does not match requested version' }
+          New-Item -ItemType Directory -Force build/component-published/evidence | Out-Null
+          @("salts_version=$version", "saltsutils=$env:EXPECTED_SU", "rid=$env:QIGAO_SDK_RID", "publish=false") |
+            Set-Content build/component-published/evidence/provenance.txt
+
+      - name: Build and exercise Provider DSO against published SDK (Unix)
+        if: matrix.os != 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_ROOT="$RUNNER_TEMP/component-published-utils"
+          if [ "${{ matrix.os }}" = macos ]; then
+            export DYLD_LIBRARY_PATH="$SALTS_ROOT/lib:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib:${DYLD_LIBRARY_PATH:-}"
+          else
+            export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib:${LD_LIBRARY_PATH:-}"
+          fi
+          build="$GITHUB_WORKSPACE/build/component-published/${{ matrix.os }}"
+          cmake --preset "${{ matrix.preset }}" -B "$build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET" \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build "$build" --parallel 2 \
+            --target databind_component_candidate_provider \
+                     test_databind_component_candidate_dso_c11 \
+                     test_databind_component_candidate_header_cpp \
+                     databind_component_candidate_codegen_tool
+          ctest --test-dir "$build" \
+            -R '^test_databind_component_candidate_(dso_c11|header_cpp|codegen_content)$' \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 120
+
+      - name: Build and exercise Provider DSO against published SDK (Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "PATH=%SALTS_ROOT%\bin;%VCPKG_INSTALLED_DIR%\%QIGAO_TARGET_TRIPLET%\bin;%PATH%"
+          set "PKG_ROOT=%RUNNER_TEMP%\component-published-utils"
+          set "BUILD=%GITHUB_WORKSPACE%\build\component-published\windows"
+          cmake --preset "%UTILS_PRESET%" -B "%BUILD%" "-DCMAKE_PREFIX_PATH=%SALTS_ROOT%;%VCPKG_INSTALLED_DIR%/%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build "%BUILD%" --config Release --parallel 2 --target databind_component_candidate_provider test_databind_component_candidate_dso_c11 test_databind_component_candidate_header_cpp databind_component_candidate_codegen_tool
+          if errorlevel 1 exit /b 1
+          ctest --test-dir "%BUILD%" -C Release -R "^test_databind_component_candidate_(dso_c11|header_cpp|codegen_content)$" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 120
+          if errorlevel 1 exit /b 1
+        env:
+          UTILS_PRESET: ${{ matrix.preset }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: component-published-sdk-${{ matrix.os }}-${{ inputs.salts_version }}-${{ github.run_id }}
+          path: |
+            build/component-published/evidence/
+            build/component-published/${{ matrix.os }}/Testing/Temporary/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Assert source unchanged
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -ne $env:EXPECTED_SU) { throw 'SaltsUtils source SHA changed' }
+          $status = git status --porcelain --untracked-files=no
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify source status' }
+          if ($status) { throw 'Tracked source tree changed during published-SDK qualification' }

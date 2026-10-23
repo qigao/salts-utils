@@ -200,7 +200,7 @@ def read_manifest(path):
     return values
 
 
-def validate_salts(root, rid):
+def validate_salts(root, rid, expected_version=SALTS_NATIVE_VERSION):
     root = Path(root)
     required = [
         root / "lib/cmake/Salts/SaltsConfig.cmake",
@@ -216,8 +216,26 @@ def validate_salts(root, rid):
         encoding="utf-8", errors="replace")
     if "Salts::Unicode" not in targets:
         raise ValueError("published Salts.Native must export canonical Salts::Unicode")
-    if read_manifest(root / "salts-sdk-manifest.txt").get("version") != SALTS_NATIVE_VERSION:
+    if read_manifest(root / "salts-sdk-manifest.txt").get("version") != expected_version:
         raise ValueError("Salts.Native manifest version/provenance mismatch")
+
+
+def validate_component_runtime(root, rid):
+    root = Path(root)
+    required = [
+        root / "include/salts/component_provider_abi.h",
+        root / "include/salts/component_runtime_abi.h",
+        root / "include/salts/configurator.h",
+        root / "include/salts/service_host.h",
+        root / "lib/cmake/Salts/SaltsTargets.cmake",
+    ]
+    for path in required:
+        if not path.is_file():
+            raise ValueError(f"incomplete published Component Runtime SDK for {rid}: {path}")
+    targets = required[-1].read_text(encoding="utf-8", errors="replace")
+    for target in ("Salts::ComponentProviderABI", "Salts::Configurator", "Salts::ServiceHost"):
+        if target not in targets:
+            raise ValueError(f"published Salts.Native SDK is missing target {target}")
 
 
 def restore_re2c_for_rid(packages, package_root, rid):
@@ -240,14 +258,20 @@ def restore_re2c_for_rid(packages, package_root, rid):
 def restore_native_sdk(args, packages):
     if not RID.fullmatch(args.salts_rid) or not RID.fullmatch(args.host_rid):
         raise ValueError("unsupported target/host RID")
-    version = packages.select("Salts.Native", exact=SALTS_NATIVE_VERSION)
-    if version != SALTS_NATIVE_VERSION:
+    requested_version = args.salts_version or SALTS_NATIVE_VERSION
+    if not VERSION.fullmatch(requested_version):
+        raise ValueError("an exact Salts.Native semantic version is required")
+    version = packages.select("Salts.Native", exact=requested_version)
+    if version != requested_version:
         raise ValueError("wrong canonical Salts.Native release: " + version)
     package = packages.extract("Salts.Native", version, args.packages)
     salts_root = package / "sdk" / args.salts_rid
     salts_host_root = package / "sdk" / args.host_rid
-    validate_salts(salts_root, args.salts_rid)
-    validate_salts(salts_host_root, args.host_rid)
+    validate_salts(salts_root, args.salts_rid, version)
+    validate_salts(salts_host_root, args.host_rid, version)
+    if args.require_component_runtime:
+        validate_component_runtime(salts_root, args.salts_rid)
+        validate_component_runtime(salts_host_root, args.host_rid)
     re2c_version, re2c_root = restore_re2c_for_rid(packages, args.packages, args.host_rid)
     values = {
         "SALTS_ROOT": salts_root.resolve(),
@@ -409,6 +433,8 @@ def main():
     native.add_argument("--salts-rid", required=True)
     native.add_argument("--host-rid", required=True)
     native.add_argument("--with-turbowasm", action="store_true")
+    native.add_argument("--salts-version")
+    native.add_argument("--require-component-runtime", action="store_true")
     native.add_argument("--result", type=Path)
 
     re2c = commands.add_parser("re2c")
