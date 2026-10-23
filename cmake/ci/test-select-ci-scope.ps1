@@ -13,7 +13,7 @@ function Assert-Output([string]$Output, [string]$Key, [string]$Expected, [string
     throw "$CaseName expected $Key=$Expected; got: $Output"
   }
 }
-function Test-Scope([string]$Name, [string[]]$Paths, [string]$ExpectedPackaging, [string]$ExpectedBuilds) {
+function Test-Scope([string]$Name, [string[]]$Paths, [string]$ExpectedPackaging, [string]$ExpectedBuilds, [string]$ExpectedPackageTests) {
   Invoke-Git @('reset','--hard',$script:base) | Out-Null
   Invoke-Git @('clean','-fdq') | Out-Null
   foreach ($relative in $Paths) {
@@ -33,6 +33,7 @@ function Test-Scope([string]$Name, [string[]]$Paths, [string]$ExpectedPackaging,
   $joined = $output -join [Environment]::NewLine
   Assert-Output $joined 'packaging_only' $ExpectedPackaging $Name
   Assert-Output $joined 'has_builds' $ExpectedBuilds $Name
+  Assert-Output $joined 'run_packaging_contract' $ExpectedPackageTests $Name
   Write-Output "PASS $Name"
 }
 
@@ -45,13 +46,13 @@ try {
   Invoke-Git @('commit','-m','base') | Out-Null
   $script:base = Invoke-Git @('rev-parse','HEAD')
 
-  Test-Scope 'packaging-only script' @('packaging/nuget/preserve_nupkg_permissions.py') 'true' 'false'
-  Test-Scope 'packaging workflow' @('.github/workflows/sdk-package.yml') 'true' 'false'
-  Test-Scope 'documentation-only' @('docs/example.md') 'false' 'false'
-  Test-Scope 'native source' @('databind/runtime/data_bind.c') 'false' 'true'
-  Test-Scope 'mixed packaging and source' @('packaging/nuget/README.md','databind/runtime/data_bind.c') 'false' 'true'
-  Test-Scope 'unknown path is conservative' @('new-module/unknown.c') 'false' 'true'
-  Test-Scope 'scope selector change is native' @('cmake/ci/select-ci-scope.ps1') 'false' 'true'
+  Test-Scope 'packaging-only script' @('packaging/nuget/preserve_nupkg_permissions.py') 'true' 'false' 'true'
+  Test-Scope 'packaging workflow' @('.github/workflows/sdk-package.yml') 'true' 'false' 'true'
+  Test-Scope 'documentation-only' @('docs/example.md') 'false' 'false' 'false'
+  Test-Scope 'native source' @('databind/runtime/data_bind.c') 'false' 'true' 'false'
+  Test-Scope 'mixed packaging and source' @('packaging/nuget/README.md','databind/runtime/data_bind.c') 'false' 'true' 'true'
+  Test-Scope 'unknown path is conservative' @('new-module/unknown.c') 'false' 'true' 'false'
+  Test-Scope 'scope selector change is native' @('cmake/ci/select-ci-scope.ps1') 'false' 'true' 'true'
 } finally {
   Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
