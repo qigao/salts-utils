@@ -66,11 +66,19 @@ def main():
                               capture_output=True, text=True).stdout.strip()):
         raise ValueError('vcpkg checkout violates the canonical full-history contract')
     if os.name == 'nt':
-        run('cmd', '/c', 'bootstrap-vcpkg.bat', '-disableMetrics', cwd=root)
+        bootstrap = ['cmd', '/c', 'bootstrap-vcpkg.bat', '-disableMetrics']
         executable = root / 'vcpkg.exe'
     else:
-        run('sh', './bootstrap-vcpkg.sh', '-disableMetrics', cwd=root)
+        bootstrap = ['sh', './bootstrap-vcpkg.sh', '-disableMetrics']
         executable = root / 'vcpkg'
+    for attempt in range(1, 5):
+        result = subprocess.run(bootstrap, cwd=root)
+        if result.returncode == 0:
+            break
+        if attempt == 4:
+            result.check_returncode()
+        print(f'vcpkg bootstrap failed on attempt {attempt}; retrying', flush=True)
+        time.sleep(2 ** attempt)
     if not output(str(executable), 'version').splitlines()[0].endswith(tool):
         raise ValueError('Canonical vcpkg tool version mismatch')
     version = (contract / 'cache-contract-version.txt').read_text().strip()
