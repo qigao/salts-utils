@@ -23,6 +23,10 @@ SALTS_NATIVE_VERSION = "2.3.0-rc.17"
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.-]+$")
 VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$")
 RID = re.compile(r"^(linux-(?:x64|arm64)|windows-x64|macos-arm64|android-arm64-v8a|ios-arm64)$")
+PUBLISHED_RIDS = (
+    "linux-x64", "linux-arm64", "windows-x64",
+    "macos-arm64", "android-arm64-v8a", "ios-arm64",
+)
 
 
 class PackageMissing(Exception):
@@ -270,8 +274,12 @@ def restore_native_sdk(args, packages):
     validate_salts(salts_root, args.salts_rid, version)
     validate_salts(salts_host_root, args.host_rid, version)
     if args.require_component_runtime:
-        validate_component_runtime(salts_root, args.salts_rid)
-        validate_component_runtime(salts_host_root, args.host_rid)
+        # A published package is one immutable six-RID contract. Validate all
+        # payloads on every native host before compiling any consumer.
+        for rid in PUBLISHED_RIDS:
+            rid_root = package / "sdk" / rid
+            validate_salts(rid_root, rid, version)
+            validate_component_runtime(rid_root, rid)
     re2c_version, re2c_root = restore_re2c_for_rid(packages, args.packages, args.host_rid)
     values = {
         "SALTS_ROOT": salts_root.resolve(),
