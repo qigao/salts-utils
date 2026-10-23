@@ -63,9 +63,11 @@ normal CI. No alternate C++ record runtime or type provider is introduced.
 ## Current-master owner refresh (2026-10-23)
 
 The root PR branch is based on SaltsUtils master
-`2a8745db216e6bab7dbd043d6e0a0f19d4f1f7ac` and its current HEAD
-`b100f410b2cad70894930bdd55635e9b0bb8a00f` is 27 commits ahead and zero
-commits behind master. The exact-source Provider gate pins current Salts master
+`2a8745db216e6bab7dbd043d6e0a0f19d4f1f7ac`. The root source-code
+qualification was recorded on HEAD
+`b100f410b2cad70894930bdd55635e9b0bb8a00f` (27 commits ahead and zero
+commits behind master); the later documentation-only refresh does not change
+compiler/runtime code. The exact-source Provider gate pins current Salts master
 `a6f49357b8886cecf2badd4896b04b4e0547f1be`, replacing the previous pin
 `a51947d241a60bc92e92efa8fd6de1d0bb2fbac2` and the older pre-ServiceHost
 source `23032bfe124df327317ce9b4d132054e99b2c0cb`. It builds and installs the
