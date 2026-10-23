@@ -1,12 +1,17 @@
 #include "component_provider_candidate.h"
 
-#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 /* Bounded, literal-safe compiler identities. The IR already owns the
  * semantic naming; do not reconstruct identities from display text. */
+static int candidate_ascii_alnum(unsigned char c) {
+  return (c >= 'A' && c <= 'Z') ||
+         (c >= 'a' && c <= 'z') ||
+         (c >= '0' && c <= '9');
+}
+
 static int candidate_identifier(const char *s) {
   size_t i, n;
   if (s == NULL || !((s[0] >= 'A' && s[0] <= 'Z') ||
@@ -15,7 +20,7 @@ static int candidate_identifier(const char *s) {
   n = strlen(s);
   if (n == 0u || n > 180u) return 0;
   for (i = 1u; i < n; ++i)
-    if (!isalnum((unsigned char)s[i]) && s[i] != '_') return 0;
+    if (!candidate_ascii_alnum((unsigned char)s[i]) && s[i] != '_') return 0;
   return 1;
 }
 
@@ -26,7 +31,7 @@ static int candidate_stable_id(const char *s) {
   if (n == 0u || n > 180u) return 0;
   for (i = 0u; i < n; ++i) {
     const unsigned char c = (unsigned char)s[i];
-    if (!isalnum(c) && c != '.' && c != '_' && c != '-') return 0;
+    if (!candidate_ascii_alnum(c) && c != '.' && c != '_' && c != '-') return 0;
   }
   return 1;
 }
@@ -36,7 +41,7 @@ static int candidate_basename(const char *s) {
   if (s == NULL || !s[0]) return 0;
   for (i = 0u; s[i]; ++i) {
     const unsigned char c = (unsigned char)s[i];
-    if (i >= 180u || (!isalnum(c) && c != '_' && c != '.' && c != '-'))
+    if (i >= 180u || (!candidate_ascii_alnum(c) && c != '_' && c != '.' && c != '-'))
       return 0;
   }
   return 1;
