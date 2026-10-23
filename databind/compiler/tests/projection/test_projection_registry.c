@@ -1767,6 +1767,36 @@ describe("compiler integration") {
     (void)remove(path);
   }
 
+  it("rejects fixed-size arrays until NativeSourceIR preserves inline storage") {
+    static const char path[] = "native_fixed_array_rejected.schema";
+    static const char schema[] =
+        "schema NativeFixedArray; message Packet { uint32[4] samples; }";
+    Node *tree = NULL;
+    IdlContract *contract = NULL;
+    char *source = NULL;
+    databind_native_source_ir ir = {0};
+    (void)remove(path);
+    check_true(write_sentinel(path, schema));
+    check_equal(databind_compiler_parse_contract_only_file(
+                    path, &tree, &contract, &source), 0);
+    check_equal(contract->data_count, (size_t)1u);
+    check_equal(contract->data[0].field_count, (size_t)1u);
+    check_equal(contract->data[0].fields[0].collection_kind,
+                IDL_COLLECTION_ARRAY);
+    check_equal(contract->data[0].fields[0].length, "4");
+
+    /* The current native renderer only supports dynamic owning vec_t
+     * sequences. Reject instead of erasing the fixed cardinality. */
+    check_equal(databind_native_source_ir_build(contract, &ir), -1);
+    check_null(ir.records);
+    check_equal(ir.record_count, (size_t)0u);
+    databind_native_source_ir_destroy(&ir);
+    idl_contract_destroy(contract);
+    node_free(tree);
+    free(source);
+    (void)remove(path);
+  }
+
   it("admits owning Record sequences and Map values from Contract only") {
     static const char schema_path[] = "native_record_collections.schema";
     static const char output[] = "native_record_collections.h";
