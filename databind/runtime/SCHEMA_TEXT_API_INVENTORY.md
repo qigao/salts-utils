@@ -32,7 +32,7 @@ The rest of `data_bind.c` is not merely a parser wrapper: JSON/XML/CSV binding a
 
 ## 3. In-repository references found
 
-The source search for `data_bind_create_from_text` found these in-repository call sites. They are categorized to make migration order explicit.
+The source searches for both `data_bind_create` and `data_bind_create_from_text` found these in-repository call sites. They are categorized to make migration order explicit.
 
 ### Generated/public source path
 
