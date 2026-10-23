@@ -50,7 +50,7 @@ class Feed:
 
         self.server = LoopbackServer(("127.0.0.1", 0), Handler)
         self.base = f"http://127.0.0.1:{self.server.server_port}"
-        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.documents["/index.json"] = {
             "resources": [{
