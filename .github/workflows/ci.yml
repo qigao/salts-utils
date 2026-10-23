@@ -26,6 +26,7 @@ jobs:
       tests: ${{ steps.select.outputs.tests }}
       has_builds: ${{ steps.select.outputs.has_builds }}
       has_tests: ${{ steps.select.outputs.has_tests }}
+      packaging_only: ${{ steps.select.outputs.packaging_only }}
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +43,9 @@ jobs:
           PREPARE_RELEASE: ${{ inputs.prepare_release || false }}
           CI_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: ./cmake/ci/select-ci-scope.ps1 -EventName $env:CI_EVENT -BaseRef $env:CI_BASE -HeadRef $env:CI_HEAD -HeadBranch $env:CI_BRANCH -PrepareRelease ($env:PREPARE_RELEASE -eq 'true')
+      - name: Test conservative CI scope selection
+        shell: pwsh
+        run: pwsh -NoProfile -File cmake/ci/test-select-ci-scope.ps1
       - name: Read package version
         id: version
         shell: pwsh
@@ -70,6 +74,30 @@ jobs:
       - name: Verify private DataBind source and typed-error uniqueness contracts
         shell: bash
         run: python3 cmake/ci/verify_databind_release_source.py --self-test
+  packaging_contract:
+    needs: scope
+    if: needs.scope.outputs.packaging_only == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Qualify NuGet permission rewriting
+        shell: bash
+        run: python3 packaging/nuget/test_preserve_nupkg_permissions.py
+      - name: Qualify final package structure, identity and extraction
+        shell: bash
+        run: python3 packaging/nuget/test_package_contract.py
+      - name: Qualify immutable release asset identity guard
+        shell: bash
+        run: bash .github/scripts/test-release-asset-identity.sh
+      - name: Qualify curl GitHub Packages restore
+        shell: bash
+        run: python3 cmake/ci/github_packages_test.py
   native:
     needs: scope
     if: needs.scope.outputs.has_builds == 'true'
@@ -100,7 +128,7 @@ jobs:
     secrets: inherit
   result:
     name: CI result
-    needs: [scope, native, tests, package, component_published_sdk]
+    needs: [scope, native, tests, package, component_published_sdk, packaging_contract]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -116,6 +144,8 @@ jobs:
           RC_BRANCH_PUSH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/salts-utils-4.3-') }}
           PACKAGE_RESULT: ${{ needs.package.result }}
           COMPONENT_PUBLISHED_SDK_RESULT: ${{ needs.component_published_sdk.result }}
+          PACKAGING_ONLY: ${{ needs.scope.outputs.packaging_only }}
+          PACKAGING_CONTRACT_RESULT: ${{ needs.packaging_contract.result }}
         run: |
           set -euo pipefail
           test "$SCOPE_RESULT" = success
@@ -126,3 +156,4 @@ jobs:
           fi
           if [ "$PREPARE_RELEASE" = true ] || [ "$RC_BRANCH_PUSH" = true ]; then test "$PACKAGE_RESULT" = success; fi
           if [ "$PREPARE_RELEASE" = true ]; then test "$COMPONENT_PUBLISHED_SDK_RESULT" = success; fi
+          if [ "$PACKAGING_ONLY" = true ]; then test "$PACKAGING_CONTRACT_RESULT" = success; fi
