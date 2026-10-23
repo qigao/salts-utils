@@ -43,7 +43,7 @@
         "QIGAO_TARGET_TRIPLET": "x64-windows",
         "VCPKG_CACHE_REPOSITORY_ROOT": "$penv{LOCALAPPDATA}/qigao/vcpkg-cache",
         "VCPKG_OVERLAY_PORTS": "$env{VCPKG_CACHE_REPOSITORY_ROOT}/ports",
-        "VCPKG_BINARY_SOURCES": "clear;default,readwrite;nugettimeout,1800;nugetconfig,${sourceDir}/../../../../cmake/vcpkg-cache.nuget.config,read"
+        "VCPKG_BINARY_SOURCES": "clear;default,readwrite"
       },
       "cacheVariables": {
         "VCPKG_INSTALL_OPTIONS": ""
