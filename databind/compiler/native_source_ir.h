@@ -58,8 +58,9 @@ typedef struct databind_native_source_ir {
 int databind_native_source_ir_build(
     const IdlContract *contract, databind_native_source_ir *out);
 void databind_native_source_ir_destroy(databind_native_source_ir *ir);
-/* Render a self-contained scalar C header. Presence/null-state flags are
- * native representation only, not Binary wire layout. */
+/* Render a self-contained native C header for admitted scalar and owning
+ * layouts. Presence/null-state flags are native representation only, not
+ * Binary wire layout. Unsupported storage shapes fail before output opens. */
 int databind_native_source_ir_write_header(
     const databind_native_source_ir *ir, const char *path);
 /* Render after complete admission to a borrowed FILE*. The stream is never
