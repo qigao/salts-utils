@@ -29,6 +29,7 @@ PATHS = (
     ".github/workflows/native-tests.yml",
     ".github/workflows/idl-component-source-gate.yml",
     ".github/workflows/databind-monocypher-asan.yml",
+    ".github/workflows/sdk-package.yml",
     "CMakeUserPresets.json",
 )
 
@@ -58,6 +59,7 @@ def violations(source: dict[str, str]) -> list[str]:
     native_tests = source[".github/workflows/native-tests.yml"]
     component_gate = source[".github/workflows/idl-component-source-gate.yml"]
     monocypher_gate = source[".github/workflows/databind-monocypher-asan.yml"]
+    sdk_package = source[".github/workflows/sdk-package.yml"]
     user_presets = source["CMakeUserPresets.json"]
 
     if not re.search(
@@ -150,6 +152,10 @@ def violations(source: dict[str, str]) -> list[str]:
         errors.append("native setup action must bootstrap the curl cache and curl re2c restore")
     if "nugetconfig" in user_presets.lower() or "nugettimeout" in user_presets.lower():
         errors.append("root user presets must not configure a NuGet-backed vcpkg binary source")
+    if "dotnet restore" not in sdk_package or "<clear />" not in sdk_package:
+        errors.append("release pack restore must be explicit and source-empty")
+    if "nuget.pkg.github.com" in sdk_package or "dotnet nuget add source" in sdk_package:
+        errors.append("release pack preparation must not read GitHub Packages through dotnet")
     return errors
 
 def exercise_negative_cases(source: dict[str, str]) -> None:
