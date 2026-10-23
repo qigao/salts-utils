@@ -1,6 +1,12 @@
 name: Published Salts Component Runtime SDK gate
 
 'on':
+  workflow_call:
+    inputs:
+      salts_version:
+        description: Exact immutable Salts.Native version
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       salts_version:

@@ -31,6 +31,7 @@ PATHS = (
     ".github/workflows/idl-component-published-sdk-gate.yml",
     ".github/workflows/databind-monocypher-asan.yml",
     ".github/workflows/sdk-package.yml",
+    ".github/workflows/ci.yml",
     "CMakeUserPresets.json",
 )
 
@@ -62,6 +63,7 @@ def violations(source: dict[str, str]) -> list[str]:
     published_component_gate = source[".github/workflows/idl-component-published-sdk-gate.yml"]
     monocypher_gate = source[".github/workflows/databind-monocypher-asan.yml"]
     sdk_package = source[".github/workflows/sdk-package.yml"]
+    ci_workflow = source[".github/workflows/ci.yml"]
     user_presets = source["CMakeUserPresets.json"]
 
     if not re.search(
@@ -164,6 +166,10 @@ def violations(source: dict[str, str]) -> list[str]:
         errors.append("release pack restore must be explicit and source-empty")
     if "nuget.pkg.github.com" in sdk_package or "dotnet nuget add source" in sdk_package:
         errors.append("release pack preparation must not read GitHub Packages through dotnet")
+    if ("uses: ./.github/workflows/idl-component-published-sdk-gate.yml" not in ci_workflow
+            or "salts_version: 2.3.0-rc.18" not in ci_workflow
+            or "COMPONENT_PUBLISHED_SDK_RESULT" not in ci_workflow):
+        errors.append("release preparation must require the exact published Component Runtime SDK gate")
     return errors
 
 def exercise_negative_cases(source: dict[str, str]) -> None:
