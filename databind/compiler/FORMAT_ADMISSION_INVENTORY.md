@@ -1,158 +1,79 @@
-# DataBind IDL compiler — C/Native and Binary admission inventory
+# DataBind IDL compiler — current C/Native and Binary admission inventory
 
-Status: first evidence-backed cutover plan for [#599](https://github.com/qigao/salts-utils/issues/599). A completed TypeScript/Python/Go/Rust/C++ or SQL **source** cutover does not imply that native C or binary codec output is format-neutral.
+Status: reconciled against master `1b3ad84953926ba397214551a9950ab290022e77` (2026-10-23). Tracks [#599](https://github.com/qigao/salts-utils/issues/599).
+
+This is a current-state inventory, not a claim that every C/native path has completed the format cutover. Contract-only NativeSourceIR and rollback-aware output staging are delivered; legacy Binary-mutated Node consumers and the exhaustive field-by-field audit remain.
 
 ## Authority and boundaries
 
 ```text
 IDL source
-  -> idl_parse(Node) -> idl_contract_build_from_tree() -> immutable IdlContract
-     |-> Contract-only SQL / TS / Python / Go / Rust / C++ presentation
-     |-> C/native typed declarations + CMeta/CSTL [not yet independent]
-     |-> explicitly selected Binary FormatPlan -> BinaryLayoutIR -> CSerde
-     |-> selected transport/artifact generator
+  -> idl_parse(Node) -> immutable IdlContract
+       |-> Contract-only language/source projection
+       |-> Contract-only NativeSourceIR for admitted C/native shapes
+       |-> explicitly selected BinaryFormatPlan -> BinaryLayoutIR -> CSerde
+       |-> selected artifact/transport plan
 ```
 
-### Observed responsibilities (current source)
+The logical `IdlContract` is the semantic source of truth. Binary offsets, alignment, fixed-block layout, byte order, presence/null bitmaps and wire fingerprints belong only to a selected Binary representation. Legacy C templates still consume Binary-overlay facts; they must not be treated as the NativeSourceIR representation.
 
-| Location | Consumed/produced facts | Admission consequence |
+## Observed responsibilities
+
+| Location | Current responsibility | Remaining risk / admission rule |
 | --- | --- | --- |
-| `compiler_core.c:databind_compiler_parse_contract_file_mode` | `IdlContract` freezes before `databind_binary_contract_apply(root)` and `tbe_compiler_annotate_language_types(contract, root)`. | Shared legacy C parse remains Binary-admitted; source languages and SQL bypass overlay. |
-| `compiler/binary/src/binary_contract_overlay.c` | `offset`, `has_offset`, `field_size_bytes`, `fixed_block_size`, `is_fixed_size`, and layout validation; updates presence/null bitmap layout. | Wire layout authority. Cannot be replaced by arbitrary source representation metadata. |
-| `templates/c/c_structs.mustache` | Imports `data_bind_binary_wire.h`, emits wire byte order, fixed block length, `*_OFFSET`, byte reads/writes, group cursor helpers; also native declarations and CMeta symbols. | Mixing wire accessors with native declarations currently makes bare `--lang c` Binary-dependent. |
-| `templates/c/c_typed_source.mustache` | CMeta/CSTL record descriptors, optional/null bits, typed native field metadata, `binary_reader_supported`, canonical native-to-Binary writer and unavailable-Binary gates. | Native lifetime support cannot be inferred from whether Binary was admitted. Requires separate C/native projection plan. |
-| `compiler_core.c:tbe_compiler_annotate_binary_reader_messages` and `binary_reader_codegen.c` | Contract + `databind_binary_format_plan` + layout graph and CSerde representation. | Explicit Binary-format generation, not generic source lowering. |
-| `compiler_core.c:tbe_compiler_run_owned` | Prepares `projection_root` for selected projection or `--source-output`; uses `tbe_compiler_projection_requires_binary`, then renders primary source, source/guest/DSL, finally dispatches backend generators. | Selection/format validation and output publication are not fully transactional today. |
-| `compiler/projection.c:databind_compiler_projection_run` | Validates typed request IDs, backend names/callback registry; invokes selected backends in request order. | Registry admission originally occurred after main file rendering. First #599 slice moves **registration preflight** before rendering; backend callback failures remain distinct. |
+| `compiler_core.c:databind_compiler_parse_contract_file_mode` | Uses explicit contract-only vs Binary admission modes; freezes the typed Contract before applying the legacy Binary overlay when that path is selected. | The mode split exists, but some legacy C/Native consumers still read overlay-mutated `Node` fields. |
+| `native_source_ir.c` | Contract-only C header / typed native representation for the admitted NativeSourceIR subset; canonical C record names and owning lifecycle helpers. | Does not yet cover every optional/nullable/nested/owning execution shape. Unsupported layouts must fail closed. |
+| `compiler/binary/src/binary_contract_overlay.c` | Legacy Binary layout facts such as offsets, field sizes, fixed block sizes and presence/null wire representation. | Retain only for selected Binary/legacy companion paths; do not use as native semantic authority. |
+| `templates/c/c_structs.mustache` | Legacy Binary-coupled C declarations and wire helpers. | It is not the bare-C source-only renderer. Remove remaining unconditional consumers only after native parity is proven. |
+| `templates/c/c_typed_source.mustache` | Legacy typed source / codec companion and Binary reader/writer behavior. | Its runtime schema-text factory call is a separate #588 linkage issue; do not claim the runtime parser is detached by #599. |
+| `binary_reader_codegen.c` and Binary layout IR | Build readers/writers from a selected Binary format/layout plan. | Keep field ordering, offsets, alignment, byte order and wire fingerprint in the selected plan. |
+| `compiler_core.c:tbe_compiler_run_owned` and `projection.c` | Validates the selected request/backend registry and the declared output manifest before publication. | Future backends must declare all outputs and a staging policy; never infer capability from file names. |
 
-### Admission map — existing vs target
+## Current admission map
 
-| Requested output | Existing admission | Planned owner |
+| Request | Current behavior | Status |
 | --- | --- | --- |
-| SQLite/PostgreSQL | Logical Contract -> dialect IR; no implicit Binary | Database plan |
-| TS / Python / Go / Rust / C++ | Logical Contract -> backend presentation IR; no implicit Binary | Language source plan |
-| C header without companion | Binary overlay + CMeta/native annotations + Binary helpers | Split Native/CMeta source projection from optional wire artifact; **not yet done** |
-| C header + `--source-output` | Binary + native CMeta/CSTL + CSerde/reader plan | Native plan **and** explicitly selected Binary plan |
-| C + `--guest-output` | Binary-coupled header plus bridge adapter | Explicit bridge format and C/native prerequisites |
-| Typed artifact-only projection | Contract; backend may use configured native or format contract | Selected artifact's own declared prerequisites |
-| Transport (HTTP/RPC/Socket/FlowMQ/MQTT/WebSocket) | Compiler currently requests Binary plan for transport-axis selections | Enumerate actual required format per transport before changing policy |
+| Bare C, no source/guest companion and no selected Binary transport | Contract-only NativeSourceIR; does not use the legacy Binary header template. | Delivered for the admitted NativeSourceIR subset. |
+| `ARTIFACTS TYPES` | Contract-only native type declarations. | Delivered. |
+| `ARTIFACTS NATIVE` without Binary codec/transport | Contract-only Native Service metadata/executable adapter for admitted shapes. | Delivered for the qualified slice; expand owning/stateful shapes separately. |
+| Plugin-only Function | Contract-only type header and Plugin export for admitted shapes. | Delivered for the qualified slice. |
+| Contract-only Wasm | Narrow Core memory32 `list<u8>` envelope; unsupported layouts reject before publication. | Partial; expand only with explicit admission tests. |
+| C with legacy `--source-output` / `--guest-output` companion | Selects the legacy Binary codec/bridge path and its generated helpers. | Still Binary-coupled; do not silently reinterpret this CLI contract. |
+| Explicit `BINARY_CODEC` or a transport whose wire ABI still requires Binary | Selected Binary format/layout plan and its CSerde/transport consumers. | Keep supported; all selected-format admission must happen before output publication. |
+| SQL, TypeScript, Python, Go, Rust and C++ source-only projection | Typed Contract plus backend presentation metadata; no implicit Binary layout. | Delivered for their admitted source shapes. |
 
-## First tested improvement in #599
+## Delivered implementation milestones
 
-Before any render or generator callback, `databind_compiler_projection_selection_valid()` now checks the **complete** selected ID/backend registry: valid IDs, uniqueness on each axis, canonical backend names, callable backend functions, and a registered backend for each selected request. `tbe_compiler_run_owned()` invokes this test **before parsing or publishing any source output**.
+- [x] First evidence-backed per-backend inventory and format-axis witness: a Binary-incompatible logical schema can pass source-only artifact rendering while the same schema fails when a Binary transport is explicitly selected.
+- [x] Registry preflight before source publication: invalid/duplicate/missing backend requests fail before caller output changes.
+- [x] Built-in output staging and rollback for named header/source/guest/DSL paths.
+- [x] Bounded complete output manifest including Native Service, Plugin, Wasm, OpenAPI and transport outputs.
+- [x] [PR #606](https://github.com/qigao/salts-utils/pull/606): declared `STAGED_MULTI` for multi-file Native/Plugin/Wasm generation, reserves every manifest output before publishing, and rejects duplicate paths or invalid staging claims. Selected stage-safe single-output backends use the same rollback-aware coordinator.
+- [x] Replace the former shared `require_binary_format` Boolean with an explicit format-admission mode/enum. This does **not** remove every legacy overlay consumer.
 
-Regression checks include:
-1. Missing backend, duplicate request, duplicate backend or misspelled backend rejects before replacing an existing C header, creating the C companion source or invoking any callback.
-2. Same protection for a TS source output with a registered backend name mismatch.
-3. A valid source-only **artifact** selection admits a logical Contract with `string` before `uint32`, despite Binary layout ordering restrictions.
-4. The **same** source Contract with an explicitly selected Binary transport fails before touching the TS output or invoking its transport callback.
-
-This is **not** a multi-output transaction. Once a valid backend begins executing, its generation callback may still fail *after* the main source was published. No claim of global atomicity should be made until the following slice adds transaction-scoped staging and commit.
-
-## Selected projection file manifest (follow-up after #601)
-
-The public projection frontend now publishes a **complete current output-path
-manifest** for built-in C outputs plus every selected artifact/transport
-generator. Each item records its pathname and the typed projection identity
-that owns it; compiler-owned header/source/guest/DSL paths use an empty owner.
-The manifest is bounded (`DATABIND_COMPILER_FRONTEND_MAX_OUTPUTS`), and
-missing paths, duplicate names, and collisions involving secondary
-Plugin/Native Service/Wasm output paths fail before generation.
-
-```text
-Compiler planned paths
-  built-in: header, source, guest, DSL
-  artifacts:
-    Native Service: .service_native.c + .service_native.h
-    Plugin: .plugin.c + .plugin.h + .plugin_client.h + .plugin_client.c
-    Wasm: .wasm + .wasm.h + .wasm.c + .wasm_guest.h
-    OpenAPI: .openapi.json
-  transports:
-    HTTP/RPC/Socket/FlowMQ: selected Method/Socket/FlowMQ output
-```
-
-For the moment it is a **read-only planning and collision-validation
-contract**. Output paths borrow memory from their frontend input or
-compiler-owned frontend plan; consumers must not retain them after that
-plan is disposed. This inventory does **not** change the legacy
-`databind_compiler_projection_generate_fn` callback contract, does not
-retroactively stage backend-generated files, and does not roll back a prior
-backend callback if a later one fails. Cross-backend transaction staging
-must consume this manifest through a separate explicit prepare/commit
-protocol, rather than guessing which filenames a generator touched.
+These milestones provide failure-atomic publication for the declared named-output transaction. They do not promise power-failure durability, a simultaneous multi-path snapshot to concurrent readers, or journaled crash recovery. Stdout output also remains outside the named-file transaction.
 
 ## Remaining implementation slices
 
-- [ ] Isolate a compiler-private **NativeSourceIR** built from typed Contract + canonical CMeta/CSTL providers without wire byte offsets.
-- [ ] Give bare C source-only, native-binding, C+codec and guest outputs explicit admission contracts; remove Binary helpers from an actual source-only header rather than providing a second compatibility template.
-- [ ] Make selected Binary consumers share one `BinaryFormatPlan` and perform all selected-format preflight before any publication.
-- [ ] Introduce temporary staging/transaction commit for all requested output paths and generator callbacks; handle rollback/cleanup errors visibly, not in no-fail destructors.
-- [ ] Remove shared `require_binary_format` Boolean and legacy Binary-mutated Node semantic consumers after full Native/CSerde/transport qualification.
-- [ ] Run C-only, C+source, C+guest, C+Socket/FlowMQ, SDK-installed consumer builds across Windows/Android/macOS/Linux + Sanitizers; assert native CMeta/RAII identity.
+- [ ] Finish the exhaustive field-level inventory of every Binary-overlay-derived value consumed by C templates, typed source, reader codegen, guest and Plugin/Wasm/Socket/FlowMQ plans.
+- [ ] Remove remaining legacy Binary-mutated `Node` semantic consumers from C/native lowering, one artifact family at a time.
+- [ ] Expand NativeSourceIR to supported owning/optional/nullable/nested shapes from canonical CMeta/CSTL descriptors without deriving lifecycle semantics from wire offsets.
+- [ ] Complete the C-only, C+source, C+guest, C+Socket/FlowMQ and CMeta/native consumer matrix across Linux/Windows/macOS/Android/iOS, installed SDK and unsuppressed sanitizers.
+- [ ] Add callback-failure-after-stage-write tests for each remaining backend and ensure all old outputs are preserved; unknown or incomplete output capabilities must fail before publication.
 
-Related: [#578](https://github.com/qigao/salts-utils/issues/578) native CMeta convergence, [#588](https://github.com/qigao/salts-utils/issues/588) runtime/frontend linkage separation, [#595](https://github.com/qigao/salts-utils/issues/595) source language cutovers.
+## Regression acceptance
 
-
-## Phase 2d: required multi-output transaction contract (post #604)
-
-#604 staged the named C/source/guest/DSL output set plus selected backends
-whose `output_policy == STAGED_SINGLE`. It does **not** make
-`SELF_PUBLISHED` generators transaction-safe. In particular, treating the
-primary request output as the only published path is incorrect for Native
-Service (source + header), Plugin (provider + host client files), and Wasm
-(component + host + guest files).
-
-### Protocol and invariants
-
-1. The existing frontend `outputs[]` list is the authoritative **final
-   path** manifest. Validate all secondary output ownership, destination
-   identities, path aliases and collisions before constructing any stage.
-   A callback may not invent an unlisted output.
-2. Resolve a selected backend's **exact** declared outputs before generation;
-   allocate a distinct sibling stage for **each** manifest entry. The
-   coordinator holds originals unchanged until all selected generators finish.
-3. Backends receive an immutable mapping of `final_path -> staging_path`,
-   not arbitrary replacement of `request.output` or mutation of the
-   frontend plan. Staging paths must never appear in generated includes,
-   guards, symbols, package identifiers, or references to companion outputs.
-4. Prepare and write can fail, leaving partial stages. An abort removes every
-   stage while preserving old outputs and absence of never-existing outputs.
-   Commit first validates staged files, then performs the existing
-   rollback-aware backup/replace sequence for **all** outputs. Errors from
-   backup restore or stage cleanup propagate, never silently succeed.
-5. The backend's prior private publisher must not run within the coordinated
-   transaction. In particular, Native Service currently invokes
-   `native_service_commit` for its two outputs: coordinator integration must
-   separate render from publish, rather than stacking two nested commits.
-6. Only an explicit complete multi-output preparation capability can join a
-   coordinator session. Unknown policy, incomplete path mapping, non-file
-   destinations and mixed unsupported backends must be rejected **before**
-   output publication; do not infer transaction capability by artifact type.
-7. Keep standalone legacy generation distinct until all callers migrate;
-   never claim cross-backend rollback for that path. Named, multi-output
-   transaction behavior is unrelated to crash durability or concurrent
-   readers observing a simultaneous multi-path snapshot.
-
-### Qualification matrix
-
-| Fixture | Expected behavior |
+| Fixture | Required behavior |
 | --- | --- |
-| Native Service header staged, source generator then fails | Old header/source and C primary remain byte-for-byte unchanged |
-| Plugin provider succeeds, subsequent client emits partial file then fails | Old provider and host client outputs unchanged; absent outputs remain absent |
-| Wasm component staged, later host/guest generator fails | All old outputs unchanged, no intermediate outputs leak |
-| Plugin + Native + Wasm + HTTP selected; last backend fails | Entire manifest rolls back, not merely final backend |
-| Successful mixed selection | Every expected final output published and generated includes use **final** basenames |
-| Duplicate secondary path / Windows slash or case alias | Fail before rendering any output |
-| Unknown / mixed capability | Fail closed; no implicit independent publication |
-| Rollback restore or cleanup error | Return failure with diagnostic |
-| Installed SDK consumer | Generated headers and sources compile across supported OS matrix |
+| Binary-incompatible source Contract | Contract-only NativeSourceIR output succeeds for supported logical types. |
+| Same Contract + explicit Binary codec/transport | Rejects before publishing any caller output. |
+| Mixed Native + Plugin + Wasm + OpenAPI/transport selection | All declared paths are preflighted and staged before commit; no partial final output on generator failure. |
+| Duplicate path, case/slash alias or dishonest staging policy | Fails before publication, including Windows path aliases. |
+| Generator writes a partial staged file then fails | Original files remain byte-for-byte unchanged; previously absent outputs remain absent. |
+| Installed C11/C++17 consumer | Generated headers/sources compile and exercise the selected native/codec contracts on supported platforms. |
 
-### C/Native format split remains a separate, required closure
+## Related issues
 
-No transaction milestone removes `databind_binary_contract_apply` or the
-Binary wire helpers from bare C generation. Do not declare #599 complete
-until a typed `NativeSourceIR` permits Binary-incompatible semantic
-Contracts to generate C declarations without Binary admission, while an
-explicit selected Binary transport rejects the same schema before
-publishing output. That change needs separate native/CSerde regression
-coverage and preservation of CMeta/CSTL/RAII contracts.
+- [#578](https://github.com/qigao/salts-utils/issues/578): canonical NativeSourceIR/CMeta lifecycle lowering.
+- [#588](https://github.com/qigao/salts-utils/issues/588): production DataBind runtime/parser/Binary compiler linkage separation.
+- [#595](https://github.com/qigao/salts-utils/issues/595): source-language cutovers.
