@@ -1797,6 +1797,28 @@ describe("compiler integration") {
     (void)remove(path);
   }
 
+  it("rejects fixed arrays without publishing or replacing a header") {
+    static const char path[] = "native_fixed_array_public.schema";
+    static const char output[] = "native_fixed_array_public.h";
+    static const char schema[] =
+        "schema NativeFixedArrayPublic; message Packet { uint32[4] samples; }";
+    (void)remove(path);
+    (void)remove(output);
+    check_true(write_sentinel(path, schema));
+
+    /* A failed source-only admission must not create a partial output. */
+    check_equal(databind_compiler_generate_contract_native_header(path, output), -1);
+    check_false(file_exists(output));
+
+    /* Nor may the same failure replace an already-published header. */
+    check_true(write_sentinel(output, "existing-header-must-survive"));
+    check_equal(databind_compiler_generate_contract_native_header(path, output), -1);
+    check_true(file_matches(output, "existing-header-must-survive"));
+
+    (void)remove(path);
+    (void)remove(output);
+  }
+
   it("admits owning Record sequences and Map values from Contract only") {
     static const char schema_path[] = "native_record_collections.schema";
     static const char output[] = "native_record_collections.h";
