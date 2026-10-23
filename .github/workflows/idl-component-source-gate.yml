@@ -40,14 +40,8 @@ jobs:
           ref: a6f49357b8886cecf2badd4896b04b4e0547f1be
           path: build/component-source/salts
           persist-credentials: false
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
-        with:
-          mode: read
-      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-native-ci
       - uses: ./.github/actions/setup-build-host
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
       - name: Check exact sources
         shell: bash
         run: |
