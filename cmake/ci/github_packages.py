@@ -114,7 +114,9 @@ class Packages:
             raise ValueError("GitHub feed must advertise one PackageBaseAddress/3.0.0")
         base = bases[0].rstrip("/")
         parsed = urlsplit(base)
-        if parsed.scheme != "https" or parsed.hostname != "nuget.pkg.github.com":
+        production = parsed.scheme == "https" and parsed.hostname == "nuget.pkg.github.com"
+        local_test = parsed.scheme == "http" and parsed.hostname == "127.0.0.1"
+        if not production and not local_test:
             raise ValueError("unexpected GitHub Packages content endpoint")
         self.base = base
 
