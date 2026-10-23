@@ -114,7 +114,7 @@ Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cac
 
 Before configuring, provide `PROJECT_ROOT`, `VCPKG_ROOT`, and a `GITHUB_TOKEN` with `read:packages` in the parent environment. `PROJECT_ROOT/external/pkgs` is the SaltsUtils install location; dependency SDKs are restored separately. The tracked NuGet configuration references the token through the environment and does not contain credentials.
 
-The restore commands require .NET SDK 8. Windows also requires PowerShell 7 and the Visual Studio developer environment:
+The restore commands require Python 3 and curl. Windows also requires PowerShell 7 and the Visual Studio developer environment:
 
 ```powershell
 ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64 -Local
@@ -123,7 +123,7 @@ cmake --build --preset win-release-user
 ctest --preset win-release-user --output-on-failure
 ```
 
-On Linux, install Python 3 and Mono for package/cache tooling, then run:
+On Linux, install Python 3 and curl; native SDK/package restore does not require Mono, a NuGet client, or .NET:
 
 ```bash
 bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64 0 local
@@ -133,7 +133,7 @@ cmake --build --preset linux-release-user
 ctest --preset linux-release-user --output-on-failure
 ```
 
-Both restore paths request the **latest stable Salts.Native** from GitHub Packages and the latest published re2c tools. Salts is not version-pinned: each restore uses `Version="*"` with `--no-cache --force-evaluate` to resolve the current release. Run restore before configure when updating dependencies; configure consumes the resolved SDK and does not download packages. An incompatible release must fail rather than select an older SDK. `-WithTurboWasm` (PowerShell) or the third argument `1` (Bash) also restores TurboWasm. The default local package directory is `stage/nuget`; `QIGAO_NUGET_PACKAGES` selects another cache. Package paths come from NuGet's resolved assets, so older cached versions do not affect selection. Local Windows/Linux Release presets use version-independent links at `stage/dependencies/salts/<RID>` and `stage/dependencies/re2c/<host-RID>`. Restore updates these links from NuGet's resolved assets (Windows junctions, Unix symbolic links), so an already running IDE can configure without inheriting new SDK environment variables. Existing non-link directories at these paths are rejected instead of overwritten. CI, Debug, and cross-compilation presets retain their explicit environment-root contract. The published Salts SDK contains Release libraries; use Release presets with it. Debug profiles require a matching Debug SDK. For Android, restore `android-arm64-v8a` as the target RID and the native host RID as the re2c RID before using the Android preset.
+Both restore paths use authenticated `curl` against GitHub Packages NuGet v3 metadata. Salts.Native is fail-closed at the reviewed immutable `2.3.0-rc.17` baseline for this branch; re2c resolves the latest stable published tool package. No NuGet client, Mono, or `dotnet restore` participates in native dependency restore. Run restore before configure when updating dependencies; configure consumes the resolved SDK and does not download packages. An incompatible release must fail rather than select an older SDK. `-WithTurboWasm` (PowerShell) or the third argument `1` (Bash) also restores TurboWasm. The default local package directory is `stage/nuget`; `QIGAO_NUGET_PACKAGES` selects another cache. Package paths come from NuGet's resolved assets, so older cached versions do not affect selection. Local Windows/Linux Release presets use version-independent links at `stage/dependencies/salts/<RID>` and `stage/dependencies/re2c/<host-RID>`. Restore updates these links from NuGet's resolved assets (Windows junctions, Unix symbolic links), so an already running IDE can configure without inheriting new SDK environment variables. Existing non-link directories at these paths are rejected instead of overwritten. CI, Debug, and cross-compilation presets retain their explicit environment-root contract. The published Salts SDK contains Release libraries; use Release presets with it. Debug profiles require a matching Debug SDK. For Android, restore `android-arm64-v8a` as the target RID and the native host RID as the re2c RID before using the Android preset.
 
 ### Migrating from Salts 1.x
 
