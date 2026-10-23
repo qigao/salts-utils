@@ -67,8 +67,8 @@ int main(int argc, char **argv) {
      * of the process locale and the source file's UTF-8 encoding. */
     {
       static const char non_ascii_stable_id[] =
-          "WasmRuntime.Calculator\\xc3\\xa9";
-      static const char non_ascii_symbol[] = "bad\\xc3\\xa9";
+          "WasmRuntime.Calculator\xc3\xa9";
+      static const char non_ascii_symbol[] = "bad\xc3\xa9";
       IdlComponent invalid_component = *component;
       databind_compiler_service_native_operation invalid_op = ir.operations[0];
       databind_compiler_service_native_ir invalid_ir = ir;
