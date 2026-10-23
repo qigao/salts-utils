@@ -28,7 +28,7 @@ function Test-Scope([string]$Name, [string[]]$Paths, [string]$ExpectedPackaging,
   Push-Location $temp
   try {
     $output = & pwsh -NoProfile -File $selector -EventName pull_request -BaseRef $script:base -HeadRef $head
-    if ($LASTEXITCODE -ne 0) { throw "$Name: selector exited $LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0) { throw "${Name}: selector exited $LASTEXITCODE" }
   } finally { Pop-Location }
   $joined = $output -join [Environment]::NewLine
   Assert-Output $joined 'packaging_only' $ExpectedPackaging $Name
