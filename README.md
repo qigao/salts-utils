@@ -110,7 +110,7 @@ The binding targets and their runtime link dependencies remain available.
 
 ### Restore the published SDK and shared dependency cache
 
-Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain as Salts. Keep its checkout at `%LOCALAPPDATA%/qigao/vcpkg-cache` on Windows or `$HOME/.cache/qigao/vcpkg-cache` on Linux. The shared GitHub Packages binary cache is read-only; the default local vcpkg cache remains writable. Overlay ports come from that checkout. CI inherits the cache action's environment and uses the same pinned action revision as Salts.
+Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain/overlays as Salts, but keep binary artifacts in vcpkg's local default cache and do not invoke NuGet or Mono. CI materializes the same immutable cache contract and exposes GitHub Packages as a read-only curl-backed HTTP source, with a writable local L1 cache.
 
 Before configuring, provide `PROJECT_ROOT`, `VCPKG_ROOT`, and a `GITHUB_TOKEN` with `read:packages` in the parent environment. `PROJECT_ROOT/external/pkgs` is the SaltsUtils install location; dependency SDKs are restored separately. The tracked NuGet configuration references the token through the environment and does not contain credentials.
 
