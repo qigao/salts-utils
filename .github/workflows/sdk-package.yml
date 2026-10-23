@@ -69,15 +69,12 @@ jobs:
     - uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
-    - name: Configure GitHub Packages source
+    - name: Configure offline NuGet pack restore
       shell: bash
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         set -euo pipefail
         config="$RUNNER_TEMP/nuget.config"
         printf '<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear /></packageSources></configuration>\n' > "$config"
-        dotnet nuget add source https://nuget.pkg.github.com/qigao/index.json --name github --username qigao --password "$GITHUB_TOKEN" --store-password-in-clear-text --configfile "$config"
         echo "NUGET_CONFIG=$config" >> "$GITHUB_ENV"
     - name: Create NuGet package
       shell: bash
