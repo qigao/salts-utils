@@ -35,6 +35,9 @@ if (-not $full -and $EventName -ne 'workflow_dispatch' -and $nonDocChanges.Count
   }).Count -eq 0
 }
 $native = $full -or ($nonDocChanges.Count -gt 0 -and -not $packagingOnly)
+$runPackagingContract = $packagingOnly -or @($changed | Where-Object {
+  $_ -match $packagingOnlyPath -or $_ -in @('cmake/ci/select-ci-scope.ps1', '.github/workflows/ci.yml')
+}).Count -gt 0
 
 $profiles = @(
   @{ id='linux-release'; runner='ubuntu-24.04'; family='linux'; rid='linux-x64'; host='linux-x64'; triplet='x64-linux'; host_triplet='x64-linux'; preset='ci-native-release-user' },
@@ -68,6 +71,7 @@ $outputs = [ordered]@{
   has_builds = ($builds.Count -gt 0).ToString().ToLowerInvariant()
   has_tests = ($tests.Count -gt 0).ToString().ToLowerInvariant()
   packaging_only = $packagingOnly.ToString().ToLowerInvariant()
+  run_packaging_contract = $runPackagingContract.ToString().ToLowerInvariant()
 }
 foreach ($key in $outputs.Keys) {
   Write-Output "$key=$($outputs[$key])"
