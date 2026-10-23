@@ -27,6 +27,7 @@ jobs:
       has_builds: ${{ steps.select.outputs.has_builds }}
       has_tests: ${{ steps.select.outputs.has_tests }}
       packaging_only: ${{ steps.select.outputs.packaging_only }}
+      run_packaging_contract: ${{ steps.select.outputs.run_packaging_contract }}
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +77,7 @@ jobs:
         run: python3 cmake/ci/verify_databind_release_source.py --self-test
   packaging_contract:
     needs: scope
-    if: needs.scope.outputs.packaging_only == 'true'
+    if: needs.scope.outputs.run_packaging_contract == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -145,6 +146,7 @@ jobs:
           PACKAGE_RESULT: ${{ needs.package.result }}
           COMPONENT_PUBLISHED_SDK_RESULT: ${{ needs.component_published_sdk.result }}
           PACKAGING_ONLY: ${{ needs.scope.outputs.packaging_only }}
+          RUN_PACKAGING_CONTRACT: ${{ needs.scope.outputs.run_packaging_contract }}
           PACKAGING_CONTRACT_RESULT: ${{ needs.packaging_contract.result }}
         run: |
           set -euo pipefail
@@ -156,4 +158,4 @@ jobs:
           fi
           if [ "$PREPARE_RELEASE" = true ] || [ "$RC_BRANCH_PUSH" = true ]; then test "$PACKAGE_RESULT" = success; fi
           if [ "$PREPARE_RELEASE" = true ]; then test "$COMPONENT_PUBLISHED_SDK_RESULT" = success; fi
-          if [ "$PACKAGING_ONLY" = true ]; then test "$PACKAGING_CONTRACT_RESULT" = success; fi
+          if [ "$RUN_PACKAGING_CONTRACT" = true ]; then test "$PACKAGING_CONTRACT_RESULT" = success; fi
