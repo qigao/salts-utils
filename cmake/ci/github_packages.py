@@ -200,7 +200,7 @@ def read_manifest(path):
     return values
 
 
-def validate_salts(root, rid):
+def validate_salts(root, rid, expected_version=SALTS_NATIVE_VERSION):
     root = Path(root)
     required = [
         root / "lib/cmake/Salts/SaltsConfig.cmake",
@@ -216,7 +216,7 @@ def validate_salts(root, rid):
         encoding="utf-8", errors="replace")
     if "Salts::Unicode" not in targets:
         raise ValueError("published Salts.Native must export canonical Salts::Unicode")
-    if read_manifest(root / "salts-sdk-manifest.txt").get("version") != SALTS_NATIVE_VERSION:
+    if read_manifest(root / "salts-sdk-manifest.txt").get("version") != expected_version:
         raise ValueError("Salts.Native manifest version/provenance mismatch")
 
 
@@ -267,8 +267,8 @@ def restore_native_sdk(args, packages):
     package = packages.extract("Salts.Native", version, args.packages)
     salts_root = package / "sdk" / args.salts_rid
     salts_host_root = package / "sdk" / args.host_rid
-    validate_salts(salts_root, args.salts_rid)
-    validate_salts(salts_host_root, args.host_rid)
+    validate_salts(salts_root, args.salts_rid, version)
+    validate_salts(salts_host_root, args.host_rid, version)
     if args.require_component_runtime:
         validate_component_runtime(salts_root, args.salts_rid)
         validate_component_runtime(salts_host_root, args.host_rid)
