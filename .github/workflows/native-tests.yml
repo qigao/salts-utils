@@ -29,9 +29,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@fafb1efe5ac2440bfd7a08e493988d0459d89e51
+      - uses: ./.github/actions/setup-native-ci
         with:
-          mode: read
+          re2c: 'false'
       - uses: ./.github/actions/restore-native-build
         with:
           artifact: native-${{ matrix.id }}
