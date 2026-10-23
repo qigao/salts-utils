@@ -141,18 +141,23 @@ class PackageTests(unittest.TestCase):
 
     def test_explicit_published_component_runtime_version(self):
         version = "2.3.0-rc.18"
-        self.feed.add("Salts.Native", version, {
-            "sdk/linux-x64/lib/cmake/Salts/SaltsConfig.cmake": "",
-            "sdk/linux-x64/lib/cmake/Salts/SaltsTargets.cmake":
-                "Salts::Unicode Salts::ComponentProviderABI Salts::Configurator Salts::ServiceHost",
-            "sdk/linux-x64/include/cmeta/function.h": "",
-            "sdk/linux-x64/include/unicode/salts_unicode.h": "",
-            "sdk/linux-x64/include/salts/component_provider_abi.h": "",
-            "sdk/linux-x64/include/salts/component_runtime_abi.h": "",
-            "sdk/linux-x64/include/salts/configurator.h": "",
-            "sdk/linux-x64/include/salts/service_host.h": "",
-            "sdk/linux-x64/salts-sdk-manifest.txt": "version=2.3.0-rc.18\n",
-        })
+        files = {}
+        for rid in ("linux-x64", "linux-arm64", "windows-x64",
+                    "macos-arm64", "android-arm64-v8a", "ios-arm64"):
+            prefix = "sdk/" + rid + "/"
+            files.update({
+                prefix + "lib/cmake/Salts/SaltsConfig.cmake": "",
+                prefix + "lib/cmake/Salts/SaltsTargets.cmake":
+                    "Salts::Unicode Salts::ComponentProviderABI Salts::Configurator Salts::ServiceHost",
+                prefix + "include/cmeta/function.h": "",
+                prefix + "include/unicode/salts_unicode.h": "",
+                prefix + "include/salts/component_provider_abi.h": "",
+                prefix + "include/salts/component_runtime_abi.h": "",
+                prefix + "include/salts/configurator.h": "",
+                prefix + "include/salts/service_host.h": "",
+                prefix + "salts-sdk-manifest.txt": "version=2.3.0-rc.18\\n",
+            })
+        self.feed.add("Salts.Native", version, files)
         self.feed.add("Qigao.Re2c.Binary", "1.0.0", {
             "tools/linux-x64/bin/re2c": "#!/bin/sh\nexit 0\n",
             "tools/linux-x64/share/re2c/stdlib/unicode_categories.re": "",
