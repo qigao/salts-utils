@@ -165,6 +165,35 @@ static int close_and_drain(cflow_process *process) {
 }
 
 spec("CFlow subprocess adapter") {
+  it("reports a write after child exit without delivering SIGPIPE to the host") {
+    static const char payload[] = "closed-peer";
+    cmeta_process_options_t options;
+    cflow_process process = {0};
+    process_completion_probe probe = {0};
+    cflow_process_config config = process_test_config(&probe);
+    cmeta_process_result_t result = {0};
+    const uint64_t started = cmeta_hrtime();
+    int status;
+    init_process_options(&options, false);
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_OK);
+    do {
+      status = cflow_process_poll(&process, &result);
+      check_true(status == SALTS_OK || status == SALTS_EBUSY);
+      check_less(cmeta_hrtime() - started, UINT64_C(5000000000));
+      if (status == SALTS_EBUSY) cmeta_sleep_ms(1u);
+    } while (status == SALTS_EBUSY);
+    check_equal(result.exit_code, 0);
+    check_equal(cflow_process_try_write_stdin(&process, 1u, payload, sizeof(payload) - 1u).status,
+                CFLOW_PROCESS_SUBMIT_ACCEPTED);
+    check_equal(drive_until(&process, &probe, 1u), SALTS_OK);
+    check_equal(probe.count, (size_t)1u);
+    check_equal(probe.streams[0], CFLOW_PROCESS_STDIN);
+    check_equal(probe.completions[0].kind, CFLOW_IO_COMPLETION_FAILED);
+    check_less(probe.completions[0].error, SALTS_OK);
+    check_equal(close_and_drain(&process), SALTS_OK);
+    check_null(process.impl);
+  }
+
   it("moves bytes through bounded asynchronous standard streams") {
     static const char payload[] = "cflow-process-payload";
     cmeta_process_options_t options;

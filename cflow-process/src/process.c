@@ -172,6 +172,17 @@ static int process_pipe_pair_create(cflow_process_pipe_pair *pair, bool parent_w
     (void)close(handles[1]);
     return status;
   }
+#if defined(__APPLE__)
+  /* Darwin can deliver pipe SIGPIPE to the process despite a writer's signal
+   * mask. Suppress it on the owned parent endpoint, never process-wide or on
+   * the child endpoint. A peer close remains an ordinary -EPIPE completion. */
+  if (parent_writes && fcntl(handles[parent_index], F_SETNOSIGPIPE, 1) != 0) {
+    int status = -errno;
+    (void)close(handles[0]);
+    (void)close(handles[1]);
+    return status;
+  }
+#endif
   flags = fcntl(handles[parent_index], F_GETFL, 0);
   if (flags < 0 || fcntl(handles[parent_index], F_SETFL, flags | O_NONBLOCK) != 0) {
     int status = -errno;
