@@ -219,7 +219,14 @@ int databind_native_source_ir_build(
       const int ownership = native_field_ownership(contract, field);
       const char *type = native_scalar(field->type_name);
       if (field->name == NULL || field->name[0] == '\0' ||
-          field->default_value != NULL || ownership < 0)
+          field->default_value != NULL ||
+          /* IDL_COLLECTION_ARRAY is fixed-size in the source grammar. The
+           * current native renderer only has an owning dynamic vec_t layout;
+           * silently lowering an inline array would discard its cardinality
+           * and storage contract. Keep fixed arrays fail-closed until Native
+           * IR carries and emits the fixed-size representation explicitly. */
+          field->collection_kind == IDL_COLLECTION_ARRAY ||
+          ownership < 0)
         goto fail;
       record->fields[j].name = field->name;
       record->fields[j].c_type = type != NULL ? type :
