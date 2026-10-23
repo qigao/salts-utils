@@ -23,6 +23,7 @@ PATHS = (
     "jinja/CMakeLists.txt",
     "cmake/ci/restore-native-sdk.sh",
     "cmake/ci/restore-native-sdk.ps1",
+    "cmake/ci/github_packages.py",
 )
 
 def read_source(root: Path, name: str, commit: str | None) -> str:
@@ -45,6 +46,7 @@ def violations(source: dict[str, str]) -> list[str]:
     jinja_cmake = source["jinja/CMakeLists.txt"]
     restore_unix = source["cmake/ci/restore-native-sdk.sh"]
     restore_windows = source["cmake/ci/restore-native-sdk.ps1"]
+    github_packages = source["cmake/ci/github_packages.py"]
 
     if not re.search(
         r"add_library\(\s*databind_monocypher\s+STATIC\s+databind_monocypher\.c\b",
@@ -96,17 +98,15 @@ def violations(source: dict[str, str]) -> list[str]:
             errors.append(f"Canonical Unicode imported target missing from {label} SDK contract")
     if "PRIVATE Salts::Unicode Salts::CSTL" not in jinja_cmake:
         errors.append("Jinja must depend directly on the canonical Salts Unicode owner")
-    if not re.search(
-        r'PackageReference Include="Salts\.Native" Version="\[2\.3\.0(?:-rc\.\d+)?\]"',
-        restore_unix
-    ) or not re.search(
-        r'PackageReference Include="Salts\.Native" Version="\[2\.3\.0(?:-rc\.\d+)?\]"',
-        restore_windows
-    ):
-        errors.append("Both SDK restores must use an explicit official Salts.Native 2.3 release")
+    if 'SALTS_NATIVE_VERSION = "2.3.0-rc.17"' not in github_packages:
+        errors.append("curl SDK restore must pin the exact official Salts.Native 2.3 release")
+    if "Salts::Unicode" not in github_packages or "salts-sdk-manifest.txt" not in github_packages:
+        errors.append("curl SDK restore lacks canonical Unicode/provenance admission")
+    if '"curl"' not in github_packages or "dotnet" in github_packages.lower() or "mono-complete" in github_packages.lower():
+        errors.append("native package restore must use curl without .NET/Mono")
     for label, value in (("Unix", restore_unix), ("Windows", restore_windows)):
-        if "Salts::Unicode" not in value or "salts-sdk-manifest.txt" not in value:
-            errors.append(f"{label} SDK restore lacks canonical Unicode/provenance admission")
+        if "github_packages.py" not in value or "dotnet restore" in value or "mono" in value.lower():
+            errors.append(f"{label} SDK restore must delegate to the curl package helper")
     return errors
 
 def exercise_negative_cases(source: dict[str, str]) -> None:
@@ -134,10 +134,8 @@ def exercise_negative_cases(source: dict[str, str]) -> None:
     for path, old, replacement in (
         ("CMakeLists.txt", "add_subdirectory(jinja)",
          "add_subdirectory(unicode)\nadd_subdirectory(jinja)"),
-        ("cmake/ci/restore-native-sdk.sh", 'Version="[2.3.0-rc.17]"',
-         'Version="*"'),
-        ("cmake/ci/restore-native-sdk.ps1", 'Version="[2.3.0-rc.17]"',
-         'Version="*"'),
+        ("cmake/ci/github_packages.py", 'SALTS_NATIVE_VERSION = "2.3.0-rc.17"',
+         'SALTS_NATIVE_VERSION = "*'),
     ):
         if old not in source[path]:
             raise AssertionError(f"Missing fail-closed Unicode fixture in {path}")
