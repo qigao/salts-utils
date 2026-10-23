@@ -135,7 +135,7 @@ def exercise_negative_cases(source: dict[str, str]) -> None:
         ("CMakeLists.txt", "add_subdirectory(jinja)",
          "add_subdirectory(unicode)\nadd_subdirectory(jinja)"),
         ("cmake/ci/github_packages.py", 'SALTS_NATIVE_VERSION = "2.3.0-rc.17"',
-         'SALTS_NATIVE_VERSION = "*'),
+         'SALTS_NATIVE_VERSION = "*"'),
     ):
         if old not in source[path]:
             raise AssertionError(f"Missing fail-closed Unicode fixture in {path}")
