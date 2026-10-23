@@ -57,9 +57,10 @@ class Curl:
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
         config = f'user = "qigao:{self.token}"\n'
+        protocols = "=http,https" if parsed.hostname == "127.0.0.1" else "=https"
         result = subprocess.run([
             "curl", "--disable", "--config", "-", "--fail", "--silent", "--show-error",
-            "--location", "--proto", "=https", "--proto-redir", "=https",
+            "--location", "--proto", protocols, "--proto-redir", protocols,
             "--retry", "3", "--connect-timeout", "20", "--max-time", "600",
             "--output", str(destination), url,
         ], input=config, text=True, capture_output=True)
