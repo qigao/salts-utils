@@ -94,6 +94,7 @@ jobs:
           cmake --build build/component-source/build-utils --parallel 2 \
             --target databind_component_candidate_provider \
                      test_databind_component_candidate_dso_c11 \
+                     test_databind_component_candidate_negative_dso_c11 \
                      test_databind_component_candidate_header_cpp
           ctest --test-dir build/component-source/build-utils \
             -R '^test_databind_component_candidate_' \
@@ -113,4 +114,145 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  canonical-runtime-sanitizers:
+    name: Exact Salts source + generated Provider DSO (${{ matrix.mode }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [asan-ubsan, tsan]
+    env:
+      EXPECTED_SALTS: a6f49357b8886cecf2badd4896b04b4e0547f1be
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: linux-x64
+      QIGAO_TARGET_TRIPLET: x64-linux
+      QIGAO_HOST_TRIPLET: x64-linux
+      CCACHE_DIR: build/component-sanitizer/ccache
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: a6f49357b8886cecf2badd4896b04b4e0547f1be
+          path: build/component-sanitizer/salts
+          persist-credentials: false
+      - uses: ./.github/actions/setup-native-ci
+      - uses: ./.github/actions/setup-build-host
+      - name: Verify exact sources and configure evidence collection
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test "$(git -C build/component-sanitizer/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
+          test -f build/component-sanitizer/salts/component-runtime/src/service_host.c
+          test -f build/component-sanitizer/salts/component-runtime/src/configurator.c
+          mkdir -p build/component-sanitizer/evidence
+          mkdir -p build/component-sanitizer/salts-build/.cmake/api/v1/query
+          : > build/component-sanitizer/salts-build/.cmake/api/v1/query/codemodel-v2
+          printf 'salts=%s\nsaltsutils=%s\nmode=%s\n' \
+            "$EXPECTED_SALTS" "$EXPECTED_SU" "${{ matrix.mode }}"
+      - name: Build exact Salts runtime with sanitizers, install into isolated prefix
+        shell: bash
+        run: |
+          set -euo pipefail
+          salts_source="$GITHUB_WORKSPACE/build/component-sanitizer/salts"
+          salts_build="$GITHUB_WORKSPACE/build/component-sanitizer/salts-build"
+          salts_prefix="$RUNNER_TEMP/idl-component-salts-${{ matrix.mode }}"
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          flags=(-DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF -DENABLE_SANITIZER_THREAD=OFF)
+          if [ "${{ matrix.mode }}" = "asan-ubsan" ]; then
+            flags=(-DENABLE_SANITIZER_ADDRESS=ON -DENABLE_SANITIZER_UNDEFINED=ON -DENABLE_SANITIZER_THREAD=OFF)
+          else
+            flags=(-DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF -DENABLE_SANITIZER_THREAD=ON)
+          fi
+          echo "SALTS_SANITIZER_PREFIX=$salts_prefix" >> "$GITHUB_ENV"
+          cmake --preset release-linux-ninja \
+            -S "$salts_source" -B "$salts_build" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$salts_prefix" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DBUILD_TESTS=OFF -DENABLE_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF \
+            -DCMETA_BUILD_BENCHMARKS=OFF -DCMETA_BUILD_NATIVE_THUNKS=OFF \
+            -DCNET_BUILD_BENCHMARKS=OFF -DNATIVE_IO_BUILD_BENCHMARKS=OFF \
+            "${flags[@]}"
+          cmake --build "$salts_build" --parallel 2
+          python3 cmake/ci/verify-component-provider-sanitizers.py \
+            --phase salts --mode "${{ matrix.mode }}" \
+            --source-root "$salts_source" --build-dir "$salts_build" \
+            --evidence "build/component-sanitizer/evidence/salts-${{ matrix.mode }}.json"
+          cmake --install "$salts_build"
+          test -f "$salts_prefix/include/salts/service_host.h"
+          test -f "$salts_prefix/lib/libsalts_service_host.a"
+          test -f "$salts_prefix/lib/libsalts_configurator.a"
+          test -f "$salts_prefix/lib/libsalts.so"
+      - name: Build and audit the IDL Provider consumer against that exact source-built runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          utils_build="$GITHUB_WORKSPACE/build/component-sanitizer/utils-${{ matrix.mode }}"
+          mkdir -p "$utils_build/.cmake/api/v1/query"
+          : > "$utils_build/.cmake/api/v1/query/codemodel-v2"
+          export SALTS_ROOT="$SALTS_SANITIZER_PREFIX"
+          export SALTS_HOST_ROOT="$SALTS_SANITIZER_PREFIX"
+          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$SALTS_ROOT/bin:${LD_LIBRARY_PATH:-}"
+          flags=(-DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF -DENABLE_SANITIZER_THREAD=OFF)
+          if [ "${{ matrix.mode }}" = "asan-ubsan" ]; then
+            flags=(-DENABLE_SANITIZER_ADDRESS=ON -DENABLE_SANITIZER_UNDEFINED=ON -DENABLE_SANITIZER_THREAD=OFF)
+          else
+            flags=(-DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF -DENABLE_SANITIZER_THREAD=ON)
+          fi
+          cmake --preset ci-linux-release-user \
+            -S "$GITHUB_WORKSPACE" -B "$utils_build" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/x64-linux" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            "${flags[@]}"
+          cmake --build "$utils_build" --parallel 2 \
+            --target databind_component_candidate_provider \
+                     test_databind_component_candidate_dso_c11 \
+                     test_databind_component_candidate_negative_dso_c11 \
+                     test_databind_component_candidate_header_cpp \
+                     databind_component_candidate_codegen_tool
+          python3 cmake/ci/verify-component-provider-sanitizers.py \
+            --phase consumer --mode "${{ matrix.mode }}" \
+            --source-root "$GITHUB_WORKSPACE/build/component-sanitizer/salts" \
+            --build-dir "$GITHUB_WORKSPACE/build/component-sanitizer/salts-build" \
+            --consumer-root "$GITHUB_WORKSPACE" --consumer-build "$utils_build" \
+            --salts-prefix "$SALTS_ROOT" \
+            --evidence "build/component-sanitizer/evidence/consumer-${{ matrix.mode }}.json"
+          ctest --test-dir "$utils_build" \
+            -R '^test_databind_component_candidate_(dso_c11|negative_dso_c11|header_cpp|codegen_content)$' \
+            --repeat until-fail:5 --no-tests=error \
+            --output-on-failure --timeout 120 \
+            --output-log "build/component-sanitizer/evidence/ctest-${{ matrix.mode }}.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: component-idl-sanitizers-${{ matrix.mode }}-${{ github.run_id }}
+          path: |
+            build/component-sanitizer/evidence/
+            build/component-sanitizer/salts-build/compile_commands.json
+            build/component-sanitizer/utils-${{ matrix.mode }}/compile_commands.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Assert source checkout unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SU"
+          test "$(git -C build/component-sanitizer/salts rev-parse HEAD)" = "$EXPECTED_SALTS"
           test -z "$(git status --porcelain --untracked-files=no)"

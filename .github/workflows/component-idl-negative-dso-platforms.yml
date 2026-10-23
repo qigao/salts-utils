@@ -1,0 +1,177 @@
+name: Canonical Component IDL negative DSO platform gate
+
+'on':
+  pull_request:
+    paths:
+      - ".github/workflows/component-idl-negative-dso-platforms.yml"
+      - "databind/compiler/**"
+      - "databind/runtime/**"
+      - "cmake/ci/verify-component-provider-sanitizers.py"
+  push:
+    branches:
+      - "test/component-idl-canonical-runtime-sanitizers"
+    paths:
+      - ".github/workflows/component-idl-negative-dso-platforms.yml"
+      - "databind/compiler/**"
+      - "databind/runtime/**"
+      - "cmake/ci/verify-component-provider-sanitizers.py"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: component-idl-negative-dso-platforms-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  native-hosts:
+    name: Exact Salts source + negative Provider DSO (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos
+            runner: macos-15
+            rid: macos-arm64
+            triplet: arm64-osx
+            salts_preset: release-mac-ninja
+            utils_preset: ci-macos-release-user
+          - os: windows
+            runner: windows-2025
+            rid: windows-x64
+            triplet: ""
+            salts_preset: release-win-msvc-ninja
+            utils_preset: ci-win-release-user
+    env:
+      EXPECTED_SALTS: a6f49357b8886cecf2badd4896b04b4e0547f1be
+      EXPECTED_SU: ${{ github.event.pull_request.head.sha || github.sha }}
+      QIGAO_SDK_RID: ${{ matrix.rid }}
+      QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
+      QIGAO_HOST_TRIPLET: ${{ matrix.triplet }}
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
+      CCACHE_DIR: ${{ github.workspace }}/build/component-platform/ccache
+      CCACHE_COMPILERCHECK: content
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-component-dso-v1-${{ matrix.os }}
+      SALTS_PRESET: ${{ matrix.salts_preset }}
+      UTILS_PRESET: ${{ matrix.utils_preset }}
+      SALTS_ROOT: ${{ github.workspace }}/build/component-platform/build-salts
+      SALTS_SOURCE: ${{ github.workspace }}/build/component-platform/salts
+      SALTS_BUILD: ${{ github.workspace }}/build/component-platform/build-salts
+      UTILS_BUILD: ${{ github.workspace }}/build/component-platform/build-utils
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SU }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: a6f49357b8886cecf2badd4896b04b4e0547f1be
+          path: build/component-platform/salts
+          persist-credentials: false
+      - uses: ./.github/actions/setup-native-ci
+      - uses: ./.github/actions/setup-build-host
+      - name: Select canonical Windows vcpkg triplet
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:VCPKG_ROOT -or -not $env:QIGAO_VCPKG_WINDOWS_TRIPLET) { throw 'Shared Windows vcpkg environment is missing' }
+          "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+      - name: Verify exact sources and record provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -ne $env:EXPECTED_SU) { throw 'SaltsUtils source SHA mismatch' }
+          if ((git -C $env:SALTS_SOURCE rev-parse HEAD).Trim() -ne $env:EXPECTED_SALTS) { throw 'Salts source SHA mismatch' }
+          if (-not (Test-Path "$env:SALTS_SOURCE/component-runtime/src/service_host.c")) { throw 'Canonical ServiceHost source is missing' }
+          New-Item -ItemType Directory -Force "$env:GITHUB_WORKSPACE/build/component-platform/evidence" | Out-Null
+          @("salts=$env:EXPECTED_SALTS", "saltsutils=$env:EXPECTED_SU", "rid=$env:QIGAO_SDK_RID", "triplet=$env:QIGAO_TARGET_TRIPLET", "publish=false") |
+            Set-Content "$env:GITHUB_WORKSPACE/build/component-platform/evidence/provenance.txt"
+      - name: Build and install exact Salts source (macOS)
+        if: matrix.os == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset "$SALTS_PRESET" -S "$SALTS_SOURCE" -B "$SALTS_BUILD" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DCMAKE_INSTALL_PREFIX="$SALTS_ROOT" \
+            -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          cmake --build "$SALTS_BUILD" --target salts_service_host cmeta_cserde --parallel 2
+          test -f "$SALTS_BUILD/SaltsConfig.cmake"
+          test -f "$SALTS_BUILD/SaltsTargets.cmake"
+          test -f "$SALTS_SOURCE/component-runtime/include/salts/service_host.h"
+          test -f "$SALTS_SOURCE/component-plugin/include/salts/component_provider_abi.h"
+      - name: Build and install exact Salts source (Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          cmake --preset "%SALTS_PRESET%" -S "%SALTS_SOURCE%" -B "%SALTS_BUILD%" -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DCMAKE_INSTALL_PREFIX="%SALTS_ROOT%" -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build "%SALTS_BUILD%" --config Release --target salts_service_host cmeta_cserde --parallel 2
+          if errorlevel 1 exit /b 1
+          if not exist "%SALTS_BUILD%\SaltsConfig.cmake" exit /b 1
+          if not exist "%SALTS_BUILD%\SaltsTargets.cmake" exit /b 1
+          if not exist "%SALTS_SOURCE%\component-runtime\include\salts\service_host.h" exit /b 1
+          if not exist "%SALTS_SOURCE%\component-plugin\include\salts\component_provider_abi.h" exit /b 1
+      - name: Build positive and negative Provider DSOs against source-built Salts (macOS)
+        if: matrix.os == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DYLD_LIBRARY_PATH="$SALTS_BUILD/lib:$SALTS_BUILD/bin:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib"
+          cmake --preset "$UTILS_PRESET" -S "$GITHUB_WORKSPACE" -B "$UTILS_BUILD" \
+            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET" \
+            -DCMAKE_C_FLAGS="-I$SALTS_SOURCE/plugin/include" \
+            -DCMAKE_CXX_FLAGS="-I$SALTS_SOURCE/plugin/include" \
+            -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build "$UTILS_BUILD" --parallel 2 \
+            --target databind_component_candidate_provider \
+                     test_databind_component_candidate_dso_c11 \
+                     test_databind_component_candidate_negative_dso_c11 \
+                     test_databind_component_candidate_header_cpp \
+                     databind_component_candidate_codegen_tool
+          ctest --test-dir "$UTILS_BUILD" \
+            -R '^test_databind_component_candidate_(dso_c11|negative_dso_c11|header_cpp|codegen_content)$' \
+            --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 120
+      - name: Build positive and negative Provider DSOs against source-built Salts (Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "PATH=%SALTS_BUILD%\\bin;%SALTS_BUILD%\\Release;%VCPKG_INSTALLED_DIR%\\%QIGAO_TARGET_TRIPLET%\\bin;%PATH%"
+          cmake --preset "%UTILS_PRESET%" -S "%GITHUB_WORKSPACE%" -B "%UTILS_BUILD%" "-DCMAKE_PREFIX_PATH=%SALTS_BUILD%;%VCPKG_INSTALLED_DIR%/%QIGAO_TARGET_TRIPLET%" -DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build "%UTILS_BUILD%" --config Release --parallel 2 --target databind_component_candidate_provider test_databind_component_candidate_dso_c11 test_databind_component_candidate_negative_dso_c11 test_databind_component_candidate_header_cpp databind_component_candidate_codegen_tool
+          if errorlevel 1 exit /b 1
+          ctest --test-dir "%UTILS_BUILD%" -C Release -R "^test_databind_component_candidate_(dso_c11|negative_dso_c11|header_cpp|codegen_content)$" --repeat until-fail:10 --no-tests=error --output-on-failure --timeout 120
+          if errorlevel 1 exit /b 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: component-idl-negative-dso-${{ matrix.os }}-${{ github.run_id }}
+          path: |
+            build/component-platform/evidence/
+            build/component-platform/build-utils/Testing/Temporary/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Assert source checkouts unchanged
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -ne $env:EXPECTED_SU) { throw 'SaltsUtils source changed' }
+          if ((git -C $env:SALTS_SOURCE rev-parse HEAD).Trim() -ne $env:EXPECTED_SALTS) { throw 'Salts source changed' }
+          $status = git status --porcelain --untracked-files=no
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify SaltsUtils source status' }
+          if ($status) { throw 'SaltsUtils tracked source tree changed' }
