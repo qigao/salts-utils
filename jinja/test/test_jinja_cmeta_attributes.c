@@ -165,7 +165,8 @@ spec("Jinja CMeta collections and runtime: attributes 4") {
 
   it("returns Undefined for invalid lookup on defined values and errors on Undefined bases") {
     static const char source[] = "<{{ 1[0] }}>|<{{ users[1.0] }}>|<{{ user.name['x'] }}>|"
-                                 "<{{ users[9] }}>|<{{ user['missing'] }}>";
+                                 "<{{ users[9] }}>|<{{ user['missing'] }}>|"
+                                 "{{ user['name\\u0000suffix'] is undefined }}";
     const JinjaTestUser users[] = {{vstr_from_cstr("Ada"), 37}, {vstr_from_cstr("Lin"), 42}};
     JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {users, 2u, sizeof(users[0]), NULL}};
     JinjaTestModel model;
@@ -174,13 +175,30 @@ spec("Jinja CMeta collections and runtime: attributes 4") {
     jinja_test_model_init(&model);
     root.users.element = &model.user_desc;
     check_equal(jinja_test_render(source, &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "<>|<>|<>|<>|<>");
+    check_equal(output, "<>|<>|<>|<>|<>|True");
     free(output);
 
     output = NULL;
     error = (JINJA_CMETA_ERROR)JINJA_CMETA_ERROR_INIT;
     check_equal(jinja_test_render("{{ missing[0] }}", &model, &root, NULL, &output, &error),
                 JINJA_CMETA_ERR_RENDER);
+    check_null(output);
+  }
+
+  it("rejects malformed reflected field storage instead of treating it as Undefined") {
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTestModel model;
+    char *output = NULL;
+
+    jinja_test_model_init(&model);
+    model.user_fields[0].offset = sizeof(JinjaTestUser);
+    check_equal(jinja_test_render("{{ user.name }}", &model, &root, NULL, &output, &error),
+                JINJA_CMETA_ERR_METADATA);
+    check_null(output);
+
+    error = (JINJA_CMETA_ERROR)JINJA_CMETA_ERROR_INIT;
+    check_equal(jinja_test_render("{{ user|tojson }}", &model, &root, NULL, &output, &error),
+                JINJA_CMETA_ERR_METADATA);
     check_null(output);
   }
 

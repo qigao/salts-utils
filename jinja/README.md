@@ -113,6 +113,12 @@ Runnable C usage and loader callbacks are in
 [`test_jinja_environment.c`](test/test_jinja_environment.c); C++ usage is in
 [`test_jinja_cmeta_header_cpp.cpp`](test/test_jinja_cmeta_header_cpp.cpp).
 
+`jinja_cmeta_callable_from_invokable` adapts an already admitted CMeta invokable
+without retaining it, its metadata/provider, or any plugin lease. Registry and
+environment snapshots copy the callable entry but keep that borrowed pointer.
+Keep those resources alive through all renders; release templates and destroy
+their environments before releasing a plugin lease and unloading its module.
+
 Runtime `include`, `import`, `from`, `extends`, and ancestor `super` calls use
 one render session. Default imports reuse a module within that render; imports
 with context create independent instances. Module exports and `self` block

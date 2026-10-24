@@ -72,6 +72,22 @@ static JINJA_CMETA_STATUS jinja_native_argument(const JINJA_CMETA_CALL_ARGUMENT 
   return JINJA_CMETA_OK;
 }
 
+/* Jinja keyword names are length-delimited views and may contain embedded NULs,
+ * so they cannot use cmeta_function_find_param's C-string boundary directly. */
+static const cmeta_param_desc *jinja_native_parameter(const cmeta_function_desc *signature,
+    vstr name, size_t *position) {
+  if (!vstr_is_valid(name) || position == NULL) return NULL;
+  for (size_t i = 0u; i < signature->param_count; ++i) {
+    const cmeta_param_desc *param = cmeta_function_param(signature, i);
+    if (param == NULL) return NULL;
+    if (vstr_eq(name, vstr_from_cstr(param->name))) {
+      *position = i;
+      return param;
+    }
+  }
+  return NULL;
+}
+
 static JINJA_CMETA_STATUS jinja_native_invoke(void *opaque,
     const JINJA_CMETA_CALL_CONTEXT *context, JINJA_CMETA_CALL_RESULT *result) {
   const cmeta_invokable *function = (const cmeta_invokable *)opaque;
@@ -84,13 +100,13 @@ static JINJA_CMETA_STATUS jinja_native_invoke(void *opaque,
   for (size_t i = 0u; i < count; ++i) {
     size_t position = i;
     const JINJA_CMETA_CALL_ARGUMENT *argument = &context->arguments[i];
-    if (i >= context->positional_count) {
-      for (position = 0u; position < count; ++position)
-        if (vstr_eq(argument->name, vstr_from_cstr(signature->params[position].name))) break;
-    }
-    if (position >= count || arguments[position] != NULL) return JINJA_CMETA_ERR_RENDER;
+    const cmeta_param_desc *param = i < context->positional_count
+        ? cmeta_function_param(signature, position)
+        : jinja_native_parameter(signature, argument->name, &position);
+    if (param == NULL) return JINJA_CMETA_ERR_RENDER;
+    if (arguments[position] != NULL) return JINJA_CMETA_ERR_RENDER;
     JINJA_CMETA_STATUS status = jinja_native_argument(argument,
-        signature->params[position].type, &values[position], &arguments[position]);
+        param->type, &values[position], &arguments[position]);
     if (status != JINJA_CMETA_OK) return status;
   }
   cmeta_status called = cmeta_invokable_invoke_admitted(function, &output, arguments);
@@ -139,16 +155,16 @@ JINJA_CMETA_STATUS jinja_cmeta_callable_from_invokable(JINJA_CMETA_CALLABLE *out
         (signature->result_flags & CMETA_RESULT_CLASS_MASK) != CMETA_RESULT_VALUE)
       status = JINJA_CMETA_ERR_UNSUPPORTED;
     for (size_t i = 0u; status == JINJA_CMETA_OK && i < signature->param_count; ++i) {
-      const cmeta_param_desc *param = &signature->params[i];
+      const cmeta_param_desc *param = cmeta_function_param(signature, i);
+      if (param == NULL) {
+        status = JINJA_CMETA_ERR_INVALID_ARGUMENT;
+        break;
+      }
       if (jinja_native_kind(param->type) == JINJA_NATIVE_UNSUPPORTED ||
           jinja_native_kind(param->type) == JINJA_NATIVE_VOID ||
           (param->flags & CMETA_PARAM_DIRECTION_MASK) != CMETA_PARAM_IN ||
           (param->flags & (CMETA_PARAM_OWNED | CMETA_PARAM_RECEIVER)) != 0u)
         status = JINJA_CMETA_ERR_UNSUPPORTED;
-      else if (param->name == NULL || param->name[0] == '\0') status = JINJA_CMETA_ERR_INVALID_ARGUMENT;
-      if (status != JINJA_CMETA_OK) break;
-      for (size_t j = 0u; j < i; ++j)
-        if (strcmp(param->name, signature->params[j].name) == 0) status = JINJA_CMETA_ERR_INVALID_ARGUMENT;
     }
   }
   if (status != JINJA_CMETA_OK) {

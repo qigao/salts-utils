@@ -12,8 +12,11 @@ extern "C" {
 
 /** Adapt an unmodified, successfully admitted CMeta invokable for registry use.
  * out receives a zero value on failure. name is borrowed until registration;
- * function, its metadata, capture, and provider must outlive the environment
- * and every compiled template. The adapter neither retains nor moves them.
+ * registry and environment snapshots copy only the callable entry. function,
+ * its metadata, capture, and provider must outlive every such copy and render.
+ * The adapter neither retains nor moves them. For plugin-backed invokables, the
+ * caller must retain the plugin lease until renders and templates have ended and
+ * their environments are destroyed, then release the lease before unloading.
  *
  * Synchronous IN parameters only, up to MAX_REFLECTED_ARGUMENTS. Native nodes
  * borrow exact matching storage; template scalars convert to bool, int, long,

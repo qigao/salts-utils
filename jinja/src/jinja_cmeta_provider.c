@@ -11,6 +11,7 @@
 #include "parser/jinja_text_lexer.h"
 
 #include <cmeta_cmeta_data.h>
+#include <cmeta/object_scope.h>
 #include <cmeta/scope.h>
 #include <salts_unicode.h>
 #include <tstr.h>
@@ -148,6 +149,9 @@ typedef struct JINJA_CMETA_RENDER_STATE {
   JINJA_CMETA_HELPER *helpers;
   size_t helper_count;
   JINJA_CMETA_TEXT *capture_buffers;
+  /* CMeta field lookup accepts canonical C names. Reuse one render-local
+   * terminated adapter for Jinja's length-delimited identifiers and keys. */
+  JINJA_CMETA_TEXT field_name;
   size_t capture_count;
   size_t capture_bytes;
   size_t collection_value_count;
@@ -993,30 +997,83 @@ static JINJA_CMETA_STATUS jinja_loop_attribute(JINJA_CMETA_PROVIDER *provider,
   return provider->shared.status;
 }
 
-static const cmeta_data_field_desc *jinja_struct_field(const cmeta_data_struct_shape *shape,
-                                                       const char *name, size_t name_size) {
-  size_t i;
-  if (shape == NULL || (name_size != 0u && name == NULL)) return NULL;
-  for (i = 0u; i < shape->field_count; ++i) {
-    const cmeta_data_field_desc *field = &shape->fields[i];
-    size_t field_size = strlen(field->name);
-    if (field_size == name_size && memcmp(field->name, name, name_size) == 0) return field;
+/* Jinja names are borrowed spans and may contain embedded NUL bytes. CMeta's
+ * canonical Reflection surface uses non-empty C strings, so only this policy
+ * adapter materializes a terminated name. Field resolution, offset admission,
+ * and the borrowed read remain owned by CMeta. */
+static JINJA_CMETA_STATUS jinja_object_field_read(JINJA_CMETA_PROVIDER *provider,
+    const cmeta_object_ref *object, vstr name, const cmeta_data_desc **out_desc,
+    const void **out_value, int *found) {
+  cmeta_object_field_binding binding = CMETA_OBJECT_FIELD_BINDING_INIT;
+  const cmeta_data_struct_shape *shape;
+  const char *field_name;
+  cmeta_status status;
+
+  if (provider == NULL || !cmeta_object_ref_valid(object) || out_desc == NULL ||
+      out_value == NULL || found == NULL || !vstr_is_valid(name) ||
+      object->data->kind != CMETA_DATA_STRUCT)
+    return JINJA_CMETA_ERR_METADATA;
+  *out_desc = NULL;
+  *out_value = NULL;
+  *found = 0;
+  if (name.len == 0u || memchr(name.data, '\0', name.len) != NULL) return JINJA_CMETA_OK;
+
+  if (provider->shared.field_name.bytes == NULL) {
+    JINJA_CMETA_STATUS text_status =
+        jinja_cmeta_text_init(&provider->shared.field_name, provider->shared.memory);
+    if (text_status != JINJA_CMETA_OK) return text_status;
   }
-  return NULL;
+  {
+    JINJA_CMETA_STATUS text_status =
+        jinja_cmeta_text_resize(&provider->shared.field_name, name.len);
+    if (text_status != JINJA_CMETA_OK) return text_status;
+  }
+  memcpy(jinja_cmeta_text_mutable(&provider->shared.field_name), name.data, name.len);
+  field_name = jinja_cmeta_text_data(&provider->shared.field_name);
+
+  status = cmeta_object_field_bind(object, field_name, &binding);
+  if (status != CMETA_OK) {
+    /* INVALID_ARGUMENT also represents a missing field. Ask the canonical
+     * descriptor query only on this failure path to preserve that distinction
+     * from malformed storage or a rejected fixed-field admission. */
+    shape = (const cmeta_data_struct_shape *)object->data->shape;
+    if (status == CMETA_INVALID_ARGUMENT &&
+        cmeta_data_struct_find_field(shape, field_name) == NULL)
+      return JINJA_CMETA_OK;
+    return JINJA_CMETA_ERR_METADATA;
+  }
+  status = cmeta_object_field_read_admitted(&binding, out_value);
+  if (status == CMETA_OK) {
+    *out_desc = binding.field->value;
+    *found = 1;
+  }
+  return status == CMETA_OK ? JINJA_CMETA_OK : JINJA_CMETA_ERR_METADATA;
 }
 
-static int jinja_child_address(const JINJA_CMETA_NODE *parent, const cmeta_data_field_desc *field,
-                               const void **out) {
-  size_t parent_size;
-  size_t child_size;
-  if (parent->desc->storage_type == NULL || field->value == NULL ||
-      field->value->storage_type == NULL)
-    return 0;
-  parent_size = parent->desc->storage_type->size;
-  child_size = field->value->storage_type->size;
-  if (field->offset > parent_size || child_size > parent_size - field->offset) return 0;
-  *out = (const unsigned char *)parent->object + field->offset;
-  return 1;
+static JINJA_CMETA_STATUS jinja_struct_field_read(JINJA_CMETA_PROVIDER *provider,
+    const JINJA_CMETA_NODE *parent, vstr name, const cmeta_data_desc **out_desc,
+    const void **out_value, int *found) {
+  cmeta_object_ref object = CMETA_OBJECT_REF_INIT;
+  cmeta_cleanup cleanup = CMETA_CLEANUP_INIT;
+  JINJA_CMETA_STATUS result;
+  cmeta_status status;
+
+  if (provider == NULL || parent == NULL || out_desc == NULL || out_value == NULL ||
+      found == NULL || !vstr_is_valid(name) || parent->object == NULL ||
+      !cmeta_data_desc_valid(parent->desc) || parent->desc->kind != CMETA_DATA_STRUCT)
+    return JINJA_CMETA_ERR_METADATA;
+
+  status = cmeta_object_borrow(&object, (void *)parent->object, parent->desc, NULL);
+  if (status != CMETA_OK) return JINJA_CMETA_ERR_METADATA;
+  status = cmeta_cleanup_object(&cleanup, &object);
+  if (status != CMETA_OK) {
+    cmeta_object_release(&object);
+    return JINJA_CMETA_ERR_METADATA;
+  }
+  result = jinja_object_field_read(
+      provider, &object, name, out_desc, out_value, found);
+  cmeta_cleanup_run(&cleanup);
+  return result;
 }
 
 
@@ -1141,8 +1198,9 @@ static JINJA_CMETA_STATUS jinja_resolve_path(JINJA_CMETA_PROVIDER *provider,
   }
 
   while (segment_start < path.len) {
-    const cmeta_data_field_desc *field = NULL;
+    const cmeta_data_desc *child_desc = NULL;
     const void *child = NULL;
+    int child_found = 0;
     size_t segment_end = segment_start;
     while (segment_end < path.len && path.data[segment_end] != '.')
       ++segment_end;
@@ -1164,7 +1222,7 @@ static JINJA_CMETA_STATUS jinja_resolve_path(JINJA_CMETA_PROVIDER *provider,
         continue;
       }
       for (candidate = context; candidate != NULL; candidate = candidate->parent) {
-        const cmeta_data_struct_shape *shape;
+        JINJA_CMETA_STATUS status;
         if (candidate == &provider->shared.nodes[0] && !provider->instance->root_visible) continue;
         if (candidate->expression_kind == JINJA_CMETA_EXPRESSION_CALL) continue;
         if (candidate->expression_kind == JINJA_CMETA_EXPRESSION_RANGE) {
@@ -1179,13 +1237,13 @@ static JINJA_CMETA_STATUS jinja_resolve_path(JINJA_CMETA_PROVIDER *provider,
         if (!cmeta_data_desc_valid(candidate->desc) || candidate->object == NULL)
           return JINJA_CMETA_ERR_METADATA;
         if (candidate->desc->kind != CMETA_DATA_STRUCT) continue;
-        shape = (const cmeta_data_struct_shape *)candidate->desc->shape;
-        field = jinja_struct_field(shape, path.data + segment_start, segment_end - segment_start);
-        if (field == NULL) continue;
-        if (!cmeta_data_desc_valid(field->value) || !jinja_child_address(candidate, field, &child))
-          return JINJA_CMETA_ERR_METADATA;
+        status = jinja_struct_field_read(provider, candidate,
+            vstr_from_buf(path.data + segment_start, segment_end - segment_start),
+            &child_desc, &child, &child_found);
+        if (status != JINJA_CMETA_OK) return status;
+        if (!child_found) continue;
         current.object = child;
-        current.desc = field->value;
+        current.desc = child_desc;
         current.parent = candidate;
         break;
       }
@@ -1193,7 +1251,6 @@ static JINJA_CMETA_STATUS jinja_resolve_path(JINJA_CMETA_PROVIDER *provider,
         return segment_end == path.len ? JINJA_CMETA_OK : JINJA_CMETA_ERR_RENDER;
       first = 0;
     } else {
-      const cmeta_data_struct_shape *shape;
       if (current.expression_kind == JINJA_CMETA_EXPRESSION_RANGE) {
         JINJA_CMETA_VALUE member;
         JINJA_CMETA_NODE *value;
@@ -1210,14 +1267,16 @@ static JINJA_CMETA_STATUS jinja_resolve_path(JINJA_CMETA_PROVIDER *provider,
           return JINJA_CMETA_ERR_METADATA;
         if (current.desc->kind != CMETA_DATA_STRUCT)
           return segment_end == path.len ? JINJA_CMETA_OK : JINJA_CMETA_ERR_RENDER;
-        shape = (const cmeta_data_struct_shape *)current.desc->shape;
-        field = jinja_struct_field(shape, path.data + segment_start, segment_end - segment_start);
-        if (field == NULL)
+        {
+          JINJA_CMETA_STATUS status = jinja_struct_field_read(provider, &current,
+              vstr_from_buf(path.data + segment_start, segment_end - segment_start),
+              &child_desc, &child, &child_found);
+          if (status != JINJA_CMETA_OK) return status;
+        }
+        if (!child_found)
           return segment_end == path.len ? JINJA_CMETA_OK : JINJA_CMETA_ERR_RENDER;
-        if (!cmeta_data_desc_valid(field->value) || !jinja_child_address(&current, field, &child))
-          return JINJA_CMETA_ERR_METADATA;
         current.object = child;
-        current.desc = field->value;
+        current.desc = child_desc;
       }
     }
 
@@ -3482,33 +3541,21 @@ static JINJA_CMETA_STATUS jinja_utf8_scalar_lookup(vstr input, int64_t index, vs
 }
 
 
-static JINJA_CMETA_STATUS jinja_lookup_struct_item(const JINJA_CMETA_NODE *base, vstr name,
-                                                   JINJA_CMETA_VALUE *result) {
-  const cmeta_data_struct_shape *shape;
-  size_t i;
-
-  if (base == NULL || result == NULL || base->object == NULL ||
-      !cmeta_data_desc_valid(base->desc) || base->desc->kind != CMETA_DATA_STRUCT)
-    return JINJA_CMETA_ERR_METADATA;
-  shape = (const cmeta_data_struct_shape *)base->desc->shape;
-  if (shape == NULL || (shape->field_count != 0u && shape->fields == NULL))
-    return JINJA_CMETA_ERR_METADATA;
-  for (i = 0u; i < shape->field_count; ++i) {
-    const cmeta_data_field_desc *field = &shape->fields[i];
-    const void *child;
-    size_t field_size;
-
-    if (field->name == NULL) return JINJA_CMETA_ERR_METADATA;
-    field_size = strlen(field->name);
-    if (field_size != name.len || memcmp(field->name, name.data, name.len) != 0) continue;
-    if (!cmeta_data_desc_valid(field->value) || !jinja_child_address(base, field, &child))
-      return JINJA_CMETA_ERR_METADATA;
-    result->kind = JINJA_CMETA_VALUE_NODE;
-    result->node =
-        (JINJA_CMETA_NODE){.object = child, .desc = field->value, .parent = base->parent};
+static JINJA_CMETA_STATUS jinja_lookup_struct_item(JINJA_CMETA_PROVIDER *provider,
+    const JINJA_CMETA_NODE *base, vstr name, JINJA_CMETA_VALUE *result) {
+  const cmeta_data_desc *child_desc = NULL;
+  const void *child = NULL;
+  int found = 0;
+  JINJA_CMETA_STATUS status = jinja_struct_field_read(
+      provider, base, name, &child_desc, &child, &found);
+  if (status != JINJA_CMETA_OK) return status;
+  if (!found) {
+    result->kind = JINJA_CMETA_VALUE_UNDEFINED;
     return JINJA_CMETA_OK;
   }
-  result->kind = JINJA_CMETA_VALUE_UNDEFINED;
+  result->kind = JINJA_CMETA_VALUE_NODE;
+  result->node =
+      (JINJA_CMETA_NODE){.object = child, .desc = child_desc, .parent = base->parent};
   return JINJA_CMETA_OK;
 }
 
@@ -3750,7 +3797,7 @@ static JINJA_CMETA_STATUS jinja_lookup_item(JINJA_CMETA_PROVIDER *provider,
     vstr name;
     status = jinja_lookup_string_key(provider, key, &name, &valid);
     if (status != JINJA_CMETA_OK || !valid) return status;
-    return jinja_lookup_struct_item(&base->node, name, result);
+    return jinja_lookup_struct_item(provider, &base->node, name, result);
   }
   return JINJA_CMETA_OK;
 }
@@ -6954,28 +7001,46 @@ cleanup:
 static JINJA_CMETA_STATUS jinja_json_struct(JINJA_CMETA_PROVIDER *provider,
                                             const JINJA_CMETA_NODE *node, size_t depth,
                                             int pretty, size_t indent) {
+  cmeta_object_ref object = CMETA_OBJECT_REF_INIT;
+  cmeta_cleanup cleanup = CMETA_CLEANUP_INIT;
   const cmeta_data_struct_shape *shape;
   JINJA_CMETA_STATUS status;
+  cmeta_status object_status;
 
   if (node == NULL || node->object == NULL || !cmeta_data_desc_valid(node->desc) ||
       node->desc->kind != CMETA_DATA_STRUCT)
     return JINJA_CMETA_ERR_METADATA;
   shape = (const cmeta_data_struct_shape *)node->desc->shape;
-  if (shape == NULL || (shape->field_count != 0u && shape->fields == NULL))
+  object_status = cmeta_object_borrow(&object, (void *)node->object, node->desc, NULL);
+  if (object_status != CMETA_OK) return JINJA_CMETA_ERR_METADATA;
+  object_status = cmeta_cleanup_object(&cleanup, &object);
+  if (object_status != CMETA_OK) {
+    cmeta_object_release(&object);
     return JINJA_CMETA_ERR_METADATA;
+  }
   status = jinja_json_write(provider, "{", 1u);
   for (size_t i = 0u; status == JINJA_CMETA_OK && i < shape->field_count; ++i) {
-    const cmeta_data_field_desc *field = &shape->fields[i];
-    const void *child;
+    const cmeta_data_field_desc *field = cmeta_data_struct_field(shape, i);
+    const cmeta_data_desc *child_desc = NULL;
+    const void *child = NULL;
+    int found = 0;
     JINJA_CMETA_VALUE child_value;
-    if (field->name == NULL || !cmeta_data_desc_valid(field->value) ||
-        !jinja_child_address(node, field, &child))
-      return JINJA_CMETA_ERR_METADATA;
+    if (field == NULL || field->name == NULL) {
+      status = JINJA_CMETA_ERR_METADATA;
+      break;
+    }
+    status = jinja_object_field_read(provider, &object, vstr_from_cstr(field->name),
+        &child_desc, &child, &found);
+    if (status != JINJA_CMETA_OK) break;
+    if (!found) {
+      status = JINJA_CMETA_ERR_METADATA;
+      break;
+    }
     if (pretty) status = jinja_json_indent(provider, indent, depth + 1u);
     if (status == JINJA_CMETA_OK) status = jinja_json_string(provider, vstr_from_cstr(field->name));
     if (status == JINJA_CMETA_OK) status = jinja_json_write(provider, ": ", 2u);
     child_value = (JINJA_CMETA_VALUE){.kind = JINJA_CMETA_VALUE_NODE,
-        .node = {.object = child, .desc = field->value, .parent = node->parent}};
+        .node = {.object = child, .desc = child_desc, .parent = node->parent}};
     if (status == JINJA_CMETA_OK)
       status = jinja_json_value(provider, &child_value, depth + 1u, pretty, indent);
     if (status == JINJA_CMETA_OK && i + 1u < shape->field_count)
@@ -6984,6 +7049,7 @@ static JINJA_CMETA_STATUS jinja_json_struct(JINJA_CMETA_PROVIDER *provider,
   if (status == JINJA_CMETA_OK && pretty && shape->field_count != 0u)
     status = jinja_json_indent(provider, indent, depth);
   if (status == JINJA_CMETA_OK) status = jinja_json_write(provider, "}", 1u);
+  cmeta_cleanup_run(&cleanup);
   return status;
 }
 
@@ -7388,7 +7454,7 @@ static JINJA_CMETA_STATUS jinja_attr_value(JINJA_CMETA_PROVIDER *provider,
     if (operand->node.object == NULL || !cmeta_data_desc_valid(operand->node.desc))
       return JINJA_CMETA_ERR_METADATA;
     if (operand->node.desc->kind == CMETA_DATA_STRUCT)
-      return jinja_lookup_struct_item(&operand->node, key.string, result);
+      return jinja_lookup_struct_item(provider, &operand->node, key.string, result);
   }
   return JINJA_CMETA_OK;
 }
@@ -12089,6 +12155,8 @@ static cmeta_status jinja_provider_init(void *storage) {
 
 static void jinja_provider_destroy(void *storage) {
   JINJA_CMETA_PROVIDER *provider = (JINJA_CMETA_PROVIDER *)storage;
+  if (provider->shared.field_name.bytes != NULL)
+    jinja_cmeta_text_destroy(&provider->shared.field_name);
   for (size_t i = 0u; i < provider->shared.capture_count; ++i) jinja_cmeta_text_destroy(&provider->shared.capture_buffers[i]);
   while (provider->shared.closures != NULL) {
     JINJA_CMETA_CLOSURE *closure = provider->shared.closures;
