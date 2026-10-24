@@ -1,0 +1,99 @@
+name: CMake Windows preset pipeline
+variables:
+  PRESET: win-release-user
+  TASK: all
+  TARGET: ''
+  TEST_REGEX: ''
+  RUN_PROGRAM: ''
+  RUN_ARGS: '[]'
+  TEST: '1'
+  INSTALL: '0'
+  FRESH: '0'
+  VSDEVCMD_BAT: '{{ env.VSDEVCMD_BAT }}'
+  PROJECT_ROOT: '{{ env.PROJECT_ROOT }}'
+  VCPKG_ROOT: '{{ env.VCPKG_ROOT }}'
+  SALTS_ROOT: '{{ env.SALTS_ROOT }}'
+  SALTS_HOST_ROOT: '{{ env.SALTS_HOST_ROOT }}'
+  RE2C_ROOT: '{{ env.RE2C_ROOT }}'
+  VCPKG_CACHE_REPOSITORY_ROOT: '{{ env.VCPKG_CACHE_REPOSITORY_ROOT }}'
+  VCPKG_BINARY_SOURCES: '{{ env.VCPKG_BINARY_SOURCES }}'
+env:
+  VSDEVCMD_BAT: '{{ VSDEVCMD_BAT }}'
+  PROJECT_ROOT: '{{ PROJECT_ROOT }}'
+  VCPKG_ROOT: '{{ VCPKG_ROOT }}'
+  SALTS_ROOT: '{{ SALTS_ROOT }}'
+  SALTS_HOST_ROOT: '{{ SALTS_HOST_ROOT }}'
+  RE2C_ROOT: '{{ RE2C_ROOT }}'
+  VCPKG_CACHE_REPOSITORY_ROOT: '{{ VCPKG_CACHE_REPOSITORY_ROOT }}'
+  VCPKG_BINARY_SOURCES: '{{ VCPKG_BINARY_SOURCES }}'
+tasks:
+  - name: configure
+    when: "($TASK == 'all' || $TASK == 'configure' || $TASK == 'build' || $TASK == 'test' || $TASK == 'install' || $TASK == 'run') && $FRESH == '0'"
+    program: cmd.exe
+    args: ['/d', '/s', '/c', 'cmake\ci\run-vsdevcmd.cmd', cmake, '--preset', '{{ PRESET }}']
+    working_dir: ../..
+    timeout: 90m
+
+  - name: configure-fresh
+    when: "$TASK == 'refresh' || (($TASK == 'all' || $TASK == 'configure' || $TASK == 'build' || $TASK == 'test' || $TASK == 'install' || $TASK == 'run') && $FRESH == '1')"
+    program: cmd.exe
+    args: ['/d', '/s', '/c', 'cmake\ci\run-vsdevcmd.cmd', cmake, '--fresh', '--preset', '{{ PRESET }}']
+    working_dir: ../..
+    timeout: 90m
+
+  - name: build
+    depends_on: [configure, configure-fresh]
+    when: "($TASK == 'all' || $TASK == 'build' || $TASK == 'test' || $TASK == 'install' || $TASK == 'run') && $TARGET == ''"
+    program: cmd.exe
+    args: ['/d', '/s', '/c', 'cmake\ci\run-vsdevcmd.cmd', cmake, '--build', '--preset', '{{ PRESET }}']
+    working_dir: ../..
+    timeout: 90m
+
+  - name: build-target
+    depends_on: [configure, configure-fresh]
+    when: "($TASK == 'all' || $TASK == 'build' || $TASK == 'test' || $TASK == 'run') && $TARGET != ''"
+    program: cmd.exe
+    args: ['/d', '/s', '/c', 'cmake\ci\run-vsdevcmd.cmd', cmake, '-DLOCAL_ACTION=build', '-P', cmake/RunLocal.cmake]
+    env:
+      SALTS_UTILS_LOCAL_PRESET: '{{ PRESET }}'
+      SALTS_UTILS_LOCAL_TARGET: '{{ TARGET }}'
+    working_dir: ../..
+    timeout: 90m
+
+  - name: test
+    depends_on: [build, build-target]
+    when: "($TASK == 'test' || (($TASK == 'all' || $TASK == 'install') && $TEST == '1')) && $TEST_REGEX == ''"
+    program: cmd.exe
+    args: ['/d', '/s', '/c', 'cmake\ci\run-vsdevcmd.cmd', ctest, '--preset', '{{ PRESET }}', '--output-on-failure']
+    working_dir: ../..
+    timeout: 30m
+
+  - name: test-selected
+    depends_on: [build, build-target]
+    when: "($TASK == 'test' || (($TASK == 'all' || $TASK == 'install') && $TEST == '1')) && $TEST_REGEX != ''"
+    program: cmd.exe
+    args: ['/d', '/s', '/c', 'cmake\ci\run-vsdevcmd.cmd', cmake, '-DLOCAL_ACTION=test', '-P', cmake/RunLocal.cmake]
+    env:
+      SALTS_UTILS_LOCAL_PRESET: '{{ PRESET }}'
+      SALTS_UTILS_LOCAL_TEST_REGEX: '{{ TEST_REGEX }}'
+    working_dir: ../..
+    timeout: 30m
+
+  - name: run
+    depends_on: [build, build-target]
+    when: "$TASK == 'run'"
+    program: cmd.exe
+    args: ['/d', '/s', '/c', 'cmake\ci\run-vsdevcmd.cmd', cmake, '--build', '--preset', '{{ PRESET }}', '--target', run-program]
+    env:
+      SALTS_UTILS_RUN_PROGRAM: '{{ RUN_PROGRAM }}'
+      SALTS_UTILS_RUN_ARGS: '{{ RUN_ARGS }}'
+    working_dir: ../..
+    timeout: 30m
+
+  - name: install
+    depends_on: [test, test-selected]
+    when: "$TASK == 'install' || ($TASK == 'all' && $INSTALL == '1')"
+    program: cmd.exe
+    args: ['/d', '/s', '/c', 'cmake\ci\run-vsdevcmd.cmd', cmake, '--build', '--preset', 'install-{{ PRESET }}']
+    working_dir: ../..
+    timeout: 30m

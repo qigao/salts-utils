@@ -45,6 +45,19 @@ include(Sanitizers)
 include(CmakeUtils)
 include(GNUInstallDirs)
 
+# Run a selected native program with the configured preset's runtime
+# environment. Praktor supplies the executable and argv through the environment.
+add_custom_target(
+  run-program
+  COMMAND
+    "${CMAKE_COMMAND}" -DLOCAL_ACTION=run
+    "-DSALTS_UTILS_CROSSCOMPILING=${CMAKE_CROSSCOMPILING}" -P
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunLocal.cmake"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  USES_TERMINAL
+  VERBATIM)
+set_target_properties(run-program PROPERTIES FOLDER "Tools")
+
 find_package(Threads REQUIRED)
 
 if(NOT DEFINED ENV{SALTS_ROOT} OR NOT IS_DIRECTORY "$ENV{SALTS_ROOT}")

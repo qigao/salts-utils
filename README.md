@@ -203,6 +203,35 @@ cmake --build --preset install-linux-release-user
 
 Windows uses the corresponding `win-*` presets. The `databind/` subtree is a component, not an alternative standalone configure/install entry point.
 
+For local orchestration, the repository also exposes the same Praktor input
+contract used by TurboAgent. The workflow remains repository-local because
+Praktor resolves reusable workflow paths and working directories relative to
+the file that declares them; SaltsUtils therefore keeps its own thin adapter
+while CMake presets remain the build configuration source of truth.
+
+Copy `.env.example` to the ignored `.env` and adjust its absolute paths. Its
+`VCPKG_CACHE_REPOSITORY_ROOT` deliberately matches TurboAgent's user-level
+checkout, so `CACHE_ACTION=clone|sync`, overlay ports, and local vcpkg artifacts
+share that cache instead of creating a repository-specific copy.
+
+```powershell
+# Configure, build the complete graph, and run CTest.
+praktor -f build.yml
+
+# Build one test target, then run its registered CTest entry.
+praktor -f build.yml -i TASK=test -i TARGET=test_jinja_cmeta_attributes -i 'TEST_REGEX=^test_jinja_cmeta_attributes$'
+
+# Reconfigure from a fresh CMake cache without deleting dependencies.
+praktor -f build.yml -i FRESH=1
+```
+
+Use `HOST=unix PRESET=linux-release-user` on Unix. `TASK` accepts `all`,
+`configure`, `refresh`, `build`, `test`, `install`, and `run`; `INSTALL=1` is
+opt-in for the default `all` task. `TARGET` selects one build target,
+`TEST_REGEX` is passed to CTest, and `RUN_ARGS` is a JSON array passed directly
+as argv. Windows requires `VSDEVCMD_BAT`; dependency roots and cache settings
+come from the parent environment or the ignored `.env`, as described above.
+
 ### Installed consumer validation
 
 The existing package consumers have their own configure/build/test presets and
