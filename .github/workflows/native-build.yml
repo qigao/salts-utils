@@ -21,6 +21,7 @@ jobs:
       matrix: ${{ fromJSON(inputs.builds) }}
     env:
       QIGAO_SDK_RID: ${{ matrix.rid }}
+      QIGAO_HOST_RID: ${{ matrix.host }}
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
       QIGAO_IOS_SYSROOT: ${{ matrix.sysroot }}
@@ -33,6 +34,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Checkout immutable canonical static Crypto source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: a99f29a569af14b865c9e713360aa81d39a04bf0
+          path: _ci_crypto
+          persist-credentials: false
+      - name: Checkout original pinned GmSSL source
+        uses: actions/checkout@v4
+        with:
+          repository: guanzhi/GmSSL
+          ref: 7c9f02904ef33e59c87b4f16621cc8fd434e7579
+          path: _ci_gmssl
           persist-credentials: false
       - name: Select iOS cache namespace
         if: matrix.family == 'ios'
@@ -63,6 +78,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
+      - name: Install exact static Crypto SDK for target and optional host
+        shell: bash
+        run: python3 cmake/ci/install_static_crypto_sdk.py
       - name: Build host tools for cross compilation
         if: matrix.cross
         shell: bash
@@ -131,7 +149,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $paths = [ordered]@{}
-          foreach ($name in @('SALTS_ROOT', 'SALTS_HOST_ROOT', 'RE2C_ROOT')) {
+          foreach ($name in @('SALTS_ROOT', 'SALTS_HOST_ROOT', 'RE2C_ROOT', 'CRYPTO_ROOT', 'CRYPTO_HOST_ROOT')) {
             $value = [Environment]::GetEnvironmentVariable($name)
             if (-not $value -or -not (Test-Path -LiteralPath $value -PathType Container)) { throw "Missing $name" }
             $paths[$name] = $value

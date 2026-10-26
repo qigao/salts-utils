@@ -97,7 +97,7 @@ jobs:
           build="$RUNNER_TEMP/behavior-tree-installed-consumer"
           cmake -S "$consumer" -B "$build" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$GITHUB_WORKSPACE/vcpkg_installed/$QIGAO_TARGET_TRIPLET"
+            -DCMAKE_PREFIX_PATH="$prefix;$CRYPTO_ROOT;$SALTS_ROOT;$GITHUB_WORKSPACE/vcpkg_installed/$QIGAO_TARGET_TRIPLET"
           cmake --build "$build" --parallel 2
           ctest --test-dir "$build" -R '^behavior_tree_installed_consumer$' --no-tests=error --output-on-failure --timeout 180
       - name: Verify official Salts Unicode is sole installed C11/C++17 owner
@@ -122,7 +122,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET="$QIGAO_TARGET_TRIPLET" \
             -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
-            -DCMAKE_PREFIX_PATH="$SALTS_ROOT;$prefix;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET"
+            -DCMAKE_PREFIX_PATH="$CRYPTO_ROOT;$SALTS_ROOT;$prefix;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET"
           cmake --build "$RUNNER_TEMP/unicode-paired-installed-build" --parallel 2
           ctest --test-dir "$RUNNER_TEMP/unicode-paired-installed-build" \
             -R '^unicode_paired_(c11|cpp17)$' \
