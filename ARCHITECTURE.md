@@ -23,7 +23,7 @@ package 消费它。
 
 `find_package(SaltsUtils CONFIG REQUIRED)` 导出 SaltsUtils 的高层能力，包括：
 
-- `Salts::Crypto`
+- `Salts::Crypto`（仅由独立 qigao/crypto 的已安装静态 SDK 提供，SaltsUtils 不导出）
 - `Salts::PluginABI`、`Salts::Plugin`（由 installed Salts 1.8 提供）
 - `Salts::FS`
 - `Salts::Process`
@@ -58,14 +58,15 @@ package 消费它。
 `Salts::PluginABI` / `Salts::Plugin` 由 Salts 1.8 拥有。SaltsUtils 只消费其 manifest/export、loader/registry/lease/lifecycle 能力；Plugin 与 CFlow 无直接依赖，历史 `PluginCFlow` public subsystem 在 4.1 中删除。
 
 
-`Salts::FS` 组合 Salts 的同步文件系统 API 与 CFlow bounded execution；`Salts::Process`
-组合 Salts 的 process owner 与 CFlow native byte-pipe execution。`Salts::Crypto` 依赖
-`Salts::Platform` 的系统 CSPRNG。三个 target 均只由 SaltsUtils 导出；旧的
+`Salts::FS` 组合文件系统能力与 CFlow bounded execution；`Salts::Process`
+组合原生 Process 与 CFlow native byte-pipe execution；两者的 CFlow 包装层由 SaltsUtils 管理。
+`Salts::Crypto` 则完全由独立 qigao/crypto 静态 SDK 导入，其 GmSSL、SHA256、Ed448、SM3、TLS、X.509 均不在 SaltsUtils 编译。
+旧的
 `Salts::CFlowFS` 与 `Salts::CFlowProcess` 不提供兼容 alias。
 
 QueryVM 与 moved parser targets 也只由 SaltsUtils 导出。两个包共享 `Salts::` target namespace，
 但每个 target 只有一个 owner。SaltsUtils 的 package config 先精确加载同 profile 的 Salts package，
-再加载自己的 targets。如果所选 Salts package 仍导出 `Salts::Crypto`、`Salts::CFlowFS`、
+再加载自己的 targets。如果所选 Salts package 仍导出已迁移给其他源仓库的 `Salts::Crypto`、`Salts::CFlowFS`、
 `Salts::CFlowProcess`、`Salts::QueryVM` 或任何 moved parser target，配置立即失败，不尝试 fallback；
 `Salts::UriParser` 则必须存在于 Salts package。
 

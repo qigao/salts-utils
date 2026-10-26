@@ -80,14 +80,15 @@
             "binaryDir": "$env{SALTS_UTILS_CI_BUILD_ROOT}",
             "description": "Release SDK packaging retains the existing stage/sdk/<RID> installation contract.",
             "cacheVariables": {
-                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}",
+                "CMAKE_PREFIX_PATH": "$env{CRYPTO_ROOT};$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/sdk/$env{QIGAO_SDK_RID}",
                 "SALTS_UTILS_ENABLE_CAPTURE": false,
                 "BUILD_TESTS": false,
                 "BUILD_BENCHMARKS": false,
                 "BUILD_EXAMPLES": false,
                 "ENABLE_SANITIZER_ADDRESS": false,
-                "ENABLE_SANITIZER_UNDEFINED": false
+                "ENABLE_SANITIZER_UNDEFINED": false,
+                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
@@ -137,13 +138,14 @@
             ],
             "binaryDir": "${sourceDir}/build/ci-win-dev",
             "cacheVariables": {
-                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug",
+                "CMAKE_PREFIX_PATH": "$env{CRYPTO_ROOT};$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug",
                 "BUILD_TESTS": true,
                 "BUILD_BENCHMARKS": false,
                 "BUILD_EXAMPLES": false,
                 "SALTS_UTILS_ENABLE_CAPTURE": false,
-                "ENABLE_SANITIZER_ADDRESS": true
+                "ENABLE_SANITIZER_ADDRESS": true,
+                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
             },
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}",
@@ -163,7 +165,8 @@
                 "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed-host",
                 "SALTS_ROOT": "$penv{SALTS_HOST_ROOT}",
                 "SALTS_UTILS_CI_BUILD_ROOT": "${sourceDir}/build/ci-host",
-                "X_VCPKG_NUGET_ID_PREFIX": ""
+                "X_VCPKG_NUGET_ID_PREFIX": "",
+                "CRYPTO_ROOT": "$penv{CRYPTO_HOST_ROOT}"
             }
         },
         {
@@ -237,10 +240,11 @@
             "binaryDir": "${sourceDir}/build/ci-linux-release",
             "cacheVariables": {
                 "BUILD_TESTS": true,
-                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux",
+                "CMAKE_PREFIX_PATH": "$env{CRYPTO_ROOT};$env{VCPKG_INSTALLED_DIR}/x64-linux",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release",
                 "ENABLE_SANITIZER_ADDRESS": false,
-                "ENABLE_SANITIZER_UNDEFINED": false
+                "ENABLE_SANITIZER_UNDEFINED": false,
+                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
@@ -255,11 +259,12 @@
             ],
             "binaryDir": "${sourceDir}/build/ci-linux-dev",
             "cacheVariables": {
-                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux/debug",
+                "CMAKE_PREFIX_PATH": "$env{CRYPTO_ROOT};$env{VCPKG_INSTALLED_DIR}/x64-linux/debug",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug",
                 "ENABLE_SANITIZER_ADDRESS": true,
                 "ENABLE_SANITIZER_UNDEFINED": true,
-                "CMAKE_SUPPRESS_REGENERATION": true
+                "CMAKE_SUPPRESS_REGENERATION": true,
+                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",

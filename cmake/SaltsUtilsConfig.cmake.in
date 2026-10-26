@@ -1,4 +1,5 @@
 @PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
 
 if(NOT DEFINED ENV{SALTS_ROOT} OR NOT IS_DIRECTORY "$ENV{SALTS_ROOT}")
   message(FATAL_ERROR "SALTS_ROOT must name the restored Salts SDK")
@@ -21,6 +22,16 @@ if(NOT _salts_utils_unicode_imported)
   message(FATAL_ERROR "Salts::Unicode must be an imported Salts SDK target")
 endif()
 unset(_salts_utils_unicode_imported)
+
+# Explicit static crypto package dependency; never recreate or alias this target.
+find_dependency(Crypto 0.1 CONFIG)
+get_target_property(_salts_utils_crypto_type Salts::Crypto TYPE)
+get_target_property(_salts_utils_crypto_imported Salts::Crypto IMPORTED)
+if(NOT _salts_utils_crypto_imported OR NOT _salts_utils_crypto_type STREQUAL "STATIC_LIBRARY")
+  message(FATAL_ERROR "SaltsUtils requires imported static Salts::Crypto from qigao/crypto")
+endif()
+unset(_salts_utils_crypto_type)
+unset(_salts_utils_crypto_imported)
 
 # Runtime packages are selected explicitly by consumers of the VM bindings.
 if(NOT TARGET Lua::Lua)

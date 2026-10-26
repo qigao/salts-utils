@@ -69,6 +69,32 @@ unset(Salts_DIR CACHE)
 unset(Salts_DIR)
 find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+# SHA256, Ed448, SM3, X.509 and TLS are sourced solely from qigao/crypto.
+# No fallback implementation or local Crypto target may be built by Utils.
+# For cross-compilation, do not re-root the explicitly provisioned Crypto
+# SDK through the Android/iOS/vcpkg sysroot. Do not search another provider.
+if(DEFINED ENV{CRYPTO_ROOT} AND NOT "$ENV{CRYPTO_ROOT}" STREQUAL "")
+  file(TO_CMAKE_PATH "$ENV{CRYPTO_ROOT}" SALTS_UTILS_CRYPTO_ROOT)
+  if(NOT EXISTS "${SALTS_UTILS_CRYPTO_ROOT}/lib/cmake/Crypto/CryptoConfig.cmake")
+    message(FATAL_ERROR "CRYPTO_ROOT must point to the installed static Crypto SDK")
+  endif()
+  find_package(Crypto 0.1 CONFIG REQUIRED
+    PATHS "${SALTS_UTILS_CRYPTO_ROOT}"
+    NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+  unset(SALTS_UTILS_CRYPTO_ROOT)
+else()
+  find_package(Crypto 0.1 CONFIG REQUIRED)
+endif()
+if(NOT TARGET Salts::Crypto)
+  message(FATAL_ERROR "Canonical Salts::Crypto static SDK is required")
+endif()
+get_target_property(_crypto_kind Salts::Crypto TYPE)
+get_target_property(_crypto_imported Salts::Crypto IMPORTED)
+if(NOT _crypto_imported OR NOT _crypto_kind STREQUAL "STATIC_LIBRARY")
+  message(FATAL_ERROR "Salts::Crypto must be the imported static Crypto package owner")
+endif()
+unset(_crypto_kind)
+unset(_crypto_imported)
 
 add_subdirectory(tools)
 include(FindTools)
@@ -76,7 +102,6 @@ add_subdirectory(vendor)
 add_subdirectory(parser)
 add_subdirectory(bindings)
 add_subdirectory(tools/junit_to_html)
-add_subdirectory(crypto)
 add_subdirectory(cflow-fs)
 add_subdirectory(cflow-process)
 add_subdirectory(behavior-tree)
