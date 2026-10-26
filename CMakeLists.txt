@@ -71,7 +71,20 @@ find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 # SHA256, Ed448, SM3, X.509 and TLS are sourced solely from qigao/crypto.
 # No fallback implementation or local Crypto target may be built by Utils.
-find_package(Crypto 0.1 CONFIG REQUIRED)
+# For cross-compilation, do not re-root the explicitly provisioned Crypto
+# SDK through the Android/iOS/vcpkg sysroot. Do not search another provider.
+if(DEFINED ENV{CRYPTO_ROOT} AND NOT "$ENV{CRYPTO_ROOT}" STREQUAL "")
+  file(TO_CMAKE_PATH "$ENV{CRYPTO_ROOT}" SALTS_UTILS_CRYPTO_ROOT)
+  if(NOT EXISTS "${SALTS_UTILS_CRYPTO_ROOT}/lib/cmake/Crypto/CryptoConfig.cmake")
+    message(FATAL_ERROR "CRYPTO_ROOT must point to the installed static Crypto SDK")
+  endif()
+  find_package(Crypto 0.1 CONFIG REQUIRED
+    PATHS "${SALTS_UTILS_CRYPTO_ROOT}"
+    NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+  unset(SALTS_UTILS_CRYPTO_ROOT)
+else()
+  find_package(Crypto 0.1 CONFIG REQUIRED)
+endif()
 if(NOT TARGET Salts::Crypto)
   message(FATAL_ERROR "Canonical Salts::Crypto static SDK is required")
 endif()

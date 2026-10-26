@@ -87,7 +87,8 @@
                 "BUILD_BENCHMARKS": false,
                 "BUILD_EXAMPLES": false,
                 "ENABLE_SANITIZER_ADDRESS": false,
-                "ENABLE_SANITIZER_UNDEFINED": false
+                "ENABLE_SANITIZER_UNDEFINED": false,
+                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
@@ -143,7 +144,8 @@
                 "BUILD_BENCHMARKS": false,
                 "BUILD_EXAMPLES": false,
                 "SALTS_UTILS_ENABLE_CAPTURE": false,
-                "ENABLE_SANITIZER_ADDRESS": true
+                "ENABLE_SANITIZER_ADDRESS": true,
+                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
             },
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}",
@@ -241,7 +243,8 @@
                 "CMAKE_PREFIX_PATH": "$env{CRYPTO_ROOT};$env{VCPKG_INSTALLED_DIR}/x64-linux",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release",
                 "ENABLE_SANITIZER_ADDRESS": false,
-                "ENABLE_SANITIZER_UNDEFINED": false
+                "ENABLE_SANITIZER_UNDEFINED": false,
+                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
@@ -260,7 +263,8 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug",
                 "ENABLE_SANITIZER_ADDRESS": true,
                 "ENABLE_SANITIZER_UNDEFINED": true,
-                "CMAKE_SUPPRESS_REGENERATION": true
+                "CMAKE_SUPPRESS_REGENERATION": true,
+                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
             },
             "environment": {
                 "SALTS_ROOT": "$penv{SALTS_ROOT}",
