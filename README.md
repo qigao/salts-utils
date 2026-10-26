@@ -2,7 +2,7 @@
 
 **Higher-level utilities for the Salts C11 ecosystem.**
 
-SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared semantics with parsers, QueryVM, crypto, filesystem/process adapters, templates, Unicode support, media helpers, IDL/Schema tooling, language bindings, and DataBind.
+SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared semantics with parsers, QueryVM, filesystem/process adapters, templates, Unicode support, media helpers, IDL/Schema tooling, language bindings, and DataBind.
 
 **IDL, Schema and DataBind are distinct SaltsUtils capabilities.** IDL defines contracts, Schema defines Data shape, and DataBind owns logical/native binding. They are not separate packages.
 
@@ -27,7 +27,7 @@ This keeps higher-level utilities compatible with the same explicit ownership, b
 ```text
 Salts
   ├── salts-utils
-  │     ├── parsers / QueryVM / crypto / filesystem / process
+  │     ├── parsers / QueryVM / filesystem / process
   │     ├── templates / Unicode / media / helpers
   │     ├── IDL / Schema / salts-idlc
   │     ├── DataBind binding / plans / native kernel
@@ -37,11 +37,13 @@ Salts
 
 SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). `Salts::IDL` owns transport-neutral contracts, `Salts::Schema` owns the Data subset, and `Salts::DataBind` owns binding. Binary is a format/backend, not the owner of IDL or Schema.
 
+**Crypto ownership:** `qigao/crypto` is the exclusive SHA256, Ed448, SM3, TLS and X.509 source. Install its static SDK and use `find_package(Crypto CONFIG REQUIRED)`; SaltsUtils contains no implementation, copy or fallback.
+
 ## Main capabilities
 
 | Area | Public capability |
 | --- | --- |
-| Crypto | `Salts::Crypto` |
+| Crypto (external dependency) | `Salts::Crypto` from [qigao/crypto](https://github.com/qigao/crypto); never compiled/exported by SaltsUtils |
 | Plugin | `Salts::PluginABI` / `Salts::Plugin` are consumed from Salts 1.8 |
 | Filesystem | `Salts::FS` |
 | Process adapters | `Salts::Process` |
@@ -89,7 +91,7 @@ find_package(SaltsUtils CONFIG REQUIRED
 target_link_libraries(app PRIVATE
   Salts::JsonParser
   Salts::XmlParser
-  Salts::Crypto
+  Salts::Crypto # installed static Crypto package, not a SaltsUtils export
   Salts::Plugin
   Salts::FS
   Salts::Process
