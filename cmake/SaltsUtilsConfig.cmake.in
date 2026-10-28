@@ -33,10 +33,13 @@ endif()
 unset(_salts_utils_crypto_type)
 unset(_salts_utils_crypto_imported)
 
-# Runtime packages are selected explicitly by consumers of the VM bindings.
-if(NOT TARGET Lua::Lua)
-  add_library(Lua::Lua INTERFACE IMPORTED)
-  target_link_libraries(Lua::Lua INTERFACE lua)
+# Native workflow-only builds do not publish Lua/bindings providers.
+# The full legacy Utils package retains its separate explicit binding graph.
+if(NOT "@SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET@" STREQUAL "ON")
+  if(NOT TARGET Lua::Lua)
+    add_library(Lua::Lua INTERFACE IMPORTED)
+    target_link_libraries(Lua::Lua INTERFACE lua)
+  endif()
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")

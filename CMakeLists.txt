@@ -110,7 +110,9 @@ unset(_crypto_imported)
 
 add_subdirectory(tools)
 include(FindTools)
-add_subdirectory(vendor)
+if(NOT SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
+  add_subdirectory(vendor)
+endif()
 if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
   # Exact native source owners only, without a second parser, provider or C++
   # compatibility adapter. Keep the C11 dependency DAG explicit.
