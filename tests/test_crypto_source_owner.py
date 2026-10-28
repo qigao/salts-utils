@@ -69,6 +69,28 @@ class SourceOwnerTest(unittest.TestCase):
         self.assertIn("find_dependency(Crypto 0.1 CONFIG",
                       (ROOT / "cmake/SaltsUtilsConfig.cmake.in").read_text())
 
+    def test_real_installed_c11_cpp17_consumer_is_required(self):
+        source = INSTALLER.read_text()
+        self.assertIn('"asn1" / "tests" / "installed"', source)
+        self.assertIn('"crypto" / "tests" / "owner"', source)
+        self.assertIn('"--no-tests=error"', source)
+        self.assertIn('"--output-on-failure"', source)
+        self.assertIn('"CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=NEVER"', source)
+        self.assertIn('f"-DASN1_DIR=', source)
+        self.assertIn('f"-DCrypto_DIR=', source)
+        self.assertIn('"--config", "Release"', source)
+        self.assertIn("cross-target execution NOT tested", source)
+
+    def test_host_only_executions_are_never_mislabeled(self):
+        import unittest.mock
+        with unittest.mock.patch.dict("os.environ",
+                                      {"QIGAO_HOST_RID": "linux-x64",
+                                       "QIGAO_SDK_RID": "android-arm64-v8a"}):
+            self.assertEqual(installer.host_for_local_tests(), "linux-x64")
+        with unittest.mock.patch.dict("os.environ",
+                                      {"QIGAO_HOST_RID": "", "QIGAO_SDK_RID": "macos-arm64"}):
+            self.assertEqual(installer.host_for_local_tests(), "macos-arm64")
+
     def test_two_static_archives_and_mtls_are_required(self):
         source = INSTALLER.read_text()
         self.assertIn("libsalts_asn1.a", source)

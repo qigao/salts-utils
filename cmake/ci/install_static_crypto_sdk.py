@@ -71,6 +71,11 @@ def vcpkg_executable() -> Path:
     return exe
 
 
+def host_for_local_tests() -> str:
+    """Only run native CTest when host and installed target are identical."""
+    return os.environ.get("QIGAO_HOST_RID") or os.environ["QIGAO_SDK_RID"]
+
+
 def install_one(root: Path, work: Path, source: Path,
                 ports: Path, triplet: str, rid: str) -> Path:
     if not triplet:
@@ -138,6 +143,35 @@ def install_one(root: Path, work: Path, source: Path,
     receipt = private / "static-archive-audit.json"
     run(sys.executable, str(source / "crypto" / "tools" / "audit_static_crypto.py"),
         "--prefix", str(sdk), "--report", str(receipt))
+    # Installed consumers are configured as independent projects: they see
+    # ONLY the installed ASN1/Crypto packages, never a source-tree alias.
+    # Exact paths are passed even for Android/iOS, whose sysroots otherwise
+    # hide the freshly installed target package during find_package().
+    installed_args = [
+        *generator, *cross, "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON", "-DBUILD_TESTING=ON",
+        "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=NEVER",
+        f"-DCMAKE_PREFIX_PATH={sdk}",
+        f"-DASN1_DIR={sdk / 'lib' / 'cmake' / 'ASN1'}",
+        f"-DCrypto_DIR={sdk / 'lib' / 'cmake' / 'Crypto'}",
+    ]
+    for name, project in (
+        ("asn1", source / "asn1" / "tests" / "installed"),
+        ("crypto", source / "crypto" / "tests" / "owner"),
+    ):
+        consumer_build = private / ("installed-" + name)
+        run("cmake", "-S", str(project), "-B", str(consumer_build),
+            *installed_args)
+        run("cmake", "--build", str(consumer_build),
+            "--config", "Release", "--parallel", "2")
+        if rid == host_for_local_tests():
+            run("ctest", "--test-dir", str(consumer_build), "-C", "Release",
+                "--output-on-failure", "--no-tests=error")
+        else:
+            # Cross builds link to real target archives; never run host
+            # executables in place of Android/iOS binaries.
+            print(f"PASS: {rid} {name} C11/C++17 installed target compile/link; "
+                  "cross-target execution NOT tested", flush=True)
     print(f"PASS: {rid} one SaltsCore ASN1/Crypto static SDK", flush=True)
     return sdk.resolve(strict=True)
 
