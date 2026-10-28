@@ -103,8 +103,17 @@ def install_one(root: Path, work: Path, source: Path,
     run("cmake", "--install", str(asn1_build), "--config", "Release")
 
     crypto_build = private / "crypto"
+    # Cross compilers can root find_package(ASN1) into an iOS/Android
+    # sysroot even though this exact target archive was just installed.
+    # This is a separate configure: select only the generated package,
+    # never an ambient/host ASN1 implementation or a fallback provider.
+    asn1_config = sdk / "lib" / "cmake" / "ASN1" / "ASN1Config.cmake"
+    if not asn1_config.is_file():
+        raise FileNotFoundError(asn1_config)
     run("cmake", "-S", str(source / "crypto"), "-B", str(crypto_build),
         *common, f"-DCRYPTO_GMSSL_ROOT={gmssl_root}",
+        f"-DASN1_DIR={asn1_config.parent}",
+        "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=NEVER",
         f"-DCMAKE_PREFIX_PATH={sdk}")
     run("cmake", "--build", str(crypto_build), "--config", "Release",
         "--parallel", "2")
