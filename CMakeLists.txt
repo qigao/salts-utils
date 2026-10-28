@@ -6,12 +6,24 @@ if(POLICY CMP0167)
   cmake_policy(SET CMP0167 OLD)
 endif()
 
+# Single canonical C source profile for C11 workflow consumers. Its build
+# graph does not configure the unrelated legacy data/UI/serial systems, and
+# does not provide alternate sources for any selected module.
+option(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET
+       "Build only the native C11 QueryVM/JsonParser/CYaml/BehaviorTree/Process providers"
+       OFF)
+if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
+  set(_salts_utils_languages C)
+else()
+  set(_salts_utils_languages C CXX)
+endif()
 project(
   SaltsUtils
   VERSION 4.3.0
   DESCRIPTION "Higher-level utilities built on Salts"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
-  LANGUAGES C CXX)
+  LANGUAGES ${_salts_utils_languages})
+unset(_salts_utils_languages)
 
 # Project configuration - output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -98,23 +110,35 @@ unset(_crypto_imported)
 
 add_subdirectory(tools)
 include(FindTools)
-add_subdirectory(vendor)
-add_subdirectory(parser)
-add_subdirectory(bindings)
-add_subdirectory(tools/junit_to_html)
-add_subdirectory(cflow-fs)
-add_subdirectory(cflow-process)
-add_subdirectory(behavior-tree)
-if(SALTS_UTILS_ENABLE_CAPTURE)
-  add_subdirectory(playback)
-  add_subdirectory(capture)
+if(NOT SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
+  add_subdirectory(vendor)
 endif()
-add_subdirectory(salts_serial)
-if(SALTS_UTILS_ENABLE_CFLOW_USB)
-  add_subdirectory(cflow-usb)
+if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
+  # Exact native source owners only, without a second parser, provider or C++
+  # compatibility adapter. Keep the C11 dependency DAG explicit.
+  add_subdirectory(parser/query_vm)
+  add_subdirectory(parser/json_parser)
+  add_subdirectory(parser/cyaml)
+  add_subdirectory(cflow-process)
+  add_subdirectory(behavior-tree)
+else()
+  add_subdirectory(parser)
+  add_subdirectory(bindings)
+  add_subdirectory(tools/junit_to_html)
+  add_subdirectory(cflow-fs)
+  add_subdirectory(cflow-process)
+  add_subdirectory(behavior-tree)
+  if(SALTS_UTILS_ENABLE_CAPTURE)
+    add_subdirectory(playback)
+    add_subdirectory(capture)
+  endif()
+  add_subdirectory(salts_serial)
+  if(SALTS_UTILS_ENABLE_CFLOW_USB)
+    add_subdirectory(cflow-usb)
+  endif()
+  add_subdirectory(cron)
+  add_subdirectory(mustache)
 endif()
-add_subdirectory(cron)
-add_subdirectory(mustache)
 # Salts owns Unicode 17. The released Salts SDK must provide the one
 # canonical imported target before Jinja or any other consumer is configured.
 # Never compile or export the legacy local Unicode implementation here.
@@ -126,8 +150,10 @@ if(NOT _salts_utils_unicode_imported)
   message(FATAL_ERROR "Salts::Unicode must be imported from the Salts SDK")
 endif()
 unset(_salts_utils_unicode_imported)
-add_subdirectory(jinja)
-add_subdirectory(databind)
+if(NOT SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
+  add_subdirectory(jinja)
+  add_subdirectory(databind)
+endif()
 
 # Package Configuration
 include(CMakePackageConfigHelpers)

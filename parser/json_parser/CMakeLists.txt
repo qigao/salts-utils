@@ -38,8 +38,9 @@ target_include_directories(
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/parser ${CMAKE_CURRENT_BINARY_DIR})
 find_path(SIMDE_INCLUDE_DIRS "simde/arm/neon.h")
 target_include_directories(${TARGET_NAME} PRIVATE ${SIMDE_INCLUDE_DIRS})
+# JsonParser owns its private object-key index; the removed CSTL library is
+# neither a provider nor a valid Salts 3 installed dependency.
 target_link_libraries(${TARGET_NAME}
-  PRIVATE Salts::CSTL
   PUBLIC Salts::Core Salts::QueryVM)
 
 add_library(json_cserde_adapter STATIC
