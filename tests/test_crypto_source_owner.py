@@ -75,7 +75,7 @@ class SourceOwnerTest(unittest.TestCase):
         self.assertIn('"crypto" / "tests" / "owner"', source)
         self.assertIn('"--no-tests=error"', source)
         self.assertIn('"--output-on-failure"', source)
-        self.assertIn('"CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=NEVER"', source)
+        self.assertIn('"-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=NEVER"', source)
         self.assertIn('f"-DASN1_DIR=', source)
         self.assertIn('f"-DCrypto_DIR=', source)
         self.assertIn('"--config", "Release"', source)
