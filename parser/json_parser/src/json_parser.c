@@ -18,7 +18,6 @@
 #include <string.h>
 #include <salts/thread.h>
 #include <tstr.h>
-#include <cstl/hash_map.h>
 
 #define MAX_ERROR_LEN 512
 #define JSON_ARRAY_INDEX_THRESHOLD 8U
@@ -353,8 +352,17 @@ bool json_array_append_arena(json_arena_t *arena, json_value_t *arr, json_value_
 }
 
 size_t json_object_key_hash(const char *key, size_t key_len) {
-  size_t hash = hash_bytes(key, key_len, NULL);
-  return hash == 0 ? 1U : hash;
+  /* Exact existing object-key fingerprint, formerly pulled incidentally from
+   * generic CSTL hash_map.c. JSON owns only this private index; no duplicate
+   * container provider or global CMeta runtime is created.
+   * Preserve the old offset and overflow semantics for existing JSON indexes. */
+  const unsigned char *bytes = (const unsigned char *)key;
+  uint64_t hash = UINT64_C(1469598103934665603);
+  for (size_t i = 0u; i < key_len; ++i) {
+    hash ^= bytes[i];
+    hash *= UINT64_C(1099511628211);
+  }
+  return (size_t)(hash == 0u ? 1u : hash);
 }
 
 static int json_object_index_capacity_for(size_t count, size_t *capacity) {
