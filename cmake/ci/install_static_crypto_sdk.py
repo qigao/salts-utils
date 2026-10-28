@@ -1,133 +1,181 @@
 #!/usr/bin/env python3
-"""Build exact canonical static Crypto SDK(s) for the SaltsUtils CI target.
-No source copy, compatibility target, runtime DSO, fallback or release pin update.
+"""Install the one SaltsCore-owned ASN1 + Crypto static SDK for SaltsUtils CI.
+
+The exact SaltsCore source commit and pinned GmSSL vcpkg port are immutable
+inputs. No separate qigao/crypto or guanzhi/GmSSL source checkout, fallback
+provider, alternate Crypto target, Mono/NuGet client or raw runtime state.
+This is a downstream migration candidate, not a production TLS cutover.
 """
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 
-CRYPTO_COMMIT = "a99f29a569af14b865c9e713360aa81d39a04bf0"
-GMSSL_COMMIT = "7c9f02904ef33e59c87b4f16621cc8fd434e7579"
+SALTSCORE_SOURCE_SHA = "eec19ab953c257a034a8d2075b84f2ba22328406"
+VCPKG_PORT_SHA = "65c12e71d02b9b7dacfafc3d188a3bda18184296"
+GMSSL_PORT_VERSION = 14
+PR43_SOURCE_SHA = "0b4ee094ce8002e6169ce231028107eba63588c6"
 
 
-def run(*cmd: str) -> None:
-    print("+", *cmd, flush=True)
-    subprocess.run(list(map(str, cmd)), check=True)
+def run(*argv: str, env: dict[str, str] | None = None) -> None:
+    print("+", " ".join(map(str, argv)), flush=True)
+    subprocess.run([str(a) for a in argv], env=env, check=True)
 
 
-def sha(root: Path) -> str:
-    return subprocess.check_output(
-        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
-    ).strip()
+def stage_tarball(repository: str, commit: str, target: Path, work: Path) -> None:
+    if target.exists():
+        raise RuntimeError("Refusing stale or second source checkout: " + str(target))
+    target.mkdir(parents=True)
+    archive = work / (repository.split("/")[-1] + ".tar.gz")
+    run("curl", "-fLsS", f"https://api.github.com/repos/{repository}/tarball/{commit}",
+        "-o", str(archive))
+    run("tar", "-xzf", str(archive), "--strip-components=1", "-C", str(target))
 
 
 def native_toolchain(rid: str) -> tuple[list[str], list[str]]:
     if rid == "windows-x64":
         return ["-G", "Visual Studio 18 2026", "-A", "x64"], []
-    opts: list[str] = []
+    cross: list[str] = []
     if rid.startswith("android-"):
         ndk = Path(os.environ["ANDROID_NDK_HOME"])
         toolchain = ndk / "build" / "cmake" / "android.toolchain.cmake"
         if not toolchain.is_file():
             raise FileNotFoundError(toolchain)
-        arch = {"android-arm64-v8a": "arm64-v8a",
-                "android-x64": "x86_64", "android-x86": "x86"}.get(rid)
+        arch = {"android-arm64-v8a": "arm64-v8a", "android-x64": "x86_64",
+                "android-x86": "x86"}.get(rid)
         if arch is None:
-            raise ValueError("unsupported Android Crypto target " + rid)
-        opts.extend([f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
-                     f"-DANDROID_ABI={arch}", "-DANDROID_PLATFORM=android-26"])
+            raise ValueError("Unsupported Android Crypto RID: " + rid)
+        cross.extend([f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
+                      f"-DANDROID_ABI={arch}", "-DANDROID_PLATFORM=android-26"])
     elif rid == "ios-arm64":
-        opts.extend(["-DCMAKE_SYSTEM_NAME=iOS", "-DCMAKE_OSX_SYSROOT=iphoneos",
-                     "-DCMAKE_OSX_ARCHITECTURES=arm64",
-                     "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY"])
+        cross.extend(["-DCMAKE_SYSTEM_NAME=iOS", "-DCMAKE_OSX_SYSROOT=iphoneos",
+                      "-DCMAKE_OSX_ARCHITECTURES=arm64",
+                      "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY"])
     elif rid == "macos-arm64":
-        opts.append("-DCMAKE_OSX_ARCHITECTURES=arm64")
+        cross.append("-DCMAKE_OSX_ARCHITECTURES=arm64")
     elif rid not in ("linux-x64", "linux-arm64"):
-        raise ValueError("unsupported native Crypto target " + rid)
-    return ["-G", "Ninja"], opts
+        raise ValueError("Unsupported native Crypto RID: " + rid)
+    return ["-G", "Ninja"], cross
 
 
-def install_one(root: Path, rid: str, source: Path, gmssl: Path) -> Path:
+def vcpkg_executable() -> Path:
+    value = os.environ.get("VCPKG_ROOT") or os.environ.get("QIGAO_VCPKG_ROOT")
+    if not value:
+        raise RuntimeError("Exact bootstrapped VCPKG_ROOT is required")
+    exe = Path(value) / ("vcpkg.exe" if os.name == "nt" else "vcpkg")
+    if not exe.is_file():
+        raise FileNotFoundError(exe)
+    return exe
+
+
+def install_one(root: Path, work: Path, source: Path,
+                ports: Path, triplet: str, rid: str) -> Path:
+    if not triplet:
+        raise RuntimeError("Native triplet must be explicit for " + rid)
     sdk = root / "stage" / "crypto" / rid
     if sdk.exists():
-        raise RuntimeError("Refusing to reuse or overwrite stale Crypto SDK " + str(sdk))
+        raise RuntimeError("Refusing stale Crypto SDK: " + str(sdk))
+    private = work / "build" / rid
     generator, cross = native_toolchain(rid)
-    private = root / "build" / "ci-crypto" / rid
-    gmssl_build = private / "gmssl"
-    crypto_build = private / "crypto"
-    common = [
-        "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
-        "-DBUILD_SHARED_LIBS=OFF",
-    ]
-    enable = [
-        "-DENABLE_TLS=ON", "-DENABLE_SECP256R1=ON",
-        "-DENABLE_SECP384R1=ON", "-DENABLE_SHA2=ON",
-        "-DENABLE_AES=ON", "-DENABLE_AES_CCM=OFF", "-DENABLE_SHA1=ON",
-        "-DENABLE_CHACHA20=OFF", "-DENABLE_GHASH=OFF",
-        "-DENABLE_SM9=OFF", "-DENABLE_CMS=OFF", "-DENABLE_LMS=OFF",
-        "-DENABLE_XMSS=OFF", "-DENABLE_SPHINCS=OFF",
-        "-DENABLE_KYBER=OFF", "-DENABLE_ZUC=OFF",
-        "-DENABLE_SKF=OFF", "-DENABLE_SDF=OFF",
-    ]
-    run("cmake", "-S", str(gmssl), "-B", str(gmssl_build),
-        *generator, *cross, *common, *enable)
-    run("cmake", "--build", str(gmssl_build), "--config", "Release",
-        "--target", "gmssl", "--parallel", "2")
-    archive = (gmssl_build / "bin" / "Release" / "gmssl.lib"
-               if rid == "windows-x64" else gmssl_build / "bin" / "libgmssl.a")
+    install_root = work / "vcpkg_installed"
+    native_env = dict(os.environ, VCPKG_OVERLAY_PORTS=str(ports / "ports"))
+    run(str(vcpkg_executable()), "install",
+        f"--x-manifest-root={source / 'crypto'}",
+        f"--x-install-root={install_root}", f"--triplet={triplet}",
+        f"--overlay-ports={ports / 'ports'}", env=native_env)
+    gmssl_root = install_root / triplet
+    archive = gmssl_root / "lib" / (
+        "gmssl.lib" if rid == "windows-x64" else "libgmssl.a")
     if not archive.is_file():
-        raise FileNotFoundError("Pinned GmSSL archive missing " + str(archive))
+        raise FileNotFoundError("Pinned static GmSSL archive missing: " + str(archive))
+    if not (gmssl_root / "share" / "gmssl" / "GmSSLConfig.cmake").is_file():
+        raise RuntimeError("Pinned GmSSL package config missing from target triplet")
 
-    run("cmake", "-S", str(source), "-B", str(crypto_build),
-        *generator, *cross, *common, "-DBUILD_TESTING=OFF",
-        f"-DCRYPTO_GMSSL_SOURCE={gmssl}",
-        f"-DCRYPTO_GMSSL_STATIC={archive}")
+    common = [*generator, *cross, "-DCMAKE_BUILD_TYPE=Release",
+              "-DBUILD_TESTING=OFF", "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
+              f"-DCMAKE_INSTALL_PREFIX={sdk}"]
+    asn1_build = private / "asn1"
+    run("cmake", "-S", str(source / "asn1"), "-B", str(asn1_build), *common)
+    run("cmake", "--build", str(asn1_build), "--config", "Release", "--parallel", "2")
+    run("cmake", "--install", str(asn1_build), "--config", "Release")
+
+    crypto_build = private / "crypto"
+    run("cmake", "-S", str(source / "crypto"), "-B", str(crypto_build),
+        *common, f"-DCRYPTO_GMSSL_ROOT={gmssl_root}",
+        f"-DCMAKE_PREFIX_PATH={sdk}")
     run("cmake", "--build", str(crypto_build), "--config", "Release",
         "--parallel", "2")
-    run("cmake", "--install", str(crypto_build), "--config", "Release",
-        "--prefix", str(sdk))
-    expected = sdk / "lib" / ("salts_crypto.lib" if rid == "windows-x64"
-                               else "libsalts_crypto.a")
-    cfg = sdk / "lib" / "cmake" / "Crypto" / "CryptoConfig.cmake"
-    if not expected.is_file() or not cfg.is_file():
-        raise RuntimeError("Incomplete installed single-owner Crypto SDK " + str(sdk))
-    other = [p for p in sdk.rglob("*") if p.is_file()
-             and p.suffix.lower() in (".a", ".lib", ".dll", ".so", ".dylib")
-             and p != expected]
-    if other:
-        raise RuntimeError("Duplicate Crypto binaries in SDK: " + str(other))
-    print(f"PASS: {rid} canonical static Salts::Crypto installed: {expected}", flush=True)
+    run("cmake", "--install", str(crypto_build), "--config", "Release")
+
+    ext = ".lib" if rid == "windows-x64" else ".a"
+    expected = {sdk / "lib" / ("salts_asn1" + ext if ext == ".lib"
+                               else "libsalts_asn1.a"),
+                sdk / "lib" / ("salts_crypto" + ext if ext == ".lib"
+                               else "libsalts_crypto.a")}
+    found = {p for p in sdk.rglob("*") if p.is_file() and
+             p.suffix.lower() in (".a", ".lib", ".dll", ".so", ".dylib")}
+    if found != expected:
+        raise RuntimeError("SDK must contain precisely one ASN1 and one Crypto static "
+                           f"archive; missing={expected - found}, extra={found - expected}")
+    for package in ("ASN1", "Crypto"):
+        cfg = sdk / "lib" / "cmake" / package / (package + "Config.cmake")
+        if not cfg.is_file():
+            raise FileNotFoundError(cfg)
+    if not (sdk / "include" / "crypto" / "tls_auth.h").is_file():
+        raise RuntimeError("Pinned mTLS v1.3 API header missing")
+    receipt = private / "static-archive-audit.json"
+    run(sys.executable, str(source / "crypto" / "tools" / "audit_static_crypto.py"),
+        "--prefix", str(sdk), "--report", str(receipt))
+    print(f"PASS: {rid} one SaltsCore ASN1/Crypto static SDK", flush=True)
     return sdk.resolve(strict=True)
 
 
 def main() -> int:
     root = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
-    source = root / "_ci_crypto"
-    gmssl = root / "_ci_gmssl"
     rid = os.environ["QIGAO_SDK_RID"]
     host = os.environ.get("QIGAO_HOST_RID") or rid
-    if sha(source) != CRYPTO_COMMIT or sha(gmssl) != GMSSL_COMMIT:
-        raise RuntimeError("Crypto/GmSSL input revision differs from pinned source")
-    run(sys.executable, str(source / "tools" / "verify_gmssl_import.py"))
-    receipt = root / "build" / "ci-crypto" / "source-receipt.json"
-    receipt.parent.mkdir(parents=True, exist_ok=True)
-    run("cmake", f"-DGMSSL_UPSTREAM_SOURCE={gmssl}",
-        f"-DGMSSL_ASSEMBLY_RECEIPT={receipt}",
-        "-P", str(source / "tools" / "assemble_gmssl.cmake"))
-    if not receipt.is_file():
-        raise RuntimeError("GmSSL immutable provenance receipt missing")
-    host_sdk = install_one(root, host, source, gmssl)
-    target_sdk = (host_sdk if rid == host else install_one(root, rid, source, gmssl))
-    values = {"CRYPTO_HOST_ROOT": str(host_sdk), "CRYPTO_ROOT": str(target_sdk),
-              "CRYPTO_SOURCE_SHA": CRYPTO_COMMIT}
+    target_triplet = os.environ.get("QIGAO_TARGET_TRIPLET", "")
+    host_triplet = os.environ.get("QIGAO_HOST_TRIPLET", "") or target_triplet
+    if not target_triplet or not host_triplet:
+        raise RuntimeError("Both target/host vcpkg triplets are required")
+    if (root / "_ci_crypto").exists() or (root / "_ci_gmssl").exists():
+        raise RuntimeError("Legacy independent Crypto/GmSSL source checkout is forbidden")
+
+    work = root / "build" / "ci-crypto"
+    work.mkdir(parents=True, exist_ok=True)
+    source = work / "salts-core-source"
+    ports = work / "vcpkg-cache"
+    stage_tarball("qigao/salts-core", SALTSCORE_SOURCE_SHA, source, work)
+    stage_tarball("qigao/vcpkg-cache", VCPKG_PORT_SHA, ports, work)
+    manifest = json.loads((source / "tools" /
+                           "crypto_pr43_retirement_manifest.json").read_text(encoding="utf-8"))
+    if manifest["baseline"]["head"] != PR43_SOURCE_SHA:
+        raise RuntimeError("Original mTLS source provenance differs from exact PR43")
+    run(sys.executable, str(source / "tools" / "check_crypto_module_ownership.py"))
+    run(sys.executable, str(source / "tools" / "check_crypto_pr43_handoff.py"))
+    port_manifest = json.loads((ports / "ports" / "gmssl" /
+                                "vcpkg.json").read_text(encoding="utf-8"))
+    if (port_manifest.get("version"), port_manifest.get("port-version")) != (
+            "3.2.0", GMSSL_PORT_VERSION):
+        raise RuntimeError("GmSSL must be pinned to vcpkg-cache 3.2.0#14")
+    run(sys.executable, str(source / "crypto" / "tools" /
+                           "stage_mtls_gmssl_overlay.py"), str(ports / "ports" / "gmssl"))
+
+    host_sdk = install_one(root, work, source, ports, host_triplet, host)
+    target_sdk = host_sdk if host == rid else install_one(
+        root, work, source, ports, target_triplet, rid)
     env_file = os.environ.get("GITHUB_ENV")
     if not env_file:
-        raise RuntimeError("GITHUB_ENV is required for all downstream owner builds")
+        raise RuntimeError("GITHUB_ENV is required")
     with Path(env_file).open("a", encoding="utf-8") as stream:
-        for k, v in values.items():
+        for k, v in {
+            "CRYPTO_HOST_ROOT": str(host_sdk),
+            "CRYPTO_ROOT": str(target_sdk),
+            "SALTSCORE_CRYPTO_SOURCE_SHA": SALTSCORE_SOURCE_SHA,
+        }.items():
             stream.write(k + "=" + v + "\n")
     return 0
 

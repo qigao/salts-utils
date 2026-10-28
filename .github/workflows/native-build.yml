@@ -35,20 +35,6 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Checkout immutable canonical static Crypto source
-        uses: actions/checkout@v4
-        with:
-          repository: qigao/crypto
-          ref: a99f29a569af14b865c9e713360aa81d39a04bf0
-          path: _ci_crypto
-          persist-credentials: false
-      - name: Checkout original pinned GmSSL source
-        uses: actions/checkout@v4
-        with:
-          repository: guanzhi/GmSSL
-          ref: 7c9f02904ef33e59c87b4f16621cc8fd434e7579
-          path: _ci_gmssl
-          persist-credentials: false
       - name: Select iOS cache namespace
         if: matrix.family == 'ios'
         shell: bash
