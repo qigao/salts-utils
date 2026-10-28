@@ -27,11 +27,11 @@ target_include_directories(${TARGET_NAME}
 
 # Link against dependencies
 # - Memory module for allocators
-# - uri_parser for backward compatibility (uri.h includes uri_parser.h)
+# - URI source and C API belong exclusively to imported SaltsCore
 target_link_libraries(${TARGET_NAME}
     PUBLIC
         Salts::Core
-        Salts::UriParser
+        Salts::URI
 )
 
 
