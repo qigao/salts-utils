@@ -23,7 +23,7 @@ package 消费它。
 
 `find_package(SaltsUtils CONFIG REQUIRED)` 导出 SaltsUtils 的高层能力，包括：
 
-- `Salts::Crypto`（仅由独立 qigao/crypto 的已安装静态 SDK 提供，SaltsUtils 不导出）
+- `Salts::ASN1`、`Salts::Crypto`（由 qigao/salts-core 同一源码树的两个静态模块提供，SaltsUtils 不导出）
 - `Salts::PluginABI`、`Salts::Plugin`（由 installed Salts 1.8 提供）
 - `Salts::FS`
 - `Salts::Process`
@@ -60,7 +60,7 @@ package 消费它。
 
 `Salts::FS` 组合文件系统能力与 CFlow bounded execution；`Salts::Process`
 组合原生 Process 与 CFlow native byte-pipe execution；两者的 CFlow 包装层由 SaltsUtils 管理。
-`Salts::Crypto` 则完全由独立 qigao/crypto 静态 SDK 导入，其 GmSSL、SHA256、Ed448、SM3、TLS、X.509 均不在 SaltsUtils 编译。
+`Salts::ASN1`、`Salts::Crypto` 由 qigao/salts-core 同一源码树构建并以两个静态 SDK 模块导入。GmSSL、SHA256、Ed448、SM3、TLS、X.509 均不在 SaltsUtils 编译；当前 Crypto 内部的 GmSSL 和最终原生 TLS/TLCP 仍有独立验收门禁。
 旧的
 `Salts::CFlowFS` 与 `Salts::CFlowProcess` 不提供兼容 alias。
 

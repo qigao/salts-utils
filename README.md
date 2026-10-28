@@ -37,13 +37,13 @@ Salts
 
 SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). `Salts::IDL` owns transport-neutral contracts, `Salts::Schema` owns the Data subset, and `Salts::DataBind` owns binding. Binary is a format/backend, not the owner of IDL or Schema.
 
-**Crypto ownership:** `qigao/crypto` is the exclusive SHA256, Ed448, SM3, TLS and X.509 source. Install its static SDK and use `find_package(Crypto CONFIG REQUIRED)`; SaltsUtils contains no implementation, copy or fallback.
+**Crypto ownership:** [SaltsCore](https://github.com/qigao/salts-core) owns independent `asn1/` and static `crypto/` source modules (SHA256, Ed448, SM3, TLS, X.509). Set `CRYPTO_ROOT` to the exact installed SaltsCore ASN1/Crypto SDK; `find_package(Crypto CONFIG REQUIRED)` retains the installed package name and canonical `Salts::Crypto` target. SaltsUtils contains no second implementation or fallback. Native TLS/TLCP is still pending: the present Crypto archive includes pinned GmSSL.
 
 ## Main capabilities
 
 | Area | Public capability |
 | --- | --- |
-| Crypto (external dependency) | `Salts::Crypto` from [qigao/crypto](https://github.com/qigao/crypto); never compiled/exported by SaltsUtils |
+| Crypto (installed first-party dependency) | `Salts::ASN1` and `Salts::Crypto` from [SaltsCore](https://github.com/qigao/salts-core), never compiled/exported by SaltsUtils |
 | Plugin | `Salts::PluginABI` / `Salts::Plugin` are consumed from Salts 1.8 |
 | Filesystem | `Salts::FS` |
 | Process adapters | `Salts::Process` |
