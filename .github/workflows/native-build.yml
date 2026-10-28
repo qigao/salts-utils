@@ -35,6 +35,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Verify SaltsCore ASN1/Crypto source and fail-closed SDK contract
+        shell: bash
+        run: python3 -m unittest discover -s tests -p 'test_crypto_source_owner.py' -v
       - name: Select iOS cache namespace
         if: matrix.family == 'ios'
         shell: bash
