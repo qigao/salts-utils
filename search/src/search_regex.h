@@ -4,10 +4,14 @@
  */
 #ifndef SALTS_SEARCH_REGEX_INTERNAL_H
 #define SALTS_SEARCH_REGEX_INTERNAL_H
-#include <tre/tre.h>
+/* TRE's installed 0.9.0 public header uses size_t and wchar_t without
+ * unconditionally including their defining standard headers. The adapter
+ * makes those declarations available before entering the single C provider. */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <wchar.h>
+#include <tre/tre.h>
 
 typedef enum salts_search_regex_status {
   SALTS_SEARCH_REGEX_OK = 0,
