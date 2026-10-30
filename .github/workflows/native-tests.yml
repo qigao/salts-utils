@@ -186,6 +186,36 @@ jobs:
           if errorlevel 1 exit /b 1
           ctest --preset "${{ matrix.preset }}" --no-tests=error --output-on-failure --timeout 180 --parallel 2
           if errorlevel 1 exit /b 1
+      # Retain the already-installed, tested producer SDK for real downstream
+      # Stun qualification. This is an Actions candidate, never a release.
+      - name: Stage qualified installed SDK and exact static Crypto dependency
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:RUNNER_TEMP "saltsutils-markdown-installed-$env:QIGAO_SDK_RID"
+          $candidate = Join-Path $env:RUNNER_TEMP "saltsutils-qualified-$env:QIGAO_SDK_RID"
+          New-Item -ItemType Directory -Path $candidate | Out-Null
+          Copy-Item -LiteralPath $prefix -Destination (Join-Path $candidate 'utils') -Recurse
+          Copy-Item -LiteralPath $env:CRYPTO_ROOT -Destination (Join-Path $candidate 'crypto') -Recurse
+          $source = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [ordered]@{
+            repository = $env:GITHUB_REPOSITORY
+            source_sha = $source
+            run_id = $env:GITHUB_RUN_ID
+            run_attempt = $env:GITHUB_RUN_ATTEMPT
+            rid = $env:QIGAO_SDK_RID
+            configuration = 'Release'
+          } | ConvertTo-Json | Set-Content (Join-Path $candidate 'sdk-provenance.json')
+
+      - name: Retain qualified installed SDK for real downstream acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: salts-utils-qualified-sdk-${{ matrix.rid }}
+          path: ${{ runner.temp }}/saltsutils-qualified-${{ matrix.rid }}
+          if-no-files-found: error
+          retention-days: 14
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
