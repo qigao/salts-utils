@@ -148,6 +148,36 @@ Native file discovery, Git repository detection, global config load,
 real symlink traversal policy, and full-tree Git/rg conformance are still
 not implemented. They belong to the later filesystem-adapter gate and
 must not be inferred from these in-memory tests.
+### A1 exact TRE Tagged NFA adapter (candidate; not yet accepted)
+
+`search_regex.[ch]` binds **one** upstream [TRE](https://github.com/laurikari/tre)
+0.9.0 C engine, pinned by `qigao/vcpkg-cache` at
+`laurikari/tre@71bfcaf0af3994384987c6c2679ed7d078ffe189`.
+The current candidate uses a **frozen minimal cache-contract backport**
+`qigao/vcpkg-cache@3086b284d35eb77a2818e0a3efb39508c8d7d544`,
+which has passed infrastructure compatibility CI in
+[vcpkg-cache Draft #249](https://github.com/qigao/vcpkg-cache/pull/249).
+This changes the dependency pin **only in this Draft candidate**, not master.
+
+- Required `find_package(unofficial-tre 0.9.0 CONFIG REQUIRED)` links the
+  single static `unofficial::tre::tre`; missing binary caches must fail
+  configured CI. No second regex parser, dynamic plugin or builtin TRE 0.8.
+- Uses binary-safe `tre_regncompb` and `tre_regnexecb`, rejects
+  `tre_have_backrefs` and `tre_have_approx` **before any execution**
+  while preserving TurboScript's existing shared-package fuzzy behavior.
+- POSIX **leftmost-longest** is explicit: `a|ab` on `ab` returns `ab`.
+  This is deliberately **not** rg default leftmost-first. An actual
+  prioritized TNFA proof is still required for claimed rg default parity.
+- Compile max 4096 bytes; each query defines a strict subject cap not larger
+  than `INT_MAX`, guarding upstream TRE's internal 32-bit offset truncation.
+  Exact input offsets/typed error statuses; no silent truncated successful
+  search. The first-stage API only finds the first match in one complete
+  caller-provided line slice. It does **not** support repeated suffix-rescan,
+  multiline or arbitrary unbounded regex budget.
+- TRE's internal allocations and CPU budget still require dedicated
+  worst-case TNFA proof/fault-injection and exact-head native tests. This
+  Draft cannot be considered A1 accepted solely because source compiles.
+
 ## Algorithm and complexity
 
 A0 uses the **Two-Way** string matching algorithm (Crochemore–Perrin): maximal suffix in two lexicographic orders yields the critical position and period. For periodic patterns it retains the matched prefix as *memory* after shifts; for aperiodic patterns it uses the guaranteed-safe long shift. The prefix equality test chooses between them. Pattern preprocessing is O(m), each find is worst-case O(n+m) comparisons with O(1) per-call workspace, not including the O(m) owned needle bytes.
@@ -158,7 +188,8 @@ Single-byte patterns use standard C `memchr`. The planned SIMD prefilter in #705
 
 - [x] A0 scalar Two-Way implementation and deterministic C11 differential tests (implementation candidate).
 - [ ] A0 canonical Salts SIMD scan integration and scalar/SIMD parity.
-- [ ] A1 TRE pinned C library, exact Tagged NFA and match-priority gate (not started in this draft).
+- [x] A1 candidate single TRE static provider wrapper and POSIX priority admission, awaiting exact-head binary package/CTest verification.
+- [ ] A1 full regex resource/leftmost-first parity and cross-RID native acceptance.
 - [x] A2 line-delimiting primitive + deterministic C11 tests (stacked draft, not accepted).
 - [x] A2 memory-only bounded before/after literal context collector (stacked Draft; exact-head CI pending).
 - [ ] A2 encoding conversions, unique TRE regex integration and further streaming conformance.
