@@ -254,6 +254,49 @@ no PCRE2/system regex or hidden fallback is authorized. A2 context
 continues to carry first match per matching line until the true
 multi-match result protocol is independently accepted.
 
+### A4 stage4: original-subject TRE multi-hit (Draft candidate)
+
+Upstream TRE 0.9.0's binary-safe `tre_regnexecb` searches from offset 0
+and returns only the first match. Slicing the subject and calling it
+again changes `^`, `$`, word-boundary and newline assertions. The
+single canonical TRE port now has an **additive patch** in
+[vcpkg-cache Draft #252](https://github.com/qigao/vcpkg-cache/pull/252):
+`tre_regnexecb_from(regex, full_bytes, length, min_start, ...)`.
+It runs the **same exact Tagged NFA**, consuming the original bytes and
+blocking initial-state admission before `min_start`. Original TRE APIs
+and TurboScript approximate/backreference behavior are unchanged.
+
+A4's `salts_search_regex_find_from` wraps this single C provider.
+`salts_search_matcher_enumerate_regex` uses the unchanged whole input
+on every iteration, returns absolute-by-line half-open byte spans, and
+permits overlapping or nonoverlapping results. Each zero-width match
+advances the allowed start position by one byte; an EOF match can be
+emitted once. The same `max_hits` and callback STOPPED contract applies
+as with Literal, with explicit LIMIT if a further hit exists. There
+is no alternate regex engine, no suffix-based retry and no filesystem I/O.
+
+The shared TRE port revision is now **0.9.0#1** and the pinned frozen-v8
+compatibility candidate is
+`qigao/vcpkg-cache@62f7de15195134b19c02ab45b6c883b74f96c88a`,
+which contains byte-identical TRE port blobs to canonical Draft #252.
+The old cache contains unpatched 0.9.0 packages; the patched port
+changes its ABI, requiring producer cache publication and exact native
+link/execution before acceptance. This is a **Draft-only dependency
+pin**, not master or a published SDK.
+
+Correctness gates include `^a` on `aa` (no spurious match at 1),
+`\\bfoo` on `xfoo` (no invented word boundary), newline-mode `^a`
+after a real newline, POSIX longest `a|ab`, embedded NUL, zero-width
+at EOF, overlap, max-hits exhaustion and explicit rejection of forced
+backtracking/approx flags in the new API.
+
+**Performance remains OPEN:** repeating an original-subject TNFA scan
+may cost O(hit_count × subject_length), even though every scan is
+bounded and maintains exact semantics. Hard TRE internal workspace,
+CPU budgets, broad randomized replay and concurrency/fuzz must be
+proven before A4 can close. This implementation is not claimed
+leftmost-first (ripgrep default) or one-pass linear multi-regex search.
+
 ## Algorithm and complexity
 
 A0 uses the **Two-Way** string matching algorithm (Crochemore–Perrin): maximal suffix in two lexicographic orders yields the critical position and period. For periodic patterns it retains the matched prefix as *memory* after shifts; for aperiodic patterns it uses the guaranteed-safe long shift. The prefix equality test chooses between them. Pattern preprocessing is O(m), each find is worst-case O(n+m) comparisons with O(1) per-call workspace, not including the O(m) owned needle bytes.
@@ -269,7 +312,8 @@ Single-byte patterns use standard C `memchr`. The planned SIMD prefilter in #705
 - [x] A4 prep: query-selected Literal/TRE matcher + bounded A2 context (CI #41058232362 SUCCESS).
 - [x] A4 stage2 candidate: first-match absolute byte highlight span on existing callbacks (Draft, CI pending).
 - [x] A4 stage3 literal all-hit enumerator (overlap/no-overlap, empty, bounded callbacks; Draft, CI pending).
-- [ ] A4 full TRE all-hit enumeration and internal resource bounds, broad fuzz/perf/concurrency gates.
+- [x] A4 stage4 source candidate: TRE original-subject min-start plus bounded multi-hit wrapper (Draft, exact-head CI pending).
+- [ ] A4 TRE multi-hit native/ABI, hard resource bounds, broad fuzz/perf/concurrency and rg leftmost-first semantics.
 - [x] A2 line-delimiting primitive + deterministic C11 tests (stacked draft, not accepted).
 - [x] A2 memory-only bounded before/after literal context collector (stacked Draft; exact-head CI pending).
 - [ ] A2 encoding conversions, unique TRE regex integration and further streaming conformance.

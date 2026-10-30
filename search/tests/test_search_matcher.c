@@ -58,6 +58,116 @@ static uint32_t literal_rand_next(void) {
 }
 
 spec("search common matcher chooses one literal or TRE byte engine") {
+  it("enumerates overlapping exact TRE matches with POSIX longest spans") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t n = 44u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "aba", 3u, 16u, 32u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_regex(&m, "ababa", 5u,
+                true, 12u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 2u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[0].byte_end, UINT64_C(3));
+    check_equal(p.hits[1].byte_start, UINT64_C(2));
+    check_equal(p.hits[1].byte_end, UINT64_C(5));
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_regex(&m, "ababa", 5u,
+                false, 12u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 1u);
+    salts_search_matcher_destroy(&m);
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "a|ab", 4u, 16u, 32u), SALTS_SEARCH_MATCHER_OK);
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_regex(&m, "abab", 4u,
+                false, 12u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 2u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[0].byte_end, UINT64_C(2));
+    check_equal(p.hits[1].byte_start, UINT64_C(2));
+    check_equal(p.hits[1].byte_end, UINT64_C(4));
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("does not turn an anchored or word-boundary TRE match into a suffix match") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t n = 0;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "^a", 2u, 16u, 32u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_regex(&m, "aa", 2u,
+                true, 8u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 1u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[0].byte_end, UINT64_C(1));
+    salts_search_matcher_destroy(&m);
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "\\bfoo", 5u, 16u, 32u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_regex(&m, "xfoo foo", 8u,
+                false, 8u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 1u); /* no false match on "foo" inside "xfoo" */
+    check_equal(p.hits[0].byte_start, UINT64_C(5));
+    check_equal(p.hits[0].byte_end, UINT64_C(8));
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("advances zero-width TRE results once per original byte boundary") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t n = 0;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "a*", 2u, 16u, 32u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_regex(&m, "ba", 2u,
+                false, 8u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 3u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[0].byte_end, UINT64_C(0));
+    check_equal(p.hits[1].byte_start, UINT64_C(1));
+    check_equal(p.hits[1].byte_end, UINT64_C(2));
+    check_equal(p.hits[2].byte_start, UINT64_C(2));
+    check_equal(p.hits[2].byte_end, UINT64_C(2));
+    salts_search_matcher_destroy(&m);
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "^$", 2u, 16u, 32u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_regex(&m, NULL, 0u,
+                false, 8u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 1u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[0].byte_end, UINT64_C(0));
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("keeps binary NUL intact and reports strict TRE result budgets") {
+    const unsigned char bytes[] = {'a', 0, 'a'};
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t n = 99u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "a", 1u, 8u, 3u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_regex(&m, bytes, sizeof(bytes),
+                false, 1u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 1u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    memset(&p, 0, sizeof(p));
+    p.stop_at = 1u;
+    check_equal(salts_search_matcher_enumerate_regex(&m, bytes, sizeof(bytes),
+                false, 8u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_STOPPED);
+    check_equal(n, 1u);
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_regex(&m, bytes, sizeof(bytes),
+                false, 8u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 2u);
+    check_equal(p.hits[1].byte_start, UINT64_C(2));
+    check_equal(p.hits[1].byte_end, UINT64_C(3));
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_regex(&m, bytes, sizeof(bytes),
+                true, 0u, record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 0u);
+    salts_search_matcher_destroy(&m);
+  }
+
   it("enumerates overlapping and nonoverlapping Literal hits in order") {
     salts_search_matcher m = {0};
     literal_hit_probe p = {0};

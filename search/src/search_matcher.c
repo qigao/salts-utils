@@ -149,6 +149,63 @@ salts_search_matcher_status salts_search_matcher_enumerate_literals(
   }
 }
 
+salts_search_matcher_status salts_search_matcher_enumerate_regex(
+    const salts_search_matcher *compiled, const void *subject,
+    size_t subject_length, bool overlapping, size_t max_hits,
+    salts_search_matcher_hit_callback callback, void *user,
+    size_t *out_emitted) {
+  size_t start_at = 0;
+  size_t count = 0;
+  if (out_emitted)
+    *out_emitted = 0;
+  if (!compiled || !compiled->compiled || !callback || !out_emitted ||
+      (subject_length != 0 && !subject))
+    return SALTS_SEARCH_MATCHER_INVALID;
+  if (compiled->kind != SALTS_SEARCH_MATCHER_REGEX)
+    return SALTS_SEARCH_MATCHER_UNSUPPORTED;
+  if (subject_length > compiled->max_subject_bytes ||
+      subject_length > INT_MAX)
+    return SALTS_SEARCH_MATCHER_LIMIT;
+
+  for (;;) {
+    salts_search_regex_span found = {0};
+    const salts_search_matcher_status status = map_regex(
+        salts_search_regex_find_from(&compiled->compiled_pattern.regex,
+                                     subject, subject_length, start_at, &found));
+    if (status == SALTS_SEARCH_MATCHER_NOT_FOUND)
+      return SALTS_SEARCH_MATCHER_OK;
+    if (status != SALTS_SEARCH_MATCHER_OK)
+      return status;
+    if (found.byte_start < start_at ||
+        found.byte_start > found.byte_end ||
+        found.byte_end > subject_length)
+      return SALTS_SEARCH_MATCHER_ENGINE_ERROR;
+    if (count == max_hits)
+      return SALTS_SEARCH_MATCHER_LIMIT; /* extra hit exists: no false success */
+
+    {
+      const salts_search_matcher_span hit = {found.byte_start,
+                                             found.byte_end};
+      ++count;
+      *out_emitted = count;
+      if (!callback(user, &hit))
+        return SALTS_SEARCH_MATCHER_STOPPED;
+    }
+
+    /* Preserve original line content for every TRE call. Never reslice.
+     * A match at EOF must not be delivered twice; an empty interior match
+     * advances exactly one byte, including after a nonempty overlapping hit.
+     */
+    if (found.byte_start == subject_length)
+      return SALTS_SEARCH_MATCHER_OK;
+    start_at = (overlapping || found.byte_start == found.byte_end)
+                   ? (size_t)found.byte_start + 1u
+                   : (size_t)found.byte_end;
+    if (start_at > subject_length)
+      return SALTS_SEARCH_MATCHER_OK;
+  }
+}
+
 void salts_search_matcher_destroy(salts_search_matcher *compiled) {
   if (!compiled)
     return;

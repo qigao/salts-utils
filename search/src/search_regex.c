@@ -70,6 +70,39 @@ salts_search_regex_status salts_search_regex_find_first(
   return SALTS_SEARCH_REGEX_OK;
 }
 
+salts_search_regex_status salts_search_regex_find_from(
+    const salts_search_regex_pattern *compiled, const void *subject,
+    size_t subject_length, size_t min_start, salts_search_regex_span *out_span) {
+  static const char empty[] = "";
+  regmatch_t span[1] = {{-1, -1}};
+  int rc;
+  if (out_span)
+    *out_span = (salts_search_regex_span){0};
+  if (!compiled || !compiled->compiled || !out_span ||
+      (subject_length != 0 && subject == NULL))
+    return SALTS_SEARCH_REGEX_INVALID;
+  if (subject_length > compiled->max_subject_bytes ||
+      subject_length > INT_MAX)
+    return SALTS_SEARCH_REGEX_LIMIT;
+  if (min_start > subject_length)
+    return SALTS_SEARCH_REGEX_NOT_FOUND;
+  rc = tre_regnexecb_from(&compiled->tre,
+                          subject ? (const char *)subject : empty,
+                          subject_length, min_start, 1u, span, 0);
+  if (rc == REG_NOMATCH)
+    return SALTS_SEARCH_REGEX_NOT_FOUND;
+  if (rc == REG_ESPACE)
+    return SALTS_SEARCH_REGEX_NO_MEMORY;
+  if (rc != REG_OK || span[0].rm_so < 0 ||
+      span[0].rm_eo < span[0].rm_so ||
+      (size_t)span[0].rm_so < min_start ||
+      (size_t)span[0].rm_eo > subject_length)
+    return SALTS_SEARCH_REGEX_ENGINE_ERROR;
+  out_span->byte_start = (uint64_t)span[0].rm_so;
+  out_span->byte_end = (uint64_t)span[0].rm_eo;
+  return SALTS_SEARCH_REGEX_OK;
+}
+
 void salts_search_regex_destroy(salts_search_regex_pattern *compiled) {
   if (!compiled)
     return;

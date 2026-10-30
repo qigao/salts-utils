@@ -82,6 +82,23 @@ salts_search_matcher_status salts_search_matcher_enumerate_literals(
     salts_search_matcher_hit_callback callback, void *user,
     size_t *out_emitted);
 
+/* Enumerate POSIX exact TRE matches on the UNCHANGED original subject.
+ * The unique TRE 0.9.0#1 provider's start-position API prevents suffix-
+ * induced changes to ^, $, word-boundaries and original match offsets.
+ * The callback and result-budget semantics match Literal enumeration.
+ * Overlap starts the next search at previous_start+1, otherwise previous_end.
+ * A zero-width match always advances one byte; EOF yields at most one.
+ *
+ * This is a bounded correctness implementation, NOT a claim of one-pass
+ * O(subject_length) all-hit performance: TRE may rescan the full prefix
+ * for each hit, so the strict max_hits bound is mandatory.
+ */
+salts_search_matcher_status salts_search_matcher_enumerate_regex(
+    const salts_search_matcher *compiled, const void *subject,
+    size_t subject_length, bool overlapping, size_t max_hits,
+    salts_search_matcher_hit_callback callback, void *user,
+    size_t *out_emitted);
+
 void salts_search_matcher_destroy(salts_search_matcher *compiled);
 
 #endif
