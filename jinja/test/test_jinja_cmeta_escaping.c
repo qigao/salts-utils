@@ -161,6 +161,12 @@ typedef struct JinjaTraceSample {
     size_t generated_offset;
     size_t generated_bytes;
     JINJA_CMETA_EMIT_KIND kind;
+    size_t call_count;
+    struct {
+      char name[64];
+      size_t source_offset;
+      JINJA_CMETA_EMIT_CALL_KIND kind;
+    } calls[8];
   } events[64];
   size_t count;
   int reject_trace;
@@ -190,6 +196,21 @@ static int jinja_trace_sample_event(const JINJA_CMETA_EMIT_ANCHOR *event, void *
   sample->events[index].generated_offset = event->generated_offset;
   sample->events[index].generated_bytes = event->generated_bytes;
   sample->events[index].kind = event->kind;
+  if (event->active_call_count > 8u ||
+      (event->active_call_count != 0u && event->active_calls == NULL))
+    return -1;
+  sample->events[index].call_count = event->active_call_count;
+  for (size_t i = 0u; i < event->active_call_count; ++i) {
+    const JINJA_CMETA_EMIT_CALL *call = &event->active_calls[i];
+    if (call->template_name.len >= sizeof(sample->events[index].calls[i].name))
+      return -1;
+    if (call->template_name.len != 0u)
+      memcpy(sample->events[index].calls[i].name,
+             call->template_name.data, call->template_name.len);
+    sample->events[index].calls[i].name[call->template_name.len] = '\0';
+    sample->events[index].calls[i].source_offset = call->source_offset;
+    sample->events[index].calls[i].kind = call->kind;
+  }
   return 0;
 }
 
@@ -304,5 +325,166 @@ spec("Jinja emits bounded original instruction anchors without inventing output 
         &trace, &sample, &error), JINJA_CMETA_ERR_RENDER);
     check(sample.bytes > 0u);
     jinja_cmeta_release(templ);
+  }
+}
+
+
+static JINJA_CMETA_STATUS jinja_trace_local_load(void *userdata, vstr name,
+    JINJA_CMETA_SOURCE *source, JINJA_CMETA_ERROR *error) {
+  (void)userdata; (void)error;
+  static char included[] = "<span>{{ user.name }}</span>";
+  if (!vstr_eq(name, vstr_from_cstr("fragment"))) return JINJA_CMETA_ERR_NOT_FOUND;
+  *source = (JINJA_CMETA_SOURCE){
+      vstr_from_buf(included, sizeof(included) - 1u), included};
+  return JINJA_CMETA_OK;
+}
+
+static void jinja_trace_local_release(void *userdata, JINJA_CMETA_SOURCE *source) {
+  (void)userdata; (void)source; /* The known template is static and borrowed. */
+}
+
+spec("Jinja preserves active nested template callsites and marks materialized values indirect") {
+  it("reports original included-template instructions with parent include callsite") {
+    static const char root_source[] = "A{% include 'fragment' %}B";
+    JINJA_CMETA_ENV_OPTIONS options = JINJA_CMETA_ENV_OPTIONS_INIT;
+    options.loader = (JINJA_CMETA_LOADER){
+        jinja_trace_local_load, jinja_trace_local_release, NULL};
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_ENV *env = jinja_cmeta_env_create(&options, &error);
+    check_not_null(env);
+    if (!env) return;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_env_compile(env,
+        vstr_from_cstr("app.ui.xml.jinja"), vstr_from_cstr(root_source), &error);
+    check_not_null(templ);
+    if (!templ) { jinja_cmeta_env_destroy(env); return; }
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      static const char expected[] = "A<span>Ada</span>B";
+      check_equal(sample.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(sample.output, expected, sizeof(expected) - 1u), 0);
+      size_t next = 0u, inside = 0u, outside = 0u;
+      const size_t include_at = (size_t)(strstr(root_source, "{% include") - root_source);
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, next);
+        next += sample.events[i].generated_bytes;
+        if (strcmp(sample.events[i].source, "fragment") == 0) {
+          ++inside;
+          check_equal(sample.events[i].call_count, 1u);
+          check_equal(strcmp(sample.events[i].calls[0].name,
+                            "app.ui.xml.jinja"), 0);
+          check_equal(sample.events[i].calls[0].source_offset, include_at);
+          check(sample.events[i].calls[0].kind == JINJA_CMETA_CALL_INCLUDE);
+        } else {
+          ++outside;
+          check_equal(strcmp(sample.events[i].source,
+                             "app.ui.xml.jinja"), 0);
+          check_equal(sample.events[i].call_count, 0u);
+        }
+      }
+      check_equal(next, sample.bytes);
+      check(inside >= 3u);
+      check_equal(outside, 2u);
+    }
+    jinja_cmeta_release(templ);
+    jinja_cmeta_env_destroy(env);
+  }
+
+  it("identifies the direct streaming block invocation without attributing its bytes to the caller") {
+    static const char source[] = "A{% block section %}inside{% endblock %}B";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_ENV *env = jinja_cmeta_env_create(NULL, &error);
+    check_not_null(env);
+    if (!env) return;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_env_compile(
+        env, vstr_from_cstr("blocks.ui.xml.jinja"),
+        vstr_from_cstr(source), &error);
+    check_not_null(templ);
+    if (!templ) { jinja_cmeta_env_destroy(env); return; }
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      static const char expected[] = "AinsideB";
+      check_equal(sample.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(sample.output, expected, sizeof(expected) - 1u), 0);
+      const size_t opener = (size_t)(strstr(source, "{% block") - source);
+      size_t inside = 0u, outside = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        if (sample.events[i].call_count == 1u) {
+          ++inside;
+          check(sample.events[i].kind == JINJA_CMETA_EMIT_LITERAL);
+          check_equal(strcmp(sample.events[i].calls[0].name,
+                            "blocks.ui.xml.jinja"), 0);
+          check_equal(sample.events[i].calls[0].source_offset, opener);
+          check(sample.events[i].calls[0].kind == JINJA_CMETA_CALL_FUNCTION);
+        } else {
+          ++outside;
+          check_equal(sample.events[i].call_count, 0u);
+        }
+      }
+      check(inside > 0u);
+      check_equal(outside, 2u);
+    }
+    jinja_cmeta_release(templ);
+    jinja_cmeta_env_destroy(env);
+  }
+
+  it("conservatively classifies captured and macro-derived strings as INDIRECT") {
+    static const struct {
+      const char *source;
+      const char *expected;
+    } cases[] = {
+        {"{% set label %}<b>{% endset %}{{ label }}", "<b>"},
+        {"{% macro badge() %}<b>{% endmacro %}{{ badge() }}", "<b>"},
+        {"{% filter upper %}<b>x</b>{% endfilter %}", "<B>X</B>"},
+        {"{% macro inner() %}x{% endmacro %}{% filter upper %}{{ inner() }}{% endfilter %}", "X"}
+    };
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    for (size_t i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+      JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+      JINJA_CMETA_TEMPLATE *templ =
+          jinja_cmeta_compile(vstr_from_cstr(cases[i].source), NULL, &error);
+      check_not_null(templ);
+      if (!templ) continue;
+      JinjaTraceSample sample = {0};
+      const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+          templ, &model.root_desc, &root, NULL, &renderer, &sample,
+          &trace, &sample, &error);
+      check_equal(status, JINJA_CMETA_OK);
+      if (status == JINJA_CMETA_OK) {
+        check_equal(sample.bytes, strlen(cases[i].expected));
+        check_equal(memcmp(sample.output, cases[i].expected, sample.bytes), 0);
+        check(sample.count > 0u);
+        size_t accounted = 0u;
+        for (size_t j = 0u; j < sample.count; ++j) {
+          check_equal(sample.events[j].generated_offset, accounted);
+          accounted += sample.events[j].generated_bytes;
+          check(sample.events[j].kind == JINJA_CMETA_EMIT_INDIRECT);
+          check_equal(sample.events[j].call_count, 0u);
+        }
+        check_equal(accounted, sample.bytes);
+      }
+      jinja_cmeta_release(templ);
+    }
   }
 }
