@@ -4,7 +4,7 @@ Tracking: [algorithm-first epic #704](https://github.com/qigao/salts-utils/issue
 
 ## Current scope
 
-**A0** literal matcher, **A2** bounded line delineator and **A3-stage1** Glob byte automaton have implementation candidates in stacked drafts. Both remain non-installed and do not imply A4 acceptance. The functions live in a private, non-installed header `src/search_literal.h`; they are deliberately not published as an SDK ABI before A4. No filesystem APIs, indexes, async backends, Rust or fd/rg/Everything subprocesses are involved.
+**A0** literal matcher, **A2** bounded line delineator, **A3-stage1** Glob byte automaton, and **A3-stage2** memory-only ignore-rule evaluator have implementation candidates in stacked Drafts. All remain non-installed and do not imply A4 acceptance. The functions live in a private, non-installed header `src/search_literal.h`; they are deliberately not published as an SDK ABI before A4. No filesystem APIs, indexes, async backends, Rust or fd/rg/Everything subprocesses are involved.
 
 `salts_search_literal_compile` copies a bounded binary pattern into an owned immutable object and computes both critical factorizations. `salts_search_literal_find` reports the first exact half-open byte span at/after the requested offset. Empty needle matches at the supplied valid starting offset. A failed call never returns a partial match. A compiled object can be read concurrently by independent searches but cannot be mutated or destroyed until all searches settle.
 
@@ -41,12 +41,57 @@ patterns that target only components must not contain an interior slash.
 Compiled programs own their tokens and may be shared across threads when each
 scan supplies independent state scratch.
 
-**IMPORTANT:** This is a **glob matcher**, not yet a complete Gitignore engine.
-Nested `.gitignore` and `.ignore` scopes, negation/precedence, directory
-inheritance, hidden file rules, symbolic-link behavior, full Unicode case
-folding and platform path policy remain open in [A3 #708](https://github.com/qigao/salts-utils/issues/708).
-A3 must stay Draft and no fd/rg ignore compatibility is claimed until those
-rules, differential fixtures and missing cases are implemented and accepted.
+**Stage-1 boundary:** this Glob NFA does not parse ignore files. Stage 2
+below adds in-memory ignore rule scopes, negations and precedence by reusing
+the same compiled Glob program. Hidden file policy, symlink traversal,
+Git repository boundaries, Unicode folding and platform filesystem admission
+remain open in [A3 #708](https://github.com/qigao/salts-utils/issues/708).
+A3 stays Draft; no complete fd/rg compatibility claim is made.
+
+### A3 stage 2: bounded in-memory hierarchical ignore rules
+
+`search_ignore.[ch]` takes caller-provided **complete bytes** of an ignore file,
+an explicit rule source (`.gitignore`, `.ignore`, `.rgignore`, Git global/info
+or explicit `--ignore-file`), and a normalized root-relative owner directory.
+It compiles every nonempty rule using the **same** Stage-1 Glob NFA; it does
+not open a filesystem, execute Git, use a separate Regex parser, or discover
+the repository's global ignore configuration. The caller retains bounded
+rule slots; each successful rule owns its immutable scope and Glob tokens.
+A malformed rule, NUL byte, capacity exhaustion or syntax failure aborts the
+entire input file and frees all rules added by that call; previous rules are
+unmodified. `out_error_line` identifies the first offending line.
+
+Rule semantics implemented in this candidate:
+
+- Comments, escaped leading `#` or `!`, `!` negation, escaped trailing spaces,
+  CRLF, slash-rooted, basename, recursive and directory-only patterns.
+- Explicit source priority: `.rgignore` > `.ignore` > `.gitignore` >
+  `.git/info/exclude` > Git global > explicit ignore file. Within one source
+  kind, deeper directory scopes override parent scopes; equal scopes use
+  last matching rule. These priorities are intended to match ripgrep's
+  documented ignore-file tiers, **not** CLI `--glob` overrides.
+- A query checks each ancestor directory before evaluating the leaf.
+  If an ancestor is excluded, later child-specific negative rules cannot
+  restore the leaf. Re-inclusion of a parent must itself be effective.
+- Input path and directory scope must already be normalized, slash-separated,
+  root-relative and NUL-free; `.`/`..` components are rejected rather than
+  cleaned. ASCII-only case-insensitive matching is optional; Unicode
+  normalization and full case folding are not claimed.
+- Caller allocates query scratch at least `2*(max_pattern_bytes+1)` bytes.
+  No lookup allocations or recursive backtracking occur. A frozen rule set
+  can be matched concurrently using separate scratch buffers.
+
+**Still open for complete fd/rg compatibility:** discovery and reload of
+real `.gitignore`/`.ignore`/`.rgignore` files by the Salts File Walker, Git
+repository-boundary detection and global configuration ownership, CLI glob
+overrides, hidden-file policy, explicit symlink/OS path rules, full Unicode
+folding and comprehensive differential tests on full directory trees.
+These are separate from this memory-only algorithm gate; no filesystem
+search or FileCatalog is being implemented in this stage.
+
+Supporting tests: `test_salts_search_ignore` covers nested and cross-source
+precedence, exception/parent exclusion, escaped markers/trailing spaces,
+CRLF/NUL, rollback, stable 64-bit-friendly indexing and bounded resources.
 
 ## Algorithm and complexity
 
@@ -62,7 +107,8 @@ Single-byte patterns use standard C `memchr`. The planned SIMD prefilter in #705
 - [x] A2 line-delimiting primitive + deterministic C11 tests (stacked draft, not accepted).
 - [ ] A2 context-before/after output and any requested encoding conversion.
 - [x] A3 stage1 compiled Glob NFA with bounded caller scratch + C11 differential tests (stacked Draft, not final).
-- [ ] A3 Gitignore scope/precedence; A4 full C11 conformance and CI.
+- [x] A3 stage2 memory-only Gitignore source/scope/negation evaluator and bounded C11 tests (Draft; final CI pending).
+- [ ] A3 automatic rule discovery, hidden/CLI glob/repository policy and full differential conformance; A4 full C11 acceptance and CI.
 - [ ] B0 Salts FS/CFlow file/mmap integration (blocked by A4 and upstream migration).
 
 Do not create installer or consumer projects/workflows to test this module. Register its test in the existing `BUILD_TESTS` CTest graph and keep the work **Draft** until the exact-head CI and full A0 acceptance are verified. No fallback engine or extra search parser is allowed.
