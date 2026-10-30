@@ -1,3 +1,9 @@
+# The RichDoc document/visitor assertions formerly living in Stun ui_core_test.c.
+add_executable(salts_markdown_document_view_test markdown_document_view_test.c)
+target_compile_features(salts_markdown_document_view_test PRIVATE c_std_11)
+target_link_libraries(salts_markdown_document_view_test PRIVATE Salts::MarkdownParser)
+add_test(NAME salts_markdown_document_view_test COMMAND salts_markdown_document_view_test)
+
 add_executable(salts_markdown_c11_test markdown_c11_test.c)
 target_compile_features(salts_markdown_c11_test PRIVATE c_std_11)
 target_link_libraries(salts_markdown_c11_test PRIVATE Salts::MarkdownParser Salts::MarkdownHtml)
