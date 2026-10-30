@@ -1,5 +1,5 @@
 # Phase A: algorithm-only C11. No installed/public API until A4 conformance.
-# The module has no filesystem, CFlow, Rust, TRE or external process dependency.
+# No filesystem, CFlow, Rust or external-process dependency; one static TRE regex provider.
 add_library(salts_search_algorithms STATIC
   src/search_literal.c
   src/search_lines.c
@@ -7,7 +7,8 @@ add_library(salts_search_algorithms STATIC
   src/search_ignore.c
   src/search_policy.c
   src/search_context.c
-  src/search_regex.c)
+  src/search_regex.c
+  src/search_matcher.c)
 # One exact TRE 0.9.0 C provider. Missing package/target is a hard error.
 find_package(unofficial-tre 0.9.0 CONFIG REQUIRED)
 if(NOT TARGET unofficial::tre::tre)
@@ -42,6 +43,11 @@ if(BUILD_TESTS)
     FOLDER "search/tests")
   cmake_add_test(test_salts_search_regex
     SOURCES tests/test_search_regex.c
+    INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    LIBS salts_search_algorithms Salts::TinyTest
+    FOLDER "search/tests")
+  cmake_add_test(test_salts_search_matcher
+    SOURCES tests/test_search_matcher.c
     INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/src"
     LIBS salts_search_algorithms Salts::TinyTest
     FOLDER "search/tests")

@@ -5,7 +5,7 @@
 #ifndef SALTS_SEARCH_CONTEXT_INTERNAL_H
 #define SALTS_SEARCH_CONTEXT_INTERNAL_H
 #include "search_lines.h"
-#include "search_literal.h"
+#include "search_matcher.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -15,7 +15,9 @@ typedef enum salts_search_context_status {
   SALTS_SEARCH_CONTEXT_INVALID,
   SALTS_SEARCH_CONTEXT_LIMIT,
   SALTS_SEARCH_CONTEXT_STOPPED,
-  SALTS_SEARCH_CONTEXT_CLOSED
+  SALTS_SEARCH_CONTEXT_CLOSED,
+  SALTS_SEARCH_CONTEXT_NO_MEMORY,
+  SALTS_SEARCH_CONTEXT_MATCH_ERROR
 } salts_search_context_status;
 
 typedef enum salts_search_context_kind {
@@ -41,7 +43,8 @@ typedef struct salts_search_context_slot {
 } salts_search_context_slot;
 
 typedef struct salts_search_context {
-  const salts_search_literal_pattern *literal; /* borrowed, immutable */
+  const salts_search_literal_pattern *literal; /* legacy A2, borrowed */
+  const salts_search_matcher *matcher; /* A4 dispatch: literal OR unique TRE */
   salts_search_context_slot *slots; /* borrowed, length before_count */
   unsigned char *storage; /* borrowed, size before_count*max_line_bytes */
   size_t before_count, after_count, max_line_bytes;
@@ -61,6 +64,16 @@ typedef struct salts_search_context {
  */
 salts_search_context_status salts_search_context_init(
     salts_search_context *ctx, const salts_search_literal_pattern *literal,
+    salts_search_context_slot *slots, size_t before_count,
+    unsigned char *storage, size_t storage_bytes, size_t max_line_bytes,
+    size_t after_count, salts_search_context_callback callback, void *user);
+
+/* Unified matcher entry point; only one of literal/matcher is set.
+ * For a regex match, the entire original line is passed unchanged to TRE,
+ * so anchors, alternation and byte offsets do not drift from suffix-slicing.
+ */
+salts_search_context_status salts_search_context_init_matcher(
+    salts_search_context *ctx, const salts_search_matcher *matcher,
     salts_search_context_slot *slots, size_t before_count,
     unsigned char *storage, size_t storage_bytes, size_t max_line_bytes,
     size_t after_count, salts_search_context_callback callback, void *user);

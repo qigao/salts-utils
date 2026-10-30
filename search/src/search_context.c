@@ -25,20 +25,24 @@ static bool emit_line(salts_search_context *ctx, const salts_search_line *line,
   return true;
 }
 
-salts_search_context_status salts_search_context_init(
+static salts_search_context_status context_init_common(
     salts_search_context *ctx, const salts_search_literal_pattern *literal,
+    const salts_search_matcher *matcher,
     salts_search_context_slot *slots, size_t before_count,
     unsigned char *storage, size_t storage_bytes, size_t max_line_bytes,
     size_t after_count, salts_search_context_callback callback, void *user) {
   size_t i;
   if (!ctx || ctx->initialized || ctx->finished || ctx->literal ||
-      !literal || !literal->compiled || !callback ||
+      ctx->matcher || (literal == NULL) == (matcher == NULL) ||
+      (literal && !literal->compiled) || (matcher && !matcher->compiled) ||
+      !callback ||
       (!slots && before_count) || (!storage && before_count) ||
       !max_line_bytes || before_count > SIZE_MAX / max_line_bytes ||
       storage_bytes < before_count * max_line_bytes)
     return SALTS_SEARCH_CONTEXT_INVALID;
   *ctx = (salts_search_context){0};
   ctx->literal = literal;
+  ctx->matcher = matcher;
   ctx->slots = slots;
   ctx->storage = storage;
   ctx->before_count = before_count;
@@ -55,10 +59,29 @@ salts_search_context_status salts_search_context_init(
   return SALTS_SEARCH_CONTEXT_OK;
 }
 
+
+salts_search_context_status salts_search_context_init(
+    salts_search_context *ctx, const salts_search_literal_pattern *literal,
+    salts_search_context_slot *slots, size_t before_count,
+    unsigned char *storage, size_t storage_bytes, size_t max_line_bytes,
+    size_t after_count, salts_search_context_callback callback, void *user) {
+  return context_init_common(ctx, literal, NULL, slots, before_count,
+                             storage, storage_bytes, max_line_bytes,
+                             after_count, callback, user);
+}
+
+salts_search_context_status salts_search_context_init_matcher(
+    salts_search_context *ctx, const salts_search_matcher *matcher,
+    salts_search_context_slot *slots, size_t before_count,
+    unsigned char *storage, size_t storage_bytes, size_t max_line_bytes,
+    size_t after_count, salts_search_context_callback callback, void *user) {
+  return context_init_common(ctx, NULL, matcher, slots, before_count,
+                             storage, storage_bytes, max_line_bytes,
+                             after_count, callback, user);
+}
+
 bool salts_search_context_accept_line(void *raw, const salts_search_line *line) {
   salts_search_context *ctx = (salts_search_context *)raw;
-  salts_search_literal_span first = {0};
-  salts_search_literal_status found;
   bool matching;
   size_t i;
   if (!ctx || !ctx->initialized || ctx->finished ||
@@ -75,12 +98,29 @@ bool salts_search_context_accept_line(void *raw, const salts_search_line *line) 
     return context_stop(ctx, SALTS_SEARCH_CONTEXT_INVALID);
   if (ctx->before_count && line->length > ctx->max_line_bytes)
     return context_stop(ctx, SALTS_SEARCH_CONTEXT_LIMIT);
-  found = salts_search_literal_find(ctx->literal, line->bytes,
-                                    line->length, 0, &first);
-  if (found != SALTS_SEARCH_LITERAL_NOT_FOUND &&
-      found != SALTS_SEARCH_LITERAL_OK)
-    return context_stop(ctx, SALTS_SEARCH_CONTEXT_INVALID);
-  matching = found == SALTS_SEARCH_LITERAL_OK;
+  if (ctx->matcher) {
+    salts_search_matcher_span match = {0};
+    const salts_search_matcher_status found = salts_search_matcher_find_first(
+        ctx->matcher, line->bytes, line->length, &match);
+    if (found == SALTS_SEARCH_MATCHER_LIMIT)
+      return context_stop(ctx, SALTS_SEARCH_CONTEXT_LIMIT);
+    if (found == SALTS_SEARCH_MATCHER_NO_MEMORY)
+      return context_stop(ctx, SALTS_SEARCH_CONTEXT_NO_MEMORY);
+    if (found == SALTS_SEARCH_MATCHER_ENGINE_ERROR)
+      return context_stop(ctx, SALTS_SEARCH_CONTEXT_MATCH_ERROR);
+    if (found != SALTS_SEARCH_MATCHER_NOT_FOUND &&
+        found != SALTS_SEARCH_MATCHER_OK)
+      return context_stop(ctx, SALTS_SEARCH_CONTEXT_INVALID);
+    matching = found == SALTS_SEARCH_MATCHER_OK;
+  } else {
+    salts_search_literal_span first = {0};
+    const salts_search_literal_status found = salts_search_literal_find(
+        ctx->literal, line->bytes, line->length, 0, &first);
+    if (found != SALTS_SEARCH_LITERAL_NOT_FOUND &&
+        found != SALTS_SEARCH_LITERAL_OK)
+      return context_stop(ctx, SALTS_SEARCH_CONTEXT_INVALID);
+    matching = found == SALTS_SEARCH_LITERAL_OK;
+  }
   if (matching) {
     const size_t oldest = ctx->stored == ctx->before_count ?
                           ctx->next_slot : 0;
