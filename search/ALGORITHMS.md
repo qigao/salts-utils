@@ -95,6 +95,35 @@ Supporting tests: `test_salts_search_ignore` covers nested and cross-source
 precedence, exception/parent exclusion, escaped markers/trailing spaces,
 CRLF/NUL, rollback, stable 64-bit-friendly indexing and bounded resources.
 
+### A3 stage 3: one traversal policy for CLI glob, Ignore and Hidden
+
+`search_policy.[ch]` adds a **memory-only** traversal decision, never a
+new filesystem walker or regex parser. It reuses the exact Stage-1 Glob
+NFA and Stage-2 Ignore rule set. It evaluates each ancestor directory
+before its child and publishes `VISIT`, `SKIP_FILE` or `PRUNE_DIRECTORY`
+with one typed reason and winning rule index. The caller supplies bounded
+immutable Override rules, path input and scratch; all query operations
+are allocation-free. Each compiled Override owns only its Glob tokens.
+
+- CLI `-g 'pattern'` whitelists; CLI `-g '!pattern'` excludes (inverse of
+  `.gitignore` negation). Last matching CLI rule wins and takes priority
+  over Ignore and hidden defaults.
+- Once positive CLI Glob rules exist, an unmatched **file** is excluded,
+  but an unmatched **directory** remains traversable. This prevents
+  false negatives from pruning `src/` for a search for `*.c`.
+- An excluded directory (whether by Ignore, explicit Glob, or hidden
+  default) is pruned before any child can re-include itself. A matching
+  positive rule for that directory can override its Ignore/hidden state.
+- `include_hidden=false` hides each basename beginning with `.` unless
+  an earlier Ignore whitelist or explicit override matches that entry.
+  Unicode/case conversion beyond ASCII is not claimed.
+- The basename-only rule fix in #714 ensures whitelist on a parent
+  directory does **not** incorrectly allow every hidden descendant.
+
+Native file discovery, Git repository detection, global config load,
+real symlink traversal policy, and full-tree Git/rg conformance are still
+not implemented. They belong to the later filesystem-adapter gate and
+must not be inferred from these in-memory tests.
 ## Algorithm and complexity
 
 A0 uses the **Two-Way** string matching algorithm (Crochemore–Perrin): maximal suffix in two lexicographic orders yields the critical position and period. For periodic patterns it retains the matched prefix as *memory* after shifts; for aperiodic patterns it uses the guaranteed-safe long shift. The prefix equality test chooses between them. Pattern preprocessing is O(m), each find is worst-case O(n+m) comparisons with O(1) per-call workspace, not including the O(m) owned needle bytes.
@@ -110,7 +139,8 @@ Single-byte patterns use standard C `memchr`. The planned SIMD prefilter in #705
 - [ ] A2 context-before/after output and any requested encoding conversion.
 - [x] A3 stage1 compiled Glob NFA with bounded caller scratch + C11 differential tests (stacked Draft, not final).
 - [x] A3 stage2 memory-only Gitignore source/scope/negation evaluator and bounded C11 tests (Draft; final CI pending).
-- [ ] A3 automatic rule discovery, hidden/CLI glob/repository policy and full differential conformance; A4 full C11 acceptance and CI.
+- [x] A3 stage3 memory-only CLI glob/hidden traversal policy, typed prune decisions and bounded C11 tests (stacked Draft).
+- [ ] A3 real ignore discovery, Git repository boundary/global config, symlinks and full-tree differential conformance; A4 full C11 acceptance and CI.
 - [ ] B0 Salts FS/CFlow file/mmap integration (blocked by A4 and upstream migration).
 
 Do not create installer or consumer projects/workflows to test this module. Register its test in the existing `BUILD_TESTS` CTest graph and keep the work **Draft** until the exact-head CI and full A0 acceptance are verified. No fallback engine or extra search parser is allowed.
