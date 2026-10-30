@@ -72,6 +72,11 @@ static size_t trim_unescaped_spaces(const unsigned char *bytes, size_t length) {
 
 static bool contains_slash(const unsigned char *pattern, size_t length) {
   size_t i;
+  /* A final '/' declares directories only; it does NOT anchor a basename
+   * rule to the ignore-file root. Git treats 'build/' like 'build' at any
+   * depth, restricted to directories. Leading and interior slashes anchor. */
+  if (length > 1 && pattern[length - 1u] == '/')
+    --length;
   for (i = 0; i < length; ++i)
     if (pattern[i] == '/')
       return true;

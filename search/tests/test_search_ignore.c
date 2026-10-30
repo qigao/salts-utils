@@ -57,10 +57,14 @@ spec("search A3 memory-only hierarchical ignore rules") {
     add_file(&f, SALTS_SEARCH_IGNORE_GITIGNORE, "",
              "build/\n!build/keep.txt\n");
     check_result(&f, "build", true, SALTS_SEARCH_IGNORE_EXCLUDE);
+    check_result(&f, "src/nested/build", true, SALTS_SEARCH_IGNORE_EXCLUDE);
+    check_result(&f, "src/nested/build/a.txt", false, SALTS_SEARCH_IGNORE_EXCLUDE);
     check_result(&f, "build/keep.txt", false, SALTS_SEARCH_IGNORE_EXCLUDE);
     /* A rule that re-includes the parent directory allows a child exception. */
     add_file(&f, SALTS_SEARCH_IGNORE_GITIGNORE, "", "!build/\n");
     check_result(&f, "build", true, SALTS_SEARCH_IGNORE_INCLUDE);
+    check_result(&f, "src/nested/build", true, SALTS_SEARCH_IGNORE_INCLUDE);
+    check_result(&f, "src/nested/build/a.txt", false, SALTS_SEARCH_IGNORE_NONE);
     check_result(&f, "build/keep.txt", false, SALTS_SEARCH_IGNORE_INCLUDE);
     check_result(&f, "build/other.txt", false, SALTS_SEARCH_IGNORE_NONE);
     salts_search_ignore_destroy(&f.set);

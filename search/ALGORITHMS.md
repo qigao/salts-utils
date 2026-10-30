@@ -63,6 +63,8 @@ unmodified. `out_error_line` identifies the first offending line.
 
 Rule semantics implemented in this candidate:
 
+- Directory-only `build/` matches folders named `build` at every depth;
+  a trailing slash alone does not anchor to the owner directory.
 - Comments, escaped leading `#` or `!`, `!` negation, escaped trailing spaces,
   CRLF (including final trailing CR without LF), slash-rooted, basename, recursive and directory-only patterns.
 - Explicit source priority: `.rgignore` > `.ignore` > `.gitignore` >
