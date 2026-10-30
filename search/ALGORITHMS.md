@@ -205,6 +205,29 @@ parity remain outside this gate. Android/iOS target TRE package cache-only
 recovery is separate: the earlier iOS CI source-built a missing target
 TRE archive although native source/build and CTests passed.
 
+### A4 stage2: exact first-match highlight spans (Draft candidate)
+
+`salts_search_context_event` now carries `has_match_span` and
+`match_byte_start`/`match_byte_end` as **absolute, half-open byte
+offsets** for MATCH events. The offsets come from the original Two-Way
+or unique TRE exact matcher result on the **complete line**, added to the
+64-bit `line.byte_start` with overflow checks. They are not derived
+from C string termination or decoded characters: NUL, UTF-8 byte input,
+large offsets above 4 GiB and zero-width matches are unambiguous.
+
+BEFORE/AFTER events have `has_match_span=false` and zeroed offsets;
+an empty match has `has_match_span=true` and equal start/end. Tests
+exercise both legacy Literal context and the unified TRE/Literal entry,
+including anchors, alternating regex precedence, UTF-8 raw bytes,
+empty-line `^$`, and near-UINT64_MAX source positions.
+
+**Scope boundary:** This is the FIRST match on each result line, not
+full multi-match highlighting. Literal overlapping matches and true
+multiple TRE spans still require separate A4 acceptance. Never
+enumerate Regex matches by reslicing the remaining suffix, as that
+changes anchor/word-boundary context. No alternate regex parser,
+fallback or filesystem I/O is introduced.
+
 ## Algorithm and complexity
 
 A0 uses the **Two-Way** string matching algorithm (Crochemore–Perrin): maximal suffix in two lexicographic orders yields the critical position and period. For periodic patterns it retains the matched prefix as *memory* after shifts; for aperiodic patterns it uses the guaranteed-safe long shift. The prefix equality test chooses between them. Pattern preprocessing is O(m), each find is worst-case O(n+m) comparisons with O(1) per-call workspace, not including the O(m) owned needle bytes.
@@ -217,7 +240,9 @@ Single-byte patterns use standard C `memchr`. The planned SIMD prefilter in #705
 - [ ] A0 canonical Salts SIMD scan integration and scalar/SIMD parity.
 - [x] A1 candidate single TRE static provider wrapper and POSIX priority admission, awaiting exact-head binary package/CTest verification.
 - [ ] A1 full regex resource/leftmost-first parity and cache-only cross-RID admission.
-- [x] A4 prep: query-selected Literal/TRE matcher + bounded A2 context candidate (Draft; CI pending).
+- [x] A4 prep: query-selected Literal/TRE matcher + bounded A2 context (CI #41058232362 SUCCESS).
+- [x] A4 stage2 candidate: first-match absolute byte highlight span on existing callbacks (Draft, CI pending).
+- [ ] A4 all-match enumeration, TRE internal resource bounds, broad fuzz/perf/concurrency gates.
 - [x] A2 line-delimiting primitive + deterministic C11 tests (stacked draft, not accepted).
 - [x] A2 memory-only bounded before/after literal context collector (stacked Draft; exact-head CI pending).
 - [ ] A2 encoding conversions, unique TRE regex integration and further streaming conformance.

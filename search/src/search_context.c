@@ -8,13 +8,24 @@ static bool context_stop(salts_search_context *ctx,
 }
 
 static bool emit_line(salts_search_context *ctx, const salts_search_line *line,
-                      salts_search_context_kind kind) {
+                      salts_search_context_kind kind,
+                      uint64_t relative_start, uint64_t relative_end) {
   salts_search_context_event ev;
   if (ctx->latest_emitted_line &&
       line->line_number <= ctx->latest_emitted_line)
     return true; /* Already emitted by a prior match or after-context. */
   ev.line = *line;
   ev.kind = kind;
+  ev.has_match_span = kind == SALTS_SEARCH_CONTEXT_MATCH;
+  ev.match_byte_start = 0;
+  ev.match_byte_end = 0;
+  if (ev.has_match_span) {
+    if (relative_start > relative_end || relative_end > line->length ||
+        line->byte_start > UINT64_MAX - relative_end)
+      return context_stop(ctx, SALTS_SEARCH_CONTEXT_INVALID);
+    ev.match_byte_start = line->byte_start + relative_start;
+    ev.match_byte_end = line->byte_start + relative_end;
+  }
   ev.group_break = ctx->emitted_lines != 0 &&
                    line->line_number - ctx->latest_emitted_line > 1;
   /* Stop is terminal. The callback is not permitted to reenter this collector. */
@@ -83,6 +94,8 @@ salts_search_context_status salts_search_context_init_matcher(
 bool salts_search_context_accept_line(void *raw, const salts_search_line *line) {
   salts_search_context *ctx = (salts_search_context *)raw;
   bool matching;
+  uint64_t match_relative_start = 0;
+  uint64_t match_relative_end = 0;
   size_t i;
   if (!ctx || !ctx->initialized || ctx->finished ||
       ctx->status != SALTS_SEARCH_CONTEXT_OK)
@@ -112,6 +125,10 @@ bool salts_search_context_accept_line(void *raw, const salts_search_line *line) 
         found != SALTS_SEARCH_MATCHER_OK)
       return context_stop(ctx, SALTS_SEARCH_CONTEXT_INVALID);
     matching = found == SALTS_SEARCH_MATCHER_OK;
+    if (matching) {
+      match_relative_start = match.byte_start;
+      match_relative_end = match.byte_end;
+    }
   } else {
     salts_search_literal_span first = {0};
     const salts_search_literal_status found = salts_search_literal_find(
@@ -120,6 +137,10 @@ bool salts_search_context_accept_line(void *raw, const salts_search_line *line) 
         found != SALTS_SEARCH_LITERAL_OK)
       return context_stop(ctx, SALTS_SEARCH_CONTEXT_INVALID);
     matching = found == SALTS_SEARCH_LITERAL_OK;
+    if (matching) {
+      match_relative_start = (uint64_t)first.start;
+      match_relative_end = (uint64_t)first.end;
+    }
   }
   if (matching) {
     const size_t oldest = ctx->stored == ctx->before_count ?
@@ -130,15 +151,16 @@ bool salts_search_context_accept_line(void *raw, const salts_search_line *line) 
       const salts_search_line prev = {slot->bytes, slot->length, slot->start,
                                      slot->end, slot->number,
                                      slot->terminator_size};
-      if (!emit_line(ctx, &prev, SALTS_SEARCH_CONTEXT_BEFORE))
+      if (!emit_line(ctx, &prev, SALTS_SEARCH_CONTEXT_BEFORE, 0, 0))
         return false;
     }
     ++ctx->match_lines;
-    if (!emit_line(ctx, line, SALTS_SEARCH_CONTEXT_MATCH))
+    if (!emit_line(ctx, line, SALTS_SEARCH_CONTEXT_MATCH,
+                   match_relative_start, match_relative_end))
       return false;
     ctx->after_remaining = ctx->after_count;
   } else if (ctx->after_remaining) {
-    if (!emit_line(ctx, line, SALTS_SEARCH_CONTEXT_AFTER))
+    if (!emit_line(ctx, line, SALTS_SEARCH_CONTEXT_AFTER, 0, 0))
       return false;
     --ctx->after_remaining;
   }
