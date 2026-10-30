@@ -10,6 +10,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 enum {
     MD_TEST_INPUT_MAX = 1 << 20,
@@ -18,6 +22,17 @@ enum {
 };
 
 int main(int argc,char **argv) {
+#if defined(_WIN32)
+    /* Test oracles compare byte-exact HTML/AST against CommonMark/GFM.
+     * On Windows CRT text streams convert LF <-> CRLF, causing false
+     * mismatches and erasing CRLF source evidence. No normalization is allowed.
+     */
+    if (_setmode(_fileno(stdin), _O_BINARY) == -1 ||
+        _setmode(_fileno(stdout), _O_BINARY) == -1) {
+        fputs("Markdown test oracle: cannot select binary stdio\n", stderr);
+        return 2;
+    }
+#endif
     /* An explicit CLI flag requests unsafe literal HTML for trusted
      * conformance testing. Zero-argument invocation stays production-safe. */
     const bool spec_mode=argc==2 && !strcmp(argv[1],"--spec-html");

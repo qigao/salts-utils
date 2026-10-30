@@ -8,6 +8,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#if defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 enum {
     SALTS_MD_ORACLE_MAX_SOURCE = 1 << 20,
@@ -67,6 +71,17 @@ static void write_hex(const char *bytes, size_t length) {
 }
 
 int main(void) {
+#if defined(_WIN32)
+    /* Test oracles compare byte-exact HTML/AST against CommonMark/GFM.
+     * On Windows CRT text streams convert LF <-> CRLF, causing false
+     * mismatches and erasing CRLF source evidence. No normalization is allowed.
+     */
+    if (_setmode(_fileno(stdin), _O_BINARY) == -1 ||
+        _setmode(_fileno(stdout), _O_BINARY) == -1) {
+        fputs("Markdown test oracle: cannot select binary stdio\n", stderr);
+        return 2;
+    }
+#endif
     char *bytes=(char *)malloc(SALTS_MD_ORACLE_MAX_SOURCE+1u);
     if (!bytes) {
         fputs("AST dump: source allocation failed\n",stderr);
