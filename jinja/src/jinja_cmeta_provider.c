@@ -126,6 +126,8 @@ typedef struct JINJA_CMETA_CAPTURE_TRACE {
   vstr captured_view;
   /* Transforms retain original source coverage but lose byte identity. */
   int ambiguous;
+  /* Derived concatenation owners, never borrowed active Jinja stack frames. */
+  struct JINJA_CMETA_CAPTURE_TRACE *derived_next;
 } JINJA_CMETA_CAPTURE_TRACE;
 
 /* One single-threaded owner for the complete render, including every include.
@@ -162,6 +164,9 @@ typedef struct JINJA_CMETA_RENDER_STATE {
   JINJA_CMETA_EMIT_KIND traced_kind;
   size_t traced_source_end;
   JINJA_CMETA_CAPTURE_TRACE *capture_traces;
+  /* Captures and derived strings share one cumulative source-range budget. */
+  JINJA_CMETA_CAPTURE_TRACE *derived_traces;
+  size_t derived_trace_count;
   size_t capture_source_range_count;
   const JINJA_CMETA_CAPTURE_TRACE *active_provenance;
   size_t active_provenance_cursor;
@@ -9680,6 +9685,12 @@ static JINJA_CMETA_STATUS jinja_title_value(JINJA_CMETA_PROVIDER *provider,
   return status;
 }
 
+/* Forward declaration: source ledgers are owned by the later tracing section,
+ * not by string conversion, and are allocated ONLY for traced execution. */
+static JINJA_CMETA_STATUS jinja_trace_concat_sources(JINJA_CMETA_PROVIDER *provider,
+    const JINJA_CMETA_VALUE *left, const JINJA_CMETA_VALUE *right,
+    size_t left_bytes, JINJA_CMETA_VALUE *result);
+
 /* Repr may run filtered-loop macros. Each conversion owns its unpublished bytes;
  * a completed child can therefore publish stable views without joining its parent.
  * O(output bytes) copying/temporary storage; all live payload shares one byte budget. */
@@ -9688,8 +9699,12 @@ static JINJA_CMETA_STATUS jinja_concat_values(JINJA_CMETA_PROVIDER *provider,
                                               JINJA_CMETA_VALUE *result) {
   JINJA_CMETA_STRING_OUTPUT output = {.provider = provider};
   JINJA_CMETA_STATUS status = jinja_concat_operand(&output, left);
+  const size_t left_bytes = jinja_cmeta_text_length(&output.bytes);
   if (status == JINJA_CMETA_OK) status = jinja_concat_operand(&output, right);
-  return jinja_string_finish(&output, status, result);
+  status = jinja_string_finish(&output, status, result);
+  if (status == JINJA_CMETA_OK && provider->shared.trace != NULL)
+    status = jinja_trace_concat_sources(provider, left, right, left_bytes, result);
+  return status;
 }
 
 typedef struct JINJA_CMETA_FORMAT_SPEC {
@@ -10655,6 +10670,75 @@ static int jinja_trace_append_range(JINJA_CMETA_PROVIDER *provider,
   slot->ranges[slot->count++] = range;
   ++provider->shared.capture_source_range_count;
   return 1;
+}
+
+
+/* An absent source is a real UNKNOWN segment, never an invitation to attach
+ * the neighboring capture's source to its bytes. These ranges are author
+ * CANDIDATES; concat never publishes a precise original-character relation. */
+static JINJA_CMETA_STATUS jinja_trace_concat_side(JINJA_CMETA_PROVIDER *provider,
+    JINJA_CMETA_CAPTURE_TRACE *derived,
+    const JINJA_CMETA_VALUE *source, size_t begin, size_t end) {
+  if (begin == end) return JINJA_CMETA_OK;
+  const JINJA_CMETA_CAPTURE_TRACE *origin = source->trace_origin;
+  if (origin != NULL && origin->count != 0u) {
+    for (size_t i = 0u; i < origin->count; ++i) {
+      JINJA_CMETA_EMIT_SOURCE_RANGE candidate = origin->ranges[i];
+      /* A multi-source concatenation retains both identities for diagnostics,
+       * but never assumes that a filtered/sliced input maps characterwise. */
+      candidate.intermediate_begin = begin;
+      candidate.intermediate_end = end;
+      if (candidate.kind != JINJA_CMETA_EMIT_UNKNOWN)
+        candidate.kind = JINJA_CMETA_EMIT_INDIRECT;
+      if (!jinja_trace_append_range(provider, derived, candidate))
+        return provider->shared.status;
+    }
+  } else {
+    const JINJA_CMETA_EMIT_SOURCE_RANGE unknown = {
+        .template_name = vstr_from_cstr(""),
+        .source_begin = SIZE_MAX, .source_end = SIZE_MAX,
+        .intermediate_begin = begin, .intermediate_end = end,
+        .kind = JINJA_CMETA_EMIT_UNKNOWN};
+    if (!jinja_trace_append_range(provider, derived, unknown))
+      return provider->shared.status;
+  }
+  return JINJA_CMETA_OK;
+}
+
+static JINJA_CMETA_STATUS jinja_trace_concat_sources(JINJA_CMETA_PROVIDER *provider,
+    const JINJA_CMETA_VALUE *left, const JINJA_CMETA_VALUE *right,
+    size_t left_bytes, JINJA_CMETA_VALUE *result) {
+  /* Ordinary untraced values do not acquire a synthetic author history. */
+  if ((left->trace_origin == NULL && right->trace_origin == NULL) ||
+      result->kind != JINJA_CMETA_VALUE_STRING || result->string.len == 0u)
+    return JINJA_CMETA_OK;
+  if (left_bytes > result->string.len)
+    return JINJA_CMETA_ERR_METADATA;
+  if (provider->shared.derived_trace_count >= provider->shared.node_capacity) {
+    jinja_provider_fail(provider, JINJA_CMETA_ERR_CAPACITY);
+    return provider->shared.status;
+  }
+  /* A fixed-address, render-local owner. Install in the cleanup chain before
+   * admitting any ranges so an allocation/capacity error cannot leak. */
+  JINJA_CMETA_CAPTURE_TRACE *derived = (JINJA_CMETA_CAPTURE_TRACE *)
+      jinja_provider_zero(provider, 1u, sizeof(*derived));
+  if (derived == NULL) return provider->shared.status;
+  derived->derived_next = provider->shared.derived_traces;
+  provider->shared.derived_traces = derived;
+  ++provider->shared.derived_trace_count;
+  derived->bytes = result->string.len;
+  derived->captured_view = result->string;
+  derived->ambiguous = 1;
+  JINJA_CMETA_STATUS status = jinja_trace_concat_side(
+      provider, derived, left, 0u, left_bytes);
+  if (status == JINJA_CMETA_OK)
+    status = jinja_trace_concat_side(provider, derived, right,
+        left_bytes, result->string.len);
+  if (status != JINJA_CMETA_OK) return status;
+  result->trace_origin = derived;
+  result->trace_indirect = 1u;
+  result->trace_transformed = 1u;
+  return JINJA_CMETA_OK;
 }
 
 static int jinja_trace_capture_write(JINJA_CMETA_PROVIDER *provider,
@@ -12534,6 +12618,12 @@ static void jinja_provider_destroy(void *storage) {
     jinja_cmeta_text_destroy(&provider->shared.capture_buffers[i]);
     if (provider->shared.capture_traces != NULL)
       jinja_cmeta_memory_drop(provider->shared.capture_traces[i].ranges);
+  }
+  while (provider->shared.derived_traces != NULL) {
+    JINJA_CMETA_CAPTURE_TRACE *derived = provider->shared.derived_traces;
+    provider->shared.derived_traces = derived->derived_next;
+    jinja_cmeta_memory_drop(derived->ranges);
+    jinja_cmeta_memory_drop(derived);
   }
   while (provider->shared.closures != NULL) {
     JINJA_CMETA_CLOSURE *closure = provider->shared.closures;

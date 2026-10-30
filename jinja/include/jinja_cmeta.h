@@ -401,9 +401,14 @@ typedef struct JINJA_CMETA_EMIT_CALL {
   JINJA_CMETA_EMIT_CALL_KIND kind;
 } JINJA_CMETA_EMIT_CALL;
 
-/** An original-source COVERAGE interval for an intermediate capture buffer.
+/** An original-source COVERAGE interval for intermediate/captured bytes.
  * All ends are exclusive. These are not per-character/column identity claims:
  * original whitespace trimming, newline folding and filters can change bytes.
+ * M2c derived concatenations may expose MULTIPLE candidate author intervals,
+ * including an explicitly unknown constituent: kind == EMIT_UNKNOWN,
+ * empty template_name and source_begin == source_end == SIZE_MAX. Unknown is
+ * NOT an offset of zero in the current template; never guess its origin.
+ * Candidate intervals may overlap, and are not suitable for precise columns.
  */
 typedef struct JINJA_CMETA_EMIT_SOURCE_RANGE {
   vstr template_name;
