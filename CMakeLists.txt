@@ -139,6 +139,8 @@ else()
   add_subdirectory(cron)
   add_subdirectory(mustache)
 endif()
+# The search core is a standalone C11 algorithm target; not an installed SDK.
+add_subdirectory(search)
 # Salts owns Unicode 17. The released Salts SDK must provide the one
 # canonical imported target before Jinja or any other consumer is configured.
 # Never compile or export the legacy local Unicode implementation here.
