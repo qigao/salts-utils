@@ -6,8 +6,15 @@ add_library(salts_search_algorithms STATIC
   src/search_glob.c
   src/search_ignore.c
   src/search_policy.c
-  src/search_context.c)
+  src/search_context.c
+  src/search_regex.c)
+# One exact TRE 0.9.0 C provider. Missing package/target is a hard error.
+find_package(unofficial-tre 0.9.0 CONFIG REQUIRED)
+if(NOT TARGET unofficial::tre::tre)
+  message(FATAL_ERROR "Pinned static unofficial::tre::tre is required")
+endif()
 target_compile_features(salts_search_algorithms PUBLIC c_std_11)
+target_link_libraries(salts_search_algorithms PRIVATE unofficial::tre::tre)
 set_target_properties(salts_search_algorithms PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   FOLDER "search")
@@ -27,6 +34,11 @@ if(BUILD_TESTS)
     FOLDER "search/tests")
   cmake_add_test(test_salts_search_context
     SOURCES tests/test_search_context.c
+    INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    LIBS salts_search_algorithms Salts::TinyTest
+    FOLDER "search/tests")
+  cmake_add_test(test_salts_search_regex
+    SOURCES tests/test_search_regex.c
     INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/src"
     LIBS salts_search_algorithms Salts::TinyTest
     FOLDER "search/tests")

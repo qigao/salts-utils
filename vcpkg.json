@@ -12,6 +12,7 @@
     "miniaudio",
     "lua",
     "quickjs-ng",
+    "tre",
     {
       "name": "zstd"
     }
