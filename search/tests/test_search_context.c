@@ -10,6 +10,8 @@ typedef struct event_copy {
   unsigned char bytes[MAX_LINE_BYTES];
   size_t length;
   uint64_t line, start, end;
+  bool has_match_span;
+  uint64_t match_start, match_end;
 } event_copy;
 typedef struct context_probe {
   event_copy events[MAX_EVENTS];
@@ -33,6 +35,9 @@ static bool context_collect(void *user, const salts_search_context_event *ev) {
   dst->line = ev->line.line_number;
   dst->start = ev->line.byte_start;
   dst->end = ev->line.byte_end;
+  dst->has_match_span = ev->has_match_span;
+  dst->match_start = ev->match_byte_start;
+  dst->match_end = ev->match_byte_end;
   if (dst->length)
     memcpy(dst->bytes, ev->line.bytes, dst->length);
   return true;
@@ -76,6 +81,15 @@ spec("search A2 bounded literal match context") {
     check_equal(p.events[4].kind, SALTS_SEARCH_CONTEXT_MATCH);
     check_equal(p.events[5].kind, SALTS_SEARCH_CONTEXT_AFTER);
     check_equal(p.events[6].kind, SALTS_SEARCH_CONTEXT_AFTER);
+    check_true(!p.events[0].has_match_span);
+    check_true(p.events[2].has_match_span);
+    check_equal(p.events[2].match_start, UINT64_C(532));
+    check_equal(p.events[2].match_end, UINT64_C(535));
+    check_true(!p.events[3].has_match_span);
+    check_true(p.events[4].has_match_span);
+    check_equal(p.events[4].match_start, UINT64_C(564));
+    check_equal(p.events[4].match_end, UINT64_C(567));
+    check_true(!p.events[5].has_match_span);
     check_equal(salts_search_context_finish(&ctx), SALTS_SEARCH_CONTEXT_CLOSED);
     salts_search_literal_destroy(&pattern);
   }
@@ -121,6 +135,9 @@ spec("search A2 bounded literal match context") {
     check_equal(p.events[0].kind, SALTS_SEARCH_CONTEXT_MATCH);
     check_equal(p.events[0].bytes[0], 0);
     check_equal(p.events[0].bytes[4], 0);
+    check_true(p.events[0].has_match_span);
+    check_equal(p.events[0].match_start, UINT64_C(11));
+    check_equal(p.events[0].match_end, UINT64_C(14));
     check_equal(salts_search_context_finish(&ctx), SALTS_SEARCH_CONTEXT_OK);
     salts_search_literal_destroy(&pattern);
   }

@@ -30,6 +30,14 @@ typedef struct salts_search_context_event {
   salts_search_line line; /* borrowed until callback returns */
   salts_search_context_kind kind;
   bool group_break; /* first emitted line after a non-contiguous prior result */
+  /* A MATCH event carries the FIRST exact byte span on the original line.
+   * BEFORE/AFTER events have has_match_span=false and zeroed span fields.
+   * Empty matches remain valid with has_match_span=true and equal offsets.
+   * No multi-match/rg leftmost-first claim is made by this structure.
+   */
+  bool has_match_span;
+  uint64_t match_byte_start;
+  uint64_t match_byte_end; /* exclusive, absolute source byte offsets */
 } salts_search_context_event;
 
 typedef bool (*salts_search_context_callback)(void *user,

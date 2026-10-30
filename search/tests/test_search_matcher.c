@@ -12,6 +12,8 @@ typedef struct stream_probe {
   salts_search_context_kind kind[12];
   size_t count;
   bool group_break[12];
+  bool has_match_span[12];
+  uint64_t match_start[12], match_end[12];
 } stream_probe;
 
 static bool record_event(void *user, const salts_search_context_event *event) {
@@ -22,6 +24,9 @@ static bool record_event(void *user, const salts_search_context_event *event) {
   p->byte_start[p->count] = event->line.byte_start;
   p->kind[p->count] = event->kind;
   p->group_break[p->count] = event->group_break;
+  p->has_match_span[p->count] = event->has_match_span;
+  p->match_start[p->count] = event->match_byte_start;
+  p->match_end[p->count] = event->match_byte_end;
   ++p->count;
   return true;
 }
@@ -131,6 +136,19 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     check_equal(probe.line[1], UINT64_C(2));
     check_equal(probe.line[4], UINT64_C(5));
     check_equal(probe.byte_start[1], UINT64_C(3));
+    check_true(!probe.has_match_span[0]);
+    check_equal(probe.match_start[0], UINT64_C(0));
+    check_equal(probe.match_end[0], UINT64_C(0));
+    check_true(probe.has_match_span[1]);
+    check_equal(probe.match_start[1], UINT64_C(3));
+    check_equal(probe.match_end[1], UINT64_C(5));
+    check_true(!probe.has_match_span[2]);
+    check_equal(probe.match_start[2], UINT64_C(0));
+    check_equal(probe.match_end[2], UINT64_C(0));
+    check_true(probe.has_match_span[3]);
+    check_equal(probe.match_start[3], UINT64_C(11));
+    check_equal(probe.match_end[3], UINT64_C(13));
+    check_true(!probe.has_match_span[4]);
     check_true(!probe.group_break[3]);
     salts_search_matcher_destroy(&m);
   }
@@ -166,6 +184,72 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     check_equal(probe.line[1], UINT64_C(2));
     check_equal(probe.line[2], UINT64_C(3));
     check_equal(probe.kind[1], SALTS_SEARCH_CONTEXT_MATCH);
+    check_true(probe.has_match_span[1]);
+    check_equal(probe.match_start[1], UINT64_C(5));
+    check_equal(probe.match_end[1], UINT64_C(8));
+    check_true(!probe.has_match_span[0]);
+    check_true(!probe.has_match_span[2]);
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("preserves a valid zero-width TRE match on an empty line") {
+    salts_search_matcher m = {0};
+    salts_search_context ctx = {0};
+    stream_probe probe = {0};
+    const salts_search_line empty = {NULL, 0u, UINT64_C(12),
+                                     UINT64_C(12), UINT64_C(1), 1u};
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "^$", 2u, 16u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_context_init_matcher(&ctx, &m, NULL, 0u,
+                NULL, 0u, 16u, 0u, record_event, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_true(salts_search_context_accept_line(&ctx, &empty));
+    check_equal(salts_search_context_finish(&ctx), SALTS_SEARCH_CONTEXT_OK);
+    check_equal(probe.count, 1u);
+    check_equal(probe.kind[0], SALTS_SEARCH_CONTEXT_MATCH);
+    check_true(probe.has_match_span[0]);
+    check_equal(probe.match_start[0], UINT64_C(12));
+    check_equal(probe.match_end[0], UINT64_C(12));
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("returns original UTF-8 byte spans above 4 GiB and near UINT64_MAX") {
+    salts_search_matcher m = {0};
+    salts_search_context ctx = {0};
+    stream_probe probe = {0};
+    const unsigned char bytes[] = {'X', 0xe4, 0xb8, 0xad, 'Y'};
+    const salts_search_line line = {bytes, sizeof(bytes),
+        UINT64_C(0x100000000), UINT64_C(0x100000005), UINT64_C(1), 0u};
+    const unsigned char near_bytes[] = {'x', 0, 'z'};
+    const salts_search_line near_line = {near_bytes, sizeof(near_bytes),
+        UINT64_MAX - UINT64_C(3), UINT64_MAX, UINT64_C(1), 0u};
+
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_LITERAL,
+                bytes + 1u, 3u, 16u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_context_init_matcher(&ctx, &m, NULL, 0u,
+                NULL, 0u, 16u, 0u, record_event, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_true(salts_search_context_accept_line(&ctx, &line));
+    check_equal(probe.count, 1u);
+    check_true(probe.has_match_span[0]);
+    check_equal(probe.match_start[0], UINT64_C(0x100000001));
+    check_equal(probe.match_end[0], UINT64_C(0x100000004));
+    check_equal(salts_search_context_finish(&ctx), SALTS_SEARCH_CONTEXT_OK);
+    salts_search_matcher_destroy(&m);
+
+    memset(&ctx, 0, sizeof(ctx));
+    memset(&probe, 0, sizeof(probe));
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_LITERAL,
+                near_bytes, 1u, 16u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_context_init_matcher(&ctx, &m, NULL, 0u,
+                NULL, 0u, 16u, 0u, record_event, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_true(salts_search_context_accept_line(&ctx, &near_line));
+    check_equal(probe.count, 1u);
+    check_true(probe.has_match_span[0]);
+    check_equal(probe.match_start[0], UINT64_MAX - UINT64_C(3));
+    check_equal(probe.match_end[0], UINT64_MAX - UINT64_C(2));
+    check_equal(salts_search_context_finish(&ctx), SALTS_SEARCH_CONTEXT_OK);
     salts_search_matcher_destroy(&m);
   }
 
