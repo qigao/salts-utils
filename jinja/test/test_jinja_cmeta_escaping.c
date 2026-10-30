@@ -643,7 +643,12 @@ spec("Jinja M2b copied versus transformed capture provenance") {
       if (status == JINJA_CMETA_OK) {
         check_equal(sample.bytes, strlen(cases[case_index].expected));
         check_equal(memcmp(sample.output, cases[case_index].expected, sample.bytes), 0);
-        const char *position = strstr(source, cases[case_index].author_bytes);
+        /* Search within the actual capture body, not the Jinja statement:
+         * the requested "ab" also occurs inside the variable name "label".
+         * A pre-body strstr() falsely tests source offsets in the identifier. */
+        const char *opening_end = strstr(source, "%}");
+        const char *position = opening_end == NULL ? NULL
+            : strstr(opening_end + 2u, cases[case_index].author_bytes);
         check_not_null(position);
         if (position != NULL) {
           const size_t original = (size_t)(position - source);
