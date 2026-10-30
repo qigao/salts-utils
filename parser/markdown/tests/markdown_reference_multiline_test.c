@@ -36,7 +36,7 @@ static int check_case(const reference_case *f) {
     VERIFY(doc!=NULL);
     /* All syntax, text and metadata must survive mutation/free of input. */
     memset(input,0x6f,n);free(input);input=NULL;
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     VERIFY(v.raw_markdown_bytes==n && !memcmp(v.raw_markdown,f->source,n));
     VERIFY(count_kind(v,SALTS_MD_BLOCK_LINK)==(f->href?1u:0u));
@@ -119,7 +119,7 @@ static int check_safety(void) {
         const size_t n=strlen(rejected[k]);
         VERIFY(salts_md_parse(rejected[k],n,128u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(count_kind(v,SALTS_MD_BLOCK_LINK)==1u);
         char output[256];memset(output,0x68,sizeof(output));size_t need=SIZE_MAX;
         VERIFY(salts_md_render_html(&v,128u,output,sizeof(output),&need)==
@@ -143,7 +143,7 @@ static int check_budgets(void) {
     memcpy(source+n,"'\n\n[foo]\n",9u);n+=9u;
     VERIFY(salts_md_parse(source,n,256u,n+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    VERIFY(count_kind(salts_md_document_view(doc),SALTS_MD_BLOCK_LINK_TITLE)==1u);
+    VERIFY(count_kind(salts_md_get_document_view(doc),SALTS_MD_BLOCK_LINK_TITLE)==1u);
     salts_md_document_destroy(doc);doc=NULL;
     /* One additional title line is a resource error, not a literal fallback. */
     n=sizeof(start)-1u;
@@ -185,7 +185,7 @@ static int check_label_budget(void) {
     VERIFY(n>0 && (size_t)n<sizeof(source));
     VERIFY(salts_md_parse(source,(size_t)n,256u,(size_t)n+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     VERIFY(count_kind(v,SALTS_MD_BLOCK_LINK)==0u);
     VERIFY(v.raw_markdown_bytes==(size_t)n && !memcmp(v.raw_markdown,source,(size_t)n));
@@ -205,7 +205,7 @@ static int check_adjacent_owners(void) {
     const size_t n=sizeof(source)-1u;
     VERIFY(salts_md_parse(source,n,256u,n+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     VERIFY(v.raw_markdown_bytes==n && !memcmp(v.raw_markdown,source,n));
     VERIFY(count_kind(v,SALTS_MD_BLOCK_LINK)==2u);
@@ -269,7 +269,7 @@ static int check_inline_label_owners(void) {
         const size_t n=strlen(f->source);
         VERIFY(salts_md_parse(f->source,n,256u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         VERIFY(count_kind(v,SALTS_MD_BLOCK_EMPHASIS)==(k<2u?1u:0u));
         VERIFY(count_kind(v,SALTS_MD_BLOCK_STRONG)==0u);
@@ -323,8 +323,8 @@ static int check_document_binding_isolation(void) {
     VERIFY(salts_md_parse(two,sizeof(two)-1u,2u,sizeof(two),&rejected)==
            SALTS_MD_CAPACITY_EXCEEDED);
     VERIFY(rejected==NULL);
-    const salts_md_rich_document_view a=salts_md_document_view(first);
-    const salts_md_rich_document_view b=salts_md_document_view(second);
+    const salts_md_rich_document_view a=salts_md_get_document_view(first);
+    const salts_md_rich_document_view b=salts_md_get_document_view(second);
     VERIFY(salts_md_rich_document_validate(&a,128u)==SALTS_MD_OK);
     VERIFY(salts_md_rich_document_validate(&b,128u)==SALTS_MD_OK);
     char output[256];size_t required=SIZE_MAX;
@@ -335,7 +335,7 @@ static int check_document_binding_isolation(void) {
     VERIFY(salts_md_parse(missing,sizeof(missing)-1u,128u,sizeof(missing),
                         &undefined)==SALTS_MD_OK);
     VERIFY(undefined!=NULL);
-    const salts_md_rich_document_view u=salts_md_document_view(undefined);
+    const salts_md_rich_document_view u=salts_md_get_document_view(undefined);
     VERIFY(salts_md_rich_document_validate(&u,128u)==SALTS_MD_OK);
     VERIFY(count_kind(u,SALTS_MD_BLOCK_LINK)==0u);
     VERIFY(salts_md_render_html(&u,128u,output,sizeof(output),&required)==SALTS_MD_OK);
@@ -379,7 +379,7 @@ static int check_root_label_boundary_rejections(void) {
         const size_t n=strlen(inputs[k]);
         VERIFY(salts_md_parse(inputs[k],n,512u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,512u)==SALTS_MD_OK);
         VERIFY(count_kind(v,SALTS_MD_BLOCK_LINK)==0u);
         VERIFY(v.raw_markdown_bytes==n &&
@@ -406,7 +406,7 @@ static int check_root_label_boundary_rejections(void) {
     VERIFY(salts_md_parse(source,(size_t)n,512u,(size_t)n+1u,
                          &doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,512u)==SALTS_MD_OK);
     VERIFY(count_kind(v,SALTS_MD_BLOCK_LINK)==0u);
     VERIFY(v.raw_markdown_bytes==(size_t)n &&
@@ -428,7 +428,7 @@ static int check_root_label_boundary_rejections(void) {
     VERIFY(salts_md_parse(source,(size_t)n,512u,(size_t)n+1u,
                          &doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view two_lf=salts_md_document_view(doc);
+    const salts_md_rich_document_view two_lf=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&two_lf,512u)==SALTS_MD_OK);
     VERIFY(count_kind(two_lf,SALTS_MD_BLOCK_LINK)==0u);
 done:

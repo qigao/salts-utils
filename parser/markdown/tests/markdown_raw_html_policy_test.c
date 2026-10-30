@@ -27,7 +27,7 @@ static int verify(const raw_fixture *f) {
     salts_md_document *doc=NULL,*rejected=NULL;
     CHECK(salts_md_parse(input,n,256u,n+1u,&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);memset(input,'!',n);free(input);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==n &&
           !memcmp(v.raw_markdown,f->source,n));
@@ -250,7 +250,7 @@ static int verify_block(const raw_fixture *f) {
     const size_t n=strlen(f->source);
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(f->source,n,256u,n+1u,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     size_t blocks=0u;
     for(size_t i=0u;i<v.document.block_count;++i)
         blocks+=v.document.blocks[i].kind==SALTS_MD_BLOCK_RAW_HTML_BLOCK;
@@ -275,7 +275,7 @@ static int test_type6_exact_admission(void) {
         const char *input=nonblocks[k];size_t n=strlen(input);
         CHECK(salts_md_parse(input,n,128u,n+1u,&doc)==SALTS_MD_OK);
         CHECK(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         size_t raw_blocks=0u,emphasis=0u;
         for(size_t i=0u;i<v.document.block_count;++i) {
@@ -305,7 +305,7 @@ static int test_multiline_html_nonadmission(void) {
         CHECK(salts_md_parse(rejected[k],bytes,256u,bytes+1u,&doc)
               ==SALTS_MD_OK);
         CHECK(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(raw_nodes(v)==0u);
         salts_md_document_destroy(doc);

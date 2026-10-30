@@ -880,7 +880,7 @@ static int test_golden(const html_fixture *f) {
     size_t source_bytes=strlen(f->markdown);
     CHECK(salts_md_parse(f->markdown,source_bytes,256u,
                         source_bytes+1u,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     size_t need=SIZE_MAX;
     CHECK(salts_md_render_html(&v,256u,NULL,0u,&need)==SALTS_MD_OK);
     const size_t expect=strlen(f->html);
@@ -922,7 +922,7 @@ static int test_gfm_metadata_fails_closed(void) {
         salts_md_document *doc=NULL;
         const size_t n=strlen(inputs[which]);
         CHECK(salts_md_parse(inputs[which],n,128u,n+1u,&doc)==SALTS_MD_OK);
-        salts_md_rich_document_view view=salts_md_document_view(doc);
+        salts_md_rich_document_view view=salts_md_get_document_view(doc);
         size_t target=SIZE_MAX;
         for(size_t i=0u;i<view.document.block_count;++i)
             if(view.document.blocks[i].kind==targets[which])target=i;
@@ -964,7 +964,7 @@ static int test_gfm_forged_table_shape_fails_closed(void) {
     salts_md_document *owned=NULL;
     CHECK(salts_md_parse(source,sizeof(source)-1u,128u,sizeof(source),
                         &owned)==SALTS_MD_OK);
-    const salts_md_rich_document_view original=salts_md_document_view(owned);
+    const salts_md_rich_document_view original=salts_md_get_document_view(owned);
     CHECK(salts_md_rich_document_validate(&original,128u)==SALTS_MD_OK);
     size_t table=SIZE_MAX,first_cell=SIZE_MAX;
     for(size_t i=1u;i<original.document.block_count;++i) {
@@ -1045,7 +1045,7 @@ static int test_gfm_forged_row_cardinality_fails_closed(void) {
     salts_md_document *owned=NULL;
     CHECK(salts_md_parse(source,sizeof(source)-1u,128u,sizeof(source),
                         &owned)==SALTS_MD_OK);
-    const salts_md_rich_document_view canonical=salts_md_document_view(owned);
+    const salts_md_rich_document_view canonical=salts_md_get_document_view(owned);
     CHECK(salts_md_rich_document_validate(&canonical,128u)==SALTS_MD_OK);
     const size_t count=canonical.document.block_count;
     size_t row=SIZE_MAX,first_cell=SIZE_MAX,second_cell=SIZE_MAX;
@@ -1111,7 +1111,7 @@ static int test_gfm_forged_ancestry_fails_closed(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(cases[k].markdown,bytes,128u,bytes+1u,
                             &owned)==SALTS_MD_OK);
-        salts_md_rich_document_view view=salts_md_document_view(owned);
+        salts_md_rich_document_view view=salts_md_get_document_view(owned);
         const size_t count=view.document.block_count;
         salts_md_block *copy=(salts_md_block*)malloc(
             count*sizeof(salts_md_block));
@@ -1148,7 +1148,7 @@ static int test_gfm_forged_ancestry_fails_closed(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(source,sizeof(source)-1u,128u,sizeof(source),
                             &owned)==SALTS_MD_OK);
-        salts_md_rich_document_view view=salts_md_document_view(owned);
+        salts_md_rich_document_view view=salts_md_get_document_view(owned);
         const size_t count=view.document.block_count;
         salts_md_block *copy=(salts_md_block*)malloc(count*sizeof(*copy));
         CHECK(copy!=NULL);
@@ -1183,7 +1183,7 @@ static int test_gfm_forged_ancestry_fails_closed(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(source,sizeof(source)-1u,128u,sizeof(source),
                             &owned)==SALTS_MD_OK);
-        salts_md_rich_document_view view=salts_md_document_view(owned);
+        salts_md_rich_document_view view=salts_md_get_document_view(owned);
         const size_t count=view.document.block_count;
         salts_md_block *copy=(salts_md_block*)malloc(count*sizeof(*copy));
         CHECK(copy!=NULL);
@@ -1234,7 +1234,7 @@ static int test_gfm_nested_unsafe_url_atomicity(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(inputs[k],bytes,128u,bytes+1u,
                             &owned)==SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(owned);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owned);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         bool link_found=false;
         for(size_t i=1u;i<v.document.block_count;++i)
@@ -1283,7 +1283,7 @@ static int test_gfm_forged_container_chain_fails_closed(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(samples[k].source,n,128u,n+1u,
                             &owned)==SALTS_MD_OK);
-        salts_md_rich_document_view v=salts_md_document_view(owned);
+        salts_md_rich_document_view v=salts_md_get_document_view(owned);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         size_t baseline=SIZE_MAX;
         CHECK(salts_md_render_html(&v,128u,NULL,0u,&baseline)==SALTS_MD_OK);
@@ -1344,7 +1344,7 @@ static int test_gfm_mixed_metadata_adversaries(void) {
         const size_t n=strlen(sources[k]);
         salts_md_document *doc=NULL;
         CHECK(salts_md_parse(sources[k],n,MAX_BLOCKS,n+1u,&doc)==SALTS_MD_OK);
-        const salts_md_rich_document_view original=salts_md_document_view(doc);
+        const salts_md_rich_document_view original=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&original,MAX_BLOCKS)==SALTS_MD_OK);
         const size_t count=original.document.block_count;
         CHECK(count>5u && count<MAX_BLOCKS);
@@ -1486,7 +1486,7 @@ static int test_gfm_deep_illegal_owners_fail_closed(void) {
     salts_md_document *owned=NULL;
     CHECK(salts_md_parse(source,sizeof(source)-1u,MAX_NODES,
                         sizeof(source),&owned)==SALTS_MD_OK);
-    const salts_md_rich_document_view original=salts_md_document_view(owned);
+    const salts_md_rich_document_view original=salts_md_get_document_view(owned);
     CHECK(salts_md_rich_document_validate(&original,MAX_NODES)==SALTS_MD_OK);
     size_t paragraph=SIZE_MAX,quote=SIZE_MAX,list=SIZE_MAX;
     size_t item=SIZE_MAX,checkbox=SIZE_MAX,table=SIZE_MAX;
@@ -1579,7 +1579,7 @@ static int test_unsafe_unsupported(void) {
     const char bad_url[]="[bad](javascript:alert)\n";
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(bad_url,sizeof(bad_url)-1u,64,256,&doc)==SALTS_MD_OK);
-    salts_md_rich_document_view v=salts_md_document_view(doc);
+    salts_md_rich_document_view v=salts_md_get_document_view(doc);
     bool found_link=false;
     for(size_t i=0;i<v.document.block_count;++i)
         if(v.document.blocks[i].kind==SALTS_MD_BLOCK_LINK) found_link=true;
@@ -1596,7 +1596,7 @@ static int test_unsafe_unsupported(void) {
     /* A second supported link scheme rejection keeps data: fail-closed. */
     const char data_url[]="[bad](data:text/html)\n";
     CHECK(salts_md_parse(data_url,sizeof(data_url)-1u,64,256,&doc)==SALTS_MD_OK);
-    v=salts_md_document_view(doc);
+    v=salts_md_get_document_view(doc);
     found_link=false;
     for(size_t i=0;i<v.document.block_count;++i)
         if(v.document.blocks[i].kind==SALTS_MD_BLOCK_LINK) found_link=true;
@@ -1610,7 +1610,7 @@ static int test_unsafe_unsupported(void) {
 
     const char image[]="![alt](https://example.org/x.png)\n";
     CHECK(salts_md_parse(image,sizeof(image)-1u,64,256,&doc)==SALTS_MD_OK);
-    v=salts_md_document_view(doc);
+    v=salts_md_get_document_view(doc);
     CHECK(salts_md_render_html(&v,64u,NULL,0u,&needed)==SALTS_MD_OK);
     const char image_html[]=
         "<p><img src=\"https://example.org/x.png\" alt=\"alt\" /></p>\n";

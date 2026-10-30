@@ -120,7 +120,7 @@ static int check_fixture(const fixture *f) {
         fprintf(stderr, "%s: parse rc=%d, doc=%p\n",f->name,(int)rc,(void *)doc);
         return 1;
     }
-    const salts_md_rich_document_view view = salts_md_document_view(doc);
+    const salts_md_rich_document_view view = salts_md_get_document_view(doc);
     int failed = 0;
     if (salts_md_rich_document_validate(&view,256u) != SALTS_MD_OK ||
         view.raw_markdown_bytes != size ||

@@ -50,7 +50,7 @@ static int check_entity(const md_entity_fixture *fixture) {
     CHECK(salts_md_parse(fixture->source,raw_bytes,256u,raw_bytes+1u,
                         &owner)==SALTS_MD_OK);
     CHECK(owner!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(owner);
+    const salts_md_rich_document_view v=salts_md_get_document_view(owner);
     CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==raw_bytes);
     CHECK(memcmp(v.raw_markdown,fixture->source,raw_bytes)==0);
@@ -102,7 +102,7 @@ static int check_fence_metadata(const char *source,const char *expected) {
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(source,n,256u,n+1u,&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);
-    const salts_md_rich_document_view view=salts_md_document_view(doc);
+    const salts_md_rich_document_view view=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&view,256u)==SALTS_MD_OK);
     CHECK(view.raw_markdown_bytes==n);
     CHECK(memcmp(view.raw_markdown,source,n)==0);
@@ -150,7 +150,7 @@ static int test_fence_entities_and_expanding_utf8(void) {
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(expanded,size,256u,size+1u,&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     CHECK(v.document.source_bytes>v.raw_markdown_bytes);
     CHECK(v.raw_markdown_bytes==size);
@@ -260,7 +260,7 @@ int main(void) {
     salts_md_document *document=NULL;
     CHECK(salts_md_parse(repeated,used,128u,used+1u,&document)==SALTS_MD_OK);
     CHECK(document!=NULL);
-    const salts_md_rich_document_view view=salts_md_document_view(document);
+    const salts_md_rich_document_view view=salts_md_get_document_view(document);
     CHECK(salts_md_rich_document_validate(&view,128u)==SALTS_MD_OK);
     CHECK(view.raw_markdown_bytes==used);
     CHECK(memcmp(view.raw_markdown,repeated,used)==0);

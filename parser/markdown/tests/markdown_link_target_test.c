@@ -31,7 +31,7 @@ static int verify_link(const link_fixture *f) {
     CHECK(salts_md_parse(f->markdown,raw_size,128u,raw_size+1u,
                         &owner)==SALTS_MD_OK);
     CHECK(owner!=NULL);
-    const salts_md_rich_document_view view=salts_md_document_view(owner);
+    const salts_md_rich_document_view view=salts_md_get_document_view(owner);
     CHECK(salts_md_rich_document_validate(&view,128u)==SALTS_MD_OK);
     CHECK(view.raw_markdown_bytes==raw_size);
     CHECK(memcmp(view.raw_markdown,f->markdown,raw_size)==0);
@@ -103,7 +103,7 @@ static int verify_safe_rejection(const char *source) {
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(source,n,128u,n+1u,&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);
-    const salts_md_rich_document_view view=salts_md_document_view(doc);
+    const salts_md_rich_document_view view=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&view,128u)==SALTS_MD_OK);
     CHECK(kind_count(view,SALTS_MD_BLOCK_LINK)==1u);
     char buffer[256];
@@ -244,7 +244,7 @@ int main(void) {
         CHECK(salts_md_parse(blocked_inline[i],len,256u,len+1u,&doc)==
               SALTS_MD_OK);
         CHECK(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(kind_count(v,SALTS_MD_BLOCK_LINK)==0u);
         CHECK(v.raw_markdown_bytes==len &&
@@ -256,7 +256,7 @@ int main(void) {
     CHECK(salts_md_parse(budget_source,sizeof(budget_source)-1u,
                         256u,sizeof(budget_source),&budget)==SALTS_MD_OK);
     CHECK(budget!=NULL);
-    const size_t exact_nodes=salts_md_document_view(budget).document.block_count;
+    const size_t exact_nodes=salts_md_get_document_view(budget).document.block_count;
     CHECK(exact_nodes>1u);
     salts_md_document_destroy(budget);
     CHECK(salts_md_parse(budget_source,sizeof(budget_source)-1u,
@@ -283,7 +283,7 @@ int main(void) {
         salts_md_document *doc=NULL;
         CHECK(salts_md_parse(opaque[k].source,n,128u,n+1u,&doc)==SALTS_MD_OK);
         CHECK(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         CHECK(v.raw_markdown_bytes==n);
         CHECK(!memcmp(v.raw_markdown,opaque[k].source,n));
@@ -341,7 +341,7 @@ int main(void) {
     CHECK(salts_md_parse(invalid,sizeof(invalid)-1u,128u,
                         sizeof(invalid),&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(kind_count(v,SALTS_MD_BLOCK_LINK)==0u);
     salts_md_document_destroy(doc);
 
@@ -361,7 +361,7 @@ int main(void) {
         CHECK(salts_md_parse(invalid_targets[i],len,256u,len+1u,
                             &negative)==SALTS_MD_OK);
         CHECK(negative!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(negative);
+        const salts_md_rich_document_view v=salts_md_get_document_view(negative);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(kind_count(v,SALTS_MD_BLOCK_LINK)==0u);
         CHECK(v.raw_markdown_bytes==len);
@@ -383,7 +383,7 @@ int main(void) {
         const size_t n=strlen(emph_shield[k]);
         CHECK(salts_md_parse(emph_shield[k],n,128u,n+1u,&doc)==SALTS_MD_OK);
         CHECK(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         CHECK(v.raw_markdown_bytes==n);
         CHECK(!memcmp(v.raw_markdown,emph_shield[k],n));
@@ -443,7 +443,7 @@ int main(void) {
         CHECK(salts_md_parse(email_rejections[k],bytes,128u,bytes+1u,
                             &negative)==SALTS_MD_OK);
         CHECK(negative!=NULL);
-        const salts_md_rich_document_view view=salts_md_document_view(negative);
+        const salts_md_rich_document_view view=salts_md_get_document_view(negative);
         CHECK(salts_md_rich_document_validate(&view,128u)==SALTS_MD_OK);
         CHECK(kind_count(view,SALTS_MD_BLOCK_LINK)==0u);
         CHECK(view.raw_markdown_bytes==bytes);

@@ -45,7 +45,7 @@ static int verify(const sample *f) {
     const size_t input_size=strlen(f->source);
     if(salts_md_parse(f->source,input_size,256u,input_size+1u,&owner)!=
        SALTS_MD_OK || !owner) return 1;
-    const salts_md_rich_document_view view=salts_md_document_view(owner);
+    const salts_md_rich_document_view view=salts_md_get_document_view(owner);
     int fail=salts_md_rich_document_validate(&view,256u)!=SALTS_MD_OK ||
        view.raw_markdown_bytes!=input_size ||
        memcmp(view.raw_markdown,f->source,input_size)!=0;
@@ -94,7 +94,7 @@ static int verify_list_owned_fence(void) {
     const size_t bytes=sizeof(source)-1u;
     if(salts_md_parse(source,bytes,256u,bytes+1u,&owner)!=SALTS_MD_OK ||
        !owner) return 1;
-    const salts_md_rich_document_view view=salts_md_document_view(owner);
+    const salts_md_rich_document_view view=salts_md_get_document_view(owner);
     int fail=salts_md_rich_document_validate(&view,256u)!=SALTS_MD_OK;
     size_t fences=0u;
     for(size_t i=1u;i<view.document.block_count&&!fail;++i) {
@@ -132,7 +132,7 @@ static int verify_quoted_list_fence(void) {
     const size_t n=sizeof(source)-1u;
     if(salts_md_parse(source,n,256u,n+1u,&doc)!=SALTS_MD_OK || !doc)
         return 1;
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     int failed=salts_md_rich_document_validate(&v,256u)!=SALTS_MD_OK ||
                v.raw_markdown_bytes!=n ||
                memcmp(v.raw_markdown,source,n)!=0;
@@ -219,7 +219,7 @@ int main(void) {
         return 1;
     }
     const salts_md_rich_document_view accepted_view=
-        salts_md_document_view(accepted);
+        salts_md_get_document_view(accepted);
     unsigned accepted_quotes=0u;
     for(size_t i=1u;i<accepted_view.document.block_count;++i)
         if(accepted_view.document.blocks[i].kind==SALTS_MD_BLOCK_QUOTE)

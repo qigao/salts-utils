@@ -83,7 +83,7 @@ static int run_case(const indented_fixture *f) {
     salts_md_document *owner=NULL;
     REQUIRE(salts_md_parse(f->source,size,256u,size+1u,&owner)==SALTS_MD_OK);
     REQUIRE(owner!=NULL);
-    const salts_md_rich_document_view view=salts_md_document_view(owner);
+    const salts_md_rich_document_view view=salts_md_get_document_view(owner);
     REQUIRE(salts_md_rich_document_validate(&view,256u)==SALTS_MD_OK);
     REQUIRE(view.raw_markdown_bytes==size);
     REQUIRE(!memcmp(view.raw_markdown,f->source,size));

@@ -26,7 +26,7 @@ static int verify(const break_case *c) {
     salts_md_document *owned=NULL;
     CHECK(salts_md_parse(c->markdown,n,128u,n+1u,&owned)==SALTS_MD_OK);
     CHECK(owned!=NULL);
-    salts_md_rich_document_view v=salts_md_document_view(owned);
+    salts_md_rich_document_view v=salts_md_get_document_view(owned);
     CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==n);
     CHECK(memcmp(v.raw_markdown,c->markdown,n)==0);

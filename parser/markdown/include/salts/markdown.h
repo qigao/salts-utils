@@ -187,7 +187,7 @@ salts_md_status salts_md_parse(const char *input, size_t length,
 void salts_md_document_destroy(salts_md_document *doc);
 
 /* Borrowed immutable view. Empty view returned for NULL. */
-salts_md_rich_document_view salts_md_document_view(const salts_md_document *doc);
+salts_md_rich_document_view salts_md_get_document_view(const salts_md_document *doc);
 
 
 #ifdef __cplusplus

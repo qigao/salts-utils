@@ -197,7 +197,7 @@ static bool check_case(const fixture *f) {
     REQUIRE(salts_md_parse(f->markdown,source_length,512u,
                           source_length+1u,&owner)==SALTS_MD_OK);
     REQUIRE(owner!=NULL);
-    const salts_md_rich_document_view view=salts_md_document_view(owner);
+    const salts_md_rich_document_view view=salts_md_get_document_view(owner);
     REQUIRE(salts_md_rich_document_validate(&view,512u)==SALTS_MD_OK);
     REQUIRE(view.raw_markdown_bytes==source_length);
     REQUIRE(memcmp(view.raw_markdown,f->markdown,source_length)==0);
@@ -268,7 +268,7 @@ static bool test_partial_tab_code_ownership(void) {
         const size_t bytes=strlen(samples[k].markdown);
         if(salts_md_parse(samples[k].markdown,bytes,128u,bytes+1u,&doc)!=
            SALTS_MD_OK || !doc) return false;
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         bool success=salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK &&
             v.raw_markdown_bytes==bytes &&
             !memcmp(v.raw_markdown,samples[k].markdown,bytes);
@@ -345,7 +345,7 @@ static bool test_thematic_item_ownership(void) {
         const size_t size=strlen(samples[k]);
         if(salts_md_parse(samples[k],size,256u,size+1u,&owned)!=SALTS_MD_OK ||
            !owned)return false;
-        const salts_md_rich_document_view v=salts_md_document_view(owned);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owned);
         bool ok=salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK &&
             v.raw_markdown_bytes==size &&
             !memcmp(v.raw_markdown,samples[k],size);
@@ -387,7 +387,7 @@ static bool test_item_rule_last_node_budget(void) {
         salts_md_document *doc=NULL;
         if(salts_md_parse(sources[k],n,128u,n+1u,&doc)!=SALTS_MD_OK ||
            !doc)return false;
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         const size_t count=v.document.block_count;
         const bool valid=salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK &&
             count>1u &&

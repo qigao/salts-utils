@@ -31,7 +31,7 @@ static int test_reference(const reference_fixture *f) {
     const size_t n=strlen(f->markdown);
     VERIFY(salts_md_parse(f->markdown,n,128u,n+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
     VERIFY(v.raw_markdown_bytes==n);
     VERIFY(!memcmp(v.raw_markdown,f->markdown,n));
@@ -99,7 +99,7 @@ static int test_unsafe(void) {
     const size_t n=sizeof(source)-1u;
     VERIFY(salts_md_parse(source,n,128u,n+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(kind_count(v,SALTS_MD_BLOCK_LINK)==1u);
     char output[128];memset(output,0x39,sizeof(output));
     size_t required=SIZE_MAX;
@@ -119,7 +119,7 @@ static int test_fence(void) {
     const size_t n=sizeof(source)-1u;
     VERIFY(salts_md_parse(source,n,128u,n+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
     VERIFY(kind_count(v,SALTS_MD_BLOCK_CODE_FENCE)==1u);
     VERIFY(kind_count(v,SALTS_MD_BLOCK_LINK)==0u);
@@ -153,7 +153,7 @@ static int test_container_definition_fences(void) {
         const size_t n=strlen(blocked[i]);
         VERIFY(salts_md_parse(blocked[i],n,128u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         VERIFY(kind_count(v,SALTS_MD_BLOCK_LINK)==0u);
         VERIFY(v.raw_markdown_bytes==n &&
@@ -179,7 +179,7 @@ static int test_container_definition_fences(void) {
         const size_t n=strlen(source);
         VERIFY(salts_md_parse(source,n,256u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         VERIFY(kind_count(v,SALTS_MD_BLOCK_LINK)==1u);
         bool found=false;
@@ -206,7 +206,7 @@ static int test_container_definition_fences(void) {
         const size_t n=strlen(roots[i]);
         VERIFY(salts_md_parse(roots[i],n,128u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         VERIFY(kind_count(v,SALTS_MD_BLOCK_LINK)==1u);
         salts_md_document_destroy(doc);doc=NULL;
@@ -225,7 +225,7 @@ static int test_list_blank_scope(void) {
     const size_t n=sizeof(source)-1u;
     VERIFY(salts_md_parse(source,n,256u,n+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     VERIFY(v.raw_markdown_bytes==n && !memcmp(v.raw_markdown,source,n));
     VERIFY(kind_count(v,SALTS_MD_BLOCK_LINK)==2u);
@@ -278,7 +278,7 @@ static int test_list_capacity_isolation(void) {
             VERIFY(doc==NULL);
         } else {
             VERIFY(status==SALTS_MD_OK && doc!=NULL);
-            const salts_md_rich_document_view v=salts_md_document_view(doc);
+            const salts_md_rich_document_view v=salts_md_get_document_view(doc);
             VERIFY(salts_md_rich_document_validate(&v,1024u)==SALTS_MD_OK);
             VERIFY(v.raw_markdown_bytes==used &&
                    !memcmp(v.raw_markdown,source,used));
@@ -309,7 +309,7 @@ static int test_root_rule_owner_release(void) {
         const size_t n=strlen(sources[k]);
         VERIFY(salts_md_parse(sources[k],n,256u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view view=salts_md_document_view(doc);
+        const salts_md_rich_document_view view=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&view,256u)==SALTS_MD_OK);
         VERIFY(view.raw_markdown_bytes==n);
         VERIFY(!memcmp(view.raw_markdown,sources[k],n));
@@ -355,7 +355,7 @@ static int test_root_atx_owner_release(void) {
         const size_t bytes=strlen(cases[k]);
         VERIFY(salts_md_parse(cases[k],bytes,256u,bytes+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         VERIFY(v.raw_markdown_bytes==bytes);
         VERIFY(!memcmp(v.raw_markdown,cases[k],bytes));
@@ -428,7 +428,7 @@ static int test_root_fence_owner_release(void) {
         const size_t n=strlen(cases[k].source);
         VERIFY(salts_md_parse(cases[k].source,n,256u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         VERIFY(v.raw_markdown_bytes==n);
         VERIFY(!memcmp(v.raw_markdown,cases[k].source,n));
@@ -490,7 +490,7 @@ static int test_fence_definition_opacity(void) {
         const size_t n=strlen(sources[k]);
         VERIFY(salts_md_parse(sources[k],n,256u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         VERIFY(v.raw_markdown_bytes==n);
         VERIFY(!memcmp(v.raw_markdown,sources[k],n));
@@ -543,7 +543,7 @@ static int test_table_reference_owner(void) {
         VERIFY(salts_md_parse(cases[k].source,bytes,256u,bytes+1u,&doc)==
                SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         VERIFY(v.raw_markdown_bytes==bytes);
         VERIFY(!memcmp(v.raw_markdown,cases[k].source,bytes));
@@ -620,7 +620,7 @@ static int test_table_reference_capacity_isolation(void) {
     used+=sizeof(suffix)-1u;
     VERIFY(salts_md_parse(source,used,1024u,used+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,1024u)==SALTS_MD_OK);
     VERIFY(v.raw_markdown_bytes==used);
     VERIFY(!memcmp(v.raw_markdown,source,used));
@@ -705,7 +705,7 @@ static int test_table_list_competition(void) {
         VERIFY(salts_md_parse(cases[k].source,bytes,256u,bytes+1u,&doc)==
                SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         VERIFY(v.raw_markdown_bytes==bytes);
         VERIFY(!memcmp(v.raw_markdown,cases[k].source,bytes));
@@ -783,7 +783,7 @@ static int test_split_reference_block_barriers(void) {
         VERIFY(salts_md_parse(samples[k].source,n,128u,n+1u,&doc)==
                SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         VERIFY(v.raw_markdown_bytes==n);
         VERIFY(!memcmp(v.raw_markdown,samples[k].source,n));
@@ -820,7 +820,7 @@ static int test_split_reference_capacity_rollback(void) {
     const size_t n=sizeof(sample)-1u;
     VERIFY(salts_md_parse(sample,n,128u,n+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
     VERIFY(kind_count(v,SALTS_MD_BLOCK_LINK)==1u);
     const size_t nodes=v.document.block_count;
@@ -851,7 +851,7 @@ static int test_adjacent_split_title_ownership(void) {
     const size_t n=sizeof(sample)-1u;
     VERIFY(salts_md_parse(sample,n,256u,n+1u,&doc)==SALTS_MD_OK);
     VERIFY(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     VERIFY(v.raw_markdown_bytes==n);
     VERIFY(!memcmp(v.raw_markdown,sample,n));
@@ -920,7 +920,7 @@ static int test_split_title_rejection(void) {
         const size_t n=strlen(cases[k]);
         VERIFY(salts_md_parse(cases[k],n,128u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         VERIFY(v.raw_markdown_bytes==n);
         VERIFY(!memcmp(v.raw_markdown,cases[k],n));
@@ -950,7 +950,7 @@ static int test_split_title_last_text_budget(void) {
         const size_t n=strlen(sources[k]);
         VERIFY(salts_md_parse(sources[k],n,128u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         VERIFY(v.raw_markdown_bytes==n);
         VERIFY(!memcmp(v.raw_markdown,sources[k],n));
@@ -997,7 +997,7 @@ static int test_nested_link_precedence(void) {
         const size_t len=strlen(input);
         VERIFY(salts_md_parse(input,len,256u,len+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         VERIFY(kind_count(v,SALTS_MD_BLOCK_LINK)==cases[k].expected_links);
         for(size_t i=1u;i<v.document.block_count;++i) {
@@ -1058,7 +1058,7 @@ static int test_html_tag_delimiter_opacity(void) {
         const size_t n=strlen(cases[k].source);
         VERIFY(salts_md_parse(cases[k].source,n,256u,n+1u,&doc)==SALTS_MD_OK);
         VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         VERIFY(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         VERIFY(v.raw_markdown_bytes==n &&
                !memcmp(v.raw_markdown,cases[k].source,n));

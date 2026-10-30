@@ -50,7 +50,7 @@ static int check_fixture(const quote_fixture *f) {
     const size_t len=strlen(f->markdown);
     if(salts_md_parse(f->markdown,len,256u,len+1u,&doc)!=SALTS_MD_OK ||
        !doc) {fprintf(stderr,"%s: failed parse\n",f->name);return 1;}
-    const salts_md_rich_document_view view=salts_md_document_view(doc);
+    const salts_md_rich_document_view view=salts_md_get_document_view(doc);
     int failed=0;size_t quoted=0,needed=0;
     if(salts_md_rich_document_validate(&view,256u)!=SALTS_MD_OK ||
        view.raw_markdown_bytes!=len ||

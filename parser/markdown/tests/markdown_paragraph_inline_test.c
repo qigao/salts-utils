@@ -41,7 +41,7 @@ static int check_multiline(const char *source,const char *before,
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(source,n,128u,n+1u,&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==n);
     CHECK(memcmp(v.raw_markdown,source,n)==0);
@@ -72,7 +72,7 @@ static int check_crossline_hard(const char *source,uint8_t origin,
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(source,n,128u,n+1u,&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==n);
     CHECK(memcmp(v.raw_markdown,source,n)==0);
@@ -110,7 +110,7 @@ static int check_hard_after_nested_inline(
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(source,n,128u,n+1u,&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==n);
     CHECK(memcmp(v.raw_markdown,source,n)==0);
@@ -208,7 +208,7 @@ int main(void) {
         salts_md_document *doc=NULL;
         CHECK(salts_md_parse(barriers[i],n,128u,n+1u,&doc)==SALTS_MD_OK);
         CHECK(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         CHECK(kind_count(v,SALTS_MD_BLOCK_EMPHASIS)==0u);
         CHECK(v.raw_markdown_bytes==n);

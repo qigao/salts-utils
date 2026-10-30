@@ -29,7 +29,7 @@ _Static_assert(sizeof(cases)/sizeof(cases[0])==11u,"fixture denominator");
 static int check(const fixture *f){
  salts_md_document *d=NULL;size_t n=strlen(f->input);
  if(salts_md_parse(f->input,n,256u,n+1u,&d)!=SALTS_MD_OK||!d)return 1;
- const salts_md_rich_document_view v=salts_md_document_view(d);
+ const salts_md_rich_document_view v=salts_md_get_document_view(d);
  int failed=salts_md_rich_document_validate(&v,256u)!=SALTS_MD_OK ||
             v.raw_markdown_bytes!=n || memcmp(v.raw_markdown,f->input,n)!=0;
  unsigned quotes=0,lists=0,fences=0;

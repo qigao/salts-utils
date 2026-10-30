@@ -91,7 +91,7 @@ static int test_fixture(const unicode_case *f) {
     memset(owned,0x39,n);
     free(owned);
     CHECK(rc==SALTS_MD_OK && d!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(d);
+    const salts_md_rich_document_view v=salts_md_get_document_view(d);
     CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==n);
     CHECK(!memcmp(v.raw_markdown,f->markdown,n));

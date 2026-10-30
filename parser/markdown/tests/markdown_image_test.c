@@ -35,7 +35,7 @@ static int verify_image(const image_fixture *f) {
     REQUIRE(salts_md_parse(owned,n,512u,n+1u,&doc)==SALTS_MD_OK);
     REQUIRE(doc!=NULL);
     memset(owned,'x',n);free(owned); /* raw source is document-owned */
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     REQUIRE(salts_md_rich_document_validate(&v,512u)==SALTS_MD_OK);
     REQUIRE(v.raw_markdown_bytes==n &&
             !memcmp(v.raw_markdown,f->markdown,n));
@@ -81,7 +81,7 @@ static int test_image_title_and_safety(void) {
     REQUIRE(salts_md_parse(src,sizeof(src)-1u,256u,sizeof(src),&doc)==
             SALTS_MD_OK);
     REQUIRE(doc!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     REQUIRE(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     REQUIRE(count_kind(v,SALTS_MD_BLOCK_IMAGE)==1u);
     REQUIRE(count_kind(v,SALTS_MD_BLOCK_IMAGE_TITLE)==1u);
@@ -108,7 +108,7 @@ static int test_image_title_and_safety(void) {
     const char empty[]="![x](/i \"\")\n";
     REQUIRE(salts_md_parse(empty,sizeof(empty)-1u,128u,sizeof(empty),&doc)==
             SALTS_MD_OK);
-    const salts_md_rich_document_view e=salts_md_document_view(doc);
+    const salts_md_rich_document_view e=salts_md_get_document_view(doc);
     REQUIRE(count_kind(e,SALTS_MD_BLOCK_IMAGE_TITLE)==1u);
     REQUIRE(salts_md_render_html(&e,128u,out,sizeof(out),&actual)==SALTS_MD_OK);
     REQUIRE(!strcmp(out,"<p><img src=\"/i\" alt=\"x\" title=\"\" /></p>\n"));
@@ -122,7 +122,7 @@ static int test_image_title_and_safety(void) {
     for(size_t i=0u;i<sizeof(rejected_src)/sizeof(rejected_src[0]);++i) {
         const char *bad=rejected_src[i];const size_t n=strlen(bad);
         REQUIRE(salts_md_parse(bad,n,128u,n+1u,&doc)==SALTS_MD_OK);
-        const salts_md_rich_document_view view=salts_md_document_view(doc);
+        const salts_md_rich_document_view view=salts_md_get_document_view(doc);
         REQUIRE(count_kind(view,SALTS_MD_BLOCK_IMAGE)==1u);
         memset(out,0x37,sizeof(out));
         REQUIRE(salts_md_render_html(&view,128u,out,sizeof(out),&actual)==
@@ -150,7 +150,7 @@ static int test_document_owner_isolation(void) {
                               &docs[k])==SALTS_MD_OK);
     }
     for(size_t k=0u;k<2u;++k) {
-        const salts_md_rich_document_view v=salts_md_document_view(docs[k]);
+        const salts_md_rich_document_view v=salts_md_get_document_view(docs[k]);
         REQUIRE(count_kind(v,SALTS_MD_BLOCK_IMAGE)==1u);
         char out[256];size_t size=SIZE_MAX;
         REQUIRE(salts_md_render_html(&v,128u,out,sizeof(out),&size)==SALTS_MD_OK);

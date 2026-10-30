@@ -68,7 +68,7 @@ static int test_block_and_inline_baseline(void) {
     salts_md_document *owned=NULL;
     CHECK(salts_md_parse(md,sizeof(md)-1,512,16384,&owned)==SALTS_MD_OK);
     CHECK(owned!=NULL);
-    const salts_md_rich_document_view v=salts_md_document_view(owned);
+    const salts_md_rich_document_view v=salts_md_get_document_view(owned);
     CHECK(salts_md_rich_document_validate(&v,512)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==sizeof(md)-1);
     CHECK(!memcmp(v.raw_markdown,md,sizeof(md)-1));
@@ -102,7 +102,7 @@ static int test_setext_unicode_and_crlf(void) {
         "outside\r\n";
     salts_md_document *owned=NULL;
     CHECK(salts_md_parse(md,sizeof(md)-1,64,2048,&owned)==SALTS_MD_OK);
-    const salts_md_rich_document_view v=salts_md_document_view(owned);
+    const salts_md_rich_document_view v=salts_md_get_document_view(owned);
     CHECK(kinds(v,SALTS_MD_BLOCK_HEADING)==2);
     CHECK(kinds(v,SALTS_MD_BLOCK_PARAGRAPH)==1);
     CHECK(text_is(v,"中😀"));
@@ -122,13 +122,13 @@ static int test_unclosed_fence_and_empty(void) {
     const char sample[]=TICK TICK TICK "txt\nline";
     salts_md_document *d=NULL;
     CHECK(salts_md_parse(sample,sizeof(sample)-1,8,128,&d)==SALTS_MD_OK);
-    const salts_md_rich_document_view v=salts_md_document_view(d);
+    const salts_md_rich_document_view v=salts_md_get_document_view(d);
     CHECK(kinds(v,SALTS_MD_BLOCK_CODE_FENCE)==1);
     CHECK(text_is(v,"line"));
     salts_md_document_destroy(d);
 
     CHECK(salts_md_parse("",0,1,1,&d)==SALTS_MD_OK);
-    const salts_md_rich_document_view empty=salts_md_document_view(d);
+    const salts_md_rich_document_view empty=salts_md_get_document_view(d);
     CHECK(empty.document.block_count==1);
     CHECK(empty.document.source_bytes==0);
     CHECK(salts_md_rich_document_validate(&empty,1)==SALTS_MD_OK);
@@ -146,11 +146,11 @@ static int test_limit_and_failure_transaction(void) {
     CHECK(d==NULL);
     CHECK(salts_md_parse(NULL,3,128,128,&d)==SALTS_MD_INVALID_ARGUMENT);
     CHECK(d==NULL);
-    CHECK(salts_md_document_view(NULL).document.blocks==NULL);
+    CHECK(salts_md_get_document_view(NULL).document.blocks==NULL);
 
     salts_md_document *good=NULL;
     CHECK(salts_md_parse(md,sizeof(md)-1,128,128,&good)==SALTS_MD_OK);
-    const salts_md_rich_document_view view=salts_md_document_view(good);
+    const salts_md_rich_document_view view=salts_md_get_document_view(good);
     CHECK(salts_md_rich_document_validate(&view,128)==SALTS_MD_OK);
     CHECK(salts_md_rich_document_validate(&view,1)==SALTS_MD_CAPACITY_EXCEEDED);
     salts_md_document_destroy(good);
@@ -162,8 +162,8 @@ static int test_deterministic_ids(void) {
     salts_md_document *first=NULL, *again=NULL;
     CHECK(salts_md_parse(md,sizeof(md)-1,128,128,&first)==SALTS_MD_OK);
     CHECK(salts_md_parse(md,sizeof(md)-1,128,128,&again)==SALTS_MD_OK);
-    const salts_md_rich_document_view a=salts_md_document_view(first);
-    const salts_md_rich_document_view b=salts_md_document_view(again);
+    const salts_md_rich_document_view a=salts_md_get_document_view(first);
+    const salts_md_rich_document_view b=salts_md_get_document_view(again);
     CHECK(a.document.block_count==b.document.block_count);
     for(size_t i=0;i<a.document.block_count;++i) {
         CHECK(a.document.blocks[i].stable_id==b.document.blocks[i].stable_id);
@@ -185,7 +185,7 @@ static int test_gfm_tables(void) {
         "After table.\n";
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(markdown,sizeof(markdown)-1,128,2048,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,128)==SALTS_MD_OK);
     CHECK(kinds(v,SALTS_MD_BLOCK_TABLE)==1);
     CHECK(kinds(v,SALTS_MD_BLOCK_TABLE_ROW)==3);
@@ -217,7 +217,7 @@ static int test_gfm_tables(void) {
 
     const char invalid[]="| A | B |\n| not | delimiter |\n";
     CHECK(salts_md_parse(invalid,sizeof(invalid)-1,128,128,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view no_table=salts_md_document_view(doc);
+    const salts_md_rich_document_view no_table=salts_md_get_document_view(doc);
     CHECK(kinds(no_table,SALTS_MD_BLOCK_TABLE)==0);
     salts_md_document_destroy(doc);
 
@@ -240,7 +240,7 @@ static int test_gfm_table_termination_and_uneven_rows(void) {
         "## Section\n";
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(sample,sizeof(sample)-1,256,4096,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view view=salts_md_document_view(doc);
+    const salts_md_rich_document_view view=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&view,256)==SALTS_MD_OK);
     CHECK(kinds(view,SALTS_MD_BLOCK_TABLE)==1);
     CHECK(kinds(view,SALTS_MD_BLOCK_TABLE_ROW)==5);
@@ -276,7 +276,7 @@ static int test_gfm_table_alignment_ownership(void) {
         "| first | second |\n";
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(sample,sizeof(sample)-1u,128u,512u,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view view=salts_md_document_view(doc);
+    const salts_md_rich_document_view view=salts_md_get_document_view(doc);
     CHECK(kinds(view,SALTS_MD_BLOCK_TABLE)==1u);
     size_t table=SIZE_MAX;
     for(size_t i=0u;i<view.document.block_count;++i)
@@ -327,7 +327,7 @@ static int test_gfm_delimiter_column_ownership(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(samples[k].source,bytes,256u,bytes+1u,
                             &owned)==SALTS_MD_OK);
-        const salts_md_rich_document_view view=salts_md_document_view(owned);
+        const salts_md_rich_document_view view=salts_md_get_document_view(owned);
         CHECK(salts_md_rich_document_validate(&view,256u)==SALTS_MD_OK);
         CHECK(kinds(view,SALTS_MD_BLOCK_TABLE)==samples[k].tables);
         CHECK(view.raw_markdown_bytes==bytes);
@@ -360,7 +360,7 @@ static int test_gfm_even_backslash_cell_ownership(void) {
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(markdown,sizeof(markdown)-1u,128u,256u,
                         &doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(kinds(v,SALTS_MD_BLOCK_TABLE)==1u);
     CHECK(kinds(v,SALTS_MD_BLOCK_TABLE_ROW)==2u);
     CHECK(kinds(v,SALTS_MD_BLOCK_TABLE_CELL)==4u);
@@ -414,7 +414,7 @@ static int test_gfm_explicit_quote_table_ownership(void) {
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(sample,sizeof(sample)-1u,128u,512u,
                         &doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view view=salts_md_document_view(doc);
+    const salts_md_rich_document_view view=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&view,128u)==SALTS_MD_OK);
     CHECK(kinds(view,SALTS_MD_BLOCK_QUOTE)==2u);
     CHECK(kinds(view,SALTS_MD_BLOCK_TABLE)==1u);
@@ -458,7 +458,7 @@ static int test_gfm_explicit_quote_table_ownership(void) {
     const char rejected[]="> | A | B |\n| --- | --- |\n";
     CHECK(salts_md_parse(rejected,sizeof(rejected)-1u,128u,512u,
                         &doc)==SALTS_MD_OK);
-    CHECK(kinds(salts_md_document_view(doc),SALTS_MD_BLOCK_TABLE)==0u);
+    CHECK(kinds(salts_md_get_document_view(doc),SALTS_MD_BLOCK_TABLE)==0u);
     salts_md_document_destroy(doc);
 
     doc=(salts_md_document*)(uintptr_t)0x1;
@@ -492,7 +492,7 @@ static int test_gfm_wide_table_capacity(void) {
     source[used]='\0';
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(source,used,256u,used+1u,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view view=salts_md_document_view(doc);
+    const salts_md_rich_document_view view=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&view,256u)==SALTS_MD_OK);
     CHECK(kinds(view,SALTS_MD_BLOCK_TABLE)==1u);
     CHECK(kinds(view,SALTS_MD_BLOCK_TABLE_ROW)==(size_t)(DATA_ROWS+1u));
@@ -566,7 +566,7 @@ static int test_gfm_blank_root_task_table(void) {
         CHECK(salts_md_parse(cases[c].markdown,bytes,256u,
                             bytes+1u,&doc)==SALTS_MD_OK);
         CHECK(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(v.raw_markdown_bytes==bytes);
         CHECK(memcmp(v.raw_markdown,cases[c].markdown,bytes)==0);
@@ -649,7 +649,7 @@ static int test_gfm_list_table_ownership(void) {
         const size_t bytes=strlen(sources[k]);
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(sources[k],bytes,256u,1024u,&owned)==SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(owned);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owned);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE)==1u);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE_ROW)==2u);
@@ -697,7 +697,7 @@ static int test_gfm_list_table_ownership(void) {
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(invalid,sizeof(invalid)-1u,256u,256u,
                         &doc)==SALTS_MD_OK);
-    CHECK(kinds(salts_md_document_view(doc),SALTS_MD_BLOCK_TABLE)==0u);
+    CHECK(kinds(salts_md_get_document_view(doc),SALTS_MD_BLOCK_TABLE)==0u);
     salts_md_document_destroy(doc);
     doc=(salts_md_document*)(uintptr_t)0x1;
     CHECK(salts_md_parse(sources[0],strlen(sources[0]),5u,1024u,
@@ -727,7 +727,7 @@ static int test_gfm_paragraph_to_list_table(void) {
         const size_t bytes=strlen(inputs[k]);
         salts_md_document *owner=NULL;
         CHECK(salts_md_parse(inputs[k],bytes,256u,1024u,&owner)==SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(owner);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owner);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE)==1u);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE_ROW)==2u);
@@ -789,7 +789,7 @@ static int test_gfm_composed_list_table_ownership(void) {
         const size_t bytes=strlen(inputs[k]);
         salts_md_document *owner=NULL;
         CHECK(salts_md_parse(inputs[k],bytes,256u,1024u,&owner)==SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(owner);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owner);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE)==1u);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE_ROW)==2u);
@@ -857,7 +857,7 @@ static int test_gfm_list_table_forward_reference_contract(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(inputs[k],bytes,256u,bytes+1u,
                             &owned)==SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(owned);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owned);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE)==1u);
         CHECK(kinds(v,SALTS_MD_BLOCK_HEADING)==1u);
@@ -956,7 +956,7 @@ static int test_gfm_nested_ordered_interrupt_guard(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(cases[k].source,bytes,256u,bytes+1u,
                             &owned)==SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(owned);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owned);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE)==cases[k].tables);
         CHECK(kinds(v,SALTS_MD_BLOCK_ORDERED_LIST)==cases[k].ordered);
@@ -1013,7 +1013,7 @@ static int test_gfm_mixed_quote_list_table_ownership(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(fixtures[k].source,bytes,192u,bytes+1u,
                             &owned)==SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(owned);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owned);
         CHECK(salts_md_rich_document_validate(&v,192u)==SALTS_MD_OK);
         CHECK(kinds(v,SALTS_MD_BLOCK_QUOTE)==fixtures[k].quotes);
         CHECK(kinds(v,SALTS_MD_BLOCK_LIST)==1u);
@@ -1070,7 +1070,7 @@ static int test_gfm_quote_list_lazy_text_ownership(void) {
         salts_md_document *doc=NULL;
         CHECK(salts_md_parse(cases[k].source,bytes,160u,bytes+1u,
                             &doc)==SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&v,160u)==SALTS_MD_OK);
         CHECK(kinds(v,SALTS_MD_BLOCK_QUOTE)==cases[k].quotes);
         CHECK(kinds(v,SALTS_MD_BLOCK_LIST)==1u);
@@ -1151,7 +1151,7 @@ static int test_gfm_wide_table_budget(void) {
         salts_md_document *owned=NULL;
         CHECK(salts_md_parse(markdown,used,2048u,used+1u,&owned)==
               SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(owned);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owned);
         CHECK(salts_md_rich_document_validate(&v,2048u)==SALTS_MD_OK);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE)==1u);
         CHECK(kinds(v,SALTS_MD_BLOCK_TABLE_ROW)==TOTAL_ROWS);
@@ -1207,7 +1207,7 @@ static int test_gfm_task_items(void) {
         "2. [ ]\n";
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(markdown,sizeof(markdown)-1,128,2048,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,128)==SALTS_MD_OK);
     CHECK(kinds(v,SALTS_MD_BLOCK_TASK_ITEM)==4);
     CHECK(kinds(v,SALTS_MD_BLOCK_CHECKBOX)==4);
@@ -1244,7 +1244,7 @@ static int test_gfm_task_items(void) {
     /* The state is derived from source; no mutable checkbox registry exists. */
     const char plain[]="* [x]done\n* \\[x] escaped\n";
     CHECK(salts_md_parse(plain,sizeof(plain)-1,64,256,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view unmarked=salts_md_document_view(doc);
+    const salts_md_rich_document_view unmarked=salts_md_get_document_view(doc);
     CHECK(kinds(unmarked,SALTS_MD_BLOCK_TASK_ITEM)==0);
     CHECK(kinds(unmarked,SALTS_MD_BLOCK_CHECKBOX)==0);
     salts_md_document_destroy(doc);
@@ -1262,7 +1262,7 @@ static int test_gfm_nested_task_ownership(void) {
         "- [ ] bim\n";
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(sample,sizeof(sample)-1u,256u,512u,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     CHECK(kinds(v,SALTS_MD_BLOCK_LIST)==2u);
     CHECK(kinds(v,SALTS_MD_BLOCK_TASK_ITEM)==4u);
@@ -1353,7 +1353,7 @@ static int test_code_span_exact_runs_and_text(void) {
         salts_md_document *doc=NULL;
         CHECK(salts_md_parse(samples[i].markdown,n,128u,n+1u,&doc)==SALTS_MD_OK);
         CHECK(doc!=NULL);
-        const salts_md_rich_document_view view=salts_md_document_view(doc);
+        const salts_md_rich_document_view view=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&view,128u)==SALTS_MD_OK);
         CHECK(view.raw_markdown_bytes==n);
         CHECK(memcmp(view.raw_markdown,samples[i].markdown,n)==0);
@@ -1429,7 +1429,7 @@ static int test_code_span_delimiter_precedence(void) {
         salts_md_document *d=NULL;
         CHECK(salts_md_parse(cases[i].markdown,n,128u,n+1u,&d)==SALTS_MD_OK);
         CHECK(d!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(d);
+        const salts_md_rich_document_view v=salts_md_get_document_view(d);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         CHECK(v.raw_markdown_bytes==n);
         CHECK(memcmp(v.raw_markdown,cases[i].markdown,n)==0);
@@ -1497,7 +1497,7 @@ static int test_ascii_emphasis_flanking(void) {
         salts_md_document *d=NULL;
         CHECK(salts_md_parse(samples[i].markdown,n,128u,n+1u,&d)==SALTS_MD_OK);
         CHECK(d!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(d);
+        const salts_md_rich_document_view v=salts_md_get_document_view(d);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         CHECK(v.raw_markdown_bytes==n);
         CHECK(memcmp(v.raw_markdown,samples[i].markdown,n)==0);
@@ -1533,7 +1533,7 @@ static int test_nested_emphasis_pairs(void) {
         salts_md_document *d=NULL;
         CHECK(salts_md_parse(cases[i].source,bytes,128u,bytes+1u,&d)==SALTS_MD_OK);
         CHECK(d!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(d);
+        const salts_md_rich_document_view v=salts_md_get_document_view(d);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         CHECK(v.raw_markdown_bytes==bytes);
         CHECK(memcmp(v.raw_markdown,cases[i].source,bytes)==0);
@@ -1602,7 +1602,7 @@ static int test_unicode_whitespace_emphasis(void) {
         CHECK(salts_md_parse(cases[i].input,length,128u,
                             length+1u,&owner)==SALTS_MD_OK);
         CHECK(owner!=NULL);
-        const salts_md_rich_document_view view=salts_md_document_view(owner);
+        const salts_md_rich_document_view view=salts_md_get_document_view(owner);
         CHECK(salts_md_rich_document_validate(&view,128u)==SALTS_MD_OK);
         CHECK(view.raw_markdown_bytes==length);
         CHECK(memcmp(view.raw_markdown,cases[i].input,length)==0);
@@ -1660,7 +1660,7 @@ static int test_terminal_longer_emphasis_closers(void) {
         salts_md_document *d=NULL;
         CHECK(salts_md_parse(cases[i].input,n,128u,n+1u,&d)==SALTS_MD_OK);
         CHECK(d!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(d);
+        const salts_md_rich_document_view v=salts_md_get_document_view(d);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         CHECK(v.raw_markdown_bytes==n);
         CHECK(memcmp(v.raw_markdown,cases[i].input,n)==0);
@@ -1717,7 +1717,7 @@ static int test_triple_and_mixed_delimiter_runs(void) {
         CHECK(salts_md_parse(samples[i].source,n,128u,n+1u,&owner)==
               SALTS_MD_OK);
         CHECK(owner!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(owner);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owner);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         CHECK(v.raw_markdown_bytes==n);
         CHECK(memcmp(v.raw_markdown,samples[i].source,n)==0);
@@ -1798,7 +1798,7 @@ static int test_link_label_delimiter_isolation(void) {
         CHECK(salts_md_parse(cases[i].source,bytes,128u,
                             bytes+1u,&owner)==SALTS_MD_OK);
         CHECK(owner!=NULL);
-        const salts_md_rich_document_view view=salts_md_document_view(owner);
+        const salts_md_rich_document_view view=salts_md_get_document_view(owner);
         CHECK(salts_md_rich_document_validate(&view,128u)==SALTS_MD_OK);
         CHECK(view.raw_markdown_bytes==bytes);
         CHECK(memcmp(view.raw_markdown,cases[i].source,bytes)==0);
@@ -1871,7 +1871,7 @@ static int test_root_fence_indent_semantics(void) {
         FENCE_VERIFY(salts_md_parse(cases[k].source,n,128u,n+1u,&doc)==
                      SALTS_MD_OK);
         FENCE_VERIFY(doc!=NULL);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         FENCE_VERIFY(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         FENCE_VERIFY(v.raw_markdown_bytes==n);
         FENCE_VERIFY(!memcmp(v.raw_markdown,cases[k].source,n));
@@ -1935,7 +1935,7 @@ static int test_gfm_forged_table_view_refusal(void) {
     CHECK(salts_md_parse(sample,sizeof(sample)-1u,128u,
                         sizeof(sample),&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);
-    const salts_md_rich_document_view original=salts_md_document_view(doc);
+    const salts_md_rich_document_view original=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&original,128u)==SALTS_MD_OK);
     CHECK(kinds(original,SALTS_MD_BLOCK_TABLE)==1u);
     CHECK(original.document.block_count<=128u);
@@ -2060,7 +2060,7 @@ static int test_gfm_quote_table_explicit_lazy_boundaries(void) {
                     c->name,(int)rc);
             return 1;
         }
-        const salts_md_rich_document_view v=salts_md_document_view(owned);
+        const salts_md_rich_document_view v=salts_md_get_document_view(owned);
         CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
         CHECK(v.raw_markdown_bytes==bytes &&
               memcmp(v.raw_markdown,c->source,bytes)==0);
@@ -2134,7 +2134,7 @@ static int test_gfm_forged_nested_row_cell_rejection(void) {
     CHECK(salts_md_parse(source,sizeof(source)-1u,256u,
                         sizeof(source),&owned)==SALTS_MD_OK);
     CHECK(owned!=NULL);
-    const salts_md_rich_document_view original=salts_md_document_view(owned);
+    const salts_md_rich_document_view original=salts_md_get_document_view(owned);
     CHECK(salts_md_rich_document_validate(&original,256u)==SALTS_MD_OK);
     CHECK(kinds(original,SALTS_MD_BLOCK_TABLE)==1u);
     CHECK(kinds(original,SALTS_MD_BLOCK_TABLE_ROW)==2u);

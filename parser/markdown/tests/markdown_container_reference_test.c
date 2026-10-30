@@ -25,7 +25,7 @@ static int verify(const fixture *f){
     salts_md_document *doc=NULL,*exact=NULL,*rejected=NULL;
     CHECK(salts_md_parse(original,n,512u,n+1u,&doc)==SALTS_MD_OK);
     CHECK(doc!=NULL);memset(original,0x61,n);free(original);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,512u)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==n &&
           !memcmp(v.raw_markdown,f->markdown,n));
@@ -61,7 +61,7 @@ static int verify(const fixture *f){
     salts_md_document_destroy(doc);
     CHECK(salts_md_parse(f->markdown,n,nodes,n+1u,&exact)==SALTS_MD_OK);
     CHECK(exact!=NULL);
-    const salts_md_rich_document_view e=salts_md_document_view(exact);
+    const salts_md_rich_document_view e=salts_md_get_document_view(exact);
     CHECK(salts_md_rich_document_validate(&e,nodes)==SALTS_MD_OK);
     salts_md_document_destroy(exact);
     CHECK(salts_md_parse(f->markdown,n,nodes-1u,n+1u,&rejected)

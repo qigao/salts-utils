@@ -1,5 +1,6 @@
 #include <salts/markdown.h>
 #include <salts_unicode.h>
+#include <vstr.h>
 #include "markdown_entities.h"
 
 #include <ctype.h>
@@ -4073,7 +4074,7 @@ void salts_md_document_destroy(salts_md_document *d) {
     free(d);
 }
 
-salts_md_rich_document_view salts_md_document_view(const salts_md_document *d) {
+salts_md_rich_document_view salts_md_get_document_view(const salts_md_document *d) {
     if (!d) return (salts_md_rich_document_view){0};
     return (salts_md_rich_document_view){
         .document = {
@@ -4143,7 +4144,7 @@ salts_md_status salts_md_parse(const char *input,size_t length,
     md_reference_clear(d);
     if (d->error==SALTS_MD_OK) {
         d->nodes[0].byte_end=d->text_size;
-        const salts_md_rich_document_view view=salts_md_document_view(d);
+        const salts_md_rich_document_view view=salts_md_get_document_view(d);
         d->error=salts_md_rich_document_validate(&view,max_nodes);
     }
     if (d->error!=SALTS_MD_OK) {

@@ -54,7 +54,7 @@ int main(int argc,char **argv) {
         fprintf(stderr,"markdown HTML test CLI: parse error %d\n",(int)status);
         return 2;
     }
-    salts_md_rich_document_view view=salts_md_document_view(doc);
+    salts_md_rich_document_view view=salts_md_get_document_view(doc);
     size_t size=0u;
     status=salts_md_render_html_with_policy(&view,MD_TEST_NODES_MAX,
                                              policy,NULL,0u,&size);

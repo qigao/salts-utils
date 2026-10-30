@@ -97,7 +97,7 @@ int main(void) {
         return 2;
     }
 
-    const salts_md_rich_document_view view=salts_md_document_view(doc);
+    const salts_md_rich_document_view view=salts_md_get_document_view(doc);
     if (salts_md_rich_document_validate(
             &view,SALTS_MD_ORACLE_MAX_NODES)!=SALTS_MD_OK) {
         fputs("AST dump: invalid RichDoc\n",stderr);

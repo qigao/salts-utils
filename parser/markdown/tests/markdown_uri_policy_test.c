@@ -60,7 +60,7 @@ static int verify(const uri_fixture *fixture) {
     CHECK(doc!=NULL);
     memset(mutable_input,'?',bytes);
     free(mutable_input);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     CHECK(salts_md_rich_document_validate(&v,256u)==SALTS_MD_OK);
     CHECK(v.raw_markdown_bytes==bytes &&
           !memcmp(v.raw_markdown,fixture->markdown,bytes));
@@ -98,7 +98,7 @@ static int test_forged_uri_leaf(void) {
     const size_t bytes=sizeof(sample)-1u;
     salts_md_document *doc=NULL;
     CHECK(salts_md_parse(sample,bytes,64u,bytes+1u,&doc)==SALTS_MD_OK);
-    const salts_md_rich_document_view v=salts_md_document_view(doc);
+    const salts_md_rich_document_view v=salts_md_get_document_view(doc);
     size_t leaf=v.document.block_count;
     for(size_t i=1u;i<v.document.block_count;++i)
         if(v.document.blocks[i].kind==SALTS_MD_BLOCK_URI_AUTOLINK)leaf=i;
@@ -174,7 +174,7 @@ int main(void) {
         salts_md_document *doc=NULL;
         const size_t bytes=strlen(invalid[i]);
         CHECK(salts_md_parse(invalid[i],bytes,128u,bytes+1u,&doc)==SALTS_MD_OK);
-        const salts_md_rich_document_view v=salts_md_document_view(doc);
+        const salts_md_rich_document_view v=salts_md_get_document_view(doc);
         CHECK(salts_md_rich_document_validate(&v,128u)==SALTS_MD_OK);
         CHECK(count_kind(v,SALTS_MD_BLOCK_URI_AUTOLINK)==0u);
         salts_md_document_destroy(doc);
