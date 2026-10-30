@@ -228,6 +228,32 @@ enumerate Regex matches by reslicing the remaining suffix, as that
 changes anchor/word-boundary context. No alternate regex parser,
 fallback or filesystem I/O is introduced.
 
+### A4 stage3: bounded Literal all-hit enumeration (Draft candidate)
+
+`salts_search_matcher_enumerate_literals` enumerates exact occurrences
+on the *original* unchanged caller-owned byte slice using the SAME
+compiled C11 Two-Way matcher. The caller explicitly selects whether
+hits may overlap. Every hit has ascending half-open byte offsets, and
+a zero-length pattern emits one hit at each byte boundary including EOF.
+The implementation advances by at least one byte for zero-width hits,
+so there is no infinite loop.
+
+A strict `max_hits` caps delivered callbacks. When another hit exists
+beyond the cap the function returns `LIMIT`, **not an apparently
+complete success**. A callback may stop, returning `STOPPED` with the
+already delivered hit included in `out_emitted`. No per-hit allocation
+or another matching backend is used. The existing independent reference
+tests cover overlapping `aba` in `ababa`, NUL, empty patterns,
+budget exhaustion, callback stop, and randomized small byte slices.
+
+This API intentionally returns `UNSUPPORTED` for TRE Regex. Its
+correct multi-hit iteration cannot use repeated substring suffix scans:
+they change anchors and word-boundary state. A source-position-aware
+multi-hit extension must be implemented and qualified **within TRE**;
+no PCRE2/system regex or hidden fallback is authorized. A2 context
+continues to carry first match per matching line until the true
+multi-match result protocol is independently accepted.
+
 ## Algorithm and complexity
 
 A0 uses the **Two-Way** string matching algorithm (Crochemore–Perrin): maximal suffix in two lexicographic orders yields the critical position and period. For periodic patterns it retains the matched prefix as *memory* after shifts; for aperiodic patterns it uses the guaranteed-safe long shift. The prefix equality test chooses between them. Pattern preprocessing is O(m), each find is worst-case O(n+m) comparisons with O(1) per-call workspace, not including the O(m) owned needle bytes.
@@ -242,7 +268,8 @@ Single-byte patterns use standard C `memchr`. The planned SIMD prefilter in #705
 - [ ] A1 full regex resource/leftmost-first parity and cache-only cross-RID admission.
 - [x] A4 prep: query-selected Literal/TRE matcher + bounded A2 context (CI #41058232362 SUCCESS).
 - [x] A4 stage2 candidate: first-match absolute byte highlight span on existing callbacks (Draft, CI pending).
-- [ ] A4 all-match enumeration, TRE internal resource bounds, broad fuzz/perf/concurrency gates.
+- [x] A4 stage3 literal all-hit enumerator (overlap/no-overlap, empty, bounded callbacks; Draft, CI pending).
+- [ ] A4 full TRE all-hit enumeration and internal resource bounds, broad fuzz/perf/concurrency gates.
 - [x] A2 line-delimiting primitive + deterministic C11 tests (stacked draft, not accepted).
 - [x] A2 memory-only bounded before/after literal context collector (stacked Draft; exact-head CI pending).
 - [ ] A2 encoding conversions, unique TRE regex integration and further streaming conformance.

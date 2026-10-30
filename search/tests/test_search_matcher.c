@@ -31,7 +31,198 @@ static bool record_event(void *user, const salts_search_context_event *event) {
   return true;
 }
 
+typedef struct literal_hit_probe {
+  salts_search_matcher_span hits[96];
+  size_t count;
+  size_t stop_at; /* stop after this many delivered callbacks; zero=never */
+  bool overflow;
+} literal_hit_probe;
+
+static bool record_literal_hit(void *user, const salts_search_matcher_span *hit) {
+  literal_hit_probe *p = (literal_hit_probe *)user;
+  if (p->count >= sizeof(p->hits) / sizeof(p->hits[0])) {
+    p->overflow = true;
+    return false;
+  }
+  p->hits[p->count++] = *hit;
+  return p->stop_at == 0 || p->count < p->stop_at;
+}
+
+static uint32_t literal_rand_state = UINT32_C(0x591CC011);
+static uint32_t literal_rand_next(void) {
+  uint32_t x = literal_rand_state;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  return literal_rand_state = x;
+}
+
 spec("search common matcher chooses one literal or TRE byte engine") {
+  it("enumerates overlapping and nonoverlapping Literal hits in order") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t count = 999u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_LITERAL,
+                "aba", 3u, 16u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_literals(&m, "ababa", 5u,
+                true, 10u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(count, 2u);
+    check_equal(p.count, 2u);
+    check_true(!p.overflow);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[0].byte_end, UINT64_C(3));
+    check_equal(p.hits[1].byte_start, UINT64_C(2));
+    check_equal(p.hits[1].byte_end, UINT64_C(5));
+
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_literals(&m, "ababa", 5u,
+                false, 10u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(count, 1u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[0].byte_end, UINT64_C(3));
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("enumerates binary NUL matches and every empty-pattern byte boundary") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t count = 0;
+    const unsigned char raw[] = {'a', 0, 'a', 0, 'a'};
+    const unsigned char needle[] = {0, 'a'};
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_LITERAL,
+                needle, sizeof(needle), 16u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_literals(&m, raw, sizeof(raw),
+                true, 8u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(count, 2u);
+    check_equal(p.hits[0].byte_start, UINT64_C(1));
+    check_equal(p.hits[0].byte_end, UINT64_C(3));
+    check_equal(p.hits[1].byte_start, UINT64_C(3));
+    check_equal(p.hits[1].byte_end, UINT64_C(5));
+    salts_search_matcher_destroy(&m);
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_LITERAL,
+                NULL, 0u, 16u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_literals(&m, "ab", 2u,
+                false, 8u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(count, 3u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[1].byte_start, UINT64_C(1));
+    check_equal(p.hits[2].byte_start, UINT64_C(2));
+    check_equal(p.hits[2].byte_end, UINT64_C(2));
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_literals(&m, NULL, 0u,
+                true, 8u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(count, 1u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[0].byte_end, UINT64_C(0));
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("never reports success after hit-budget exhaustion or callback cancellation") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t count = 99u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_LITERAL,
+                "a", 1u, 8u, 4u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_literals(&m, "aaa", 3u,
+                true, 2u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(count, 2u);
+    check_equal(p.count, 2u);
+    memset(&p, 0, sizeof(p));
+    p.stop_at = 1u;
+    check_equal(salts_search_matcher_enumerate_literals(&m, "aaa", 3u,
+                false, 9u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_STOPPED);
+    check_equal(count, 1u);
+    check_equal(p.count, 1u);
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_literals(&m, "aaa", 3u,
+                true, 0u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(count, 0u);
+    check_equal(p.count, 0u);
+    check_equal(salts_search_matcher_enumerate_literals(&m, "bbb", 3u,
+                true, 0u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(count, 0u);
+    check_equal(salts_search_matcher_enumerate_literals(&m, "aaaaa", 5u,
+                true, 9u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_LIMIT); /* subject exceeds common bound */
+    check_equal(count, 0u);
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("refuses regex all-hit enumeration instead of slicing anchored TRE input") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t count = 123u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "^a", 2u, 16u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_literals(&m, "aa", 2u,
+                false, 8u, record_literal_hit, &p, &count),
+                SALTS_SEARCH_MATCHER_UNSUPPORTED);
+    check_equal(count, 0u);
+    check_equal(p.count, 0u);
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("agrees with an independent brute-force literal-hit reference") {
+    unsigned char input[40], needle[12];
+    size_t trial;
+    bool all_equal = true;
+    for (trial = 0u; trial < 3500u && all_equal; ++trial) {
+      salts_search_matcher m = {0};
+      literal_hit_probe p = {0};
+      salts_search_matcher_span expected[41] = {{0}};
+      const size_t length = literal_rand_next() % 41u;
+      const size_t pat_length = literal_rand_next() % 13u;
+      const unsigned alphabet = trial % 3u == 0u ? 1u :
+                                trial % 3u == 1u ? 3u : 256u;
+      const bool overlapping = (literal_rand_next() & 1u) != 0u;
+      size_t i, count = 0, emitted = 0, next_nonoverlap = 0;
+      for (i = 0u; i < length; ++i)
+        input[i] = (unsigned char)(literal_rand_next() % alphabet);
+      for (i = 0u; i < pat_length; ++i)
+        needle[i] = (unsigned char)(literal_rand_next() % alphabet);
+      for (i = 0u; i <= length; ++i) {
+        if (i < next_nonoverlap)
+          continue;
+        if (pat_length != 0u &&
+            (pat_length > length - i ||
+             memcmp(input + i, needle, pat_length) != 0))
+          continue;
+        expected[count].byte_start = (uint64_t)i;
+        expected[count].byte_end = (uint64_t)(i + pat_length);
+        ++count;
+        if (!overlapping && pat_length)
+          next_nonoverlap = i + pat_length;
+      }
+      if (salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_LITERAL,
+                    needle, pat_length, 16u, 40u) != SALTS_SEARCH_MATCHER_OK) {
+        all_equal = false;
+        break;
+      }
+      if (salts_search_matcher_enumerate_literals(&m, input, length,
+                 overlapping, 41u, record_literal_hit, &p, &emitted) !=
+                    SALTS_SEARCH_MATCHER_OK ||
+          emitted != count || p.count != count || p.overflow)
+        all_equal = false;
+      for (i = 0u; i < count && all_equal; ++i)
+        if (p.hits[i].byte_start != expected[i].byte_start ||
+            p.hits[i].byte_end != expected[i].byte_end)
+          all_equal = false;
+      salts_search_matcher_destroy(&m);
+    }
+    check_true(all_equal);
+    check_equal(trial, 3500u);
+  }
+
   it("returns identical half-open byte offsets for simple literal and regex") {
     const unsigned char data[] = {'!', 0, 'a', 'b', 'x'};
     salts_search_matcher m = {0};
