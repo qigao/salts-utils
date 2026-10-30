@@ -196,6 +196,7 @@ jobs:
           $candidate = Join-Path $env:RUNNER_TEMP "saltsutils-qualified-$env:QIGAO_SDK_RID"
           New-Item -ItemType Directory -Path $candidate | Out-Null
           Copy-Item -LiteralPath $prefix -Destination (Join-Path $candidate 'utils') -Recurse
+          Copy-Item -LiteralPath $env:SALTS_ROOT -Destination (Join-Path $candidate 'salts') -Recurse
           Copy-Item -LiteralPath $env:CRYPTO_ROOT -Destination (Join-Path $candidate 'crypto') -Recurse
           $source = git rev-parse HEAD
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
