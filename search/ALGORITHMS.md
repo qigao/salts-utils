@@ -28,6 +28,30 @@ input chunk boundaries; TRE can be connected to the callback only after A1.
 The full A2 contract for higher-level context-before/after output and encoding
 conversion remains **open**; this PR adds no public claiming of full rg parity.
 
+### A2 stage 2: bounded before/after context collection
+
+`search_context.[ch]` is a private, memory-only C11 consumer of A2's
+`salts_search_line` callbacks and the exact A0 Literal Matcher. It is **not**
+a second Regex or line parser. A caller-provided ring of `before_count`
+line records and fixed-size byte storage owns only retained before-context;
+incoming lines and output events are borrowed for each callback.
+
+When a line matches, the collector emits up to `before_count` preceding
+lines not already emitted, then one MATCH event; it continues to emit up to
+`after_count` subsequent nonmatching lines. Overlapping context windows
+are deduplicated, and `group_break` identifies noncontiguous result groups.
+All event line numbers and absolute byte offsets are `uint64_t`; original
+binary/NUL bytes are preserved without decoding. A callback STOP is terminal,
+with an explicit status distinct from capacity/invalid/closed; if a before
+line exceeds the fixed ring's per-line capacity it returns LIMIT, never a
+partial success. The match pattern remains a borrowed immutable A0 owner;
+the caller must keep it and the history storage alive through the scan.
+
+This only implements fixed-literal line context. Matching through the unique
+TRE Regex Provider depends on #706, and complete A2 coverage still requires
+conformance fixtures for more complex binary/encoding policies and grouping
+with file sources. No FS, SQLite, mmap, Rust or external process is involved.
+
 ### A3 stage 1: compiled byte-oriented Glob NFA (stacked candidate)
 
 `search_glob.[ch]` compiles one immutable token program supporting literal
@@ -136,7 +160,8 @@ Single-byte patterns use standard C `memchr`. The planned SIMD prefilter in #705
 - [ ] A0 canonical Salts SIMD scan integration and scalar/SIMD parity.
 - [ ] A1 TRE pinned C library, exact Tagged NFA and match-priority gate (not started in this draft).
 - [x] A2 line-delimiting primitive + deterministic C11 tests (stacked draft, not accepted).
-- [ ] A2 context-before/after output and any requested encoding conversion.
+- [x] A2 memory-only bounded before/after literal context collector (stacked Draft; exact-head CI pending).
+- [ ] A2 encoding conversions, unique TRE regex integration and further streaming conformance.
 - [x] A3 stage1 compiled Glob NFA with bounded caller scratch + C11 differential tests (stacked Draft, not final).
 - [x] A3 stage2 memory-only Gitignore source/scope/negation evaluator and bounded C11 tests (Draft; final CI pending).
 - [x] A3 stage3 memory-only CLI glob/hidden traversal policy, typed prune decisions and bounded C11 tests (stacked Draft).
