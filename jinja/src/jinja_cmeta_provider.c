@@ -141,6 +141,12 @@ typedef struct JINJA_CMETA_RENDER_STATE {
   size_t *error_offset;
   const JINJA_CMETA_RENDERER *renderer;
   void *renderer_data;
+  const JINJA_CMETA_SOURCE_TRACE *trace;
+  void *trace_data;
+  size_t traced_bytes;
+  vstr traced_source_name;
+  size_t traced_source_offset;
+  JINJA_CMETA_EMIT_KIND traced_kind;
   JINJA_CMETA_NODE *nodes;
   JINJA_CMETA_VALUE *changed_values;
   JINJA_CMETA_VALUE_STORE values;
@@ -10574,7 +10580,33 @@ static int jinja_output_verbatim(const char *text, size_t size, void *opaque) {
     provider->shared.capture_bytes += size;
     return 0;
   }
-  return provider->shared.renderer->write(text, size, provider->shared.renderer_data);
+  /* Exactly the FINAL emitted stream is traced, never capture workspace.
+   * A caller's byte sink must first accept the bytes; trace events then
+   * describe the actual written range, not speculative output. */
+  if (provider->shared.trace != NULL && size != 0u &&
+      (provider->shared.traced_bytes > SIZE_MAX - size ||
+       provider->shared.trace->on_emit == NULL)) {
+    jinja_provider_fail(provider, JINJA_CMETA_ERR_CAPACITY);
+    return -1;
+  }
+  const int written = provider->shared.renderer->write(
+      text, size, provider->shared.renderer_data);
+  if (written != 0) return written;
+  if (provider->shared.trace != NULL && size != 0u) {
+    const JINJA_CMETA_EMIT_ANCHOR anchor = {
+        .template_name = provider->shared.traced_source_name,
+        .source_offset = provider->shared.traced_source_offset,
+        .generated_offset = provider->shared.traced_bytes,
+        .generated_bytes = size,
+        .kind = provider->shared.traced_kind};
+    if (provider->shared.trace->on_emit(&anchor,
+                                       provider->shared.trace_data) != 0) {
+      jinja_provider_fail(provider, JINJA_CMETA_ERR_RENDER);
+      return -1;
+    }
+    provider->shared.traced_bytes += size;
+  }
+  return 0;
 }
 
 static int jinja_html_write(const char *text, size_t size,
@@ -11562,6 +11594,11 @@ static JINJA_CMETA_STATUS jinja_execute_range_impl(JINJA_CMETA_PROVIDER *provide
     JINJA_CMETA_NODE *node;
     int truth = 0;
     *error_offset = instruction->source_offset;
+    /* The emission location is the current ORIGINAL instruction, never a
+     * synthetic coordinate reconstructed by matching output text. */
+    provider->shared.traced_source_name = templ->name;
+    provider->shared.traced_source_offset = instruction->source_offset;
+    provider->shared.traced_kind = JINJA_CMETA_EMIT_INDIRECT;
     if (provider->shared.status != JINJA_CMETA_OK) return provider->shared.status;
     if (instruction->depth > max_depth) return JINJA_CMETA_ERR_CAPACITY;
     switch (instruction->opcode) {
@@ -11620,6 +11657,11 @@ static JINJA_CMETA_STATUS jinja_execute_range_impl(JINJA_CMETA_PROVIDER *provide
         if (status == JINJA_CMETA_OK) {
           node = jinja_provider_value_node(provider, &value, context);
           if (node == NULL) return provider->shared.status;
+          /* A macro/call result may have been captured in another scope.
+           * Only the call-site anchor is truthful at this byte boundary. */
+          provider->shared.traced_source_name = templ->name;
+          provider->shared.traced_source_offset = instruction->source_offset;
+          provider->shared.traced_kind = JINJA_CMETA_EMIT_INDIRECT;
           if (jinja_dump(node, provider->autoescape && !jinja_value_is_safe(&value)
                   ? jinja_output_escaped : jinja_output_verbatim, provider, provider) != 0)
             return provider->shared.status == JINJA_CMETA_OK ? JINJA_CMETA_ERR_RENDER : provider->shared.status;
@@ -11630,6 +11672,7 @@ static JINJA_CMETA_STATUS jinja_execute_range_impl(JINJA_CMETA_PROVIDER *provide
       break;
     }
     case JINJA_CMETA_OP_TEXT:
+      provider->shared.traced_kind = JINJA_CMETA_EMIT_LITERAL;
       if (jinja_output_verbatim(templ->program_strings + instruction->offset,
                                  instruction->length, provider) != 0)
         return provider->shared.status == JINJA_CMETA_OK ? JINJA_CMETA_ERR_RENDER : provider->shared.status;
@@ -11639,6 +11682,12 @@ static JINJA_CMETA_STATUS jinja_execute_range_impl(JINJA_CMETA_PROVIDER *provide
       if (jinja_output_suppressed(provider)) { ++pc; break; }
       status = jinja_program_value(provider, context, instruction, &value);
       if (status != JINJA_CMETA_OK) return status;
+      /* Value evaluation may recursively render a macro or included template.
+       * The later final print has only this caller expression's anchor;
+       * it must NOT borrow the last nested literal's provenance. */
+      provider->shared.traced_source_name = templ->name;
+      provider->shared.traced_source_offset = instruction->source_offset;
+      provider->shared.traced_kind = JINJA_CMETA_EMIT_EXPRESSION;
       if (provider->strict_undefined && value.kind == JINJA_CMETA_VALUE_UNDEFINED)
         return JINJA_CMETA_ERR_RENDER;
       if (value.kind == JINJA_CMETA_VALUE_MODULE) {
@@ -11729,6 +11778,9 @@ static JINJA_CMETA_STATUS jinja_execute_range_impl(JINJA_CMETA_PROVIDER *provide
       if (status != JINJA_CMETA_OK) return status;
       if (provider->pending_control != NULL) continue;
       *error_offset = templ->instructions[instruction->end].source_offset;
+      provider->shared.traced_source_name = templ->name;
+      provider->shared.traced_source_offset = instruction->source_offset;
+      provider->shared.traced_kind = JINJA_CMETA_EMIT_INDIRECT;
       status = jinja_filter_end(provider, context, pc);
       if (status != JINJA_CMETA_OK) return status;
       pc = instruction->end + 1u;
@@ -12237,6 +12289,7 @@ static JINJA_CMETA_STATUS jinja_render_owned(JINJA_CMETA_PROVIDER *provider,
                                       const cmeta_data_desc *root_desc, const void *root,
                                       const JINJA_CMETA_RENDER_OPTIONS *options,
                                       const JINJA_CMETA_RENDERER *renderer, void *renderer_data,
+                                      const JINJA_CMETA_SOURCE_TRACE *trace, void *trace_data,
                                       const JINJA_CMETA_RUNTIME_CONFIG *config,
                                       JINJA_CMETA_MEMORY *memory,
                                       JINJA_CMETA_ERROR *error) {
@@ -12263,7 +12316,7 @@ static JINJA_CMETA_STATUS jinja_render_owned(JINJA_CMETA_PROVIDER *provider,
     return JINJA_CMETA_ERR_INVALID_ARGUMENT;
   }
   if (templ == NULL || templ->program_strings == NULL || root == NULL || renderer == NULL ||
-      renderer->write == NULL ||
+      renderer->write == NULL || (trace != NULL && trace->on_emit == NULL) ||
       !cmeta_data_desc_valid(root_desc)) {
     jinja_cmeta_error_set(error, JINJA_CMETA_ERR_INVALID_ARGUMENT, 0u,
                           "render requires a template, renderer, and valid root metadata");
@@ -12308,6 +12361,10 @@ static JINJA_CMETA_STATUS jinja_render_owned(JINJA_CMETA_PROVIDER *provider,
   provider->shared.status = JINJA_CMETA_OK;
   provider->shared.renderer = renderer;
   provider->shared.renderer_data = renderer_data;
+  provider->shared.trace = trace;
+  provider->shared.trace_data = trace_data;
+  provider->shared.traced_source_offset = SIZE_MAX;
+  provider->shared.traced_kind = JINJA_CMETA_EMIT_UNKNOWN;
   (void)jinja_provider_node(provider, root, root_desc, NULL);
 
   if (provider->shared.status == JINJA_CMETA_OK) {
@@ -12337,13 +12394,15 @@ static JINJA_CMETA_STATUS jinja_render(const JINJA_CMETA_TEMPLATE *templ,
     const cmeta_data_desc *root_desc, const void *root,
     const JINJA_CMETA_RENDER_OPTIONS *options,
     const JINJA_CMETA_RENDERER *renderer, void *renderer_data,
+    const JINJA_CMETA_SOURCE_TRACE *trace, void *trace_data,
     const JINJA_CMETA_RUNTIME_CONFIG *config, JINJA_CMETA_MEMORY *memory,
     JINJA_CMETA_ERROR *error) {
   JINJA_CMETA_MEMORY local_memory = {.limit = SIZE_MAX};
   int status;
   cmeta_scope(status, cmeta_autos((JINJA_CMETA_PROVIDER, provider)),
       cmeta_body(jinja_render_owned(&provider, templ, root_desc, root, options,
-          renderer, renderer_data, config, memory != NULL ? memory : &local_memory, error)));
+          renderer, renderer_data, trace, trace_data, config,
+          memory != NULL ? memory : &local_memory, error)));
   return (JINJA_CMETA_STATUS)status;
 }
 
@@ -12352,15 +12411,25 @@ JINJA_CMETA_STATUS jinja_cmeta_render(const JINJA_CMETA_TEMPLATE *templ,
     const JINJA_CMETA_RENDER_OPTIONS *options, const JINJA_CMETA_RENDERER *renderer,
     void *renderer_data, JINJA_CMETA_ERROR *error) {
   JINJA_CMETA_STATUS status = jinja_render(templ, root_desc, root, options,
-      renderer, renderer_data, NULL, NULL, error);
+      renderer, renderer_data, NULL, NULL, NULL, NULL, error);
   return status;
+}
+
+JINJA_CMETA_STATUS jinja_cmeta_render_with_trace(const JINJA_CMETA_TEMPLATE *templ,
+    const cmeta_data_desc *root_desc, const void *root,
+    const JINJA_CMETA_RENDER_OPTIONS *options, const JINJA_CMETA_RENDERER *renderer,
+    void *renderer_data, const JINJA_CMETA_SOURCE_TRACE *trace,
+    void *trace_data, JINJA_CMETA_ERROR *error) {
+  return jinja_render(templ, root_desc, root, options,
+      renderer, renderer_data, trace, trace_data, NULL, NULL, error);
 }
 
 JINJA_CMETA_STATUS jinja_cmeta_render_ex(const JINJA_CMETA_TEMPLATE *templ,
     const cmeta_data_desc *root_desc, const void *root,
     const JINJA_CMETA_RENDER_OPTIONS *options, const JINJA_CMETA_RUNTIME_CONFIG *config,
     const JINJA_CMETA_RENDERER *renderer, void *renderer_data, JINJA_CMETA_ERROR *error) {
-  return jinja_render(templ, root_desc, root, options, renderer, renderer_data, config, NULL, error);
+  return jinja_render(templ, root_desc, root, options,
+      renderer, renderer_data, NULL, NULL, config, NULL, error);
 }
 
 typedef struct JINJA_STRING_OUTPUT {
@@ -12408,7 +12477,8 @@ JINJA_CMETA_STATUS jinja_cmeta_render_string_ex(const JINJA_CMETA_TEMPLATE *temp
     jinja_cmeta_error_set(error, status, 0u, "unable to initialize the string renderer");
     return status;
   }
-  status = jinja_render(templ, root_desc, root, options, &renderer, &output, config, &memory, error);
+  status = jinja_render(templ, root_desc, root, options,
+      &renderer, &output, NULL, NULL, config, &memory, error);
   if (output.status != JINJA_CMETA_OK) {
     status = output.status;
     jinja_cmeta_error_set(error, status, error == NULL ? 0u : error->offset,

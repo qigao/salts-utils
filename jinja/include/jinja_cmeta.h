@@ -367,6 +367,40 @@ typedef struct JINJA_CMETA_RENDERER {
   int (*write)(const char *text, size_t size, void *user_data);
 } JINJA_CMETA_RENDERER;
 
+/** Provenance of one FINAL emitted byte range, not a per-character source map.
+ * source_offset identifies the start of the original Jinja INSTRUCTION in
+ * template_name (which may be empty for an unnamed compiled template).
+ * A literal instruction is source-anchored, but normalization and escaping
+ * may change the actual byte correspondence. Expressions are attributed to
+ * their emission site, not recursively to every source used to build a value.
+ * INDIRECT means a macro, capture, translation or other transformation has
+ * no safely recoverable original-byte span from this API.
+ */
+typedef enum JINJA_CMETA_EMIT_KIND {
+  JINJA_CMETA_EMIT_UNKNOWN = 0,
+  JINJA_CMETA_EMIT_LITERAL = 1,
+  JINJA_CMETA_EMIT_EXPRESSION = 2,
+  JINJA_CMETA_EMIT_INDIRECT = 3
+} JINJA_CMETA_EMIT_KIND;
+
+typedef struct JINJA_CMETA_EMIT_ANCHOR {
+  vstr template_name;              /* Borrowed, only during the callback. */
+  size_t source_offset;             /* Original instruction byte offset. */
+  size_t generated_offset;          /* Offset before this final byte write. */
+  size_t generated_bytes;           /* Written bytes; can include embedded NUL. */
+  JINJA_CMETA_EMIT_KIND kind;
+} JINJA_CMETA_EMIT_ANCHOR;
+
+typedef struct JINJA_CMETA_SOURCE_TRACE {
+  /** Invoked once AFTER each successful, nonempty FINAL renderer write.
+   * Nonzero aborts with RENDER; preceding bytes cannot be rolled back.
+   * Only bytes written to the FINAL renderer are reported; temporary
+   * macro/capture/filter buffers do not appear until later emission.
+   */
+  int (*on_emit)(const JINJA_CMETA_EMIT_ANCHOR *anchor, void *user_data);
+} JINJA_CMETA_SOURCE_TRACE;
+
+
 /** Compile an explicit-length UTF-8 source; NULL options uses INIT defaults.
  * Supports bounded macros/call blocks, defaults, argument
  * expansion, caller, lexical closures, named/scoped/required blocks and self.
@@ -398,6 +432,19 @@ JINJA_CMETA_API JINJA_CMETA_STATUS jinja_cmeta_render(
     const JINJA_CMETA_TEMPLATE *templ, const cmeta_data_desc *root_desc, const void *root,
     const JINJA_CMETA_RENDER_OPTIONS *options, const JINJA_CMETA_RENDERER *renderer,
     void *renderer_data, JINJA_CMETA_ERROR *error);
+
+/** Same one render engine and byte sink as jinja_cmeta_render, with optional
+ * instruction-level provenance events. Passing NULL trace is equivalent to
+ * the untraced call. Unlike an exact source map, this never invents
+ * correspondence for nested captured or transformed bytes; consumers must
+ * treat EXPRESSION/INDIRECT as an author-site anchor, not byte provenance.
+ * Nothing is persisted after the synchronous call.
+ */
+JINJA_CMETA_API JINJA_CMETA_STATUS jinja_cmeta_render_with_trace(
+    const JINJA_CMETA_TEMPLATE *templ, const cmeta_data_desc *root_desc, const void *root,
+    const JINJA_CMETA_RENDER_OPTIONS *options, const JINJA_CMETA_RENDERER *renderer,
+    void *renderer_data, const JINJA_CMETA_SOURCE_TRACE *trace,
+    void *trace_data, JINJA_CMETA_ERROR *error);
 
 /**
  * Render to a malloc-owned NUL-terminated string.
