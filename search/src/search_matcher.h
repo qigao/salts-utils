@@ -25,7 +25,8 @@ typedef enum salts_search_matcher_status {
   SALTS_SEARCH_MATCHER_NO_MEMORY,
   SALTS_SEARCH_MATCHER_BAD_PATTERN,
   SALTS_SEARCH_MATCHER_UNSUPPORTED,
-  SALTS_SEARCH_MATCHER_ENGINE_ERROR
+  SALTS_SEARCH_MATCHER_ENGINE_ERROR,
+  SALTS_SEARCH_MATCHER_STOPPED /* callback requested bounded early stop */
 } salts_search_matcher_status;
 
 typedef struct salts_search_matcher_span {
@@ -59,6 +60,27 @@ salts_search_matcher_status salts_search_matcher_compile(
 salts_search_matcher_status salts_search_matcher_find_first(
     const salts_search_matcher *compiled, const void *subject,
     size_t subject_length, salts_search_matcher_span *out_span);
+
+/* Enumerate EVERY literal byte hit in ascending order; match offsets are
+ * relative to the original unmodified subject. overlapping=true reports
+ * intersecting occurrences; false advances after each nonempty match.
+ * Empty needles match each byte boundary INCLUDING end-of-input, once each.
+ * max_hits is a strict callback admission cap: if an extra hit is found,
+ * return LIMIT rather than success with incomplete results.
+ * The count includes a hit whose callback returns false (STOPPED).
+ *
+ * TRE Regex is deliberately UNSUPPORTED here. Re-running TRE on a sliced
+ * suffix changes anchors/word boundaries and cannot claim rg parity.
+ * A correct single-TRE multi-hit engine is separately gated by #709.
+ */
+typedef bool (*salts_search_matcher_hit_callback)(
+    void *user, const salts_search_matcher_span *hit);
+
+salts_search_matcher_status salts_search_matcher_enumerate_literals(
+    const salts_search_matcher *compiled, const void *subject,
+    size_t subject_length, bool overlapping, size_t max_hits,
+    salts_search_matcher_hit_callback callback, void *user,
+    size_t *out_emitted);
 
 void salts_search_matcher_destroy(salts_search_matcher *compiled);
 

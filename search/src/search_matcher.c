@@ -96,6 +96,59 @@ salts_search_matcher_status salts_search_matcher_find_first(
   }
 }
 
+salts_search_matcher_status salts_search_matcher_enumerate_literals(
+    const salts_search_matcher *compiled, const void *subject,
+    size_t subject_length, bool overlapping, size_t max_hits,
+    salts_search_matcher_hit_callback callback, void *user,
+    size_t *out_emitted) {
+  size_t start_at = 0;
+  size_t count = 0;
+  if (out_emitted)
+    *out_emitted = 0;
+  if (!compiled || !compiled->compiled || !callback || !out_emitted ||
+      (subject_length != 0 && !subject))
+    return SALTS_SEARCH_MATCHER_INVALID;
+  if (compiled->kind != SALTS_SEARCH_MATCHER_LITERAL)
+    return SALTS_SEARCH_MATCHER_UNSUPPORTED;
+  if (subject_length > compiled->max_subject_bytes ||
+      subject_length > INT_MAX)
+    return SALTS_SEARCH_MATCHER_LIMIT;
+
+  for (;;) {
+    salts_search_literal_span found = {0};
+    const salts_search_literal_status scan = salts_search_literal_find(
+        &compiled->compiled_pattern.literal, subject, subject_length,
+        start_at, &found);
+    if (scan == SALTS_SEARCH_LITERAL_NOT_FOUND)
+      return SALTS_SEARCH_MATCHER_OK; /* all possible hits exhausted */
+    if (scan != SALTS_SEARCH_LITERAL_OK)
+      return map_literal(scan);
+    if (found.start > found.end || found.end > subject_length)
+      return SALTS_SEARCH_MATCHER_ENGINE_ERROR;
+    if (count == max_hits)
+      return SALTS_SEARCH_MATCHER_LIMIT; /* one more hit exists: no fake success */
+
+    {
+      const salts_search_matcher_span hit = {
+          (uint64_t)found.start, (uint64_t)found.end};
+      ++count;
+      *out_emitted = count;
+      if (!callback(user, &hit))
+        return SALTS_SEARCH_MATCHER_STOPPED;
+    }
+    if (found.start == subject_length)
+      return SALTS_SEARCH_MATCHER_OK; /* terminal empty-pattern boundary */
+
+    /* For zero-width matches, advancing by one is mandatory in BOTH modes.
+     * For nonempty matches, overlap mode advances from the match start.
+     * A compiled pattern and subject are immutable during enumeration. */
+    start_at = overlapping || found.start == found.end
+                   ? found.start + 1u : found.end;
+    if (start_at > subject_length)
+      return SALTS_SEARCH_MATCHER_OK;
+  }
+}
+
 void salts_search_matcher_destroy(salts_search_matcher *compiled) {
   if (!compiled)
     return;
