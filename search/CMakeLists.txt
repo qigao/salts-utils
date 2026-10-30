@@ -14,7 +14,10 @@ if(NOT TARGET unofficial::tre::tre)
   message(FATAL_ERROR "Pinned static unofficial::tre::tre is required")
 endif()
 target_compile_features(salts_search_algorithms PUBLIC c_std_11)
-target_link_libraries(salts_search_algorithms PRIVATE unofficial::tre::tre)
+# The private search_regex.h currently names TRE's regex_t, so downstream
+# in-tree TinyTest users require its include interface. The Search target is
+# not installed/exported before A4, thus this does not publish a new SDK ABI.
+target_link_libraries(salts_search_algorithms PUBLIC unofficial::tre::tre)
 set_target_properties(salts_search_algorithms PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   FOLDER "search")
