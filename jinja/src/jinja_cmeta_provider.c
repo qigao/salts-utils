@@ -120,6 +120,8 @@ typedef struct JINJA_CMETA_COLLECTION_CURSOR {
 typedef struct JINJA_CMETA_CAPTURE_TRACE {
   JINJA_CMETA_EMIT_SOURCE_RANGE *ranges;
   size_t count, capacity, bytes;
+  /* Transforms retain original source coverage but lose byte identity. */
+  int ambiguous;
 } JINJA_CMETA_CAPTURE_TRACE;
 
 /* One single-threaded owner for the complete render, including every include.
@@ -10613,6 +10615,7 @@ static int jinja_trace_capture_write(JINJA_CMETA_PROVIDER *provider,
    * If the input is escaped/filtered/reordered, keep its coverage for final
    * diagnostics but do not pretend these offsets match the output. */
   if (origin != NULL && !provider->shared.active_provenance_transformed &&
+      !origin->ambiguous &&
       src_begin <= origin->bytes && size <= origin->bytes - src_begin) {
     const size_t src_end = src_begin + size;
     size_t covered = src_begin;
@@ -10639,6 +10642,22 @@ static int jinja_trace_capture_write(JINJA_CMETA_PROVIDER *provider,
       return 1;
     }
   }
+  if (origin != NULL && origin->count != 0u) {
+    /* A transformed value has no 1:1 byte projection; retain each candidate
+     * original source interval as COVERAGE of the whole emitted chunk.
+     * Nested captures inherit this ambiguity so it never becomes "exact"
+     * merely because the transformed result is later copied verbatim. */
+    for (size_t i = 0u; i < origin->count; ++i) {
+      JINJA_CMETA_EMIT_SOURCE_RANGE coverage = origin->ranges[i];
+      coverage.intermediate_begin = begin;
+      coverage.intermediate_end = begin + size;
+      coverage.kind = JINJA_CMETA_EMIT_INDIRECT;
+      if (!jinja_trace_append_range(provider, dest, coverage)) return 0;
+    }
+    dest->ambiguous = 1;
+    dest->bytes = begin + size;
+    return 1;
+  }
   const JINJA_CMETA_EMIT_SOURCE_RANGE fallback = {
       .template_name = provider->shared.traced_source_name,
       .source_begin = provider->shared.traced_source_offset,
@@ -10656,7 +10675,8 @@ static void jinja_trace_input(JINJA_CMETA_PROVIDER *provider,
   provider->shared.active_provenance = value->trace_origin;
   provider->shared.active_provenance_cursor = 0u;
   provider->shared.active_provenance_transformed =
-      value->trace_transformed || escaped;
+      value->trace_transformed || escaped ||
+      (value->trace_origin != NULL && value->trace_origin->ambiguous);
 }
 
 static void jinja_trace_input_clear(JINJA_CMETA_PROVIDER *provider) {
@@ -11168,7 +11188,13 @@ static JINJA_CMETA_STATUS jinja_capture_evaluate(JINJA_CMETA_PROVIDER *provider,
   provider->capture_value_active = 0;
   if (status == JINJA_CMETA_OK && origin != NULL) {
     result->trace_origin = origin;
-    result->trace_transformed = header->expression != SIZE_MAX;
+    /* A CAPTURE node references exactly the sealed capture string. Filters
+     * that allocate new bytes are detected by buffer ownership/length, not
+     * guessed by comparing output strings. CAPTURE_BEGIN also has an expression
+     * index, so testing expression != SIZE_MAX would misclassify plain set. */
+    result->trace_transformed = result->kind != JINJA_CMETA_VALUE_STRING ||
+        result->string.data != jinja_cmeta_text_data(&bytes) ||
+        result->string.len != jinja_cmeta_text_length(&bytes);
   }
   return status;
 }
@@ -11189,7 +11215,9 @@ static JINJA_CMETA_STATUS jinja_capture_end(JINJA_CMETA_PROVIDER *provider,
     status = jinja_safety_value(provider, &result, JINJA_CMETA_EXPRESSION_SAFE, &safe);
     if (status != JINJA_CMETA_OK) return status;
     safe.trace_origin = result.trace_origin;
-    safe.trace_transformed = result.trace_transformed;
+    safe.trace_transformed = result.trace_transformed ||
+        safe.kind != result.kind || safe.string.data != result.string.data ||
+        safe.string.len != result.string.len;
     result = safe;
   }
   result.trace_indirect = 1u;
@@ -11860,8 +11888,13 @@ static JINJA_CMETA_STATUS jinja_execute_range_impl(JINJA_CMETA_PROVIDER *provide
           provider->shared.traced_source_offset = instruction->source_offset;
           provider->shared.traced_source_end = instruction->source_end;
           provider->shared.traced_kind = JINJA_CMETA_EMIT_INDIRECT;
-          if (jinja_dump(node, provider->autoescape && !jinja_value_is_safe(&value)
-                  ? jinja_output_escaped : jinja_output_verbatim, provider, provider) != 0)
+          const int escaped = provider->autoescape && !jinja_value_is_safe(&value);
+          jinja_trace_input(provider, &value, escaped);
+          const int dumped = jinja_dump(node,
+              escaped ? jinja_output_escaped : jinja_output_verbatim,
+              provider, provider);
+          jinja_trace_input_clear(provider);
+          if (dumped != 0)
             return provider->shared.status == JINJA_CMETA_OK ? JINJA_CMETA_ERR_RENDER : provider->shared.status;
         }
       }
