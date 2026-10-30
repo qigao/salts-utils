@@ -162,8 +162,8 @@ salts_search_ignore_status salts_search_ignore_add_rules(
     }
     ++line;
     length = end - start;
-    if (length && end < byte_count && data[start + length - 1u] == '\r')
-      --length; /* accept CRLF; lone CR in a line is not a delimiter */
+    if (length && data[start + length - 1u] == '\r')
+      --length; /* Git ignores a trailing CR even on the final line */
     length = trim_unescaped_spaces(data + start, length);
     rc = append_rule(set, source, scope, scope_length, data + start,
                      length, line);

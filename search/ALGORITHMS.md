@@ -64,7 +64,7 @@ unmodified. `out_error_line` identifies the first offending line.
 Rule semantics implemented in this candidate:
 
 - Comments, escaped leading `#` or `!`, `!` negation, escaped trailing spaces,
-  CRLF, slash-rooted, basename, recursive and directory-only patterns.
+  CRLF (including final trailing CR without LF), slash-rooted, basename, recursive and directory-only patterns.
 - Explicit source priority: `.rgignore` > `.ignore` > `.gitignore` >
   `.git/info/exclude` > Git global > explicit ignore file. Within one source
   kind, deeper directory scopes override parent scopes; equal scopes use

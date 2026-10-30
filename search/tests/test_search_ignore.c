@@ -197,14 +197,15 @@ spec("search A3 memory-only hierarchical ignore rules") {
     salts_search_ignore_destroy(&set);
   }
 
-  it("preserves whitespace handling for escaped final space and final CR") {
+  it("trims unescaped spaces and trailing CR also without a final newline") {
     ignore_fixture f;
     init_fixture(&f);
     add_file(&f, SALTS_SEARCH_IGNORE_GITIGNORE, "", "name\\ \n");
     check_result(&f, "name ", false, SALTS_SEARCH_IGNORE_EXCLUDE);
     check_result(&f, "name", false, SALTS_SEARCH_IGNORE_NONE);
     add_file(&f, SALTS_SEARCH_IGNORE_GITIGNORE, "", "name\r");
-    check_result(&f, "name\r", false, SALTS_SEARCH_IGNORE_EXCLUDE);
+    check_result(&f, "name", false, SALTS_SEARCH_IGNORE_EXCLUDE);
+    check_result(&f, "name\r", false, SALTS_SEARCH_IGNORE_NONE);
     salts_search_ignore_destroy(&f.set);
   }
 
