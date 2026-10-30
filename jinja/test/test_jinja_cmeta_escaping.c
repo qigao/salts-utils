@@ -606,3 +606,71 @@ spec("Jinja M2 source intervals survive macros, captures and filters") {
     jinja_cmeta_release(templ);
   }
 }
+
+
+/* Existing native test target: no separate consumer, workflow or renderer. */
+spec("Jinja M2b copied versus transformed capture provenance") {
+  it("keeps author ranges for direct filters and rejects transformed identity") {
+    static const struct {
+      const char *source;
+      const char *expected;
+      const char *author_bytes;
+      int unchanged;
+    } cases[] = {
+      {"{% set label %}ab{% endset %}{{ label | upper }}", "AB", "ab", 0},
+      {"{% set label %}a&{% endset %}{{ label | escape }}", "a&amp;", "a&", 0},
+      {"{% set label %}ab{% endset %}{{ label | safe }}", "ab", "ab", 1},
+      {"{% set label %} ab {% endset %}{{ label | trim }}", "ab", " ab ", 0},
+      {"{% set label %}ab{% endset %}{% set next %}{{ label | upper }}{% endset %}{{ next }}",
+       "AB", "ab", 0}
+    };
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    for (size_t case_index = 0u; case_index < sizeof(cases) / sizeof(cases[0]); ++case_index) {
+      const char *source = cases[case_index].source;
+      JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+      JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
+      check_not_null(templ);
+      if (templ == NULL) continue;
+      JinjaTraceSample sample = {0};
+      const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+          templ, &model.root_desc, &root, NULL, &renderer, &sample,
+          &trace, &sample, &error);
+      check_equal(status, JINJA_CMETA_OK);
+      if (status == JINJA_CMETA_OK) {
+        check_equal(sample.bytes, strlen(cases[case_index].expected));
+        check_equal(memcmp(sample.output, cases[case_index].expected, sample.bytes), 0);
+        const char *position = strstr(source, cases[case_index].author_bytes);
+        check_not_null(position);
+        if (position != NULL) {
+          const size_t original = (size_t)(position - source);
+          int has_source = 0, has_output = 0;
+          size_t next = 0u;
+          for (size_t j = 0u; j < sample.count; ++j) {
+            check_equal(sample.events[j].generated_offset, next);
+            next += sample.events[j].generated_bytes;
+            if (sample.events[j].kind != JINJA_CMETA_EMIT_INDIRECT) continue;
+            check(sample.events[j].source_range_count != 0u);
+            check_equal(sample.events[j].intermediate_identity, cases[case_index].unchanged);
+            if (!cases[case_index].unchanged)
+              check_equal(sample.events[j].intermediate_offset, SIZE_MAX);
+            has_output = 1;
+            for (size_t k = 0u; k < sample.events[j].source_range_count; ++k) {
+              if (sample.events[j].ranges[k].source_begin <= original &&
+                  sample.events[j].ranges[k].source_end >=
+                      original + strlen(cases[case_index].author_bytes))
+                has_source = 1;
+            }
+          }
+          check_equal(next, sample.bytes);
+          check(has_output);
+          check(has_source);
+        }
+      }
+      jinja_cmeta_release(templ);
+    }
+  }
+}

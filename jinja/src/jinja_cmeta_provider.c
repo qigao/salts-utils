@@ -120,6 +120,10 @@ typedef struct JINJA_CMETA_COLLECTION_CURSOR {
 typedef struct JINJA_CMETA_CAPTURE_TRACE {
   JINJA_CMETA_EMIT_SOURCE_RANGE *ranges;
   size_t count, capacity, bytes;
+  /* Render-owned immutable source view after capture; refreshed while the
+   * buffer grows. A returned value must reference these exact bytes before
+   * M2 may claim intermediate byte identity. */
+  vstr captured_view;
   /* Transforms retain original source coverage but lose byte identity. */
   int ambiguous;
 } JINJA_CMETA_CAPTURE_TRACE;
@@ -5172,7 +5176,10 @@ static JINJA_CMETA_STATUS jinja_string_value(JINJA_CMETA_PROVIDER *provider,
       *value = (JINJA_CMETA_VALUE){.kind = JINJA_CMETA_VALUE_STRING,
           .identity = operand->identity,
           .string_safe = jinja_value_is_safe(operand),
-          .string = vstr_from_buf((const char *)scalar.data, scalar.size)};
+          .string = vstr_from_buf((const char *)scalar.data, scalar.size),
+          .trace_indirect = operand->trace_indirect,
+          .trace_origin = provider->shared.trace == NULL ? NULL : operand->trace_origin,
+          .trace_transformed = operand->trace_transformed};
     return status;
   }
   JINJA_CMETA_VALUE empty = {.kind = JINJA_CMETA_VALUE_STRING, .string = vstr_from_cstr("")};
@@ -5217,6 +5224,8 @@ static JINJA_CMETA_STATUS jinja_safety_value(JINJA_CMETA_PROVIDER *provider,
   JINJA_CMETA_STATUS status = jinja_string_value(provider, operand, value);
   size_t start = provider->shared.slice_byte_count;
   if (status != JINJA_CMETA_OK) return status;
+  const char *original_data = value->string.data;
+  const size_t original_bytes = value->string.len;
   if (kind != JINJA_CMETA_EXPRESSION_ESCAPE || !value->string_safe)
     value->identity = (JINJA_CMETA_IDENTITY){0};
   if (kind != JINJA_CMETA_EXPRESSION_SAFE &&
@@ -5226,6 +5235,11 @@ static JINJA_CMETA_STATUS jinja_safety_value(JINJA_CMETA_PROVIDER *provider,
     value->string = vstr_from_buf(provider->shared.slice_bytes + start, provider->shared.slice_byte_count - start);
   }
   value->string_safe = 1;
+  if (value->trace_origin != NULL &&
+      (original_data != value->string.data || original_bytes != value->string.len)) {
+    value->trace_indirect = 1u;
+    value->trace_transformed = 1u;
+  }
   return JINJA_CMETA_OK;
 }
 
@@ -8168,8 +8182,42 @@ static JINJA_CMETA_STATUS jinja_evaluate_filter(JINJA_CMETA_PROVIDER *provider,
   if (status != JINJA_CMETA_OK) return status;
   status = jinja_collect_call_input(provider, context, expression, index, depth, arguments, &input);
   if (status != JINJA_CMETA_OK) return status;
-  return jinja_apply_filter(provider, context, expression->kind, expression->path,
+  status = jinja_apply_filter(provider, context, expression->kind, expression->path,
       operand, &input, value);
+  if (status != JINJA_CMETA_OK || provider->shared.trace == NULL ||
+      operand->trace_origin == NULL || value->kind != JINJA_CMETA_VALUE_STRING)
+    return status;
+  /* Propagate one causal capture source through known built-in string
+   * transforms. User filters and multi-source/selection filters deliberately
+   * receive NO inferred lineage; their dataflow is not proven by this API.
+   * Even a fixed-length conversion has no identity unless its byte view is
+   * unchanged, and the final sink checks that against captured_view again. */
+  switch (expression->kind) {
+  case JINJA_CMETA_EXPRESSION_UPPER:
+  case JINJA_CMETA_EXPRESSION_LOWER:
+  case JINJA_CMETA_EXPRESSION_CAPITALIZE:
+  case JINJA_CMETA_EXPRESSION_TITLE:
+  case JINJA_CMETA_EXPRESSION_SAFE:
+  case JINJA_CMETA_EXPRESSION_ESCAPE:
+  case JINJA_CMETA_EXPRESSION_FORCEESCAPE:
+  case JINJA_CMETA_EXPRESSION_TRIM:
+  case JINJA_CMETA_EXPRESSION_CENTER:
+  case JINJA_CMETA_EXPRESSION_INDENT:
+  case JINJA_CMETA_EXPRESSION_TRUNCATE:
+  case JINJA_CMETA_EXPRESSION_WORDWRAP:
+  case JINJA_CMETA_EXPRESSION_STRIPTAGS:
+  case JINJA_CMETA_EXPRESSION_TO_STRING:
+    if (value->trace_origin == NULL) value->trace_origin = operand->trace_origin;
+    value->trace_indirect = 1u;
+    if (operand->trace_transformed || value->trace_origin != operand->trace_origin ||
+        value->string.data != operand->string.data ||
+        value->string.len != operand->string.len)
+      value->trace_transformed = 1u;
+    break;
+  default:
+    break;
+  }
+  return status;
 }
 
 /* Identity never traverses payloads or advances shared iterators. */
@@ -8593,6 +8641,10 @@ static JINJA_CMETA_STATUS jinja_expression_value(JINJA_CMETA_PROVIDER *provider,
       value->kind = JINJA_CMETA_VALUE_BOOL;
       value->boolean = (expression->unary_not_count & 1u) != 0u ? !truthy : truthy != 0;
       value->identity = (JINJA_CMETA_IDENTITY){0};
+      if (value->trace_origin != NULL) {
+        value->trace_indirect = 1u;
+        value->trace_transformed = 1u;
+      }
     }
   }
   --provider->shared.active_expression_depth;
@@ -10674,9 +10726,16 @@ static void jinja_trace_input(JINJA_CMETA_PROVIDER *provider,
   if (provider->shared.trace == NULL) return;
   provider->shared.active_provenance = value->trace_origin;
   provider->shared.active_provenance_cursor = 0u;
+  /* A filter may lose its private trace_transformed flag while constructing
+   * a new string. Identity requires the SAME captured bytes, not just an equal
+   * length, matching text or its initial producing expression instruction. */
   provider->shared.active_provenance_transformed =
       value->trace_transformed || escaped ||
-      (value->trace_origin != NULL && value->trace_origin->ambiguous);
+      (value->trace_origin != NULL &&
+       (value->trace_origin->ambiguous ||
+        value->kind != JINJA_CMETA_VALUE_STRING ||
+        value->string.data != value->trace_origin->captured_view.data ||
+        value->string.len != value->trace_origin->captured_view.len));
 }
 
 static void jinja_trace_input_clear(JINJA_CMETA_PROVIDER *provider) {
@@ -10706,6 +10765,10 @@ static int jinja_output_verbatim(const char *text, size_t size, void *opaque) {
       return -1;
     }
     if (!jinja_trace_capture_write(provider, slot, begin, size)) return -1;
+    if (provider->shared.trace != NULL)
+      provider->shared.capture_traces[slot].captured_view = vstr_from_buf(
+          jinja_cmeta_text_data(&provider->shared.capture_buffers[slot]),
+          jinja_cmeta_text_length(&provider->shared.capture_buffers[slot]));
     provider->shared.capture_bytes += size;
     if (provider->shared.trace != NULL && provider->shared.active_provenance != NULL) {
       if (provider->shared.active_provenance_cursor > SIZE_MAX - size) {
