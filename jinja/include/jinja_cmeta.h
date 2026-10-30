@@ -401,6 +401,17 @@ typedef struct JINJA_CMETA_EMIT_CALL {
   JINJA_CMETA_EMIT_CALL_KIND kind;
 } JINJA_CMETA_EMIT_CALL;
 
+/** An original-source COVERAGE interval for an intermediate capture buffer.
+ * All ends are exclusive. These are not per-character/column identity claims:
+ * original whitespace trimming, newline folding and filters can change bytes.
+ */
+typedef struct JINJA_CMETA_EMIT_SOURCE_RANGE {
+  vstr template_name;
+  size_t source_begin, source_end;
+  size_t intermediate_begin, intermediate_end;
+  JINJA_CMETA_EMIT_KIND kind;
+} JINJA_CMETA_EMIT_SOURCE_RANGE;
+
 typedef struct JINJA_CMETA_EMIT_ANCHOR {
   vstr template_name;              /* Borrowed, only during the callback. */
   size_t source_offset;             /* Original instruction byte offset. */
@@ -409,6 +420,16 @@ typedef struct JINJA_CMETA_EMIT_ANCHOR {
   JINJA_CMETA_EMIT_KIND kind;
   const JINJA_CMETA_EMIT_CALL *active_calls; /* Borrowed, callback lifetime. */
   size_t active_call_count;         /* Active callsites, not capture history. */
+  /* M2: range array is borrowed for this callback only. It describes the
+   * entire captured input value, not necessarily just this emitted chunk.
+   * For an identity copy, intermediate_offset identifies the input bytes
+   * corresponding to this emitted chunk; otherwise it is SIZE_MAX and the
+   * ranges are CANDIDATE author coverage only, not a generated XML column map.
+   */
+  const JINJA_CMETA_EMIT_SOURCE_RANGE *source_ranges;
+  size_t source_range_count;
+  size_t intermediate_offset;
+  int intermediate_identity;
 } JINJA_CMETA_EMIT_ANCHOR;
 
 typedef struct JINJA_CMETA_SOURCE_TRACE {
@@ -458,6 +479,8 @@ JINJA_CMETA_API JINJA_CMETA_STATUS jinja_cmeta_render(
  * the untraced call. Unlike an exact source map, this never invents
  * correspondence for nested captured or transformed bytes; consumers must
  * treat EXPRESSION/INDIRECT as an author-site anchor, not byte provenance.
+ * M2 adds bounded capture/macro/filter source coverage to final events; a
+ * transformed value never claims exact output-character correspondence.
  * Nothing is persisted after the synchronous call.
  */
 JINJA_CMETA_API JINJA_CMETA_STATUS jinja_cmeta_render_with_trace(

@@ -167,6 +167,15 @@ typedef struct JinjaTraceSample {
       size_t source_offset;
       JINJA_CMETA_EMIT_CALL_KIND kind;
     } calls[8];
+    size_t source_range_count;
+    size_t intermediate_offset;
+    int intermediate_identity;
+    struct {
+      char name[64];
+      size_t source_begin, source_end;
+      size_t intermediate_begin, intermediate_end;
+      JINJA_CMETA_EMIT_KIND kind;
+    } ranges[16];
   } events[64];
   size_t count;
   int reject_trace;
@@ -210,6 +219,26 @@ static int jinja_trace_sample_event(const JINJA_CMETA_EMIT_ANCHOR *event, void *
     sample->events[index].calls[i].name[call->template_name.len] = '\0';
     sample->events[index].calls[i].source_offset = call->source_offset;
     sample->events[index].calls[i].kind = call->kind;
+  }
+  if (event->source_range_count > 16u ||
+      (event->source_range_count != 0u && event->source_ranges == NULL))
+    return -1;
+  sample->events[index].source_range_count = event->source_range_count;
+  sample->events[index].intermediate_offset = event->intermediate_offset;
+  sample->events[index].intermediate_identity = event->intermediate_identity;
+  for (size_t i = 0u; i < event->source_range_count; ++i) {
+    const JINJA_CMETA_EMIT_SOURCE_RANGE *range = &event->source_ranges[i];
+    if (range->template_name.len >= sizeof(sample->events[index].ranges[i].name))
+      return -1;
+    if (range->template_name.len != 0u)
+      memcpy(sample->events[index].ranges[i].name,
+          range->template_name.data, range->template_name.len);
+    sample->events[index].ranges[i].name[range->template_name.len] = '\0';
+    sample->events[index].ranges[i].source_begin = range->source_begin;
+    sample->events[index].ranges[i].source_end = range->source_end;
+    sample->events[index].ranges[i].intermediate_begin = range->intermediate_begin;
+    sample->events[index].ranges[i].intermediate_end = range->intermediate_end;
+    sample->events[index].ranges[i].kind = range->kind;
   }
   return 0;
 }
@@ -486,5 +515,94 @@ spec("Jinja preserves active nested template callsites and marks materialized va
       }
       jinja_cmeta_release(templ);
     }
+  }
+}
+
+
+
+/* The same real render path: capture provenance survives exited macro frames.
+ * Transforms preserve diagnostic coverage, never a fictitious column map. */
+spec("Jinja M2 source intervals survive macros, captures and filters") {
+  it("keeps an original macro body range across a later set-capture emission") {
+    static const char source[] =
+        "{% macro badge() %}<i>A</i>{% endmacro %}"
+        "{% set label %}{{ badge() }}{% endset %}"
+        "<div>{{ label }}</div>";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_ENV *env = jinja_cmeta_env_create(NULL, &error);
+    check_not_null(env);
+    if (!env) return;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_env_compile(env,
+        vstr_from_cstr("nested.ui.xml.jinja"), vstr_from_cstr(source), &error);
+    check_not_null(templ);
+    if (!templ) { jinja_cmeta_env_destroy(env); return; }
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      static const char expected[] = "<div><i>A</i></div>";
+      check_equal(sample.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(sample.output, expected, sizeof(expected) - 1u), 0);
+      const size_t body = (size_t)(strstr(source, "<i>A</i>") - source);
+      int found = 0;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        for (size_t j = 0u; j < sample.events[i].source_range_count; ++j) {
+          const size_t lo = sample.events[i].ranges[j].source_begin;
+          const size_t hi = sample.events[i].ranges[j].source_end;
+          if (lo <= body && hi >= body + sizeof("<i>A</i>") - 1u) {
+            check_equal(strcmp(sample.events[i].ranges[j].name,
+                               "nested.ui.xml.jinja"), 0);
+            check(sample.events[i].kind == JINJA_CMETA_EMIT_INDIRECT);
+            check(sample.events[i].intermediate_identity != 0);
+            found = 1;
+          }
+        }
+      }
+      check(found);
+    }
+    jinja_cmeta_release(templ);
+    jinja_cmeta_env_destroy(env);
+  }
+
+  it("reports filter input ranges but never claims identity after uppercasing") {
+    static const char source[] = "{% filter upper %}ab{% endfilter %}";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ =
+        jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (!templ) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, 2u);
+      check_equal(memcmp(sample.output, "AB", 2u), 0);
+      size_t accounted = 0u, origins = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, accounted);
+        accounted += sample.events[i].generated_bytes;
+        check(sample.events[i].kind == JINJA_CMETA_EMIT_INDIRECT);
+        check_equal(sample.events[i].intermediate_identity, 0);
+        check_equal(sample.events[i].intermediate_offset, SIZE_MAX);
+        origins += sample.events[i].source_range_count;
+      }
+      check_equal(accounted, 2u);
+      check(origins > 0u);
+    }
+    jinja_cmeta_release(templ);
   }
 }
