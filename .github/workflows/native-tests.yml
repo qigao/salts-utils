@@ -51,6 +51,42 @@ jobs:
           $separator = [System.IO.Path]::PathSeparator
           $pythonPath = if ([string]::IsNullOrEmpty($existing)) { $target } else { "$target$separator$existing" }
           "PYTHONPATH=$pythonPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # The real installed producer package must expose both static Markdown
+      # targets and public headers. No fabricated installer/consumer project,
+      # no extra workflow and no source-level fallback.
+      - name: Verify installed native Markdown static SDK exports
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:RUNNER_TEMP "saltsutils-markdown-installed-$env:QIGAO_SDK_RID"
+          & cmake --install "${{ matrix.build_dir }}" --config Release --prefix $prefix
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($rel in @('include/salts/markdown.h', 'include/salts/markdown_html.h',
+                             'lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake',
+                             'lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake')) {
+            if (-not (Test-Path (Join-Path $prefix $rel))) {
+              throw "Markdown installed-SDK contract: missing $rel"
+            }
+          }
+          $targets = Get-Content (Join-Path $prefix 'lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake') -Raw
+          foreach ($target in @('Salts::MarkdownParser', 'Salts::MarkdownHtml')) {
+            if (-not $targets.Contains("add_library($target STATIC IMPORTED)")) {
+              throw "Markdown installed-SDK contract: missing canonical STATIC target $target"
+            }
+          }
+          $archiveNames = if ($IsWindows) {
+            @('markdown_parser.lib', 'markdown_html.lib')
+          } else {
+            @('libmarkdown_parser.a', 'libmarkdown_html.a')
+          }
+          foreach ($name in $archiveNames) {
+            if (-not (Test-Path (Join-Path $prefix "lib/$name"))) {
+              throw "Markdown installed-SDK contract: missing compiled static archive $name"
+            }
+          }
+          Write-Host "PASS: real installed SaltsUtils MarkdownParser/Html static SDK ($env:QIGAO_SDK_RID)"
+
       - name: Run complete Unix CTest graph
         if: matrix.family != 'windows'
         shell: bash
