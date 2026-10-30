@@ -70,6 +70,18 @@ spec("search A3 memory-only hierarchical ignore rules") {
     salts_search_ignore_destroy(&f.set);
   }
 
+  it("keeps basename-only parent exceptions scoped to current entry") {
+    ignore_fixture f;
+    init_fixture(&f);
+    add_file(&f, SALTS_SEARCH_IGNORE_GITIGNORE, "", "!.secret/\n");
+    check_result(&f, ".secret", true, SALTS_SEARCH_IGNORE_INCLUDE);
+    check_result(&f, ".secret/.deep", true, SALTS_SEARCH_IGNORE_NONE);
+    check_result(&f, ".secret/.deep/a.txt", false, SALTS_SEARCH_IGNORE_NONE);
+    check_result(&f, "src/.secret", true, SALTS_SEARCH_IGNORE_INCLUDE);
+    check_result(&f, "src/.secret/nested", true, SALTS_SEARCH_IGNORE_NONE);
+    salts_search_ignore_destroy(&f.set);
+  }
+
   it("uses nested scopes and higher directory depth within the same source") {
     ignore_fixture f;
     init_fixture(&f);

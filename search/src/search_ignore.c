@@ -216,7 +216,20 @@ static salts_search_ignore_status eval_one(
     salts_search_glob_status status;
     if (!rule_covers(r, path, len, &rel))
       continue;
-    status = salts_search_glob_match(&r->glob, path + rel, len - rel,
+    /* One unanchored basename rule applies to the CURRENT entry only.
+     * Parent directory effects are handled by the ancestor walk in evaluate().
+     * Matching any component here would incorrectly whitelist descendants of
+     * an included parent, e.g. !.secret/ must not unhide .secret/.deep/. */
+    const char *candidate = path + rel;
+    size_t candidate_length = len - rel;
+    if (r->glob.scope == SALTS_SEARCH_GLOB_COMPONENT) {
+      size_t start = candidate_length;
+      while (start != 0 && candidate[start - 1u] != '/')
+        --start;
+      candidate += start;
+      candidate_length -= start;
+    }
+    status = salts_search_glob_match(&r->glob, candidate, candidate_length,
                                      is_directory, scratch, scratch_size,
                                      &matched);
     if (status == SALTS_SEARCH_GLOB_LIMIT)
