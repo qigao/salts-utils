@@ -178,6 +178,33 @@ This changes the dependency pin **only in this Draft candidate**, not master.
   worst-case TNFA proof/fault-injection and exact-head native tests. This
   Draft cannot be considered A1 accepted solely because source compiles.
 
+### A4 preparation: one query-selected matcher and line-context integration
+
+`search_matcher.[ch]` unifies the already implemented C11 Two-Way
+Literal and pinned TRE 0.9 exact Regex algorithms under a single
+compile/find-first/destroy contract. A required kind selects LITERAL
+or REGEX once at compile time. There is no alternate Regex provider,
+and failed execution never falls back to the other matching algorithm.
+
+All matches return the same bounded half-open byte offsets and typed
+NOT_FOUND/INVALID/LIMIT/UNSUPPORTED/NO_MEMORY/ENGINE_ERROR statuses.
+The maximum subject length is explicitly capped at INT_MAX for both kinds.
+
+The A2 `search_context` adds a matcher-based constructor while keeping
+its existing literal-only constructor. Both share the same bounded
+line scanner, before/after context ring and result stream. TRE receives
+the complete original line without substring slicing, preserving
+start/end anchoring, alternation and byte offsets. Tests compare raw
+byte spans for Literal/TRE, verify POSIX leftmost-longest selection,
+NUL bytes, limits and complete chunked line input with before/after
+context produced by TRE.
+
+This remains a private non-installed API. Multiline regex, multi-match
+enumeration, Unicode normalization, and full ripgrep leftmost-first
+parity remain outside this gate. Android/iOS target TRE package cache-only
+recovery is separate: the earlier iOS CI source-built a missing target
+TRE archive although native source/build and CTests passed.
+
 ## Algorithm and complexity
 
 A0 uses the **Two-Way** string matching algorithm (Crochemore–Perrin): maximal suffix in two lexicographic orders yields the critical position and period. For periodic patterns it retains the matched prefix as *memory* after shifts; for aperiodic patterns it uses the guaranteed-safe long shift. The prefix equality test chooses between them. Pattern preprocessing is O(m), each find is worst-case O(n+m) comparisons with O(1) per-call workspace, not including the O(m) owned needle bytes.
@@ -189,7 +216,8 @@ Single-byte patterns use standard C `memchr`. The planned SIMD prefilter in #705
 - [x] A0 scalar Two-Way implementation and deterministic C11 differential tests (implementation candidate).
 - [ ] A0 canonical Salts SIMD scan integration and scalar/SIMD parity.
 - [x] A1 candidate single TRE static provider wrapper and POSIX priority admission, awaiting exact-head binary package/CTest verification.
-- [ ] A1 full regex resource/leftmost-first parity and cross-RID native acceptance.
+- [ ] A1 full regex resource/leftmost-first parity and cache-only cross-RID admission.
+- [x] A4 prep: query-selected Literal/TRE matcher + bounded A2 context candidate (Draft; CI pending).
 - [x] A2 line-delimiting primitive + deterministic C11 tests (stacked draft, not accepted).
 - [x] A2 memory-only bounded before/after literal context collector (stacked Draft; exact-head CI pending).
 - [ ] A2 encoding conversions, unique TRE regex integration and further streaming conformance.
