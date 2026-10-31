@@ -1,5 +1,6 @@
 #include "orbit_native_projection.h"
 #include "service_native.h"
+#include "native_service_projection.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -170,6 +171,58 @@ static int check_case(const char *source, int should_admit) {
   if (should_admit) {
     if (databind_compiler_service_native_build(contract, &native) != 0)
       goto done;
+    if (strstr(source, "native_context") != NULL) {
+      FILE *functions = tmpfile();
+      long count;
+      char *text = NULL;
+      if (functions == NULL || native.operation_count == 0u) {
+        if (functions != NULL) fclose(functions);
+        goto done;
+      }
+      /* Both canonical Native Service lowering paths must consume one and
+       * the same receiver convention, never an Orbit-specific method ABI.
+       */
+      if (!native.operations[0].requires_context ||
+          databind_compiler_service_native_emit_prototype(
+              functions, &native.operations[0]) != 0 ||
+          databind_compiler_service_native_emit_execution(
+              functions, &native.operations[0], 1) != 0 ||
+          !databind_compiler_native_contract_emit_header_op(
+              functions, &native.operations[0]) ||
+          !databind_compiler_native_contract_emit_invoke(
+              functions, &native.operations[0]) ||
+          fflush(functions) != 0 ||
+          fseek(functions, 0, SEEK_END) != 0 ||
+          (count = ftell(functions)) < 0 ||
+          fseek(functions, 0, SEEK_SET) != 0) {
+        fclose(functions);
+        goto done;
+      }
+      text = (char *)malloc((size_t)count + 1u);
+      if (text == NULL) {
+        fclose(functions);
+        goto done;
+      }
+      if (fread(text, 1u, (size_t)count, functions) != (size_t)count) {
+        free(text);
+        fclose(functions);
+        goto done;
+      }
+      text[count] = '\0';
+      fclose(functions);
+      if (strstr(text, "void *receiver, const PingRequest_t *request") == NULL ||
+          strstr(text, "if (context == NULL) return false;") == NULL ||
+          strstr(text, "context, (const PingRequest_t *)params[0]") == NULL ||
+          strstr(text, "__databind_execution_bind(") == NULL ||
+          strstr(text, "out->context = receiver;") == NULL ||
+          strstr(text, "void *receiver, const PingRequest *request") == NULL ||
+          strstr(text, "context, (const PingRequest *)params[0]") == NULL) {
+        fprintf(stderr, "Canonical Native receiver ABI disagrees with Orbit lowering\n");
+        free(text);
+        goto done;
+      }
+      free(text);
+    }
     printed = render_to_text(contract, &native);
     if (printed == NULL) goto done;
     if (databind_compiler_orbit_native_selected(contract)) {
