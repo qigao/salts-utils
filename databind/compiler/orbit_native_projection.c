@@ -99,6 +99,73 @@ static int orbit_receiver_v1(const IdlOperation *op, int *out_contextual) {
   return 1;
 }
 
+
+/* M0k.2b first managed slice: one complete owning text/bytes-only record,
+ * no optional/null/collection/unknown nested layouts or guessed ownership.
+ * The canonical NativeSourceIR Record and its CMeta VALUE binder remain
+ * the only storage/ABI authority; Orbit transports only a CFlow u64 token.
+ */
+static int orbit_managed_record(const IdlContract *contract,
+                                const char *name) {
+  const IdlDataDecl *record;
+  size_t i;
+  if (!contract || !name) return 0;
+  record = idl_contract_find_data(contract, name);
+  if (!record || record->kind != IDL_DATA_MESSAGE ||
+      record->fields == NULL || record->field_count == 0u ||
+      record->field_count > 16u)
+    return 0;
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
+    if (!field->name || !orbit_identifier(field->name) ||
+        !field->type_name ||
+        (strcmp(field->type_name, "string") != 0 &&
+         strcmp(field->type_name, "bytes") != 0) ||
+        field->optional || field->nullable ||
+        field->collection_kind != IDL_COLLECTION_NONE ||
+        field->default_value != NULL || field->length != NULL ||
+        field->annotation_count != 0u || field->constraint_count != 0u)
+      return 0;
+  }
+  return 1;
+}
+
+/* Ownership budgets are required on both sides and bounded in the Contract.
+ * No default, ambiguous duplicate tag, negative or overflowing number.
+ */
+static int orbit_managed_limits(const IdlOperation *op,
+                                size_t *request_max, size_t *response_max) {
+  const IdlAnnotation *a;
+  uint64_t request = 0u, response = 0u;
+  if (!op || !request_max || !response_max) return 0;
+  a = idl_annotation_find(op->annotations, op->annotation_count,
+                          "orbit_value", 0u);
+  if (!a || a->bare || a->argument_count != 2u ||
+      !a->arguments ||
+      idl_annotation_count(op->annotations, op->annotation_count,
+                           "orbit_value") != 1u ||
+      !orbit_positive_u64(a->arguments[0], &request) ||
+      !orbit_positive_u64(a->arguments[1], &response) ||
+      request > 65536u || response > 65536u)
+    return 0;
+  *request_max = (size_t)request;
+  *response_max = (size_t)response;
+  return 1;
+}
+
+/* Exactly one managed method per Service in the current bounded CallPort.
+ * Reject mixtures until a native multi-method contract owner exists.
+ */
+static int orbit_managed_operation(const IdlContract *contract,
+                                   const IdlOperation *op,
+                                   size_t *request_max, size_t *response_max) {
+  int contextual = 0;
+  return orbit_receiver_v1(op, &contextual) && contextual &&
+      orbit_managed_record(contract, op->request_type) &&
+      orbit_managed_record(contract, op->response_type) &&
+      orbit_managed_limits(op, request_max, response_max);
+}
+
 int databind_compiler_orbit_native_selected(const IdlContract *contract) {
   size_t s, o;
   if (contract == NULL) return 0;
@@ -135,16 +202,29 @@ int databind_compiler_orbit_native_admitted(const IdlContract *contract) {
           (receiver_mode >= 0 && receiver_mode != contextual))
         return 0;
       receiver_mode = contextual;
-      if (!orbit_identifier(op->name) ||
-          !orbit_operation_ids(op, &method, &event) ||
-          method <= previous_id || op->error_count != 0u ||
-          !orbit_scalar_record(contract, op->request_type, &request_member) ||
-          !orbit_scalar_record(contract, op->response_type, &response_member)) {
+      {
+        const int scalar_pair =
+            orbit_scalar_record(contract, op->request_type, &request_member) &&
+            orbit_scalar_record(contract, op->response_type, &response_member);
+        const IdlAnnotation *managed = idl_annotation_find(
+            op->annotations, op->annotation_count, "orbit_value", 0u);
+        size_t req_max = 0u, resp_max = 0u;
+        const int owned_pair = !scalar_pair &&
+            orbit_managed_operation(contract, op, &req_max, &resp_max);
+        if (!orbit_identifier(op->name) ||
+            !orbit_operation_ids(op, &method, &event) ||
+            method <= previous_id || op->error_count != 0u ||
+            (scalar_pair && managed != NULL) ||
+            (!scalar_pair && (!owned_pair ||
+                               service->operation_count != 1u))) {
         fprintf(stderr,
             "Orbit native unary requires [orbit(method,event)] ordered IDs, "
-            "no typed errors and required single-uint64 messages: %s.%s\n",
+            "no typed errors; single uint64 or sole budgeted owned "
+            "text/bytes value [orbit_value(request_bytes,response_bytes)]: "
+            "%s.%s\n",
             service->name, op->name);
-        return 0;
+          return 0;
+        }
       }
       previous_id = method;
       for (j = 0u; j < i; ++j) {
