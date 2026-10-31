@@ -284,6 +284,8 @@ static int native_service_write_contract_header(
   char guard[320];
   size_t i;
   const int orbit = databind_compiler_orbit_native_selected(contract);
+  const int managed_orbit =
+      databind_compiler_orbit_native_managed_selected(contract);
   if (!file || !contract || !config || !services ||
       !native_service_header_guard(contract, guard, sizeof(guard)))
     return 0;
@@ -301,14 +303,28 @@ static int native_service_write_contract_header(
    * and the SAME business C symbols. This is a conditional header view,
    * not a second generated FunctionDesc, parser or runtime engine.
    */
-  if (orbit && fputs(
-      "#if defined(DATABIND_NATIVE_ENABLE_ORBIT) && \\\n"
-      "    (defined(DATABIND_NATIVE_ENABLE_CMETA) || \\\n"
-      "     defined(DATABIND_NATIVE_ENABLE_DATABIND))\n"
-      "#error Orbit unary scalar view cannot mix Native DataBind/CMeta ABI\n"
-      "#endif\n"
-      "#if !defined(DATABIND_NATIVE_ENABLE_ORBIT)\n", file) == EOF)
-    return 0;
+  if (orbit) {
+    if (managed_orbit) {
+      /* Managed values use canonical NativeSourceIR CMeta VALUE storage,
+       * but never require the DataBind runtime in a downstream Orbit app.
+       */
+      if (fputs(
+          "#if defined(DATABIND_NATIVE_ENABLE_ORBIT) && \\\n"
+          "    defined(DATABIND_NATIVE_ENABLE_DATABIND)\n"
+          "#error Orbit managed VALUE view never links DataBind runtime\n"
+          "#endif\n"
+          "#if !defined(DATABIND_NATIVE_ENABLE_ORBIT)\n", file) == EOF)
+        return 0;
+    } else if (fputs(
+        "#if defined(DATABIND_NATIVE_ENABLE_ORBIT) && \\\n"
+        "    (defined(DATABIND_NATIVE_ENABLE_CMETA) || \\\n"
+        "     defined(DATABIND_NATIVE_ENABLE_DATABIND))\n"
+        "#error Orbit unary scalar view cannot mix Native DataBind/CMeta ABI\n"
+        "#endif\n"
+        "#if !defined(DATABIND_NATIVE_ENABLE_ORBIT)\n", file) == EOF) {
+      return 0;
+    }
+  }
   if (fputs(
       "#ifndef DATABIND_NATIVE_ENABLE_CMETA\n"
       "#define DATABIND_NATIVE_ENABLE_CMETA\n#endif\n"
@@ -320,10 +336,20 @@ static int native_service_write_contract_header(
             "#include <cmeta/function.h>\n", file) == EOF)
     return 0;
   if (orbit) {
-    if (fputs(
+    if (managed_orbit) {
+      if (fputs(
+          "#else /* DATABIND_NATIVE_ENABLE_ORBIT managed VALUE */\n"
+          "#ifndef DATABIND_NATIVE_ENABLE_CMETA\n"
+          "#define DATABIND_NATIVE_ENABLE_CMETA\n"
+          "#endif\n"
+          "#include ", file) == EOF)
+        return 0;
+    } else if (fputs(
         "#else /* DATABIND_NATIVE_ENABLE_ORBIT */\n"
-        "#include ", file) == EOF ||
-        !native_service_write_include(file, config->native_header) ||
+        "#include ", file) == EOF) {
+      return 0;
+    }
+    if (!native_service_write_include(file, config->native_header) ||
         fputs("\n#include <orbit/call.h>\n"
               "#endif /* DATABIND_NATIVE_ENABLE_ORBIT */\n", file) == EOF)
       return 0;
