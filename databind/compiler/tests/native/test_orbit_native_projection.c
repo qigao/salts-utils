@@ -148,6 +148,10 @@ static int check_case(const char *source, int should_admit) {
           strstr(printed, "request->seq") == NULL ||
           strstr(printed, "record.ack = scalar;") == NULL ||
           strstr(printed, "__orbit_call_async(") == NULL ||
+          strstr(printed, "__orbit_dispatch(") == NULL ||
+          strstr(printed, "__orbit_service_config(") == NULL ||
+          strstr(printed, "orbit_call_u64_method(port, token, &method)") == NULL ||
+          strstr(printed, "business_status = databind_4_Game_4_Room_4_Ping(") == NULL ||
           strstr(printed, "ORBIT_METHOD_CALL_TOKEN") == NULL)
         goto done;
     } else if (printed[0] != '\0') {

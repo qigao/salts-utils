@@ -213,6 +213,112 @@ static int orbit_native_emit_method(FILE *file,
     (unsigned long long)method, request_member, symbol) >= 0;
 }
 
+/*
+ * The deterministic CFlow Machine Action emits the original call token.
+ * The application Subscriber invokes this generated helper only from
+ * on_value AFTER the actual Machine transition has committed.
+ *
+ * Dispatch uses the same canonical Native Service business function symbol
+ * and Request/Response records that the CMeta FunctionAbi publishes.
+ * No new reflected function, user-space mailbox or hidden scheduler.
+ */
+static int orbit_native_emit_dispatch_case(
+    FILE *file, const databind_compiler_service_native_operation *op,
+    const char *request_member, const char *response_member,
+    uint64_t method) {
+  if (!file || !op || !op->symbol || !op->request_type ||
+      !op->response_type ||
+      !orbit_identifier(op->symbol) ||
+      !orbit_identifier(request_member) ||
+      !orbit_identifier(response_member))
+    return 0;
+  return fprintf(file,
+      "    case UINT64_C(%llu): {\n"
+      "        uint64_t raw_request = 0u;\n"
+      "        %s typed_request = {0};\n"
+      "        %s typed_response = {0};\n"
+      "        orbit_call_status step;\n"
+      "        int business_status;\n"
+      "        step = orbit_call_u64_request(\n"
+      "            port, token, UINT64_C(%llu), &raw_request);\n"
+      "        if (step != ORBIT_CALL_OK) return step;\n"
+      "        typed_request.%s = raw_request;\n"
+      "        business_status = %s(&typed_request, &typed_response);\n"
+      "        step = orbit_call_u64_stage_reply(\n"
+      "            port, token, UINT64_C(%llu),\n"
+      "            business_status, typed_response.%s);\n"
+      "        if (step != ORBIT_CALL_OK) return step;\n"
+      "        return orbit_call_u64_observe(port, token);\n"
+      "    }\n",
+      (unsigned long long)method, op->request_type, op->response_type,
+      (unsigned long long)method, request_member, op->symbol,
+      (unsigned long long)method, response_member) >= 0;
+}
+
+static int orbit_native_emit_service_dispatch(
+    FILE *file, const IdlContract *contract,
+    const IdlService *service,
+    const databind_compiler_service_native_ir *services) {
+  size_t i;
+  const size_t schema_len = strlen(contract->name);
+  const size_t service_len = strlen(service->name);
+  if (fprintf(file,
+      "/* Canonical CFlow post-commit adapter for one Service instance. */\n"
+      "static inline orbit_service_config "
+      "databind_%zu_%s_%zu_%s__orbit_service_config(\n"
+      "    const cflow_actor_config *actor) {\n"
+      "    orbit_service_config config = {\n"
+      "        actor, databind_%zu_%s_%zu_%s__orbit_methods,\n"
+      "        sizeof(databind_%zu_%s_%zu_%s__orbit_methods) /\n"
+      "          sizeof(databind_%zu_%s_%zu_%s__orbit_methods[0])\n"
+      "    };\n"
+      "    return config;\n"
+      "}\n"
+      "static inline orbit_call_status "
+      "databind_%zu_%s_%zu_%s__orbit_dispatch(\n"
+      "    orbit_call_port *port, uint64_t token) {\n"
+      "    orbit_method_id method = 0u;\n"
+      "    orbit_call_status status = orbit_call_u64_method(port, token, &method);\n"
+      "    if (status != ORBIT_CALL_OK) return status;\n"
+      "    switch (method) {\n",
+      schema_len, contract->name, service_len, service->name,
+      schema_len, contract->name, service_len, service->name,
+      schema_len, contract->name, service_len, service->name,
+      schema_len, contract->name, service_len, service->name,
+      schema_len, contract->name, service_len, service->name) < 0)
+    return 0;
+
+  for (i = 0u; i < service->operation_count; ++i) {
+    const IdlOperation *operation = &service->operations[i];
+    const databind_compiler_service_native_operation *native =
+        orbit_native_find(services, service->name, operation->name);
+    uint64_t method;
+    uint32_t event;
+    const char *request_member = NULL;
+    const char *response_member = NULL;
+    if (!native || !orbit_operation_ids(operation, &method, &event) ||
+        !orbit_scalar_record(contract, operation->request_type,
+                             &request_member) ||
+        !orbit_scalar_record(contract, operation->response_type,
+                             &response_member) ||
+        !orbit_native_emit_dispatch_case(
+            file, native, request_member, response_member, method))
+      return 0;
+  }
+
+  /*
+   * A missing method in the active generated contract is a protocol error,
+   * not a reason to hold its terminal credit indefinitely. Settle the
+   * accepted call as NO_REPLY (never SUCCESS) and fail the dispatch.
+   */
+  return fputs(
+      "    default:\n"
+      "        (void)orbit_call_u64_observe(port, token);\n"
+      "        return ORBIT_CALL_TYPE_MISMATCH;\n"
+      "    }\n"
+      "}\n\n", file) != EOF;
+}
+
 int databind_compiler_orbit_native_write_header(
     FILE *file, const IdlContract *contract,
     const databind_compiler_service_native_ir *services) {
@@ -264,6 +370,8 @@ int databind_compiler_orbit_native_write_header(
               file, native, request_member, response_member, method))
         return 0;
     }
+    if (!orbit_native_emit_service_dispatch(file, contract, service, services))
+      return 0;
   }
   return fputs("#endif /* DATABIND_NATIVE_ENABLE_ORBIT */\n",
                file) != EOF;
