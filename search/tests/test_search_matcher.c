@@ -202,6 +202,143 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     salts_search_matcher_destroy(&m);
   }
 
+  it("owns cumulative TRE scan and hit budgets across original lines") {
+    salts_search_matcher m = {0};
+    salts_search_matcher_query_budget owner = {0};
+    literal_hit_probe p = {0};
+    size_t n = 99u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "aba", 3u, 16u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_query_budget_init(&owner, 4u, 4u),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "ababa", 5u, true,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 2u);
+    check_equal(owner.total_emitted, 2u);
+    check_equal(owner.total_scans, 3u); /* two hits + final no-match */
+    check_equal(owner.remaining_hits, 2u);
+    check_equal(owner.remaining_scans, 1u);
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "x", 1u, true,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 0u);
+    check_equal(owner.total_scans, 4u);
+    check_equal(owner.remaining_scans, 0u);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "x", 1u, true,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 0u);
+    check_equal(owner.total_scans, 4u);
+    check_true(owner.terminal);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "x", 1u, true,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_INVALID);
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("never hides query-wide hit exhaustion or early callback stop") {
+    salts_search_matcher m = {0};
+    salts_search_matcher_query_budget owner = {0};
+    literal_hit_probe p = {0};
+    size_t n = 17u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "a", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_query_budget_init(&owner, 1u, 5u),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "a", 1u, false,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 1u);
+    check_equal(owner.remaining_hits, 0u);
+    check_equal(owner.total_scans, 2u);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "aaa", 3u, false,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 0u);
+    check_equal(p.count, 1u);
+    check_equal(owner.total_scans, 3u);
+    check_true(owner.terminal);
+    salts_search_matcher_destroy(&m);
+    owner = (salts_search_matcher_query_budget){0};
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "a", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_query_budget_init(&owner, 4u, 1u),
+                SALTS_SEARCH_MATCHER_OK);
+    p.stop_at = 1u;
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "aaa", 3u, true,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_STOPPED);
+    check_equal(n, 1u);
+    check_equal(owner.total_emitted, 1u);
+    check_equal(owner.remaining_hits, 3u);
+    check_equal(owner.remaining_scans, 0u);
+    check_true(owner.terminal);
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("keeps literal query budgets separate from TRE invocation quota") {
+    salts_search_matcher m = {0};
+    salts_search_matcher_query_budget owner = {0};
+    literal_hit_probe p = {0};
+    size_t n = 9u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_LITERAL,
+                "a", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_query_budget_init(&owner, 2u, 0u),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "a", 1u, false,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 1u);
+    check_equal(owner.total_scans, 0u);
+    check_equal(owner.remaining_hits, 1u);
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "a", 1u, false,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 1u);
+    check_equal(owner.total_emitted, 2u);
+    check_equal(owner.remaining_hits, 0u);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "b", 1u, false,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 0u); /* no more hits, even with quota == 0 */
+    check_equal(owner.total_emitted, 2u);
+    check_equal(owner.total_scans, 0u);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "a", 1u, false,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 0u);
+    check_true(owner.terminal);
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("never treats terminal regex budget zero or invalid owner as complete") {
+    salts_search_matcher m = {0};
+    salts_search_matcher_query_budget owner = {0};
+    literal_hit_probe p = {0};
+    size_t n = 18u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "z", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "xxx", 3u, false,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_INVALID);
+    check_equal(n, 0u);
+    check_equal(salts_search_matcher_query_budget_init(&owner, 2u, 0u),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_query_budget_init(&owner, 2u, 0u),
+                SALTS_SEARCH_MATCHER_INVALID);
+    check_equal(salts_search_matcher_query_enumerate(
+                &owner, &m, "xxx", 3u, false,
+                record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(owner.total_scans, 0u);
+    check_equal(owner.total_emitted, 0u);
+    check_true(owner.terminal);
+    salts_search_matcher_destroy(&m);
+  }
+
   it("does not turn an anchored or word-boundary TRE match into a suffix match") {
     salts_search_matcher m = {0};
     literal_hit_probe p = {0};

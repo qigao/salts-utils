@@ -117,6 +117,43 @@ salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
     salts_search_matcher_hit_callback callback, void *user,
     size_t *out_emitted);
 
+/* Query-owned cumulative resource ledger across complete source lines.
+ * The same one compiled matcher is borrowed for all calls; per-line original
+ * bytes remain borrowed only during enumerate(). Initialize a zeroed object
+ * exactly once. Any LIMIT/STOPPED/NO_MEMORY/error makes owner terminal.
+ * A subsequent call is INVALID, never a misleading OK or silent restart.
+ * Callback must not reenter the query owner or destroy the compiled matcher.
+ *
+ * remaining_hits counts callbacks, regardless of Literal/Regex kind.
+ * remaining_scans counts complete-subject TRE invocations for Regex only,
+ * including terminal negative probes; Literal does not consume TRE scans.
+ * total_emitted and total_scans are monotone, per-query counters.
+ * This does not cap one TRE call's CPU, compile work, or other owners.
+ */
+typedef struct salts_search_matcher_query_budget {
+  size_t remaining_hits, remaining_scans;
+  size_t total_emitted, total_scans;
+  bool initialized, terminal, in_call;
+} salts_search_matcher_query_budget;
+
+salts_search_matcher_status salts_search_matcher_query_budget_init(
+    salts_search_matcher_query_budget *budget,
+    size_t max_hits, size_t max_scans);
+
+/* Enumerate one original, complete line under a shared query-wide ledger.
+ * out_emitted is the number of callbacks on THIS line, even if STOPPED.
+ * The callback spans remain relative to this original line, as in the
+ * primitive enumerate_* APIs. The caller owns each line's global offset.
+ * A zero remaining TRE scan budget produces LIMIT even for a no-match line:
+ * no false "complete" result without the required final proof.
+ */
+salts_search_matcher_status salts_search_matcher_query_enumerate(
+    salts_search_matcher_query_budget *budget,
+    const salts_search_matcher *compiled,
+    const void *subject, size_t subject_length,
+    bool overlapping, salts_search_matcher_hit_callback callback,
+    void *user, size_t *out_emitted);
+
 void salts_search_matcher_destroy(salts_search_matcher *compiled);
 
 #endif

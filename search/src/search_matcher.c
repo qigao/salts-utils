@@ -149,19 +149,18 @@ salts_search_matcher_status salts_search_matcher_enumerate_literals(
   }
 }
 
-salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
+static salts_search_matcher_status enumerate_regex_with_remaining_scans(
     const salts_search_matcher *compiled, const void *subject,
     size_t subject_length, bool overlapping, size_t max_hits,
-    size_t max_scans,
+    size_t *remaining_scans,
     salts_search_matcher_hit_callback callback, void *user,
     size_t *out_emitted) {
   size_t start_at = 0;
   size_t count = 0;
-  size_t scans = 0;
   if (out_emitted)
     *out_emitted = 0;
   if (!compiled || !compiled->compiled || !callback || !out_emitted ||
-      (subject_length != 0 && !subject))
+      !remaining_scans || (subject_length != 0 && !subject))
     return SALTS_SEARCH_MATCHER_INVALID;
   if (compiled->kind != SALTS_SEARCH_MATCHER_REGEX)
     return SALTS_SEARCH_MATCHER_UNSUPPORTED;
@@ -174,9 +173,9 @@ salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
     salts_search_matcher_status status;
     /* A terminal no-match is itself a full TRE invocation. When the
      * budget is exhausted, never report successful complete enumeration. */
-    if (scans == max_scans)
+    if (*remaining_scans == 0u)
       return SALTS_SEARCH_MATCHER_LIMIT;
-    ++scans;
+    --*remaining_scans;
     status = map_regex(
         salts_search_regex_find_from(&compiled->compiled_pattern.regex,
                                      subject, subject_length, start_at, &found));
@@ -212,6 +211,80 @@ salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
     if (start_at > subject_length)
       return SALTS_SEARCH_MATCHER_OK;
   }
+}
+
+salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
+    const salts_search_matcher *compiled, const void *subject,
+    size_t subject_length, bool overlapping, size_t max_hits,
+    size_t max_scans,
+    salts_search_matcher_hit_callback callback, void *user,
+    size_t *out_emitted) {
+  return enumerate_regex_with_remaining_scans(
+      compiled, subject, subject_length, overlapping, max_hits,
+      &max_scans, callback, user, out_emitted);
+}
+
+/* Query budget owns two independent counters over successive complete
+ * lines. Only this owner mutates them; the borrowed compiled TRE remains
+ * immutable. Do not reenter the owner from a hit callback. */
+salts_search_matcher_status salts_search_matcher_query_budget_init(
+    salts_search_matcher_query_budget *budget,
+    size_t max_hits, size_t max_scans) {
+  if (!budget || budget->initialized)
+    return SALTS_SEARCH_MATCHER_INVALID;
+  *budget = (salts_search_matcher_query_budget){0};
+  budget->remaining_hits = max_hits;
+  budget->remaining_scans = max_scans;
+  budget->initialized = true;
+  return SALTS_SEARCH_MATCHER_OK;
+}
+
+salts_search_matcher_status salts_search_matcher_query_enumerate(
+    salts_search_matcher_query_budget *budget,
+    const salts_search_matcher *compiled,
+    const void *subject, size_t subject_length,
+    bool overlapping, salts_search_matcher_hit_callback callback,
+    void *user, size_t *out_emitted) {
+  salts_search_matcher_status result;
+  size_t used = 0;
+  size_t before_scans;
+  if (out_emitted)
+    *out_emitted = 0u;
+  if (!budget || !budget->initialized || budget->terminal ||
+      budget->in_call || !compiled || !compiled->compiled ||
+      !callback || !out_emitted)
+    return SALTS_SEARCH_MATCHER_INVALID;
+  if (compiled->kind != SALTS_SEARCH_MATCHER_REGEX &&
+      compiled->kind != SALTS_SEARCH_MATCHER_LITERAL)
+    return SALTS_SEARCH_MATCHER_UNSUPPORTED;
+
+  before_scans = budget->remaining_scans;
+  budget->in_call = true;
+  if (compiled->kind == SALTS_SEARCH_MATCHER_REGEX) {
+    result = enumerate_regex_with_remaining_scans(
+        compiled, subject, subject_length, overlapping,
+        budget->remaining_hits, &budget->remaining_scans,
+        callback, user, &used);
+  } else {
+    /* Literal uses the single Two-Way algorithm, not the TRE scan budget.
+     * The global max_hits quota is nevertheless identical for both kinds. */
+    result = salts_search_matcher_enumerate_literals(
+        compiled, subject, subject_length, overlapping,
+        budget->remaining_hits, callback, user, &used);
+  }
+  budget->in_call = false;
+  if (used > budget->remaining_hits ||
+      before_scans < budget->remaining_scans) {
+    budget->terminal = true;
+    return SALTS_SEARCH_MATCHER_ENGINE_ERROR;
+  }
+  budget->remaining_hits -= used;
+  budget->total_emitted += used;
+  budget->total_scans += before_scans - budget->remaining_scans;
+  *out_emitted = used;
+  if (result != SALTS_SEARCH_MATCHER_OK)
+    budget->terminal = true;
+  return result;
 }
 
 salts_search_matcher_status salts_search_matcher_enumerate_regex(

@@ -320,6 +320,21 @@ number of callbacks already emitted), **never** a truncated success.
 subject. The previous private enumeration signature and its behavior
 remain unchanged; consumers must explicitly opt in to the scan budget.
 
+**Per-query owner budget (Draft):** the existing private C11 Matcher
+now owns `salts_search_matcher_query_budget` and
+`salts_search_matcher_query_enumerate()`. One caller-owned, zero-initialized
+ledger carries **remaining hit callbacks and TRE scans across multiple
+original source lines**, with cumulative counters. The exact-regex and
+literal paths reuse their sole existing algorithms. TRE's bounded
+enumerator and the query owner call one common inner executor that debits a
+shared `remaining_scans` *before* each scan, including final negative probes.
+Literal Two-Way consumes no TRE scan quota, but both kinds debit the shared
+hit limit. `LIMIT`, `STOPPED` and other executor failures terminally close
+the owner; subsequent calls cannot report success or silently restart.
+Callbacks are not allowed to reenter the owner. This is the first private
+**query execution owner**, not yet a public filesystem/CLI integration, and
+it does not alter the existing one-event-per-line A2 context protocol.
+
 **Performance remains OPEN:** repeating an original-subject TNFA scan
 may still cost O(max_scans × subject_length × per-state work) within
 the new bounded entry. A scan-count limit is **not** a hard CPU-time,
