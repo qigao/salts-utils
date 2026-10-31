@@ -192,3 +192,143 @@ salts_search_context_status salts_search_context_finish(salts_search_context *ct
   ctx->finished = true;
   return SALTS_SEARCH_CONTEXT_OK;
 }
+
+/* Query owner to per-hit callback relay. Input slices and event are borrowed
+ * until the client callback returns; no per-hit dynamic allocation. */
+typedef struct salts_search_hit_relay {
+  salts_search_hit_stream *stream;
+  const salts_search_line *line;
+} salts_search_hit_relay;
+
+static bool search_hit_stop(salts_search_hit_stream *stream,
+                            salts_search_context_status reason) {
+  if (stream->status == SALTS_SEARCH_CONTEXT_OK)
+    stream->status = reason;
+  stream->budget.terminal = true;
+  return false;
+}
+
+static bool search_hit_forward(void *raw,
+                               const salts_search_matcher_span *span) {
+  salts_search_hit_relay *relay = (salts_search_hit_relay *)raw;
+  salts_search_hit_stream *stream = relay->stream;
+  const salts_search_line *line = relay->line;
+  salts_search_hit_event event;
+  bool keep_going;
+  if (stream->status != SALTS_SEARCH_CONTEXT_OK)
+    return false;
+  if (span->byte_start > span->byte_end ||
+      span->byte_end > (uint64_t)line->length ||
+      line->byte_start > UINT64_MAX - span->byte_end)
+    return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_INVALID);
+  event.line = *line;
+  event.match_byte_start = line->byte_start + span->byte_start;
+  event.match_byte_end = line->byte_start + span->byte_end;
+  keep_going = stream->callback(stream->user, &event);
+  /* A callback may attempt reentrant finish/accept and ignore its error.
+   * Such an attempt must still terminally poison the outer enumeration. */
+  if (stream->status != SALTS_SEARCH_CONTEXT_OK)
+    return false;
+  if (!keep_going)
+    return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_STOPPED);
+  return true;
+}
+
+salts_search_context_status salts_search_hit_stream_init(
+    salts_search_hit_stream *stream, const salts_search_matcher *matcher,
+    size_t max_hits, size_t max_scans, bool overlapping,
+    salts_search_hit_callback callback, void *user) {
+  if (!stream || !callback || stream->initialized || stream->finished ||
+      stream->budget.initialized || stream->callback != NULL ||
+      !matcher || !matcher->compiled)
+    return SALTS_SEARCH_CONTEXT_INVALID;
+  if (salts_search_matcher_query_budget_init(
+          &stream->budget, matcher, max_hits, max_scans) !=
+      SALTS_SEARCH_MATCHER_OK)
+    return SALTS_SEARCH_CONTEXT_INVALID;
+  stream->callback = callback;
+  stream->user = user;
+  stream->overlapping = overlapping;
+  stream->status = SALTS_SEARCH_CONTEXT_OK;
+  stream->initialized = true;
+  return SALTS_SEARCH_CONTEXT_OK;
+}
+
+bool salts_search_hit_stream_accept_line(void *raw,
+                                          const salts_search_line *line) {
+  salts_search_hit_stream *stream = (salts_search_hit_stream *)raw;
+  salts_search_hit_relay relay;
+  salts_search_matcher_status rc;
+  size_t emitted = 0;
+  if (!stream)
+    return false;
+  if (stream->in_line)
+    return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_INVALID);
+  if (!stream->initialized || stream->finished ||
+      stream->status != SALTS_SEARCH_CONTEXT_OK)
+    return false;
+#if SIZE_MAX > UINT64_MAX
+  if (line && line->length > UINT64_MAX)
+    return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_INVALID);
+#endif
+  if (!line || !line->line_number ||
+      (line->length && !line->bytes) ||
+      line->byte_start > line->byte_end ||
+      (uint64_t)line->length != line->byte_end - line->byte_start ||
+      line->terminator_size > 2u ||
+      line->byte_end > UINT64_MAX - (uint64_t)line->terminator_size)
+    return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_INVALID);
+  if (stream->have_last_line &&
+      (!stream->last_terminated ||
+       stream->last_line_number == UINT64_MAX ||
+       line->line_number != stream->last_line_number + 1u ||
+       line->byte_start != stream->next_byte_start))
+    return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_INVALID);
+
+  relay.stream = stream;
+  relay.line = line;
+  stream->in_line = true;
+  rc = salts_search_matcher_query_enumerate(
+      &stream->budget, line->bytes, line->length, stream->overlapping,
+      search_hit_forward, &relay, &emitted);
+  stream->in_line = false;
+  if (emitted)
+    ++stream->matched_lines; /* includes lines with terminal partial hits */
+  if (stream->status != SALTS_SEARCH_CONTEXT_OK)
+    return false;
+  switch (rc) {
+    case SALTS_SEARCH_MATCHER_OK:
+      stream->last_line_number = line->line_number;
+      stream->next_byte_start =
+          line->byte_end + (uint64_t)line->terminator_size;
+      stream->last_terminated = line->terminator_size != 0u;
+      stream->have_last_line = true;
+      return true;
+    case SALTS_SEARCH_MATCHER_LIMIT:
+      return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_LIMIT);
+    case SALTS_SEARCH_MATCHER_STOPPED:
+      return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_STOPPED);
+    case SALTS_SEARCH_MATCHER_NO_MEMORY:
+      return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_NO_MEMORY);
+    case SALTS_SEARCH_MATCHER_ENGINE_ERROR:
+      return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_MATCH_ERROR);
+    default:
+      return search_hit_stop(stream, SALTS_SEARCH_CONTEXT_INVALID);
+  }
+}
+
+salts_search_context_status salts_search_hit_stream_finish(
+    salts_search_hit_stream *stream) {
+  if (!stream || !stream->initialized)
+    return SALTS_SEARCH_CONTEXT_INVALID;
+  if (stream->in_line) {
+    search_hit_stop(stream, SALTS_SEARCH_CONTEXT_INVALID);
+    return stream->status;
+  }
+  if (stream->status != SALTS_SEARCH_CONTEXT_OK)
+    return stream->status;
+  if (stream->finished)
+    return SALTS_SEARCH_CONTEXT_CLOSED;
+  stream->finished = true;
+  return SALTS_SEARCH_CONTEXT_OK;
+}

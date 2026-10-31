@@ -69,9 +69,9 @@ salts_search_matcher_status salts_search_matcher_find_first(
  * return LIMIT rather than success with incomplete results.
  * The count includes a hit whose callback returns false (STOPPED).
  *
- * TRE Regex is deliberately UNSUPPORTED here. Re-running TRE on a sliced
- * suffix changes anchors/word boundaries and cannot claim rg parity.
- * A correct single-TRE multi-hit engine is separately gated by #709.
+ * The Literal enumerator rejects REGEX kind; exact TRE enumeration below
+ * preserves original-subject offsets without re-running on a sliced suffix.
+ * A4 full CPU, concurrency and filesystem acceptance remain gated by #709.
  */
 typedef bool (*salts_search_matcher_hit_callback)(
     void *user, const salts_search_matcher_span *hit);
@@ -81,6 +81,80 @@ salts_search_matcher_status salts_search_matcher_enumerate_literals(
     size_t subject_length, bool overlapping, size_t max_hits,
     salts_search_matcher_hit_callback callback, void *user,
     size_t *out_emitted);
+
+/* Enumerate POSIX exact TRE matches on the UNCHANGED original subject.
+ * The unique TRE 0.9.0#1 provider's start-position API prevents suffix-
+ * induced changes to ^, $, word-boundaries and original match offsets.
+ * The callback and result-budget semantics match Literal enumeration.
+ * Overlap starts the next search at previous_start+1, otherwise previous_end.
+ * A zero-width match always advances one byte; EOF yields at most one.
+ *
+ * This is a bounded correctness implementation, NOT a claim of one-pass
+ * O(subject_length) all-hit performance: TRE may rescan the full prefix
+ * for each hit, so the strict max_hits bound is mandatory.
+ */
+salts_search_matcher_status salts_search_matcher_enumerate_regex(
+    const salts_search_matcher *compiled, const void *subject,
+    size_t subject_length, bool overlapping, size_t max_hits,
+    salts_search_matcher_hit_callback callback, void *user,
+    size_t *out_emitted);
+
+/* Explicit per-enumeration TRE invocation budget, additive private API.
+ * max_scans bounds the number of FULL-original-subject Tagged-NFA searches,
+ * including the final failed search needed to prove that all hits are found
+ * and any lookahead needed to prove max_hits exhaustion.
+ * Budget exhaustion returns LIMIT even if no more hit would exist: no
+ * incomplete result may be mislabeled success. out_emitted counts callbacks
+ * already invoked, including one requesting STOPPED. max_scans=0 returns
+ * LIMIT for a valid search even on a no-match subject (conservative).
+ * This does NOT bound work within a single TRE scan, compilation time,
+ * aggregate owner concurrency, or wall-clock CPU. Old API remains unchanged.
+ */
+salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
+    const salts_search_matcher *compiled, const void *subject,
+    size_t subject_length, bool overlapping, size_t max_hits,
+    size_t max_scans,
+    salts_search_matcher_hit_callback callback, void *user,
+    size_t *out_emitted);
+
+/* Query-owned cumulative resource ledger across complete source lines.
+ * The same compiled matcher is bound exactly once, borrowed for all calls,
+ * and cannot change mid-query. Do not destroy it during query execution.
+ * Per-line original bytes are borrowed only during enumerate(). Initialize a zeroed object
+ * exactly once. Any LIMIT/STOPPED/NO_MEMORY/error makes owner terminal.
+ * A subsequent call is INVALID, never a misleading OK or silent restart.
+ * Callback must not reenter the query owner or destroy the compiled matcher.
+ *
+ * remaining_hits counts callbacks, regardless of Literal/Regex kind.
+ * remaining_scans counts complete-subject TRE invocations for Regex only,
+ * including terminal negative probes; Literal does not consume TRE scans.
+ * total_emitted and total_scans are monotone, per-query counters.
+ * This does not cap one TRE call's CPU, compile work, or other owners.
+ */
+typedef struct salts_search_matcher_query_budget {
+  const salts_search_matcher *matcher; /* fixed once, borrowed, immutable */
+  size_t remaining_hits, remaining_scans;
+  size_t total_emitted, total_scans;
+  bool initialized, terminal, in_call;
+} salts_search_matcher_query_budget;
+
+salts_search_matcher_status salts_search_matcher_query_budget_init(
+    salts_search_matcher_query_budget *budget,
+    const salts_search_matcher *matcher,
+    size_t max_hits, size_t max_scans);
+
+/* Enumerate one original, complete line under a shared query-wide ledger.
+ * out_emitted is the number of callbacks on THIS line, even if STOPPED.
+ * The callback spans remain relative to this original line, as in the
+ * primitive enumerate_* APIs. The caller owns each line's global offset.
+ * A zero remaining TRE scan budget produces LIMIT even for a no-match line:
+ * no false "complete" result without the required final proof.
+ */
+salts_search_matcher_status salts_search_matcher_query_enumerate(
+    salts_search_matcher_query_budget *budget,
+    const void *subject, size_t subject_length,
+    bool overlapping, salts_search_matcher_hit_callback callback,
+    void *user, size_t *out_emitted);
 
 void salts_search_matcher_destroy(salts_search_matcher *compiled);
 

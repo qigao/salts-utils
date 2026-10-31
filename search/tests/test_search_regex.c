@@ -1,9 +1,312 @@
 #include "search_regex.h"
 #include <tinytest.h>
 #include <stdint.h>
+#include <limits.h>
 #include <string.h>
 
 spec("search A1 unique TRE exact Tagged NFA (C11)") {
+  it("matches from the original subject without reinterpreting BOL") {
+    salts_search_regex_pattern p = {0};
+    salts_search_regex_span span = {99,99};
+    check_equal(salts_search_regex_compile(&p, "^a", 2u, 16u, 32u),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(salts_search_regex_find_from(&p, "aa", 2u, 0u, &span),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(span.byte_start, UINT64_C(0));
+    check_equal(span.byte_end, UINT64_C(1));
+    check_equal(salts_search_regex_find_from(&p, "aa", 2u, 1u, &span),
+                SALTS_SEARCH_REGEX_NOT_FOUND);
+    check_equal(span.byte_start, UINT64_C(0));
+    check_equal(span.byte_end, UINT64_C(0));
+    salts_search_regex_destroy(&p);
+  }
+
+  it("preserves original byte offsets and POSIX alternatives past a start") {
+    salts_search_regex_pattern p = {0};
+    salts_search_regex_span span = {0};
+    check_equal(salts_search_regex_compile(&p, "a|ab", 4u, 16u, 32u),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(salts_search_regex_find_from(&p, "abab", 4u, 0u, &span),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(span.byte_start, UINT64_C(0));
+    check_equal(span.byte_end, UINT64_C(2));
+    check_equal(salts_search_regex_find_from(&p, "abab", 4u, 1u, &span),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(span.byte_start, UINT64_C(2));
+    check_equal(span.byte_end, UINT64_C(4));
+    check_equal(salts_search_regex_find_from(&p, "abab", 4u, 3u, &span),
+                SALTS_SEARCH_REGEX_NOT_FOUND);
+    check_equal(salts_search_regex_find_from(&p, "abab", 4u, 5u, &span),
+                SALTS_SEARCH_REGEX_NOT_FOUND);
+    salts_search_regex_destroy(&p);
+  }
+
+  it("keeps TRE word-boundary assertions on the full original string") {
+    salts_search_regex_pattern p = {0};
+    salts_search_regex_span span = {0};
+    check_equal(salts_search_regex_compile(&p, "\\bfoo", 5u, 16u, 32u),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(salts_search_regex_find_from(&p, "xfoo", 4u, 1u, &span),
+                SALTS_SEARCH_REGEX_NOT_FOUND); /* suffix scan would falsely match */
+    check_equal(salts_search_regex_find_from(&p, "x foo", 5u, 2u, &span),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(span.byte_start, UINT64_C(2));
+    check_equal(span.byte_end, UINT64_C(5));
+    salts_search_regex_destroy(&p);
+  }
+
+  it("preserves original newline assertions through the extended TRE entry") {
+    regex_t pattern = {0};
+    regmatch_t match[1] = {{-1,-1}};
+    const char *text = "b\na\n";
+    check_equal(tre_regncompb(&pattern, "^a", 2u,
+                              REG_EXTENDED | REG_NEWLINE), REG_OK);
+    check_equal(tre_regnexecb_from(&pattern, text, 4u, 1u,
+                                   1u, match, 0), REG_OK);
+    check_equal(match[0].rm_so, 2);
+    check_equal(match[0].rm_eo, 3);
+    check_equal(tre_regnexecb_from(&pattern, text, 4u, 3u,
+                                   1u, match, 0), REG_NOMATCH);
+    tre_regfree(&pattern);
+  }
+
+  it("preserves capture offsets and unmatched groups after min_start") {
+    regex_t pattern = {0};
+    regmatch_t matches[4] = {{-1,-1},{-1,-1},{-1,-1},{-1,-1}};
+    const unsigned char bytes[] = {'x','a','c',' ','a','b'};
+    check_equal(tre_regncompb(&pattern, "(a)(b)?", 7u, REG_EXTENDED),
+                REG_OK);
+    check_equal(tre_regnexecb_from(&pattern, (const char *)bytes,
+                sizeof(bytes), 1u, 4u, matches, 0), REG_OK);
+    check_equal(matches[0].rm_so, 1);
+    check_equal(matches[0].rm_eo, 2);
+    check_equal(matches[1].rm_so, 1);
+    check_equal(matches[1].rm_eo, 2);
+    check_equal(matches[2].rm_so, -1);
+    check_equal(matches[2].rm_eo, -1);
+    check_equal(matches[3].rm_so, -1);
+    check_equal(matches[3].rm_eo, -1);
+    check_equal(tre_regnexecb_from(&pattern, (const char *)bytes,
+                sizeof(bytes), 3u, 4u, matches, 0), REG_OK);
+    check_equal(matches[0].rm_so, 4);
+    check_equal(matches[0].rm_eo, 6);
+    check_equal(matches[1].rm_so, 4);
+    check_equal(matches[1].rm_eo, 5);
+    check_equal(matches[2].rm_so, 5);
+    check_equal(matches[2].rm_eo, 6);
+    check_equal(matches[3].rm_so, -1);
+    check_equal(matches[3].rm_eo, -1);
+    /* A caller requesting no registers must still be able to search. */
+    check_equal(tre_regnexecb_from(&pattern, (const char *)bytes,
+                sizeof(bytes), 3u, 0u, NULL, 0), REG_OK);
+    check_equal(tre_regnexecb_from(&pattern, (const char *)bytes,
+                sizeof(bytes), sizeof(bytes), 4u, matches, 0), REG_NOMATCH);
+    tre_regfree(&pattern);
+  }
+
+  it("keeps REG_NOTBOL and REG_NOTEOL on original newline boundaries") {
+    regex_t pattern = {0};
+    regmatch_t m[1] = {{-1,-1}};
+    const char bytes[] = {'a','\n','a','\n'};
+    check_equal(tre_regncompb(&pattern, "^a$", 3u,
+                              REG_EXTENDED | REG_NEWLINE), REG_OK);
+    check_equal(tre_regnexecb_from(&pattern, bytes, sizeof(bytes),
+                0u, 1u, m, REG_NOTBOL | REG_NOTEOL), REG_OK);
+    check_equal(m[0].rm_so, 2);
+    check_equal(m[0].rm_eo, 3);
+    check_equal(tre_regnexecb_from(&pattern, bytes, sizeof(bytes),
+                3u, 1u, m, REG_NOTBOL | REG_NOTEOL), REG_NOMATCH);
+    tre_regfree(&pattern);
+  }
+
+  it("checks original newline BOL with a deterministic offset oracle") {
+    regex_t pattern = {0};
+    unsigned char bytes[25] = {0};
+    uint32_t seed = UINT32_C(0xCC31A401);
+    bool all_equal = true;
+    size_t trial, from;
+    check_equal(tre_regncompb(&pattern, "^a", 2u,
+                              REG_EXTENDED | REG_NEWLINE), REG_OK);
+    for (trial = 0u; trial < 512u && all_equal; ++trial) {
+      const size_t length = trial % sizeof(bytes);
+      size_t i;
+      for (i = 0u; i < length; ++i) {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        bytes[i] = (unsigned char)("ab\nx"[seed % 4u]);
+      }
+      for (from = 0u; from <= length; ++from) {
+        regmatch_t m[1] = {{-1,-1}};
+        size_t expected = from;
+        int rc;
+        while (expected < length &&
+               !(bytes[expected] == 'a' && expected > 0u &&
+                 bytes[expected - 1u] == '\n'))
+          ++expected;
+        /* REG_NOTBOL disallows only the physical beginning of input,
+         * not a genuine original newline boundary, even after min_start. */
+        rc = tre_regnexecb_from(&pattern, (const char *)bytes,
+                               length, from, 1u, m, REG_NOTBOL);
+        if (expected == length) {
+          if (rc != REG_NOMATCH)
+            all_equal = false;
+        } else if (rc != REG_OK || m[0].rm_so != (int)expected ||
+                   m[0].rm_eo != (int)(expected + 1u)) {
+          all_equal = false;
+        }
+        if (!all_equal)
+          break;
+      }
+    }
+    check_true(all_equal);
+    check_equal(trial, 512u);
+    tre_regfree(&pattern);
+  }
+
+  it("bounds the first-match wrapper with the same 8 MiB exact TRE executor") {
+    enum { GROUPS = 1024 };
+    char expression[GROUPS * 3u];
+    salts_search_regex_pattern regex = {0};
+    salts_search_regex_span span = {77u, 88u};
+    size_t i;
+    for (i = 0u; i < GROUPS; ++i) {
+      expression[3u * i] = '(';
+      expression[3u * i + 1u] = 'a';
+      expression[3u * i + 2u] = ')';
+    }
+    check_equal(salts_search_regex_compile(&regex, expression,
+                sizeof(expression), sizeof(expression), 1u),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(salts_search_regex_find_first(&regex, "z", 1u, &span),
+                SALTS_SEARCH_REGEX_NO_MEMORY);
+    check_equal(span.byte_start, UINT64_C(0));
+    check_equal(span.byte_end, UINT64_C(0));
+    span.byte_start = 77u;
+    span.byte_end = 88u;
+    check_equal(salts_search_regex_find_from(&regex, "z", 1u,
+                0u, &span), SALTS_SEARCH_REGEX_NO_MEMORY);
+    check_equal(span.byte_start, UINT64_C(0));
+    check_equal(span.byte_end, UINT64_C(0));
+    salts_search_regex_destroy(&regex);
+  }
+
+  it("rejects oversized execution workspace with real compiled captures") {
+    /* Deliberately generate a TNFA with many states and capture tags.
+     * On both 32-bit and 64-bit builds the tag/state workspace exceeds
+     * the exact API's 8 MiB budget. One-byte input avoids timing-based
+     * stress assumptions and exercises rejection before allocation. */
+    enum { GROUPS = 1024 };
+    char expression[GROUPS * 3u];
+    regex_t pattern = {0};
+    regmatch_t match[1] = {{-1, -1}};
+    int rc;
+    size_t i;
+    for (i = 0u; i < GROUPS; ++i) {
+      expression[3u * i] = '(';
+      expression[3u * i + 1u] = 'a';
+      expression[3u * i + 2u] = ')';
+    }
+    rc = tre_regncompb(&pattern, expression, sizeof(expression),
+                       REG_EXTENDED);
+    check_equal(rc, REG_OK);
+    if (rc == REG_OK) {
+      check_equal(tre_regnexecb_from(&pattern, "z", 1u, 0u,
+                                    1u, match, 0), REG_ESPACE);
+      /* No capture registers: no tag array is required for this
+       * same expression, and the 1-byte mismatch is a true no-match. */
+      check_equal(tre_regnexecb_from(&pattern, "z", 1u, 0u,
+                                    0u, NULL, 0), REG_NOMATCH);
+      tre_regfree(&pattern);
+    }
+  }
+
+  it("rejects forced alternate execution paths and oversized source lengths") {
+    regex_t pattern = {0};
+    regmatch_t match[1] = {{-1,-1}};
+    const char subject[] = "a";
+    check_equal(tre_regncompb(&pattern, "a", 1u, REG_EXTENDED), REG_OK);
+    /* The new entry must reject invalid capture storage before scanning.
+     * nmatch=0 with NULL is still permitted (tested separately). */
+    check_equal(tre_regnexecb_from(&pattern, subject, 1u, 0u,
+                                   1u, NULL, 0), REG_BADPAT);
+    check_equal(tre_regnexecb_from(&pattern, subject, 1u, 0u, 1u,
+                     match, REG_APPROX_MATCHER), REG_BADPAT);
+    check_equal(tre_regnexecb_from(&pattern, subject, 1u, 0u, 1u,
+                     match, REG_BACKTRACKING_MATCHER), REG_BADPAT);
+#if SIZE_MAX > INT_MAX
+    check_equal(tre_regnexecb_from(&pattern, subject, (size_t)INT_MAX + 1u,
+                     0u, 1u, match, 0), REG_ESPACE);
+#endif
+    tre_regfree(&pattern);
+  }
+
+  it("matches embedded NUL and a terminal zero-width start at EOF") {
+    salts_search_regex_pattern p = {0};
+    salts_search_regex_span span = {0};
+    const unsigned char bytes[] = {'a', 0, 'a'};
+    check_equal(salts_search_regex_compile(&p, "a", 1u, 16u, 16u),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(salts_search_regex_find_from(&p, bytes, sizeof(bytes),
+               1u, &span), SALTS_SEARCH_REGEX_OK);
+    check_equal(span.byte_start, UINT64_C(2));
+    check_equal(span.byte_end, UINT64_C(3));
+    salts_search_regex_destroy(&p);
+    check_equal(salts_search_regex_compile(&p, "$", 1u, 16u, 16u),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(salts_search_regex_find_from(&p, bytes, sizeof(bytes),
+                sizeof(bytes), &span), SALTS_SEARCH_REGEX_OK);
+    check_equal(span.byte_start, UINT64_C(3));
+    check_equal(span.byte_end, UINT64_C(3));
+    salts_search_regex_destroy(&p);
+  }
+
+  it("agrees with deterministic original-position differential for a|ab") {
+    salts_search_regex_pattern p = {0};
+    unsigned char subject[25] = {0};
+    uint32_t seed = UINT32_C(0x512A2026);
+    size_t trial, at;
+    bool all_equal = true;
+    check_equal(salts_search_regex_compile(&p, "a|ab", 4u, 16u, 32u),
+                SALTS_SEARCH_REGEX_OK);
+    for (trial = 0u; trial < 1024u && all_equal; ++trial) {
+      const size_t length = trial % 25u;
+      size_t j;
+      for (j = 0u; j < length; ++j) {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        subject[j] = (unsigned char)("abx"[seed % 3u]);
+      }
+      for (at = 0u; at <= length; ++at) {
+        size_t expected = at;
+        salts_search_regex_span match = {123, 456};
+        salts_search_regex_status rc;
+        while (expected < length && subject[expected] != 'a')
+          ++expected;
+        rc = salts_search_regex_find_from(&p, subject, length, at, &match);
+        if (expected == length) {
+          if (rc != SALTS_SEARCH_REGEX_NOT_FOUND ||
+              match.byte_start != 0 || match.byte_end != 0)
+            all_equal = false;
+        } else {
+          const size_t expected_end =
+              expected + ((expected + 1u < length &&
+                           subject[expected + 1u] == 'b') ? 2u : 1u);
+          if (rc != SALTS_SEARCH_REGEX_OK ||
+              match.byte_start != expected ||
+              match.byte_end != expected_end)
+            all_equal = false;
+        }
+        if (!all_equal)
+          break;
+      }
+    }
+    check_true(all_equal);
+    check_equal(trial, 1024u);
+    salts_search_regex_destroy(&p);
+  }
+
   it("uses POSIX leftmost-longest, not rg leftmost-first, byte offsets") {
     salts_search_regex_pattern pattern = {0};
     salts_search_regex_span match = {SIZE_MAX, SIZE_MAX};

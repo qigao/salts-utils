@@ -254,6 +254,129 @@ no PCRE2/system regex or hidden fallback is authorized. A2 context
 continues to carry first match per matching line until the true
 multi-match result protocol is independently accepted.
 
+### A4 stage4: original-subject TRE multi-hit (Draft candidate)
+
+Upstream TRE 0.9.0's binary-safe `tre_regnexecb` searches from offset 0
+and returns only the first match. Slicing the subject and calling it
+again changes `^`, `$`, word-boundary and newline assertions. The
+single canonical TRE port now has an **additive patch** in
+[vcpkg-cache Draft #252](https://github.com/qigao/vcpkg-cache/pull/252):
+`tre_regnexecb_from(regex, full_bytes, length, min_start, ...)`.
+It runs the **same exact Tagged NFA**, consuming the original bytes and
+blocking initial-state admission before `min_start`. Original TRE APIs
+and TurboScript approximate/backreference behavior are unchanged.
+
+A4's `salts_search_regex_find_from` wraps this single C provider.
+`salts_search_matcher_enumerate_regex` uses the unchanged whole input
+on every iteration, returns absolute-by-line half-open byte spans, and
+permits overlapping or nonoverlapping results. Each zero-width match
+advances the allowed start position by one byte; an EOF match can be
+emitted once. The same `max_hits` and callback STOPPED contract applies
+as with Literal, with explicit LIMIT if a further hit exists. There
+is no alternate regex engine, no suffix-based retry and no filesystem I/O.
+
+The shared TRE port revision is now **0.9.0#1** and the pinned frozen-v8
+compatibility candidate is
+`qigao/vcpkg-cache@62f7de15195134b19c02ab45b6c883b74f96c88a`,
+which contains byte-identical TRE port blobs to canonical Draft #252.
+The old cache contains unpatched 0.9.0 packages; the patched port
+changes its ABI, requiring producer cache publication and exact native
+link/execution before acceptance. This is a **Draft-only dependency
+pin**, not master or a published SDK.
+
+Correctness gates include `^a` on `aa` (no spurious match at 1),
+`\\bfoo` on `xfoo` (no invented word boundary), newline-mode `^a`
+after a real newline, POSIX longest `a|ab`, embedded NUL, zero-width
+at EOF, overlap, max-hits exhaustion and explicit rejection of forced
+backtracking/approx flags in the new API.
+
+**Execution workspace bound (Draft):** the unique TRE port's new
+`tre_regnexecb_from()` now checks arithmetic for TNFA workspace size before
+allocation, and limits the combined per-invocation matching workspace and
+capture tag allocation to **8 MiB**. Both private `find_first()` and
+`find_from()` now use that *one* bounded exact executor, so the first-match
+and line/context path cannot bypass it by calling legacy `tre_regnexecb()`.
+Overflow/overbudget returns `REG_ESPACE`
+(which the existing private adapter currently maps to `NO_MEMORY`). This
+bound does not limit *pattern compilation*, total query CPU time, cumulative
+allocation across repeated hits, or independent concurrent callers; those
+remain separate A4 gates. The same TRE patch now also aligns the four
+TNFA pointer-bearing workspace regions to **pointer width**, rather than
+using `long` (4 bytes on Windows LLP64). The allocation size includes all
+four maximum alignment paddings in the checked 8 MiB budget. The existing
+`test_salts_search_regex` includes an executable 1,024-capture overbudget
+regression; its **new exact-head CI** is required before acceptance.
+Legacy TRE APIs retain their matching semantics and the single shared
+static provider retains approximate/backtrack support.
+
+**Per-enumeration scan budget (Draft):** the existing private matcher
+has an additive `salts_search_matcher_enumerate_regex_bounded()` entry
+with `max_scans` to cap the number of full-original-subject TRE
+executions independently of `max_hits`. The terminal unsuccessful
+lookup and the extra hit-count probe consume scans. If there is no
+budget to prove enumeration complete, return `LIMIT` (with the exact
+number of callbacks already emitted), **never** a truncated success.
+`max_scans=0` conservatively returns `LIMIT` even on a nonmatching
+subject. The previous private enumeration signature and its behavior
+remain unchanged; consumers must explicitly opt in to the scan budget.
+
+**Per-query owner budget (Draft):** the existing private C11 Matcher
+now owns `salts_search_matcher_query_budget` and
+`salts_search_matcher_query_enumerate()`. One caller-owned, zero-initialized
+ledger binds a single compiled Literal/TRE matcher at initialization and
+carries **remaining hit callbacks and TRE scans across multiple original
+source lines**, with cumulative counters. A later call cannot substitute a
+different matcher or bypass the TRE budget by switching algorithms. The exact-regex and
+literal paths reuse their sole existing algorithms. TRE's bounded
+enumerator and the query owner call one common inner executor that debits a
+shared `remaining_scans` *before* each scan, including final negative probes.
+Literal Two-Way consumes no TRE scan quota, but both kinds debit the shared
+hit limit. `LIMIT`, `STOPPED` and other executor failures terminally close
+the owner; subsequent calls cannot report success or silently restart.
+Callbacks are not allowed to reenter the owner. This is the first private
+**query execution owner**, not yet a public filesystem/CLI integration, and
+it does not alter the existing one-event-per-line A2 context protocol.
+
+**Performance remains OPEN:** repeating an original-subject TNFA scan
+may still cost O(max_scans × subject_length × per-state work) within
+the new bounded entry. A scan-count limit is **not** a hard CPU-time,
+regex-compilation memory, cancellation, or aggregate concurrent-owner
+limit. Hard TRE execution workspace is separately covered by the
+existing 8 MiB per-call budget. Adversarial runtime, broad randomized
+replay and concurrency/fuzz must still be proven before A4 can close. This implementation is not claimed
+leftmost-first (ripgrep default) or one-pass linear multi-regex search.
+
+### A4 stage5: query-owned all-hit byte stream over real chunked lines (Draft)
+
+The existing private C11 `search_context.[ch]` has a **separate**
+`salts_search_hit_stream` callback compatible with `salts_search_lines_init`.
+It borrows one query-selected compiled Literal or exact TRE Matcher and consumes
+the **same cumulative** `remaining_hits` / `remaining_scans` owner across
+complete original lines. Each result contains a borrowed line and absolute,
+half-open 64-bit byte offsets for **each** hit. It does not copy per-hit
+payloads, create a second parser, or use a substring rescan. Tests cover
+actual chunk-split LF/CRLF, embedded NUL, optional overlap, physical offsets
+near `UINT64_MAX`, hit/scan exhaustion and cancellation.
+
+**Compatibility:** the original A2 BEFORE/MATCH/AFTER context collector still
+emits at most one MATCH event per line and is entirely unchanged. This is a
+separate internal per-hit result protocol, not a second context algorithm,
+an installed SDK, a file walker, or B0 filesystem acceptance.
+
+**Strict stop semantics:** invalid or discontinuous line records, invalid
+64-bit ranges/overflow, callback stop, regex resource failures, hit budgets
+and TRE invocation budgets terminally close the all-hit stream. The existing
+`search_lines` driver reports STOPPED when its callback returns false; callers
+must inspect the stream's precise `LIMIT`, `INVALID`, `STOPPED`, `NO_MEMORY`
+or `MATCH_ERROR`. Already-delivered hits remain counted, never rolled back.
+An incomplete query must not return successful completion. Any callback
+reentrancy is rejected and terminal even when a client ignores its error.
+
+**OPEN:** This connects an already-implemented streaming byte line scanner
+to true multi-hit reporting. It does not enumerate files, implement
+ripgrep's leftmost-first priority, cap one TRE call's CPU or compilation
+resource cost, provide concurrent ownership, or prove remote cache-only TRE.
+
 ## Algorithm and complexity
 
 A0 uses the **Two-Way** string matching algorithm (Crochemore–Perrin): maximal suffix in two lexicographic orders yields the critical position and period. For periodic patterns it retains the matched prefix as *memory* after shifts; for aperiodic patterns it uses the guaranteed-safe long shift. The prefix equality test chooses between them. Pattern preprocessing is O(m), each find is worst-case O(n+m) comparisons with O(1) per-call workspace, not including the O(m) owned needle bytes.
@@ -269,7 +392,8 @@ Single-byte patterns use standard C `memchr`. The planned SIMD prefilter in #705
 - [x] A4 prep: query-selected Literal/TRE matcher + bounded A2 context (CI #41058232362 SUCCESS).
 - [x] A4 stage2 candidate: first-match absolute byte highlight span on existing callbacks (Draft, CI pending).
 - [x] A4 stage3 literal all-hit enumerator (overlap/no-overlap, empty, bounded callbacks; Draft, CI pending).
-- [ ] A4 full TRE all-hit enumeration and internal resource bounds, broad fuzz/perf/concurrency gates.
+- [x] A4 stage4 source candidate: TRE original-subject min-start plus bounded multi-hit wrapper (Draft, exact-head CI pending).
+- [ ] A4 TRE multi-hit native/ABI, hard resource bounds, broad fuzz/perf/concurrency and rg leftmost-first semantics.
 - [x] A2 line-delimiting primitive + deterministic C11 tests (stacked draft, not accepted).
 - [x] A2 memory-only bounded before/after literal context collector (stacked Draft; exact-head CI pending).
 - [ ] A2 encoding conversions, unique TRE regex integration and further streaming conformance.

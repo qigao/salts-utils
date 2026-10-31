@@ -50,11 +50,22 @@ salts_search_regex_status salts_search_regex_compile(
 /* Return first exact match only; no suffix-rescan semantics are exposed,
  * preventing incorrect anchoring/word-boundary behavior of sliced rescans.
  * Failure zeroes out_span. No fallback engine, hidden truncation or allocation
- * owned by this wrapper. TRE allocates its own bounded-by-input workspace.
+ * owned by this wrapper. First and repeated exact lookups share the same
+ * 8 MiB per-execution TRE workspace budget (not compile/aggregate CPU).
  */
 salts_search_regex_status salts_search_regex_find_first(
     const salts_search_regex_pattern *compiled, const void *subject,
     size_t subject_length, salts_search_regex_span *out_span);
+
+/* Find the first exact match whose START is >= min_start in the ORIGINAL
+ * unchanged subject, retaining original ^/$/word-boundary semantics.
+ * Requires the additive TRE 0.9.0#1 tre_regnexecb_from() in the unique
+ * pinned static provider. No C substring slicing or alternate engine.
+ * A min_start past EOF yields NOT_FOUND; EOF itself can match zero width.
+ */
+salts_search_regex_status salts_search_regex_find_from(
+    const salts_search_regex_pattern *compiled, const void *subject,
+    size_t subject_length, size_t min_start, salts_search_regex_span *out_span);
 
 void salts_search_regex_destroy(salts_search_regex_pattern *compiled);
 #endif
