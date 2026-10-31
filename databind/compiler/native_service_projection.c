@@ -341,6 +341,7 @@ static int native_service_write_contract_header(
           "#else /* DATABIND_NATIVE_ENABLE_ORBIT managed VALUE */\n"
           "#ifndef DATABIND_NATIVE_ENABLE_CMETA\n"
           "#define DATABIND_NATIVE_ENABLE_CMETA\n"
+          "#define DATABIND_ORBIT_SCOPED_CMETA_V1 1\n"
           "#endif\n"
           "#include ", file) == EOF)
         return 0;
@@ -349,8 +350,18 @@ static int native_service_write_contract_header(
         "#include ", file) == EOF) {
       return 0;
     }
-    if (!native_service_write_include(file, config->native_header) ||
-        fputs("\n#include <orbit/call.h>\n"
+    if (!native_service_write_include(file, config->native_header))
+      return 0;
+    /* Native managed metadata may be generated into a shared compilation
+     * unit with a scalar Orbit schema: do not leak our CMeta feature macro.
+     */
+    if (managed_orbit && fputs(
+        "\n#ifdef DATABIND_ORBIT_SCOPED_CMETA_V1\n"
+        "#undef DATABIND_NATIVE_ENABLE_CMETA\n"
+        "#undef DATABIND_ORBIT_SCOPED_CMETA_V1\n"
+        "#endif\n", file) == EOF)
+      return 0;
+    if (fputs("\n#include <orbit/call.h>\n"
               "#endif /* DATABIND_NATIVE_ENABLE_ORBIT */\n", file) == EOF)
       return 0;
   }
