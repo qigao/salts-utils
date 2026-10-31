@@ -93,3 +93,22 @@ Rooms from one generated contract, with separate live Actor/CallPort/State,
 and verify interleaved calls cannot affect the other instance's state.
 It must also verify real Provider/Plugin N->N+1 lifetime when combined with
 the same generated dispatcher. This is a Draft gate, not a release claim.
+
+## Retired legacy Candidate and DSO CI (M0 canonicalization)
+
+The isolated `component_provider_candidate.c` / test-only FR2
+`ComponentProvider Candidate` generator and its Salts 2.3 source,
+negative-DSO and unpublished 2.3 release-package workflows were a
+historical experiment; they are **not** the Native Context v1 ABI.
+They are deleted rather than retained as a fallback. The unique
+`IdlContract -> NativeSourceIR -> DataBindNativeExecution.context`
+projection and original Salts Plugin / ServiceHost provider owner remain.
+The canonical `ARTIFACTS PLUGIN` and its existing native tests remain
+independent and are **not** removed by this change.
+
+Orbit's genuine Salts3/Core0.1 generated Context-v1 dual-DSO lifecycle
+qualification is tracked in Orbit M0g PR #18. Removing old Candidate
+negative tests does **not** automatically establish equivalent general
+failure-atomic / malformed Provider admission coverage; such coverage
+belongs to the Salts Plugin/ServiceHost canonical owner, not a restored
+second DataBind candidate generator.

@@ -120,16 +120,9 @@ jobs:
     with:
       version: ${{ needs.scope.outputs.version }}
     secrets: inherit
-  component_published_sdk:
-    needs: scope
-    if: github.event_name == 'workflow_dispatch' && inputs.prepare_release
-    uses: ./.github/workflows/idl-component-published-sdk-gate.yml
-    with:
-      salts_version: 2.3.0-rc.18
-    secrets: inherit
   result:
     name: CI result
-    needs: [scope, native, tests, package, component_published_sdk, packaging_contract]
+    needs: [scope, native, tests, package, packaging_contract]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -144,7 +137,6 @@ jobs:
           PREPARE_RELEASE: ${{ inputs.prepare_release || false }}
           RC_BRANCH_PUSH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/salts-utils-4.3-') }}
           PACKAGE_RESULT: ${{ needs.package.result }}
-          COMPONENT_PUBLISHED_SDK_RESULT: ${{ needs.component_published_sdk.result }}
           PACKAGING_ONLY: ${{ needs.scope.outputs.packaging_only }}
           RUN_PACKAGING_CONTRACT: ${{ needs.scope.outputs.run_packaging_contract }}
           PACKAGING_CONTRACT_RESULT: ${{ needs.packaging_contract.result }}
@@ -157,5 +149,4 @@ jobs:
             test "$TEST_RESULT" = success
           fi
           if [ "$PREPARE_RELEASE" = true ] || [ "$RC_BRANCH_PUSH" = true ]; then test "$PACKAGE_RESULT" = success; fi
-          if [ "$PREPARE_RELEASE" = true ]; then test "$COMPONENT_PUBLISHED_SDK_RESULT" = success; fi
           if [ "$RUN_PACKAGING_CONTRACT" = true ]; then test "$PACKAGING_CONTRACT_RESULT" = success; fi
