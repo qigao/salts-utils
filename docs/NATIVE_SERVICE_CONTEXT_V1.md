@@ -112,3 +112,53 @@ negative tests does **not** automatically establish equivalent general
 failure-atomic / malformed Provider admission coverage; such coverage
 belongs to the Salts Plugin/ServiceHost canonical owner, not a restored
 second DataBind candidate generator.
+
+
+## M0k Native owned VALUE qualification (not Orbit managed CallPort admission)
+
+The canonical \`NativeSourceIR\` record renderer already emits owning
+\`string\` / \`bytes\` storage as \`databind_native_text\` /
+\`databind_native_bytes\`, plus generated \`<Record>_clone\`,
+\`<Record>_move\`, \`<Record>_clear\` and complete
+\`<Record>_native_cmeta_value_bind\` for a value whose fields have exact
+canonical CMeta lifecycle providers. The \`DataBindNativeExecution.context\`
+method ABI is orthogonal to that owning storage; it must not invent a
+second callback form, binary serializer, registry or default receiver.
+
+The existing \`test_databind_native_context_v1\` native executable now
+runs an additional \`Counter.Echo: OwnedPacket -> OwnedPacket\` operation,
+where \`OwnedPacket\` has an owning text label and owning raw bytes. Its
+single generated Native method is
+\`int method(void *receiver, const OwnedPacket *, OwnedPacket *)\`.
+The application-owned method uses the **generated clone** to publish
+caller-owned response storage before mutating its exact receiver.
+Two differently bound receivers share the same immutable generated
+FunctionAbi/invoke pointer but maintain independent totals. The C11
+acceptance checks:
+
+- deep-copy of stack-originating label and raw bytes, including embedded
+  NUL and non-ASCII binary octets; changing the caller's scratch buffers
+  must not change the owned request;
+- two responses from separate receivers do not alias request buffers or
+  each other; clearing the request does not invalidate either response;
+- \`OwnedPacket_native_cmeta_value_bind\` admits a complete owning VALUE,
+  while the original unbound Native execution remains fail-closed;
+- malformed owned inputs reject clone without clearing an earlier
+  destination, and application-error invocation does not mutate the
+  receiver; moved records reset their source to semantic zero and clear
+  twice safely.
+
+**Important boundary:** the actual Orbit \`orbit_call_u64_async\` API and
+\`salts-idlc\` \`[orbit(method,event)]\` projection still accept **only a
+single required uint64** on each side. Even with \`native_context(1)\`,
+owned \`string\` / \`bytes\` are rejected by Orbit codegen. Native
+execution's \`OwnedPacket\` is not yet an Actor-owned request, and its
+caller-owned response is not a CallPort managed response. A later Orbit
+change must add explicit copy/move/destroy on the existing bounded slot,
+generation-checked cancellation and failure-atomic cleanup **before**
+exposing managed VALUE client calls. A new secondary parser, scheduler or
+unbounded per-message pointer borrow is forbidden.
+
+This qualification is placed in the existing SaltsUtils native compiler
+tests and primary CI. It adds no new project, CTest executable, alternate
+engine, workflow, installed-consumer probe or production ABI.
