@@ -5,8 +5,8 @@
  * Ported from qigao/stun master 78995ecf8c5365c7f001b4501cb29a109971ba9c.
  * No UI Runtime, CMeta reflection, SQLite, Graph or HTML frontend included.
  * NOTE: RichDoc node byte spans refer to the decoded semantic text arena,
- * NOT raw source byte positions. Historical source offset mapping is a
- * separately required acceptance before use as TurboAgent evidence.
+ * NOT raw source byte positions. Opt-in provenance is a separate view;
+ * historical revision binding remains required for TurboAgent evidence.
  */
 #include <stdbool.h>
 #include <stddef.h>
@@ -105,12 +105,13 @@ salts_md_status salts_md_document_visit(
     const salts_md_document_view *view, size_t max_blocks,
     salts_md_document_visit_fn visit, void *context);
 
-/* RichDoc bridge: the existing Markdown AST does not record raw source offsets.
+/* RichDoc bridge: this view does not carry raw source offsets.
  * Therefore text.source is an OWNED-BY-PROJECTOR concatenation of decoded
  * semantic text nodes; byte_begin/end do NOT index into raw Markdown. Block
  * kinds retain structural semantics. Node metadata (fence language, link or
  * image target, footnote label) is borrowed separately from the projector.
- * The raw Markdown is preserved for explicit diagnostics only.
+ * Raw Markdown is preserved independently; optional provenance is returned
+ * only by salts_md_get_source_map(), never through these semantic offsets.
  *
  * Lifetime: all pointers are borrowed for the call; the producer must keep
  * source, metadata and both arrays alive until the last consumer finishes.
@@ -182,6 +183,65 @@ typedef struct salts_md_document salts_md_document;
 salts_md_status salts_md_parse(const char *input, size_t length,
                             size_t max_nodes, size_t max_source_bytes,
                             salts_md_document **out);
+
+/* Optional parse-time provenance, separate from RichDoc's semantic offsets.
+ * Every nonempty semantic byte belongs to exactly one ordered map entry.
+ * LITERAL permits byte-for-byte subranges. TRANSFORMED is an atomic mapping
+ * (entity decoding, punctuation unescaping or code normalization): only the
+ * WHOLE raw interval is proven; never interpolate its offsets. UNKNOWN has
+ * zero raw offsets and must not be published as exact original evidence.
+ * Metadata is not covered. Raw intervals may omit syntax and whitespace.
+ */
+typedef enum salts_md_source_origin {
+    SALTS_MD_SOURCE_UNKNOWN = 0,
+    SALTS_MD_SOURCE_LITERAL = 1,
+    SALTS_MD_SOURCE_TRANSFORMED = 2
+} salts_md_source_origin;
+
+typedef struct salts_md_source_map_entry {
+    size_t semantic_begin, semantic_end;
+    size_t raw_begin, raw_end;
+    salts_md_source_origin origin;
+} salts_md_source_map_entry;
+
+/* Indexed exactly like document.blocks. All offsets index raw_markdown.
+ * raw includes the admitted syntax; content excludes outer delimiters when
+ * the grammar proves it. Content can still contain nested Markdown syntax.
+ * Unknown intervals have zero offsets. Neither ordinal IDs nor these spans
+ * identify a historical revision; the caller must retain and bind that
+ * revision's exact bytes, parser revision and extraction options separately.
+ */
+typedef struct salts_md_node_source {
+    size_t raw_begin, raw_end;
+    size_t content_begin, content_end;
+    bool raw_known, content_known;
+} salts_md_node_source;
+
+typedef struct salts_md_source_map_view {
+    const salts_md_source_map_entry *entries;
+    size_t entry_count;
+    const salts_md_node_source *nodes;
+    size_t node_count;
+    uint32_t format_version; /* 1 when enabled, 0 when unavailable */
+    bool semantic_complete; /* no UNKNOWN semantic entries; not node/metadata completeness */
+} salts_md_source_map_view;
+
+/* Same grammar, semantic document and error contract as salts_md_parse().
+ * max_map_entries must be positive; it bounds semantic entries independently
+ * of max_nodes/source bytes. Exceeding any budget fails the WHOLE parse with
+ * CAPACITY_EXCEEDED and *out=NULL; allocation failure returns OUT_OF_MEMORY.
+ * No substring recovery or second parse is used. Unsupported scratch-buffer
+ * origins and unannotated node kinds are explicitly UNKNOWN. Empty documents
+ * have zero entries. Existing salts_md_parse() does not allocate a source map.
+ */
+salts_md_status salts_md_parse_with_source_map(
+    const char *input, size_t length, size_t max_nodes,
+    size_t max_source_bytes, size_t max_map_entries, salts_md_document **out);
+
+/* Borrowed immutable arrays, valid until document_destroy(). NULL documents
+ * and ordinary parses return an unavailable, zero-initialized view.
+ */
+salts_md_source_map_view salts_md_get_source_map(const salts_md_document *doc);
 
 /* No-fail cleanup; NULL is accepted. */
 void salts_md_document_destroy(salts_md_document *doc);
