@@ -99,6 +99,86 @@ static int orbit_receiver_v1(const IdlOperation *op, int *out_contextual) {
   return 1;
 }
 
+
+/* M0k.2b first managed slice: one complete owning text/bytes-only record,
+ * no optional/null/collection/unknown nested layouts or guessed ownership.
+ * The canonical NativeSourceIR Record and its CMeta VALUE binder remain
+ * the only storage/ABI authority; Orbit transports only a CFlow u64 token.
+ */
+static int orbit_managed_record(const IdlContract *contract,
+                                const char *name) {
+  const IdlDataDecl *record;
+  size_t i;
+  if (!contract || !name) return 0;
+  record = idl_contract_find_data(contract, name);
+  if (!record || record->kind != IDL_DATA_MESSAGE ||
+      record->fields == NULL || record->field_count == 0u ||
+      record->field_count > 16u)
+    return 0;
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
+    if (!field->name || !orbit_identifier(field->name) ||
+        !field->type_name ||
+        (strcmp(field->type_name, "string") != 0 &&
+         strcmp(field->type_name, "bytes") != 0) ||
+        field->optional || field->nullable ||
+        field->collection_kind != IDL_COLLECTION_NONE ||
+        field->default_value != NULL || field->length != NULL ||
+        field->annotation_count != 0u || field->constraint_count != 0u)
+      return 0;
+  }
+  return 1;
+}
+
+/* Ownership budgets are required on both sides and bounded in the Contract.
+ * No default, ambiguous duplicate tag, negative or overflowing number.
+ */
+static int orbit_managed_limits(const IdlOperation *op,
+                                size_t *request_max, size_t *response_max) {
+  const IdlAnnotation *a;
+  uint64_t request = 0u, response = 0u;
+  if (!op || !request_max || !response_max) return 0;
+  a = idl_annotation_find(op->annotations, op->annotation_count,
+                          "orbit_value", 0u);
+  if (!a || a->bare || a->argument_count != 2u ||
+      !a->arguments ||
+      idl_annotation_count(op->annotations, op->annotation_count,
+                           "orbit_value") != 1u ||
+      !orbit_positive_u64(a->arguments[0], &request) ||
+      !orbit_positive_u64(a->arguments[1], &response) ||
+      request > 65536u || response > 65536u)
+    return 0;
+  *request_max = (size_t)request;
+  *response_max = (size_t)response;
+  return 1;
+}
+
+/* Exactly one managed method per Service in the current bounded CallPort.
+ * Reject mixtures until a native multi-method contract owner exists.
+ */
+static int orbit_managed_operation(const IdlContract *contract,
+                                   const IdlOperation *op,
+                                   size_t *request_max, size_t *response_max) {
+  int contextual = 0;
+  return orbit_receiver_v1(op, &contextual) && contextual &&
+      orbit_managed_record(contract, op->request_type) &&
+      orbit_managed_record(contract, op->response_type) &&
+      orbit_managed_limits(op, request_max, response_max);
+}
+
+int databind_compiler_orbit_native_managed_selected(const IdlContract *contract) {
+  size_t s, i;
+  if (!contract) return 0;
+  for (s = 0u; s < contract->service_count; ++s)
+    for (i = 0u; i < contract->services[s].operation_count; ++i)
+      if (idl_annotation_find(
+              contract->services[s].operations[i].annotations,
+              contract->services[s].operations[i].annotation_count,
+              "orbit_value", 0u) != NULL)
+        return 1;
+  return 0;
+}
+
 int databind_compiler_orbit_native_selected(const IdlContract *contract) {
   size_t s, o;
   if (contract == NULL) return 0;
@@ -135,16 +215,29 @@ int databind_compiler_orbit_native_admitted(const IdlContract *contract) {
           (receiver_mode >= 0 && receiver_mode != contextual))
         return 0;
       receiver_mode = contextual;
-      if (!orbit_identifier(op->name) ||
-          !orbit_operation_ids(op, &method, &event) ||
-          method <= previous_id || op->error_count != 0u ||
-          !orbit_scalar_record(contract, op->request_type, &request_member) ||
-          !orbit_scalar_record(contract, op->response_type, &response_member)) {
+      {
+        const int scalar_pair =
+            orbit_scalar_record(contract, op->request_type, &request_member) &&
+            orbit_scalar_record(contract, op->response_type, &response_member);
+        const IdlAnnotation *managed = idl_annotation_find(
+            op->annotations, op->annotation_count, "orbit_value", 0u);
+        size_t req_max = 0u, resp_max = 0u;
+        const int owned_pair = !scalar_pair &&
+            orbit_managed_operation(contract, op, &req_max, &resp_max);
+        if (!orbit_identifier(op->name) ||
+            !orbit_operation_ids(op, &method, &event) ||
+            method <= previous_id || op->error_count != 0u ||
+            (scalar_pair && managed != NULL) ||
+            (!scalar_pair && (!owned_pair ||
+                               service->operation_count != 1u))) {
         fprintf(stderr,
             "Orbit native unary requires [orbit(method,event)] ordered IDs, "
-            "no typed errors and required single-uint64 messages: %s.%s\n",
+            "no typed errors; single uint64 or sole budgeted owned "
+            "text/bytes value [orbit_value(request_bytes,response_bytes)]: "
+            "%s.%s\n",
             service->name, op->name);
-        return 0;
+          return 0;
+        }
       }
       previous_id = method;
       for (j = 0u; j < i; ++j) {
@@ -237,6 +330,122 @@ static int orbit_native_emit_method(FILE *file,
     symbol, symbol, symbol, response, response, response_member,
     symbol, request, symbol, symbol,
     (unsigned long long)method, request_member, symbol) >= 0;
+}
+
+
+/* The only generated owned VALUE Client uses the SAME original NativeSourceIR
+ * record and canonical CMeta VALUE binder. The binder owner is caller-owned
+ * at a stable address for the full CallPort lifetime. No shadow FunctionAbi.
+ */
+static int orbit_native_emit_managed_method(
+    FILE *file, const databind_compiler_service_native_operation *op,
+    uint64_t method, size_t request_max, size_t response_max) {
+  const char *name = op ? op->symbol : NULL;
+  const char *request = op ? op->request_type : NULL;
+  const char *response = op ? op->response_type : NULL;
+  if (!file || !orbit_identifier(name) ||
+      !orbit_identifier(request) || !orbit_identifier(response))
+    return 0;
+  if (fprintf(file,
+      "typedef void (*%s__orbit_done_fn)(void *user, uint64_t token,\n"
+      "    orbit_call_terminal terminal, int application_status,\n"
+      "    const %s *response);\n"
+      "typedef struct %s__orbit_context {\n"
+      "    %s__orbit_done_fn done;\n"
+      "    void *user;\n"
+      "} %s__orbit_context;\n",
+      name, response, name, name, name) < 0)
+    return 0;
+  if (fprintf(file,
+      "static inline void %s__orbit_on_terminal(\n"
+      "    void *opaque, uint64_t token, orbit_call_terminal terminal,\n"
+      "    int application_status, const void *borrowed_response) {\n"
+      "    %s__orbit_context *ctx = (%s__orbit_context *)opaque;\n"
+      "    ctx->done(ctx->user, token, terminal, application_status,\n"
+      "        terminal == ORBIT_CALL_TERMINAL_SUCCESS ?\n"
+      "        (const %s *)borrowed_response : NULL);\n"
+      "}\n",
+      name, name, name, response) < 0)
+    return 0;
+  if (fprintf(file,
+      "static inline orbit_call_status %s__orbit_call_async(\n"
+      "    orbit_call_port *port, const orbit_service_ref *ref,\n"
+      "    const %s *request, %s__orbit_context *context,\n"
+      "    %s__orbit_done_fn done, void *user, uint64_t *out_token,\n"
+      "    cflow_actor_send_status *out_send) {\n"
+      "    if (!request || !context || !done)\n"
+      "        return ORBIT_CALL_INVALID_ARGUMENT;\n"
+      "    context->done = done;\n"
+      "    context->user = user;\n"
+      "    return orbit_call_value_async(port, ref, UINT64_C(%llu), request,\n"
+      "        %s__orbit_on_terminal, context, out_token, out_send);\n"
+      "}\n",
+      name, request, name, name, (unsigned long long)method, name) < 0)
+    return 0;
+  if (fprintf(file,
+      "typedef struct %s__orbit_value_owner {\n"
+      "    %s_native_cmeta_binding request;\n"
+      "    %s_native_cmeta_binding response;\n"
+      "} %s__orbit_value_owner;\n"
+      "static inline orbit_call_status %s__orbit_port_init_value(\n"
+      "    orbit_call_port *port, const orbit_service *service,\n"
+      "    size_t capacity, %s__orbit_value_owner *owner) {\n"
+      "    if (!owner || !port || !service)\n"
+      "        return ORBIT_CALL_INVALID_ARGUMENT;\n"
+      "    if (%s_native_cmeta_value_bind(&owner->request) != 0 ||\n"
+      "        %s_native_cmeta_value_bind(&owner->response) != 0)\n"
+      "        return ORBIT_CALL_TYPE_MISMATCH;\n"
+      "    const orbit_call_value_contract contract = {\n"
+      "        UINT64_C(%llu), &owner->request.data, &owner->response.data,\n"
+      "        %zuu, %zuu\n"
+      "    };\n"
+      "    return orbit_call_port_init_value(port, service, capacity, &contract);\n"
+      "}\n\n",
+      name, request, response, name, name, name,
+      request, response, (unsigned long long)method,
+      request_max, response_max) < 0)
+    return 0;
+  return 1;
+}
+
+/* The original post-commit CFlow owner borrows request VALUE with an execution
+ * pin. Local cancel may finish its terminal while business is still running;
+ * response storage and request lease remain live until both pins retire.
+ */
+static int orbit_native_emit_managed_dispatch_case(
+    FILE *file, const databind_compiler_service_native_operation *op,
+    uint64_t method) {
+  if (!file || !op || !orbit_identifier(op->symbol) ||
+      !orbit_identifier(op->request_type) ||
+      !orbit_identifier(op->response_type))
+    return 0;
+  return fprintf(file,
+      "    case UINT64_C(%llu): {\n"
+      "        const void *borrowed_request = NULL;\n"
+      "        %s typed_response = {0};\n"
+      "        orbit_call_status step = orbit_call_value_begin(\n"
+      "            port, token, UINT64_C(%llu), &borrowed_request);\n"
+      "        if (step != ORBIT_CALL_OK) return step;\n"
+      "        int business_status = %s(%s(const %s *)borrowed_request,\n"
+      "            &typed_response);\n"
+      "        step = orbit_call_value_stage_reply(\n"
+      "            port, token, UINT64_C(%llu), business_status,\n"
+      "            business_status == 0 ? &typed_response : NULL);\n"
+      "        %s_clear(&typed_response);\n"
+      "        orbit_call_status ended = orbit_call_value_end(\n"
+      "            port, token, UINT64_C(%llu));\n"
+      "        if (ended != ORBIT_CALL_OK) return ended;\n"
+      "        if (step != ORBIT_CALL_OK) {\n"
+      "            (void)orbit_call_value_observe(port, token);\n"
+      "            return step;\n"
+      "        }\n"
+      "        return orbit_call_value_observe(port, token);\n"
+      "    }\n",
+      (unsigned long long)method, op->response_type,
+      (unsigned long long)method, op->symbol,
+      op->requires_context ? "receiver, " : "",
+      op->request_type, (unsigned long long)method,
+      op->response_type, (unsigned long long)method) >= 0;
 }
 
 /*
@@ -373,14 +582,18 @@ static int orbit_native_emit_service_dispatch(
     const char *request_member = NULL;
     const char *response_member = NULL;
     if (!native || native->requires_context != contextual ||
-        !orbit_operation_ids(operation, &method, &event) ||
-        !orbit_scalar_record(contract, operation->request_type,
-                             &request_member) ||
-        !orbit_scalar_record(contract, operation->response_type,
-                             &response_member) ||
-        !orbit_native_emit_dispatch_case(
-            file, native, request_member, response_member, method))
+        !orbit_operation_ids(operation, &method, &event))
       return 0;
+    if (orbit_scalar_record(contract, operation->request_type,
+                            &request_member) &&
+        orbit_scalar_record(contract, operation->response_type,
+                            &response_member)) {
+      if (!orbit_native_emit_dispatch_case(
+              file, native, request_member, response_member, method))
+        return 0;
+    } else if (!orbit_native_emit_managed_dispatch_case(file, native, method)) {
+      return 0;
+    }
   }
 
   /*
@@ -439,12 +652,19 @@ int databind_compiler_orbit_native_write_header(
       const char *response_member = NULL;
       uint64_t method;
       uint32_t event;
-      if (!native || !orbit_operation_ids(op, &method, &event) ||
-          !orbit_scalar_record(contract, op->request_type, &request_member) ||
-          !orbit_scalar_record(contract, op->response_type, &response_member) ||
-          !orbit_native_emit_method(
-              file, native, request_member, response_member, method))
+      size_t request_max = 0u, response_max = 0u;
+      if (!native || !orbit_operation_ids(op, &method, &event))
         return 0;
+      if (orbit_scalar_record(contract, op->request_type, &request_member) &&
+          orbit_scalar_record(contract, op->response_type, &response_member)) {
+        if (!orbit_native_emit_method(
+                file, native, request_member, response_member, method))
+          return 0;
+      } else if (!orbit_managed_limits(op, &request_max, &response_max) ||
+                 !orbit_native_emit_managed_method(
+                     file, native, method, request_max, response_max)) {
+        return 0;
+      }
     }
     if (!orbit_native_emit_service_dispatch(file, contract, service, services))
       return 0;

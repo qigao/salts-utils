@@ -98,6 +98,51 @@ static const char ORBIT_CONTEXT_MANAGED_FIELD[] =
     "    [orbit(10,100),native_context(1)] Ping: Req -> Resp;\n"
     "}\n";
 
+/* Admission positive: exactly one contextual, budgeted owned-record method.
+ * All ordinary unannotated managed messages still remain Native-only.
+ */
+static const char ORBIT_OWNED_CONTEXT_V1[] =
+    "schema Game [version(1)];\n"
+    "message OwnedPacket { string label; bytes payload; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),native_context(1),orbit_value(32,32)]\n"
+    "    Echo: OwnedPacket -> OwnedPacket;\n"
+    "}\n";
+
+static const char ORBIT_OWNED_OVER_BUDGET[] =
+    "schema Game [version(1)];\n"
+    "message OwnedPacket { string label; bytes payload; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),native_context(1),orbit_value(65537,32)]\n"
+    "    Echo: OwnedPacket -> OwnedPacket;\n"
+    "}\n";
+
+static const char ORBIT_OWNED_NO_RECEIVER[] =
+    "schema Game [version(1)];\n"
+    "message OwnedPacket { string label; bytes payload; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),orbit_value(32,32)] Echo: OwnedPacket -> OwnedPacket;\n"
+    "}\n";
+
+static const char ORBIT_OWNED_OPTIONAL[] =
+    "schema Game [version(1)];\n"
+    "message OwnedPacket { optional string label; bytes payload; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),native_context(1),orbit_value(32,32)]\n"
+    "    Echo: OwnedPacket -> OwnedPacket;\n"
+    "}\n";
+
+static const char ORBIT_OWNED_MIXED[] =
+    "schema Game [version(1)];\n"
+    "message OwnedPacket { string label; bytes payload; }\n"
+    "message Req { uint64 seq; }\n"
+    "message Resp { uint64 ack; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),native_context(1),orbit_value(32,32)]\n"
+    "    Echo: OwnedPacket -> OwnedPacket;\n"
+    "    [orbit(20,101),native_context(1)] Ping: Req -> Resp;\n"
+    "}\n";
+
 static const char ORBIT_OVERFLOW_ID[] =
     "schema Game [version(1)];\n"
     "message Req { uint64 seq; }\n"
@@ -183,7 +228,8 @@ static int check_case(const char *source, int should_admit) {
   if (should_admit) {
     if (databind_compiler_service_native_build(contract, &native) != 0)
       goto done;
-    if (strstr(source, "native_context") != NULL) {
+    if (strstr(source, "native_context") != NULL &&
+        strstr(source, "orbit_value") == NULL) {
       FILE *functions = tmpfile();
       long count;
       char *text = NULL;
@@ -237,7 +283,19 @@ static int check_case(const char *source, int should_admit) {
     }
     printed = render_to_text(contract, &native);
     if (printed == NULL) goto done;
-    if (databind_compiler_orbit_native_selected(contract)) {
+    if (databind_compiler_orbit_native_selected(contract) &&
+        strstr(source, "orbit_value") != NULL) {
+      if (strstr(printed, "__orbit_port_init_value(") == NULL ||
+          strstr(printed, "orbit_call_value_async(") == NULL ||
+          strstr(printed, "orbit_call_value_begin(") == NULL ||
+          strstr(printed, "orbit_call_value_stage_reply(") == NULL ||
+          strstr(printed, "orbit_call_value_end(") == NULL ||
+          strstr(printed, "OwnedPacket_native_cmeta_value_bind(") == NULL ||
+          strstr(printed, "32u, 32u") == NULL ||
+          strstr(printed, "business_status = databind_4_Game_4_Room_4_Echo(") == NULL ||
+          strstr(printed, "DATABIND_NATIVE_ENABLE_ORBIT") == NULL)
+        goto done;
+    } else if (databind_compiler_orbit_native_selected(contract)) {
       /* Type-safe wrappers and one ordered methods[] table originate
        * exclusively from canonical, parsed IdlContract IDs and fields.
        */
@@ -292,6 +350,11 @@ int databind_compiler_orbit_native_tests(void) {
       {ORBIT_MISSING_METHOD, 0},
       {ORBIT_MANAGED_FIELD, 0},
       {ORBIT_CONTEXT_MANAGED_FIELD, 0},
+      {ORBIT_OWNED_CONTEXT_V1, 1},
+      {ORBIT_OWNED_OVER_BUDGET, 0},
+      {ORBIT_OWNED_NO_RECEIVER, 0},
+      {ORBIT_OWNED_OPTIONAL, 0},
+      {ORBIT_OWNED_MIXED, 0},
       {ORBIT_OVERFLOW_ID, 0},
       {ORBIT_OVERFLOW_EVENT, 0},
       {ORBIT_TYPED_ERROR, 0},

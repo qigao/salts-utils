@@ -18,15 +18,19 @@ extern "C" {
  *     [orbit(10,100)] Add: AddRequest -> AddResponse;
  *
  * IDs identify one public Orbit Service method and one existing CFlow Machine
- * Event. This first slice accepts ONLY a required single uint64 field in
- * both request/response and no typed errors, optional/null/owned fields.
- * Other shapes fail closed before any output publication.
+ * Event. Scalar unary accepts one required uint64 field per side.
+ * M0k.2b additionally admits exactly one managed text/bytes-only message
+ * operation per Service with native_context(1) and explicit positive,
+ * bounded orbit_value(request_max,response_max) annotations. Unknown,
+ * optional/nullable, nested, collection, typed error, mixed mode and
+ * missing-budget shapes fail closed before any output publication.
  *
  * Generated fragments are protected by DATABIND_NATIVE_ENABLE_ORBIT, leaving
  * existing Native/Plugin output targets independent of Orbit packages.
  * A consumer must intentionally provide Orbit::Core and that compile flag.
  */
 int databind_compiler_orbit_native_selected(const IdlContract *contract);
+int databind_compiler_orbit_native_managed_selected(const IdlContract *contract);
 int databind_compiler_orbit_native_admitted(const IdlContract *contract);
 int databind_compiler_orbit_native_write_header(
     FILE *file, const IdlContract *contract,
