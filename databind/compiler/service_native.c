@@ -1298,7 +1298,7 @@ int databind_compiler_service_native_emit_execution(
   if (status < 0) return -1;
   if (!emit_descriptor) return fputc('\n', file) == EOF ? -1 : 0;
 
-  return fprintf(
+  status = fprintf(
              file,
              "static const DataBindNativeExecution %s__execution_meta = {\n"
              "  sizeof(DataBindNativeExecution),\n"
@@ -1316,9 +1316,20 @@ int databind_compiler_service_native_emit_execution(
              operation->symbol,
              operation->symbol,
              operation->symbol,
-             operation->symbol) < 0
-             ? -1
-             : 0;
+             operation->symbol);
+  if (status < 0) return -1;
+  if (operation->requires_context &&
+      fprintf(file,
+          "bool %s__databind_execution_bind(\n"
+          "    void *receiver, DataBindNativeExecution *out) {\n"
+          "    if (!receiver || !out) return false;\n"
+          "    *out = %s__execution_meta;\n"
+          "    out->context = receiver;\n"
+          "    return data_bind_native_execution_valid(out);\n"
+          "}\n\n",
+          operation->symbol, operation->symbol) < 0)
+    return -1;
+  return 0;
 }
 
 int databind_compiler_service_native_emit_cflow_projection(
