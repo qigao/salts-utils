@@ -442,8 +442,12 @@ static int native_source_ir_render(
   if (fprintf(out,
       "#pragma once\n#include <stdbool.h>\n#include <stdint.h>\n"
       "#include <stddef.h>\n#include <stdlib.h>\n#include <string.h>\n\n"
+      "/* Shared public owned buffer layout across ALL included Native schemas. */\n"
+      "#ifndef DATABIND_NATIVE_OWNED_BUFFER_TYPES_V1\n"
+      "#define DATABIND_NATIVE_OWNED_BUFFER_TYPES_V1 1\n"
       "typedef struct databind_native_text { char *data; size_t size; } databind_native_text;\n"
-      "typedef struct databind_native_bytes { unsigned char *data; size_t size; } databind_native_bytes;\n\n") < 0)
+      "typedef struct databind_native_bytes { unsigned char *data; size_t size; } databind_native_bytes;\n"
+      "#endif /* DATABIND_NATIVE_OWNED_BUFFER_TYPES_V1 */\n\n") < 0)
     failed = 1;
   for (i = 0u; i < ir->record_count; ++i) {
     for (j = 0u; j < ir->records[i].field_count; ++j)
@@ -867,6 +871,10 @@ static int native_source_ir_render(
       "#endif /* DATABIND_NATIVE_ENABLE_DATABIND */\n") < 0)
     failed = 1;
   if (!failed && needs_text_value &&
+      fputs("#ifndef DATABIND_NATIVE_OWNED_TEXT_CMETA_V1\n"
+            "#define DATABIND_NATIVE_OWNED_TEXT_CMETA_V1 1\n", out) == EOF)
+    failed = 1;
+  if (!failed && needs_text_value &&
       fputs(
         "/* Compiler-private owned text DataDesc; independent of Binary format. */\n"
         "static const cmeta_type_identity databind_native_text_data_identity =\n"
@@ -945,6 +953,13 @@ static int native_source_ir_render(
         "    NULL, NULL, NULL, NULL, NULL, NULL, NULL\n"
         "};\n",
         out) == EOF) failed = 1;
+  if (!failed && needs_text_value &&
+      fputs("#endif /* DATABIND_NATIVE_OWNED_TEXT_CMETA_V1 */\n", out) == EOF)
+    failed = 1;
+  if (!failed && needs_bytes_value &&
+      fputs("#ifndef DATABIND_NATIVE_OWNED_BYTES_CMETA_V1\n"
+            "#define DATABIND_NATIVE_OWNED_BYTES_CMETA_V1 1\n", out) == EOF)
+    failed = 1;
   if (!failed && needs_bytes_value &&
       fputs(
         "/* Compiler-private owned bytes DataDesc; independent of Binary format. */\n"
@@ -1023,6 +1038,9 @@ static int native_source_ir_render(
         "    NULL, NULL, NULL, NULL, NULL, NULL, NULL\n"
         "};\n",
         out) == EOF) failed = 1;
+  if (!failed && needs_bytes_value &&
+      fputs("#endif /* DATABIND_NATIVE_OWNED_BYTES_CMETA_V1 */\n", out) == EOF)
+    failed = 1;
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
     char stable_type_id[1024];
