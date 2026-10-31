@@ -79,6 +79,26 @@ static int orbit_operation_ids(const IdlOperation *op,
   return 1;
 }
 
+/* The receiver contract is the SAME canonical NativeSourceIR v1 convention
+ * consumed by DataBindNativeExecution.context.  No Orbit-only handler ABI. */
+static int orbit_receiver_v1(const IdlOperation *op, int *out_contextual) {
+  const IdlAnnotation *tag;
+  const char *version;
+  if (!op || !out_contextual) return 0;
+  *out_contextual = 0;
+  tag = idl_annotation_find(op->annotations, op->annotation_count,
+                            "native_context", 0u);
+  if (tag == NULL) return 1;
+  version = idl_annotation_argument(tag, 0u);
+  if (tag->bare || tag->argument_count != 1u || !version ||
+      strcmp(version, "1") != 0 ||
+      idl_annotation_find(op->annotations, op->annotation_count,
+                          "native_context", 1u) != NULL)
+    return 0;
+  *out_contextual = 1;
+  return 1;
+}
+
 int databind_compiler_orbit_native_selected(const IdlContract *contract) {
   size_t s, o;
   if (contract == NULL) return 0;
@@ -95,6 +115,7 @@ int databind_compiler_orbit_native_admitted(const IdlContract *contract) {
   for (s = 0u; s < contract->service_count; ++s) {
     const IdlService *service = &contract->services[s];
     int marked = 0;
+    int receiver_mode = -1; /* entire Service binds one receiver convention */
     uint64_t previous_id = 0u;
     if (!orbit_identifier(contract->name) ||
         !orbit_identifier(service->name))
@@ -107,8 +128,13 @@ int databind_compiler_orbit_native_admitted(const IdlContract *contract) {
       const IdlOperation *op = &service->operations[i];
       const char *request_member = NULL;
       const char *response_member = NULL;
+      int contextual = 0;
       uint64_t method;
       uint32_t event;
+      if (!orbit_receiver_v1(op, &contextual) ||
+          (receiver_mode >= 0 && receiver_mode != contextual))
+        return 0;
+      receiver_mode = contextual;
       if (!orbit_identifier(op->name) ||
           !orbit_operation_ids(op, &method, &event) ||
           method <= previous_id || op->error_count != 0u ||
@@ -243,7 +269,7 @@ static int orbit_native_emit_dispatch_case(
       "            port, token, UINT64_C(%llu), &raw_request);\n"
       "        if (step != ORBIT_CALL_OK) return step;\n"
       "        typed_request.%s = raw_request;\n"
-      "        business_status = %s(&typed_request, &typed_response);\n"
+      "        business_status = %s(%s&typed_request, &typed_response);\n"
       "        step = orbit_call_u64_stage_reply(\n"
       "            port, token, UINT64_C(%llu),\n"
       "            business_status, typed_response.%s);\n"
@@ -252,6 +278,7 @@ static int orbit_native_emit_dispatch_case(
       "    }\n",
       (unsigned long long)method, op->request_type, op->response_type,
       (unsigned long long)method, request_member, op->symbol,
+      op->requires_context ? "receiver, " : "",
       (unsigned long long)method, response_member) >= 0;
 }
 
@@ -260,8 +287,16 @@ static int orbit_native_emit_service_dispatch(
     const IdlService *service,
     const databind_compiler_service_native_ir *services) {
   size_t i;
+  int contextual = 0;
   const size_t schema_len = strlen(contract->name);
   const size_t service_len = strlen(service->name);
+  const databind_compiler_service_native_operation *first;
+  if (service->operation_count == 0u) return 0;
+  first = orbit_native_find(services, service->name,
+                            service->operations[0].name);
+  if (!first) return 0;
+  contextual = first->requires_context;
+
   if (fprintf(file,
       "/* Canonical CFlow post-commit adapter for one Service instance. */\n"
       "static inline orbit_service_config "
@@ -273,19 +308,60 @@ static int orbit_native_emit_service_dispatch(
       "          sizeof(databind_%zu_%s_%zu_%s__orbit_methods[0])\n"
       "    };\n"
       "    return config;\n"
-      "}\n"
-      "static inline orbit_call_status "
-      "databind_%zu_%s_%zu_%s__orbit_dispatch(\n"
-      "    orbit_call_port *port, uint64_t token) {\n"
-      "    orbit_method_id method = 0u;\n"
-      "    orbit_call_status status = orbit_call_u64_method(port, token, &method);\n"
-      "    if (status != ORBIT_CALL_OK) return status;\n"
-      "    switch (method) {\n",
-      schema_len, contract->name, service_len, service->name,
+      "}\n",
       schema_len, contract->name, service_len, service->name,
       schema_len, contract->name, service_len, service->name,
       schema_len, contract->name, service_len, service->name,
       schema_len, contract->name, service_len, service->name) < 0)
+    return 0;
+
+  if (contextual) {
+    /*
+     * Explicit one-time owner binding: no global/TLS current-room,
+     * no per-event reflection, and no second FunctionDesc/FunctionAbi.
+     * The receiver must be borrowed from the same lifetime/scope that
+     * owns the native DataBind execution context.
+     */
+    if (fprintf(file,
+        "typedef struct databind_%zu_%s_%zu_%s__orbit_binding {\n"
+        "    orbit_call_port *port;\n"
+        "    void *receiver;\n"
+        "} databind_%zu_%s_%zu_%s__orbit_binding;\n"
+        "static inline bool databind_%zu_%s_%zu_%s__orbit_bind(\n"
+        "    databind_%zu_%s_%zu_%s__orbit_binding *out,\n"
+        "    orbit_call_port *port, void *receiver) {\n"
+        "    if (!out || !port || !port->impl || !receiver) return false;\n"
+        "    out->port = port;\n"
+        "    out->receiver = receiver;\n"
+        "    return true;\n"
+        "}\n"
+        "static inline orbit_call_status databind_%zu_%s_%zu_%s__orbit_dispatch(\n"
+        "    const databind_%zu_%s_%zu_%s__orbit_binding *bound,\n"
+        "    uint64_t token) {\n"
+        "    if (!bound || !bound->port || !bound->receiver)\n"
+        "        return ORBIT_CALL_INVALID_ARGUMENT;\n"
+        "    orbit_call_port *port = bound->port;\n"
+        "    void *receiver = bound->receiver;\n",
+        schema_len, contract->name, service_len, service->name,
+        schema_len, contract->name, service_len, service->name,
+        schema_len, contract->name, service_len, service->name,
+        schema_len, contract->name, service_len, service->name,
+        schema_len, contract->name, service_len, service->name,
+        schema_len, contract->name, service_len, service->name) < 0)
+      return 0;
+  } else if (fprintf(file,
+      "static inline orbit_call_status "
+      "databind_%zu_%s_%zu_%s__orbit_dispatch(\n"
+      "    orbit_call_port *port, uint64_t token) {\n",
+      schema_len, contract->name, service_len, service->name) < 0) {
+    return 0;
+  }
+
+  if (fputs(
+      "    orbit_method_id method = 0u;\n"
+      "    orbit_call_status status = orbit_call_u64_method(port, token, &method);\n"
+      "    if (status != ORBIT_CALL_OK) return status;\n"
+      "    switch (method) {\n", file) == EOF)
     return 0;
 
   for (i = 0u; i < service->operation_count; ++i) {
@@ -296,7 +372,8 @@ static int orbit_native_emit_service_dispatch(
     uint32_t event;
     const char *request_member = NULL;
     const char *response_member = NULL;
-    if (!native || !orbit_operation_ids(operation, &method, &event) ||
+    if (!native || native->requires_context != contextual ||
+        !orbit_operation_ids(operation, &method, &event) ||
         !orbit_scalar_record(contract, operation->request_type,
                              &request_member) ||
         !orbit_scalar_record(contract, operation->response_type,
@@ -307,9 +384,8 @@ static int orbit_native_emit_service_dispatch(
   }
 
   /*
-   * A missing method in the active generated contract is a protocol error,
-   * not a reason to hold its terminal credit indefinitely. Settle the
-   * accepted call as NO_REPLY (never SUCCESS) and fail the dispatch.
+   * A missing method in the current generated contract is a protocol error,
+   * not permission to retain terminal credits.  Never report SUCCESS.
    */
   return fputs(
       "    default:\n"

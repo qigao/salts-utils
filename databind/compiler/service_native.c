@@ -446,6 +446,26 @@ static int native_operation_fill(
   response_type = operation->response_type;
   if (operation_name == NULL || request_type == NULL || response_type == NULL)
     return 0;
+  {
+    const IdlAnnotation *receiver = idl_annotation_find(
+        operation->annotations, operation->annotation_count,
+        "native_context", 0u);
+    if (receiver != NULL) {
+      const char *version = idl_annotation_argument(receiver, 0u);
+      /* No shadow ABI: the ONLY supported receiver convention is v1,
+       * and the very same operation lowers for all Native projections.
+       * Typed errors are not yet admitted for bound receivers.
+       */
+      if (idl_annotation_find(operation->annotations,
+                              operation->annotation_count,
+                              "native_context", 1u) != NULL ||
+          receiver->bare || receiver->argument_count != 1u ||
+          version == NULL || strcmp(version, "1") != 0 ||
+          operation->error_count != 0u)
+        return 0;
+      out->requires_context = 1;
+    }
+  }
 
   if (databind_compiler_message_native_build(
           contract, request_type, &request) != 0 ||
@@ -839,8 +859,9 @@ int databind_compiler_service_native_emit_prototype(
   if (operation->error_count == 0u) {
     return fprintf(
                file,
-               "int %s(const %s_t *request, %s_t *response);\n",
+               "int %s(%sconst %s_t *request, %s_t *response);\n",
                operation->symbol,
+               operation->requires_context ? "void *receiver, " : "",
                operation->request_type,
                operation->response_type) < 0
                ? -1
@@ -1234,16 +1255,20 @@ int databind_compiler_service_native_emit_execution(
         "    void *context, void *return_storage, void *const *params,\n"
         "    size_t param_count) {\n"
         "  int result;\n"
-        "  (void)context;\n"
+        "  %s\n"
         "  if (return_storage == NULL || params == NULL ||\n"
         "      param_count != 2u || params[0] == NULL || params[1] == NULL)\n"
         "    return false;\n"
-        "  result = %s((const %s_t *)params[0], (%s_t *)params[1]);\n"
+        "  result = %s(%s(const %s_t *)params[0], (%s_t *)params[1]);\n"
         "  *(int *)return_storage = result;\n"
         "  return true;\n"
         "}\n",
         operation->symbol,
+        operation->requires_context
+            ? "if (context == NULL) return false;"
+            : "(void)context;",
         operation->symbol,
+        operation->requires_context ? "context, " : "",
         operation->request_type,
         operation->response_type);
   } else {
@@ -1273,7 +1298,7 @@ int databind_compiler_service_native_emit_execution(
   if (status < 0) return -1;
   if (!emit_descriptor) return fputc('\n', file) == EOF ? -1 : 0;
 
-  return fprintf(
+  status = fprintf(
              file,
              "static const DataBindNativeExecution %s__execution_meta = {\n"
              "  sizeof(DataBindNativeExecution),\n"
@@ -1291,9 +1316,20 @@ int databind_compiler_service_native_emit_execution(
              operation->symbol,
              operation->symbol,
              operation->symbol,
-             operation->symbol) < 0
-             ? -1
-             : 0;
+             operation->symbol);
+  if (status < 0) return -1;
+  if (operation->requires_context &&
+      fprintf(file,
+          "bool %s__databind_execution_bind(\n"
+          "    void *receiver, DataBindNativeExecution *out) {\n"
+          "    if (!receiver || !out) return false;\n"
+          "    *out = %s__execution_meta;\n"
+          "    out->context = receiver;\n"
+          "    return data_bind_native_execution_valid(out);\n"
+          "}\n\n",
+          operation->symbol, operation->symbol) < 0)
+    return -1;
+  return 0;
 }
 
 int databind_compiler_service_native_emit_cflow_projection(
@@ -1311,7 +1347,7 @@ int databind_compiler_service_native_emit_cflow_projection(
       operation->response_type == NULL)
     return -1;
 
-  if (operation->error_count != 0u ||
+  if (operation->requires_context || operation->error_count != 0u ||
       operation->request_presence_count != 0u ||
       operation->request_null_count != 0u ||
       operation->response_presence_count != 0u ||

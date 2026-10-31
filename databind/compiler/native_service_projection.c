@@ -248,7 +248,7 @@ int databind_compiler_native_contract_emit_header_op(
     FILE *file, const databind_compiler_service_native_operation *op) {
   if (!file || !op || !op->symbol || !op->request_type || !op->response_type) return 0;
   if (fprintf(file,
-      "int %s(const %s *request, %s *response);\n"
+      "int %s(%sconst %s *request, %s *response);\n"
       "typedef struct %s__native_owner {\n"
       "    %s_native_cmeta_binding request_metadata;\n"
       "    %s_native_cmeta_binding response_metadata;\n"
@@ -262,10 +262,17 @@ int databind_compiler_native_contract_emit_header_op(
       "    %s__native_owner *owner,\n"
       "    DataBindServiceNativeBinding *service_out,\n"
       "    DataBindError *error);\n\n",
-      op->symbol, op->request_type, op->response_type,
+      op->symbol, op->requires_context ? "void *receiver, " : "",
+      op->request_type, op->response_type,
       op->symbol, op->request_type, op->response_type,
       op->symbol, op->symbol, op->symbol, op->symbol,
       op->symbol, op->symbol) < 0)
+    return 0;
+  if (op->requires_context &&
+      fprintf(file,
+          "bool %s__databind_execution_bind(\n"
+          "    void *receiver, DataBindNativeExecution *out);\n",
+          op->symbol) < 0)
     return 0;
   return 1;
 }
@@ -339,8 +346,9 @@ static int native_service_write_contract_header(
           &services->operations[i];
       if (!op->symbol || !op->request_type || !op->response_type ||
           fprintf(file,
-                  "int %s(const %s *request, %s *response);\n",
-                  op->symbol, op->request_type, op->response_type) < 0)
+                  "int %s(%sconst %s *request, %s *response);\n",
+                  op->symbol, op->requires_context ? "void *receiver, " : "",
+                  op->request_type, op->response_type) < 0)
         return 0;
     }
     if (fputs(
@@ -400,10 +408,10 @@ int databind_compiler_native_contract_emit_invoke(
     "    void *context, void *return_storage, void *const *params,\n"
     "    size_t param_count) {\n"
     "    int status;\n"
-    "    (void)context;\n"
+    "    %s\n"
     "    if (!return_storage || !params || param_count != 2u ||\n"
     "        !params[0] || !params[1]) return false;\n"
-    "    status = %s((const %s *)params[0], (%s *)params[1]);\n"
+    "    status = %s(%s(const %s *)params[0], (%s *)params[1]);\n"
     "    *(int *)return_storage = status;\n"
     "    return true;\n"
     "}\n"
@@ -421,13 +429,36 @@ int databind_compiler_native_contract_emit_invoke(
     "const DataBindNativeExecution *%s__databind_execution(void) {\n"
     "    return &%s__execution_meta;\n"
     "}\n",
-    op->symbol, op->symbol, op->request_type, op->response_type,
+    op->symbol,
+    op->requires_context ? "if (context == NULL) return false;"
+                         : "(void)context;",
+    op->symbol, op->requires_context ? "context, " : "",
+    op->request_type, op->response_type,
     op->symbol, op->symbol, op->symbol, op->symbol,
     op->symbol, op->symbol, op->symbol, op->symbol,
     op->symbol, op->symbol) < 0)
     return 0;
 
   return 1;
+}
+
+/*
+ * DataBindNativeExecution.context is the unique canonical instance receiver.
+ * Copy its metadata before binding; never mutate the shared static descriptor
+ * when several Actor instances share the same generated Service Contract.
+ */
+static int native_service_emit_context_binding(
+    FILE *file, const databind_compiler_service_native_operation *op) {
+  if (file == NULL || op == NULL || op->symbol == NULL) return 0;
+  if (!op->requires_context) return 1;
+  return fprintf(file,
+      "bool %s__databind_execution_bind(\n"
+      "    void *receiver, DataBindNativeExecution *out) {\n"
+      "    if (!receiver || !out) return false;\n"
+      "    *out = %s__execution_meta;\n"
+      "    out->context = receiver;\n"
+      "    return data_bind_native_execution_valid(out);\n"
+      "}\n", op->symbol, op->symbol) >= 0;
 }
 
 int databind_compiler_native_contract_emit_binding(
@@ -475,6 +506,7 @@ static int native_service_write_contract_source(
     const databind_compiler_service_native_operation *op = &services->operations[i];
     if (!databind_compiler_native_contract_emit_reflection(file, op) ||
         !databind_compiler_native_contract_emit_invoke(file, op) ||
+        !native_service_emit_context_binding(file, op) ||
         !databind_compiler_native_contract_emit_binding(file, op))
       return 0;
   }

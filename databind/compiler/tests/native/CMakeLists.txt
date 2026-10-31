@@ -241,3 +241,34 @@ set_tests_properties(test_databind_native_service_public_artifact_cpp PROPERTIES
 
 target_link_libraries(databind_service_native_codegen_fixture_tool
   PRIVATE databind_binding_compiler)
+
+# Context ABI v1 is exercised by the real canonical NATIVE generated
+# FunctionDesc/FunctionAbi and DataBindNativeExecution. This is a native
+# library test inside the existing graph, NOT an installer/consumer project.
+salts_idl_target(
+  TARGET databind_native_context_v1_fixture
+  FOLDER "databind/compiler/generated/native"
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_context_v1.schema"
+  ARTIFACT_NAME "native_context_v1"
+  ARTIFACTS NATIVE)
+target_sources(
+  ${databind_native_context_v1_fixture_NATIVE_TARGET}
+  PRIVATE test_service_native_context_v1_business.c)
+
+cmake_add_test(test_databind_native_context_v1
+  SOURCES test_service_native_context_v1.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_native_context_v1_fixture_NATIVE_TARGET}
+  INCLUDES "${databind_native_context_v1_fixture_GENERATED_DIR}"
+  FOLDER "databind/compiler/tests/native")
+add_dependencies(test_databind_native_context_v1
+  databind_native_context_v1_fixture_idl_codegen)
+set_target_properties(test_databind_native_context_v1 PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_native_context_v1 PROPERTIES
+  LABELS "databind;compiler;native-service;context-v1;runtime")
+

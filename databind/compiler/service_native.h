@@ -46,6 +46,14 @@ typedef struct databind_compiler_service_native_operation {
   char *request_type_identity;
   char *response_type_identity;
 
+  /*
+   * Canonical versioned Native receiver ABI: [native_context(1)].
+   * The instance is bound once in DataBindNativeExecution.context; it is
+   * deliberately NOT an extra reflected FunctionAbi parameter.
+   * Unannotated legacy business functions retain their exact old shape.
+   */
+  int requires_context;
+
   databind_compiler_service_native_state *request_presence;
   size_t request_presence_count;
   databind_compiler_service_native_state *request_nulls;
