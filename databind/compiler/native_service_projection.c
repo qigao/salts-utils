@@ -2,6 +2,7 @@
 
 #include "service_native.h"
 #include "native_source_ir.h"
+#include "orbit_native_projection.h"
 #include "cmeta_fs.h"
 
 #include <ctype.h>
@@ -287,11 +288,21 @@ static int native_service_write_contract_header(
       fputs("#include ", file) == EOF ||
       !native_service_write_include(file, config->native_header) ||
       fputs("\n#include <data_bind_binding_plan.h>\n"
-            "#include <cmeta/function.h>\n"
-            "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n", file) == EOF)
+            "#include <cmeta/function.h>\n", file) == EOF)
+    return 0;
+  /* Opt-in only: unchanged NATIVE/PLUGIN output has no Orbit dependency. */
+  if (databind_compiler_orbit_native_selected(contract) &&
+      fputs("#if defined(DATABIND_NATIVE_ENABLE_ORBIT)\n"
+            "#include <orbit/call.h>\n"
+            "#endif\n", file) == EOF)
+    return 0;
+  if (fputs("#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n", file) == EOF)
     return 0;
   for (i = 0u; i < services->operation_count; ++i)
-    if (!databind_compiler_native_contract_emit_header_op(file, &services->operations[i])) return 0;
+    if (!databind_compiler_native_contract_emit_header_op(
+            file, &services->operations[i])) return 0;
+  if (!databind_compiler_orbit_native_write_header(file, contract, services))
+    return 0;
   return fprintf(file, "#ifdef __cplusplus\n}\n#endif\n\n"
                        "#endif /* %s */\n", guard) >= 0;
 }
@@ -563,6 +574,12 @@ int databind_compiler_native_service_render_staged(
   if (databind_compiler_service_native_build(contract, &ir) != 0 ||
       ir.operations == NULL || ir.operation_count == 0u)
     goto cleanup;
+  /* An annotated Orbit Service cannot silently take Binary/native ABI;
+   * reject before opening coordinator staging files or altering outputs. */
+  if (databind_compiler_orbit_native_selected(contract) &&
+      (input->binary_format != NULL || config->binary_presentation ||
+       !databind_compiler_orbit_native_admitted(contract)))
+    goto cleanup;
   if (input->binary_format == NULL && !config->binary_presentation &&
       !databind_compiler_native_contract_admitted(contract, &ir))
     goto cleanup;
@@ -623,6 +640,10 @@ int databind_compiler_native_service_generate(
 
   if (databind_compiler_service_native_build(contract, &ir) != 0 ||
       ir.operations == NULL || ir.operation_count == 0u)
+    goto cleanup;
+  /* This legacy Binary output path cannot publish an Orbit-first Contract
+   * adapter, and must fail rather than silently ignore its annotation. */
+  if (databind_compiler_orbit_native_selected(contract))
     goto cleanup;
 
   header_file = native_service_open_staging(
