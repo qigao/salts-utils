@@ -3,7 +3,6 @@ schema RoomState [version(1)];
 message Delta { uint64 delta; }
 message Total { uint64 total; }
 
-/* Managed native fields: explicit owned text and raw bytes, no wire codec. */
 message OwnedPacket {
     string label;
     bytes payload;
