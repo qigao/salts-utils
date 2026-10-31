@@ -276,7 +276,7 @@ cmake_add_executable(databind_component_candidate_codegen_tool
     "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/service_native.c"
-    "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c"
+    "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/orbit_native_projection.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c"
   LIBS

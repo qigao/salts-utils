@@ -2,6 +2,7 @@
 
 #include "service_native.h"
 #include "native_source_ir.h"
+#include "orbit_native_projection.h"
 #include "cmeta_fs.h"
 
 #include <ctype.h>
@@ -275,23 +276,80 @@ static int native_service_write_contract_header(
     const databind_compiler_service_native_ir *services) {
   char guard[320];
   size_t i;
+  const int orbit = databind_compiler_orbit_native_selected(contract);
   if (!file || !contract || !config || !services ||
       !native_service_header_guard(contract, guard, sizeof(guard)))
     return 0;
-  if (fprintf(file, "#ifndef %s\n#define %s\n\n"
-                    "#ifndef DATABIND_NATIVE_ENABLE_CMETA\n"
-                    "#define DATABIND_NATIVE_ENABLE_CMETA\n#endif\n"
-                    "#ifndef DATABIND_NATIVE_ENABLE_DATABIND\n"
-                    "#define DATABIND_NATIVE_ENABLE_DATABIND\n#endif\n",
-              guard, guard) < 0 ||
-      fputs("#include ", file) == EOF ||
+  if (fprintf(file, "#ifndef %s\n#define %s\n\n",
+              guard, guard) < 0)
+    return 0;
+
+  /*
+   * The canonical Native Service ABI (FunctionDesc, FunctionAbi and native
+   * DataBind execution) is unchanged unless the consumer explicitly selects
+   * the first-slice Orbit scalar view. That view MUST NOT force the older
+   * DataBind/CMeta header ABI into a Salts 3 Orbit-only Actor application.
+   *
+   * Both views use the SAME canonical NativeSourceIR Record declarations
+   * and the SAME business C symbols. This is a conditional header view,
+   * not a second generated FunctionDesc, parser or runtime engine.
+   */
+  if (orbit && fputs(
+      "#if defined(DATABIND_NATIVE_ENABLE_ORBIT) && \\\n"
+      "    (defined(DATABIND_NATIVE_ENABLE_CMETA) || \\\n"
+      "     defined(DATABIND_NATIVE_ENABLE_DATABIND))\n"
+      "#error Orbit unary scalar view cannot mix Native DataBind/CMeta ABI\n"
+      "#endif\n"
+      "#if !defined(DATABIND_NATIVE_ENABLE_ORBIT)\n", file) == EOF)
+    return 0;
+  if (fputs(
+      "#ifndef DATABIND_NATIVE_ENABLE_CMETA\n"
+      "#define DATABIND_NATIVE_ENABLE_CMETA\n#endif\n"
+      "#ifndef DATABIND_NATIVE_ENABLE_DATABIND\n"
+      "#define DATABIND_NATIVE_ENABLE_DATABIND\n#endif\n"
+      "#include ", file) == EOF ||
       !native_service_write_include(file, config->native_header) ||
       fputs("\n#include <data_bind_binding_plan.h>\n"
-            "#include <cmeta/function.h>\n"
-            "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n", file) == EOF)
+            "#include <cmeta/function.h>\n", file) == EOF)
+    return 0;
+  if (orbit) {
+    if (fputs(
+        "#else /* DATABIND_NATIVE_ENABLE_ORBIT */\n"
+        "#include ", file) == EOF ||
+        !native_service_write_include(file, config->native_header) ||
+        fputs("\n#include <orbit/call.h>\n"
+              "#endif /* DATABIND_NATIVE_ENABLE_ORBIT */\n", file) == EOF)
+      return 0;
+  }
+  if (fputs("#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n", file) == EOF)
+    return 0;
+
+  if (orbit && fputs(
+      "#if !defined(DATABIND_NATIVE_ENABLE_ORBIT)\n", file) == EOF)
     return 0;
   for (i = 0u; i < services->operation_count; ++i)
-    if (!databind_compiler_native_contract_emit_header_op(file, &services->operations[i])) return 0;
+    if (!databind_compiler_native_contract_emit_header_op(
+            file, &services->operations[i])) return 0;
+  if (orbit) {
+    if (fputs(
+        "#else /* NativeSourceIR scalar Service declarations */\n", file) == EOF)
+      return 0;
+    for (i = 0u; i < services->operation_count; ++i) {
+      const databind_compiler_service_native_operation *op =
+          &services->operations[i];
+      if (!op->symbol || !op->request_type || !op->response_type ||
+          fprintf(file,
+                  "int %s(const %s *request, %s *response);\n",
+                  op->symbol, op->request_type, op->response_type) < 0)
+        return 0;
+    }
+    if (fputs(
+        "#endif /* DATABIND_NATIVE_ENABLE_ORBIT */\n\n", file) == EOF)
+      return 0;
+  }
+
+  if (!databind_compiler_orbit_native_write_header(file, contract, services))
+    return 0;
   return fprintf(file, "#ifdef __cplusplus\n}\n#endif\n\n"
                        "#endif /* %s */\n", guard) >= 0;
 }
@@ -563,6 +621,12 @@ int databind_compiler_native_service_render_staged(
   if (databind_compiler_service_native_build(contract, &ir) != 0 ||
       ir.operations == NULL || ir.operation_count == 0u)
     goto cleanup;
+  /* An annotated Orbit Service cannot silently take Binary/native ABI;
+   * reject before opening coordinator staging files or altering outputs. */
+  if (databind_compiler_orbit_native_selected(contract) &&
+      (input->binary_format != NULL || config->binary_presentation ||
+       !databind_compiler_orbit_native_admitted(contract)))
+    goto cleanup;
   if (input->binary_format == NULL && !config->binary_presentation &&
       !databind_compiler_native_contract_admitted(contract, &ir))
     goto cleanup;
@@ -623,6 +687,10 @@ int databind_compiler_native_service_generate(
 
   if (databind_compiler_service_native_build(contract, &ir) != 0 ||
       ir.operations == NULL || ir.operation_count == 0u)
+    goto cleanup;
+  /* This legacy Binary output path cannot publish an Orbit-first Contract
+   * adapter, and must fail rather than silently ignore its annotation. */
+  if (databind_compiler_orbit_native_selected(contract))
     goto cleanup;
 
   header_file = native_service_open_staging(

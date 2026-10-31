@@ -2,6 +2,9 @@
 #include "service_native.h"
 #include "native_service_projection.h"
 
+/* Reuse original parser + NativeSourceIR tests; no independent generator. */
+int databind_compiler_orbit_native_tests(void);
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -592,6 +595,10 @@ cleanup_policy_pass:
     free(reject_schema_data);
   }
 
+  if (!databind_compiler_orbit_native_tests()) {
+    fprintf(stderr, "service-native-codegen: Orbit native projection failed\n");
+    goto cleanup;
+  }
   status = 0;
 
 cleanup:
