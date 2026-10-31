@@ -381,7 +381,7 @@ spec("search A4 query-budgeted original-line multi-hit stream") {
     salts_search_hit_stream stream = {0};
     hit_stream_probe probe = {0};
     const unsigned char raw[] = {'x',0,'a'};
-    const salts_search_line near = {raw, sizeof(raw),
+    const salts_search_line near_line = {raw, sizeof(raw),
         UINT64_MAX - UINT64_C(4), UINT64_MAX - UINT64_C(1), 42u, 1u};
     const salts_search_line empty = {NULL, 0u,
         UINT64_MAX, UINT64_MAX, 43u, 0u};
@@ -392,7 +392,7 @@ spec("search A4 query-budgeted original-line multi-hit stream") {
     check_equal(salts_search_hit_stream_init(
                 &stream, &matcher, 8u, 8u, false, collect_hit, &probe),
                 SALTS_SEARCH_CONTEXT_OK);
-    check_true(salts_search_hit_stream_accept_line(&stream, &near));
+    check_true(salts_search_hit_stream_accept_line(&stream, &near_line));
     check_true(salts_search_hit_stream_accept_line(&stream, &empty));
     check_equal(probe.count, 1u);
     check_equal(probe.hits[0].match_start, UINT64_MAX - UINT64_C(2));
@@ -408,7 +408,7 @@ spec("search A4 query-budgeted original-line multi-hit stream") {
     check_equal(salts_search_hit_stream_init(
                 &stream, &matcher, 8u, 8u, false, collect_hit, &probe),
                 SALTS_SEARCH_CONTEXT_OK);
-    check_true(salts_search_hit_stream_accept_line(&stream, &near));
+    check_true(salts_search_hit_stream_accept_line(&stream, &near_line));
     check_true(!salts_search_hit_stream_accept_line(&stream, &broken));
     check_equal(stream.status, SALTS_SEARCH_CONTEXT_INVALID);
     check_equal(probe.count, 1u);
