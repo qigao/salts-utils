@@ -22,6 +22,7 @@ add_subdirectory(toml)
 add_subdirectory(datetime_parser)
 add_subdirectory(cyaml)
 add_subdirectory(selector)
+add_subdirectory(markdown)
 
 set(SALTS_PARSER_TARGETS
   ini_parser
@@ -38,7 +39,9 @@ set(SALTS_PARSER_TARGETS
   toon
   toml_parser
   datetime_parser
-  cyaml_json_adapter)
+  cyaml_json_adapter
+  markdown_parser
+  markdown_html)
 set(SALTS_PARSER_TARGETS ${SALTS_PARSER_TARGETS} PARENT_SCOPE)
 
 install(
