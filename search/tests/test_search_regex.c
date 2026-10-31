@@ -70,6 +70,100 @@ spec("search A1 unique TRE exact Tagged NFA (C11)") {
     tre_regfree(&pattern);
   }
 
+  it("preserves capture offsets and unmatched groups after min_start") {
+    regex_t pattern = {0};
+    regmatch_t matches[4] = {{-1,-1},{-1,-1},{-1,-1},{-1,-1}};
+    const unsigned char bytes[] = {'x','a','c',' ','a','b'};
+    check_equal(tre_regncompb(&pattern, "(a)(b)?", 7u, REG_EXTENDED),
+                REG_OK);
+    check_equal(tre_regnexecb_from(&pattern, (const char *)bytes,
+                sizeof(bytes), 1u, 4u, matches, 0), REG_OK);
+    check_equal(matches[0].rm_so, 1);
+    check_equal(matches[0].rm_eo, 2);
+    check_equal(matches[1].rm_so, 1);
+    check_equal(matches[1].rm_eo, 2);
+    check_equal(matches[2].rm_so, -1);
+    check_equal(matches[2].rm_eo, -1);
+    check_equal(matches[3].rm_so, -1);
+    check_equal(matches[3].rm_eo, -1);
+    check_equal(tre_regnexecb_from(&pattern, (const char *)bytes,
+                sizeof(bytes), 3u, 4u, matches, 0), REG_OK);
+    check_equal(matches[0].rm_so, 4);
+    check_equal(matches[0].rm_eo, 6);
+    check_equal(matches[1].rm_so, 4);
+    check_equal(matches[1].rm_eo, 5);
+    check_equal(matches[2].rm_so, 5);
+    check_equal(matches[2].rm_eo, 6);
+    check_equal(matches[3].rm_so, -1);
+    check_equal(matches[3].rm_eo, -1);
+    /* A caller requesting no registers must still be able to search. */
+    check_equal(tre_regnexecb_from(&pattern, (const char *)bytes,
+                sizeof(bytes), 3u, 0u, NULL, 0), REG_OK);
+    check_equal(tre_regnexecb_from(&pattern, (const char *)bytes,
+                sizeof(bytes), sizeof(bytes), 4u, matches, 0), REG_NOMATCH);
+    tre_regfree(&pattern);
+  }
+
+  it("keeps REG_NOTBOL and REG_NOTEOL on original newline boundaries") {
+    regex_t pattern = {0};
+    regmatch_t m[1] = {{-1,-1}};
+    const char bytes[] = {'a','\n','a','\n'};
+    check_equal(tre_regncompb(&pattern, "^a$", 3u,
+                              REG_EXTENDED | REG_NEWLINE), REG_OK);
+    check_equal(tre_regnexecb_from(&pattern, bytes, sizeof(bytes),
+                0u, 1u, m, REG_NOTBOL | REG_NOTEOL), REG_OK);
+    check_equal(m[0].rm_so, 2);
+    check_equal(m[0].rm_eo, 3);
+    check_equal(tre_regnexecb_from(&pattern, bytes, sizeof(bytes),
+                3u, 1u, m, REG_NOTBOL | REG_NOTEOL), REG_NOMATCH);
+    tre_regfree(&pattern);
+  }
+
+  it("checks original newline BOL with a deterministic offset oracle") {
+    regex_t pattern = {0};
+    unsigned char bytes[25] = {0};
+    uint32_t seed = UINT32_C(0xCC31A401);
+    bool all_equal = true;
+    size_t trial, from;
+    check_equal(tre_regncompb(&pattern, "^a", 2u,
+                              REG_EXTENDED | REG_NEWLINE), REG_OK);
+    for (trial = 0u; trial < 512u && all_equal; ++trial) {
+      const size_t length = trial % sizeof(bytes);
+      size_t i;
+      for (i = 0u; i < length; ++i) {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        bytes[i] = (unsigned char)("ab\nx"[seed % 4u]);
+      }
+      for (from = 0u; from <= length; ++from) {
+        regmatch_t m[1] = {{-1,-1}};
+        size_t expected = from;
+        int rc;
+        while (expected < length &&
+               !(bytes[expected] == 'a' && expected > 0u &&
+                 bytes[expected - 1u] == '\n'))
+          ++expected;
+        /* REG_NOTBOL disallows only the physical beginning of input,
+         * not a genuine original newline boundary, even after min_start. */
+        rc = tre_regnexecb_from(&pattern, (const char *)bytes,
+                               length, from, 1u, m, REG_NOTBOL);
+        if (expected == length) {
+          if (rc != REG_NOMATCH)
+            all_equal = false;
+        } else if (rc != REG_OK || m[0].rm_so != (int)expected ||
+                   m[0].rm_eo != (int)(expected + 1u)) {
+          all_equal = false;
+        }
+        if (!all_equal)
+          break;
+      }
+    }
+    check_true(all_equal);
+    check_equal(trial, 512u);
+    tre_regfree(&pattern);
+  }
+
   it("rejects forced alternate execution paths and oversized source lengths") {
     regex_t pattern = {0};
     regmatch_t match[1] = {{-1,-1}};
