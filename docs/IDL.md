@@ -252,6 +252,58 @@ The CFlow projection reuses the same FunctionDesc/FunctionAbi and exact native
 execution descriptor. It does not generate a second unary reflected function,
 and typed-error/async shapes that are not admitted fail closed.
 
+### Experimental Orbit unary CFlow adapter (opt-in)
+
+The sole `salts-idlc` compiler can project a **strict subset** of an
+ordinary Contract-only `ARTIFACTS NATIVE` Service to the existing Orbit C11
+Core. Annotate every operation of an opted-in Service with explicit method
+and **existing CFlow Event** IDs:
+
+```text
+schema Game [version(1)];
+message PingRequest { uint64 seq; }
+message PingResponse { uint64 ack; }
+service Room {
+    [orbit(10,100)] Ping: PingRequest -> PingResponse;
+    [orbit(20,101)] Pong: PingRequest -> PingResponse;
+}
+```
+
+This is **one optional projection from IdlContract**, not a new IDL parser,
+wire protocol, transport runtime or alternate Actor scheduler. The default
+Native generated header/source and all unannotated Service output remain
+independent of Orbit. An opted-in Service must annotate **every** operation;
+method IDs must be positive, strictly ascending and unique, and Event IDs
+must be positive, in the canonical uint32 range and unique. Numeric literals
+are normalized before generating `UINT64_C` / `UINT32_C` values.
+
+The initial adapter requires Request/Response to be one required `uint64`
+field in each message with **no** optional/null/default/collection/owned
+members, typed errors or nontrivial state. It fails closed before output
+publication for all unsupported shapes. `BINARY_CODEC` is not a transparent
+fallback and cannot select this Contract-only Orbit binding.
+
+Consumers explicitly define `DATABIND_NATIVE_ENABLE_ORBIT` and link the
+actual `Orbit::Core` target to access the generated
+`databind_<len>_<schema>_<len>_<service>__orbit_methods[]` and each
+operation's `<canonical_symbol>__orbit_call_async()` typed request wrapper.
+The wrapper retains the **canonical generated Request and Response records**
+and forwards one scalar to the existing bounded Orbit CallPort:
+`orbit_call_u64_async`. A caller-owned per-call context holds the typed
+completion callback and must remain live and address-stable until terminal;
+on success the generated callback receives a borrowed Response record
+valid only for that callback, while other outcomes receive NULL and the
+exact Orbit terminal/application status. No per-call codegen heap allocation,
+hidden mailboxes, automatic retry, remote delivery claim, or DSO lease.
+
+The application still owns its CFlow Machine/Action, post-commit Subscriber,
+`Orbit::Core` admission and Salts ServiceHost Scope lifetime. The generated
+method table is sorted by the explicit IDL values; it is copied into
+Orbit's immutable method catalog at Service spawn. This first slice is
+**not** general managed-Record RPC, streaming or automatic service
+deployment. The existing Native codegen suite validates positive and
+fail-closed cases; independent Orbit SDK execution remains required.
+
 ## Public targets
 
 ```text
