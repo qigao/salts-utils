@@ -164,6 +164,36 @@ spec("search A1 unique TRE exact Tagged NFA (C11)") {
     tre_regfree(&pattern);
   }
 
+  it("rejects oversized execution workspace with real compiled captures") {
+    /* Deliberately generate a TNFA with many states and capture tags.
+     * On both 32-bit and 64-bit builds the tag/state workspace exceeds
+     * the exact API's 8 MiB budget. One-byte input avoids timing-based
+     * stress assumptions and exercises rejection before allocation. */
+    enum { GROUPS = 1024 };
+    char expression[GROUPS * 3u];
+    regex_t pattern = {0};
+    regmatch_t match[1] = {{-1, -1}};
+    int rc;
+    size_t i;
+    for (i = 0u; i < GROUPS; ++i) {
+      expression[3u * i] = '(';
+      expression[3u * i + 1u] = 'a';
+      expression[3u * i + 2u] = ')';
+    }
+    rc = tre_regncompb(&pattern, expression, sizeof(expression),
+                       REG_EXTENDED);
+    check_equal(rc, REG_OK);
+    if (rc == REG_OK) {
+      check_equal(tre_regnexecb_from(&pattern, "z", 1u, 0u,
+                                    1u, match, 0), REG_ESPACE);
+      /* No capture registers: no tag array is required for this
+       * same expression, and the 1-byte mismatch is a true no-match. */
+      check_equal(tre_regnexecb_from(&pattern, "z", 1u, 0u,
+                                    0u, NULL, 0), REG_NOMATCH);
+      tre_regfree(&pattern);
+    }
+  }
+
   it("rejects forced alternate execution paths and oversized source lengths") {
     regex_t pattern = {0};
     regmatch_t match[1] = {{-1,-1}};
