@@ -290,6 +290,16 @@ after a real newline, POSIX longest `a|ab`, embedded NUL, zero-width
 at EOF, overlap, max-hits exhaustion and explicit rejection of forced
 backtracking/approx flags in the new API.
 
+**Execution workspace bound (Draft):** the unique TRE port's new
+`tre_regnexecb_from()` now checks arithmetic for TNFA workspace size before
+allocation, and limits the combined per-invocation matching workspace and
+capture tag allocation to **8 MiB**. Overflow/overbudget returns `REG_ESPACE`
+(which the existing private adapter currently maps to `NO_MEMORY`). This
+bound does not limit *pattern compilation*, total query CPU time, cumulative
+allocation across repeated hits, or independent concurrent callers; those
+remain separate A4 gates. Legacy TRE APIs retain their matching semantics
+and the single shared static provider retains approximate/backtrack support.
+
 **Performance remains OPEN:** repeating an original-subject TNFA scan
 may cost O(hit_count × subject_length), even though every scan is
 bounded and maintains exact semantics. Hard TRE internal workspace,

@@ -169,6 +169,10 @@ spec("search A1 unique TRE exact Tagged NFA (C11)") {
     regmatch_t match[1] = {{-1,-1}};
     const char subject[] = "a";
     check_equal(tre_regncompb(&pattern, "a", 1u, REG_EXTENDED), REG_OK);
+    /* The new entry must reject invalid capture storage before scanning.
+     * nmatch=0 with NULL is still permitted (tested separately). */
+    check_equal(tre_regnexecb_from(&pattern, subject, 1u, 0u,
+                                   1u, NULL, 0), REG_BADPAT);
     check_equal(tre_regnexecb_from(&pattern, subject, 1u, 0u, 1u,
                      match, REG_APPROX_MATCHER), REG_BADPAT);
     check_equal(tre_regnexecb_from(&pattern, subject, 1u, 0u, 1u,
