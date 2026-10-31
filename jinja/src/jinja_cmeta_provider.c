@@ -10787,7 +10787,11 @@ static int jinja_trace_capture_write(JINJA_CMETA_PROVIDER *provider,
       JINJA_CMETA_EMIT_SOURCE_RANGE coverage = origin->ranges[i];
       coverage.intermediate_begin = begin;
       coverage.intermediate_end = begin + size;
-      coverage.kind = JINJA_CMETA_EMIT_INDIRECT;
+      /* UNKNOWN is not another indirect author location. A nested set/macro
+       * capture must preserve its explicit absence of author provenance;
+       * otherwise downstream XML diagnostics can invent a source span. */
+      if (coverage.kind != JINJA_CMETA_EMIT_UNKNOWN)
+        coverage.kind = JINJA_CMETA_EMIT_INDIRECT;
       if (!jinja_trace_append_range(provider, dest, coverage)) return 0;
     }
     dest->ambiguous = 1;

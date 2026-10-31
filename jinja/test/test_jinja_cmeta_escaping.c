@@ -696,7 +696,15 @@ spec("Jinja M2c derived strings preserve all candidate source owners") {
        "-Left", 1u, 1u},
       {"{% set first %}Left{% endset %}{% set second %}Right{% endset %}"
        "{% set both %}{{ first ~ second }}{% endset %}{{ both }}",
-       "LeftRight", 2u, 0u}
+       "LeftRight", 2u, 0u},
+      /* Unknown must remain unknown even when recaptured or concatenated
+       * again, never converted into a generic indirect source span. */
+      {"{% set first %}Left{% endset %}"
+       "{% set both %}{{ first ~ '-' }}{% endset %}{{ both }}",
+       "Left-", 1u, 1u},
+      {"{% set first %}Left{% endset %}"
+       "{% set middle %}{{ first ~ '-' }}{% endset %}"
+       "{{ middle ~ '?' }}", "Left-?", 1u, 2u}
     };
     JinjaTestModel model;
     jinja_test_model_init(&model);
