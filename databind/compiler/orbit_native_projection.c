@@ -166,6 +166,19 @@ static int orbit_managed_operation(const IdlContract *contract,
       orbit_managed_limits(op, request_max, response_max);
 }
 
+int databind_compiler_orbit_native_managed_selected(const IdlContract *contract) {
+  size_t s, i;
+  if (!contract) return 0;
+  for (s = 0u; s < contract->service_count; ++s)
+    for (i = 0u; i < contract->services[s].operation_count; ++i)
+      if (idl_annotation_find(
+              contract->services[s].operations[i].annotations,
+              contract->services[s].operations[i].annotation_count,
+              "orbit_value", 0u) != NULL)
+        return 1;
+  return 0;
+}
+
 int databind_compiler_orbit_native_selected(const IdlContract *contract) {
   size_t s, o;
   if (contract == NULL) return 0;
