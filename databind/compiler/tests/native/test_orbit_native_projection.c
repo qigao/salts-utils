@@ -120,7 +120,7 @@ static int check_case(const char *source, int should_admit) {
   int valid = 0;
 
   if (idl_contract_parse(
-          source, strlen(source), &contract, &diagnostic) != IDL_OK ||
+          source, strlen(source), &contract, &diagnostic) == 0 ||
       contract == NULL) {
     fprintf(stderr, "Orbit unary IDL parser rejected test Contract: %s\n",
             diagnostic.message);
