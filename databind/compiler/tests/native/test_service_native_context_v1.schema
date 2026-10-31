@@ -3,6 +3,12 @@ schema RoomState [version(1)];
 message Delta { uint64 delta; }
 message Total { uint64 total; }
 
+message OwnedPacket {
+    string label;
+    bytes payload;
+}
+
 service Counter {
     [native_context(1)] Apply: Delta -> Total;
+    [native_context(1)] Echo: OwnedPacket -> OwnedPacket;
 }

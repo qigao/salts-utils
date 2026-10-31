@@ -86,6 +86,18 @@ static const char ORBIT_MANAGED_FIELD[] =
     "message Resp { uint64 ack; }\n"
     "service Room { [orbit(10,100)] Ping: Req -> Resp; }\n";
 
+/* The canonical Native ABI may own these fields, but Orbit's current
+ * generation-token/u64 CallPort has NO managed request/response lifecycle.
+ * Explicit contextual annotations must not accidentally enable it.
+ */
+static const char ORBIT_CONTEXT_MANAGED_FIELD[] =
+    "schema Game [version(1)];\n"
+    "message Req { string name; bytes payload; }\n"
+    "message Resp { uint64 ack; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),native_context(1)] Ping: Req -> Resp;\n"
+    "}\n";
+
 static const char ORBIT_OVERFLOW_ID[] =
     "schema Game [version(1)];\n"
     "message Req { uint64 seq; }\n"
@@ -279,6 +291,7 @@ int databind_compiler_orbit_native_tests(void) {
       {ORBIT_OUT_OF_ORDER, 0},
       {ORBIT_MISSING_METHOD, 0},
       {ORBIT_MANAGED_FIELD, 0},
+      {ORBIT_CONTEXT_MANAGED_FIELD, 0},
       {ORBIT_OVERFLOW_ID, 0},
       {ORBIT_OVERFLOW_EVENT, 0},
       {ORBIT_TYPED_ERROR, 0},
