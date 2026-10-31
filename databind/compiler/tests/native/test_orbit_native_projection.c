@@ -293,7 +293,7 @@ static int check_case(const char *source, int should_admit) {
           strstr(printed, "OwnedPacket_native_cmeta_value_bind(") == NULL ||
           strstr(printed, "32u, 32u") == NULL ||
           strstr(printed, "business_status = databind_4_Game_4_Room_4_Echo(") == NULL ||
-          strstr(printed, "DATABIND_NATIVE_ENABLE_ORBIT") != NULL)
+          strstr(printed, "DATABIND_NATIVE_ENABLE_ORBIT") == NULL)
         goto done;
     } else if (databind_compiler_orbit_native_selected(contract)) {
       /* Type-safe wrappers and one ordered methods[] table originate
