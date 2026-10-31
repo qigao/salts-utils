@@ -1,0 +1,8 @@
+schema RoomState [version(1)];
+
+message Delta { uint64 delta; }
+message Total { uint64 total; }
+
+service Counter {
+    [native_context(1)] Apply: Delta -> Total;
+}
