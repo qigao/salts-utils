@@ -931,3 +931,64 @@ spec("Jinja M2c source ledger resource and lifetime contract") {
     jinja_cmeta_release(templ);
   }
 }
+
+
+/* Only existing Jinja renderer and C11 TinyTest, no separate project/CI. */
+spec("Jinja M2e empty capture provenance must fail closed") {
+  it("reports UNKNOWN when a filter synthesizes bytes from an empty capture") {
+    static const char source[] =
+        "{% set empty %}{% endset %}"
+        "{% set label %}{{ empty | center(3) }}{% endset %}"
+        "{{ label }}";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    JinjaTraceSample sample = {0};
+    JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, 3u);
+      check_equal(memcmp(sample.output, "   ", 3u), 0);
+      check(sample.count > 0u);
+      size_t accounted = 0u, unknown = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, accounted);
+        accounted += sample.events[i].generated_bytes;
+        check_equal(sample.events[i].kind, JINJA_CMETA_EMIT_INDIRECT);
+        check_equal(sample.events[i].intermediate_identity, 0);
+        check_equal(sample.events[i].intermediate_offset, SIZE_MAX);
+        check(sample.events[i].source_range_count != 0u);
+        for (size_t j = 0u; j < sample.events[i].source_range_count; ++j) {
+          const size_t lo = sample.events[i].ranges[j].source_begin;
+          const size_t hi = sample.events[i].ranges[j].source_end;
+          check_equal(sample.events[i].ranges[j].kind, JINJA_CMETA_EMIT_UNKNOWN);
+          check_equal(lo, SIZE_MAX);
+          check_equal(hi, SIZE_MAX);
+          check_equal(sample.events[i].ranges[j].name[0], '\0');
+          ++unknown;
+        }
+      }
+      check_equal(accounted, sample.bytes);
+      check(unknown != 0u);
+    }
+    /* The optional trace must not alter ordinary production output. */
+    JinjaTraceSample plain = {0};
+    status = jinja_cmeta_render(
+        templ, &model.root_desc, &root, NULL, &renderer, &plain, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(plain.bytes, 3u);
+      check_equal(memcmp(plain.output, "   ", 3u), 0);
+    }
+    jinja_cmeta_release(templ);
+  }
+}

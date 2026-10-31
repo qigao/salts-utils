@@ -10798,6 +10798,21 @@ static int jinja_trace_capture_write(JINJA_CMETA_PROVIDER *provider,
     dest->bytes = begin + size;
     return 1;
   }
+  /* A sealed empty capture has no original bytes to attribute. If a later
+   * filter synthesizes nonempty output from it (center, indent, etc.), do NOT
+   * rebrand the expression instruction as its original content. Preserve a
+   * genuine UNKNOWN provenance even through additional nested set captures. */
+  if (origin != NULL) {
+    const JINJA_CMETA_EMIT_SOURCE_RANGE unknown = {
+        .template_name = vstr_from_cstr(""),
+        .source_begin = SIZE_MAX, .source_end = SIZE_MAX,
+        .intermediate_begin = begin, .intermediate_end = begin + size,
+        .kind = JINJA_CMETA_EMIT_UNKNOWN};
+    if (!jinja_trace_append_range(provider, dest, unknown)) return 0;
+    dest->ambiguous = 1;
+    dest->bytes = begin + size;
+    return 1;
+  }
   const JINJA_CMETA_EMIT_SOURCE_RANGE fallback = {
       .template_name = provider->shared.traced_source_name,
       .source_begin = provider->shared.traced_source_offset,
