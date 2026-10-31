@@ -2,11 +2,11 @@
 
 **Higher-level utilities for the Salts C11 ecosystem.**
 
-SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared semantics with parsers, QueryVM, filesystem/process adapters, templates, Unicode support, media helpers, IDL/Schema tooling, language bindings, and DataBind.
+SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared semantics with parsers, QueryVM, filesystem/process adapters, templates, reflected TinyMock, descriptor-driven SIMD, media helpers, IDL/Schema tooling, language bindings, and DataBind.
 
 **IDL, Schema and DataBind are distinct SaltsUtils capabilities.** IDL defines contracts, Schema defines Data shape, and DataBind owns logical/native binding. They are not separate packages.
 
-SaltsUtils does not create a second runtime. CMeta remains the semantic type foundation, CFlow remains the execution/dataflow foundation, CSTL remains the concrete container layer, and Platform/Core remain owned by Salts.
+SaltsUtils does not create a second runtime. CMeta remains the semantic type foundation, CFlow remains the execution/dataflow foundation, CSTL remains the concrete container layer, and Platform/Core and TinyTest remain owned by SaltsCore. TinyMock and SIMD execution have their sole source/export owner in SaltsUtils.
 
 **Tags:** C11 · utilities · parsers · query-engine · crypto · filesystem · process · templates · unicode · data-binding · code-generation
 
@@ -135,11 +135,11 @@ cmake --build --preset linux-release-user
 ctest --preset linux-release-user --output-on-failure
 ```
 
-Both restore paths use authenticated `curl` against GitHub Packages NuGet v3 metadata. Salts.Native is fail-closed at the reviewed immutable `2.3.0-rc.17` baseline for this branch; re2c resolves the latest stable published tool package. No NuGet client, Mono, or `dotnet restore` participates in native dependency restore. Run restore before configure when updating dependencies; configure consumes the resolved SDK and does not download packages. An incompatible release must fail rather than select an older SDK. `-WithTurboWasm` (PowerShell) or the third argument `1` (Bash) also restores TurboWasm. The default local package directory is `stage/nuget`; `QIGAO_NUGET_PACKAGES` selects another cache. Package paths come from NuGet's resolved assets, so older cached versions do not affect selection. Local Windows/Linux Release presets use version-independent links at `stage/dependencies/salts/<RID>` and `stage/dependencies/re2c/<host-RID>`. Restore updates these links from NuGet's resolved assets (Windows junctions, Unix symbolic links), so an already running IDE can configure without inheriting new SDK environment variables. Existing non-link directories at these paths are rejected instead of overwritten. CI, Debug, and cross-compilation presets retain their explicit environment-root contract. The published Salts SDK contains Release libraries; use Release presets with it. Debug profiles require a matching Debug SDK. For Android, restore `android-arm64-v8a` as the target RID and the native host RID as the re2c RID before using the Android preset.
+Both restore paths use authenticated `curl` against GitHub Packages NuGet v3 metadata. This migration requires the new `4.0.0` SDK contract; it does not publish that package. The previous 2.3 SDK still exports TinyMock/SIMD and is deliberately rejected to prevent two target owners; re2c resolves the latest stable published tool package. No NuGet client, Mono, or `dotnet restore` participates in native dependency restore. Run restore before configure when updating dependencies; configure consumes the resolved SDK and does not download packages. An incompatible release must fail rather than select an older SDK. `-WithTurboWasm` (PowerShell) or the third argument `1` (Bash) also restores TurboWasm. The default local package directory is `stage/nuget`; `QIGAO_NUGET_PACKAGES` selects another cache. Package paths come from NuGet's resolved assets, so older cached versions do not affect selection. Local Windows/Linux Release presets use version-independent links at `stage/dependencies/salts/<RID>` and `stage/dependencies/re2c/<host-RID>`. Restore updates these links from NuGet's resolved assets (Windows junctions, Unix symbolic links), so an already running IDE can configure without inheriting new SDK environment variables. Existing non-link directories at these paths are rejected instead of overwritten. CI, Debug, and cross-compilation presets retain their explicit environment-root contract. The published Salts SDK contains Release libraries; use Release presets with it. Debug profiles require a matching Debug SDK. For Android, restore `android-arm64-v8a` as the target RID and the native host RID as the re2c RID before using the Android preset.
 
 ### Migrating from Salts 1.x
 
-Rebuild SaltsUtils and its consumers against the same Salts 2.x SDK, and regenerate IDL artifacts with the updated `salts-idlc`. Salts Core and Plugin symbols now use `cmeta_*` / `CMETA_PLUGIN_*`; coroutine symbols use `coro_*`. SaltsUtils-owned `salts_*` names and Lua/QuickJS method calls retain their names.
+Rebuild SaltsUtils and its consumers against the same Salts 4 SDK, and regenerate IDL artifacts with the updated `salts-idlc`. Salts Core and Plugin symbols now use `cmeta_*` / `CMETA_PLUGIN_*`; coroutine symbols use `coro_*`. SaltsUtils-owned `salts_*` names and Lua/QuickJS method calls retain their names.
 
 Native receiver metadata uses `cmeta_receiver_operation` and references the canonical `cmeta_function_abi_desc`; the function descriptor is obtained through `operation->abi->function`. Object providers use `cmeta_object_operation_provider`. Update consumer-authored metadata to this layout instead of retaining a separate function descriptor in each receiver entry. This migration changes the native API/ABI and requires recompilation; it does not change DataBind wire formats.
 
@@ -304,3 +304,32 @@ artifact ownership, validation boundaries and release commands.
 SaltsUtils first-party code is licensed under the Apache License 2.0. See
 [LICENSE](LICENSE). Bundled third-party software and data retain their upstream
 licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+
+## TinyMock and SIMD ownership migration
+
+`tinymock/` and `simd/`, including their original C11/C++17 tests and public
+headers, are owned and exported only by SaltsUtils. Consumers continue to link
+`Salts::TinyMock` and `Salts::SIMD` through `SaltsUtilsTargets`.
+
+TinyMock consumes `Salts::TinyTest` and `Salts::CMeta`; SIMD consumes CMeta's
+canonical vector/mask descriptors and keeps SIMDe private. Both are static
+modules. Salts retains CMeta metadata, and Core retains native primitives and
+TinyTest. Neither Salts nor Core may import SaltsUtils to provide its own
+production library graph.
+
+The source and installed Utils package now require `Salts 4`. The old 2.3 SDK
+already owns both target names, so accepting it would either collide or silently
+link the wrong implementation. No detection-based alias, fallback owner or
+edited SDK export is permitted. The existing six-RID restore path needs an
+actual matching Salts 4 package before ordinary Utils CI can qualify the full
+package. This migration does not claim such a release exists.
+
+The previous Core SIMD and Salts-to-Core SIMD reflection candidates have a
+conflicting owner/descriptor contract and are superseded in that scope. They
+must not be composed with these Utils exports. Their original migration/API
+ledgers are not automatically marked complete by moving these modules.
+
+See [TinyMock](tinymock/README.md) and [SIMD](simd/README.md). The existing native
+CMake/CTest graph owns both original test suites; no new workflow, installer or
+consumer project is introduced.

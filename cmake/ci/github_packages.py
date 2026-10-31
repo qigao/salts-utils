@@ -19,14 +19,10 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 FEED = "https://nuget.pkg.github.com/qigao/index.json"
-SALTS_NATIVE_VERSION = "2.3.0-rc.17"
+SALTS_NATIVE_VERSION = "4.0.0"
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.-]+$")
 VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$")
 RID = re.compile(r"^(linux-(?:x64|arm64)|windows-x64|macos-arm64|android-arm64-v8a|ios-arm64)$")
-PUBLISHED_RIDS = (
-    "linux-x64", "linux-arm64", "windows-x64",
-    "macos-arm64", "android-arm64-v8a", "ios-arm64",
-)
 
 
 class PackageMissing(Exception):
@@ -210,36 +206,13 @@ def validate_salts(root, rid, expected_version=SALTS_NATIVE_VERSION):
         root / "lib/cmake/Salts/SaltsConfig.cmake",
         root / "lib/cmake/Salts/SaltsTargets.cmake",
         root / "include/cmeta/function.h",
-        root / "include/unicode/salts_unicode.h",
         root / "salts-sdk-manifest.txt",
     ]
     for path in required:
         if not path.is_file():
             raise ValueError(f"incomplete Salts.Native SDK for {rid}: {path}")
-    targets = (root / "lib/cmake/Salts/SaltsTargets.cmake").read_text(
-        encoding="utf-8", errors="replace")
-    if "Salts::Unicode" not in targets:
-        raise ValueError("published Salts.Native must export canonical Salts::Unicode")
     if read_manifest(root / "salts-sdk-manifest.txt").get("version") != expected_version:
         raise ValueError("Salts.Native manifest version/provenance mismatch")
-
-
-def validate_component_runtime(root, rid):
-    root = Path(root)
-    required = [
-        root / "include/salts/component_provider_abi.h",
-        root / "include/salts/component_runtime_abi.h",
-        root / "include/salts/configurator.h",
-        root / "include/salts/service_host.h",
-        root / "lib/cmake/Salts/SaltsTargets.cmake",
-    ]
-    for path in required:
-        if not path.is_file():
-            raise ValueError(f"incomplete published Component Runtime SDK for {rid}: {path}")
-    targets = required[-1].read_text(encoding="utf-8", errors="replace")
-    for target in ("Salts::ComponentProviderABI", "Salts::Configurator", "Salts::ServiceHost"):
-        if target not in targets:
-            raise ValueError(f"published Salts.Native SDK is missing target {target}")
 
 
 def restore_re2c_for_rid(packages, package_root, rid):
@@ -273,13 +246,6 @@ def restore_native_sdk(args, packages):
     salts_host_root = package / "sdk" / args.host_rid
     validate_salts(salts_root, args.salts_rid, version)
     validate_salts(salts_host_root, args.host_rid, version)
-    if args.require_component_runtime:
-        # A published package is one immutable six-RID contract. Validate all
-        # payloads on every native host before compiling any consumer.
-        for rid in PUBLISHED_RIDS:
-            rid_root = package / "sdk" / rid
-            validate_salts(rid_root, rid, version)
-            validate_component_runtime(rid_root, rid)
     re2c_version, re2c_root = restore_re2c_for_rid(packages, args.packages, args.host_rid)
     values = {
         "SALTS_ROOT": salts_root.resolve(),
@@ -442,7 +408,6 @@ def main():
     native.add_argument("--host-rid", required=True)
     native.add_argument("--with-turbowasm", action="store_true")
     native.add_argument("--salts-version")
-    native.add_argument("--require-component-runtime", action="store_true")
     native.add_argument("--result", type=Path)
 
     re2c = commands.add_parser("re2c")

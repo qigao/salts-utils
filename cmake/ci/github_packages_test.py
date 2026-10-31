@@ -112,12 +112,11 @@ class PackageTests(unittest.TestCase):
         self.assertFalse((self.root / "outside").exists())
 
     def test_exact_salts_and_re2c_environment_is_fail_closed(self):
-        self.feed.add("Salts.Native", "2.3.0-rc.17", {
+        self.feed.add("Salts.Native", "4.0.0", {
             "sdk/linux-x64/lib/cmake/Salts/SaltsConfig.cmake": "",
-            "sdk/linux-x64/lib/cmake/Salts/SaltsTargets.cmake": "Salts::Unicode",
+            "sdk/linux-x64/lib/cmake/Salts/SaltsTargets.cmake": "Salts::CMeta",
             "sdk/linux-x64/include/cmeta/function.h": "",
-            "sdk/linux-x64/include/unicode/salts_unicode.h": "",
-            "sdk/linux-x64/salts-sdk-manifest.txt": "version=2.3.0-rc.17\n",
+            "sdk/linux-x64/salts-sdk-manifest.txt": "version=4.0.0\n",
         })
         self.feed.add("Qigao.Re2c.Binary", "1.0.0", {
             "tools/linux-x64/bin/re2c": "#!/bin/sh\nexit 0\n",
@@ -127,70 +126,17 @@ class PackageTests(unittest.TestCase):
         args = argparse.Namespace(
             packages=self.root / "packages", salts_rid="linux-x64",
             host_rid="linux-x64", with_turbowasm=False,
-            salts_version=None, require_component_runtime=False,
+            salts_version=None,
             result=self.root / "result.json")
         env = self.root / "env"
         path = self.root / "path"
         with patch.dict(os.environ, {"GITHUB_ENV": str(env), "GITHUB_PATH": str(path)}):
             restore_native_sdk(args, self.packages)
         values = env.read_text()
-        self.assertIn("SALTS_VERSION=2.3.0-rc.17", values)
+        self.assertIn("SALTS_VERSION=4.0.0", values)
         self.assertIn("SALTS_ROOT=", values)
         self.assertIn("RE2C_ROOT=", values)
         self.assertTrue(args.result.is_file())
-
-    def test_explicit_published_component_runtime_version(self):
-        version = "2.3.0-rc.18"
-        files = {}
-        for rid in ("linux-x64", "linux-arm64", "windows-x64",
-                    "macos-arm64", "android-arm64-v8a", "ios-arm64"):
-            prefix = "sdk/" + rid + "/"
-            files.update({
-                prefix + "lib/cmake/Salts/SaltsConfig.cmake": "",
-                prefix + "lib/cmake/Salts/SaltsTargets.cmake":
-                    "Salts::Unicode Salts::ComponentProviderABI Salts::Configurator Salts::ServiceHost",
-                prefix + "include/cmeta/function.h": "",
-                prefix + "include/unicode/salts_unicode.h": "",
-                prefix + "include/salts/component_provider_abi.h": "",
-                prefix + "include/salts/component_runtime_abi.h": "",
-                prefix + "include/salts/configurator.h": "",
-                prefix + "include/salts/service_host.h": "",
-                prefix + "salts-sdk-manifest.txt": "version=2.3.0-rc.18\n",
-            })
-        self.feed.add("Salts.Native", version, files)
-        self.feed.add("Qigao.Re2c.Binary", "1.0.0", {
-            "tools/linux-x64/bin/re2c": "#!/bin/sh\nexit 0\n",
-            "tools/linux-x64/share/re2c/stdlib/unicode_categories.re": "",
-            "tools/linux-x64/share/re2c/stdlib/unicode_properties.re": "",
-        })
-        args = argparse.Namespace(
-            packages=self.root / "published-packages", salts_rid="linux-x64",
-            host_rid="linux-x64", with_turbowasm=False,
-            salts_version=version, require_component_runtime=True,
-            result=self.root / "published-result.json")
-        env = self.root / "published-env"
-        path = self.root / "published-path"
-        with patch.dict(os.environ, {"GITHUB_ENV": str(env), "GITHUB_PATH": str(path)}):
-            resolved = restore_native_sdk(args, self.packages)
-        self.assertEqual(resolved["SALTS_VERSION"], version)
-        self.assertIn("SALTS_VERSION=2.3.0-rc.18", env.read_text())
-
-    def test_explicit_published_component_runtime_rejects_missing_export(self):
-        version = "2.3.0-rc.18"
-        self.feed.add("Salts.Native", version, {
-            "sdk/linux-x64/lib/cmake/Salts/SaltsConfig.cmake": "",
-            "sdk/linux-x64/lib/cmake/Salts/SaltsTargets.cmake": "Salts::Unicode",
-            "sdk/linux-x64/include/cmeta/function.h": "",
-            "sdk/linux-x64/include/unicode/salts_unicode.h": "",
-            "sdk/linux-x64/salts-sdk-manifest.txt": "version=2.3.0-rc.18\n",
-        })
-        args = argparse.Namespace(
-            packages=self.root / "missing-runtime", salts_rid="linux-x64",
-            host_rid="linux-x64", with_turbowasm=False,
-            salts_version=version, require_component_runtime=True,
-            result=None)
-        with self.assertRaisesRegex(ValueError, "Component Runtime SDK"):
-            restore_native_sdk(args, self.packages)
 
     def test_exact_abi_cache_conversion_and_prefix(self):
         evidence = b"exact ABI evidence"

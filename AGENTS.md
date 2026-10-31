@@ -173,3 +173,12 @@
 - API 文档包含参数、返回值、错误、所有权和示例；外部资料附链接。具体 API 用法以公开头文件为准，避免在此维护第二份 API 手册。
 - first-party 源码、测试、构建文件不添加 `SPDX-License-Identifier` 或逐文件许可证模板；许可信息仅维护在根目录 `LICENSE`、`NOTICE`、`THIRD_PARTY_NOTICES.md`。
 - vendored/third-party 文件保留上游版权、许可证与 SPDX 标识，不为统一格式删除或改写。
+
+
+## TinyMock / SIMD source ownership
+
+`tinymock/` and `simd/` are the sole utility owners of `Salts::TinyMock` and
+`Salts::SIMD`. They consume upstream CMeta metadata and Core TinyTest; neither
+Core nor Salts may depend on Utils to construct its production runtime. Do not
+restore copied implementations or accept old SDKs that already export these
+targets. Keep their original tests in the native CMake/CTest graph.

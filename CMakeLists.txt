@@ -50,6 +50,12 @@ set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "cmake")
 
 include(CMakeOptions.cmake)
 
+# Production sources in this profile remain C11; original module tests also
+# validate that the public headers can be consumed from C++17.
+if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET AND BUILD_TESTS)
+  enable_language(CXX)
+endif()
+
 if(BUILD_TESTS)
   enable_testing()
 endif()
@@ -79,7 +85,7 @@ endif()
 file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" SALTS_ROOT_PATH)
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
+find_package(Salts 4 CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 # SHA256, Ed448, SM3, X.509 and TLS are sourced solely from qigao/crypto.
 # No fallback implementation or local Crypto target may be built by Utils.
@@ -110,6 +116,10 @@ unset(_crypto_imported)
 
 add_subdirectory(tools)
 include(FindTools)
+
+# One utility owner for reflected mocks and descriptor-driven SIMD execution.
+add_subdirectory(tinymock)
+add_subdirectory(simd)
 if(NOT SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
   add_subdirectory(vendor)
 endif()

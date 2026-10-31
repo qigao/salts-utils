@@ -1,0 +1,46 @@
+set(TARGET_NAME cmeta_simd)
+
+# SIMDe is supplied by the repository's vcpkg contract and warmed by
+# qigao/vcpkg-cache. It remains a private implementation dependency.
+find_path(SIMDE_INCLUDE_DIRS "simde/wasm/simd128.h" REQUIRED)
+
+add_library(${TARGET_NAME} STATIC
+  src/simd.c)
+
+cmake_config_target(
+  ${TARGET_NAME}
+  VERSION "${PROJECT_VERSION}"
+  ALIAS Salts::SIMD
+  FOLDER "simd"
+  EXPORT_NAME SIMD)
+
+target_compile_features(${TARGET_NAME} PUBLIC c_std_11)
+target_include_directories(
+  ${TARGET_NAME}
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+         $<INSTALL_INTERFACE:include>
+  PRIVATE $<BUILD_INTERFACE:${SIMDE_INCLUDE_DIRS}>)
+target_link_libraries(${TARGET_NAME} PUBLIC Salts::CMeta)
+# Keep the established modular integer contract of SIMDe 0.8.2 private.
+target_compile_options(${TARGET_NAME} PRIVATE $<$<C_COMPILER_ID:GNU>:-fwrapv>)
+
+# SIMDe scalar fallbacks for nearest use nearbyint/nearbyintf.
+if(NOT WIN32)
+  target_link_libraries(${TARGET_NAME} PUBLIC m)
+endif()
+
+install(
+  TARGETS ${TARGET_NAME}
+  EXPORT SaltsUtilsTargets
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(
+  DIRECTORY include/salts
+  DESTINATION include
+  FILES_MATCHING PATTERN "*.h")
+
+if(BUILD_TESTS)
+  add_subdirectory(tests)
+endif()
