@@ -229,10 +229,15 @@ salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
  * immutable. Do not reenter the owner from a hit callback. */
 salts_search_matcher_status salts_search_matcher_query_budget_init(
     salts_search_matcher_query_budget *budget,
+    const salts_search_matcher *matcher,
     size_t max_hits, size_t max_scans) {
-  if (!budget || budget->initialized)
+  if (!budget || budget->initialized || !matcher || !matcher->compiled ||
+      (matcher->kind != SALTS_SEARCH_MATCHER_LITERAL &&
+       matcher->kind != SALTS_SEARCH_MATCHER_REGEX))
     return SALTS_SEARCH_MATCHER_INVALID;
   *budget = (salts_search_matcher_query_budget){0};
+  /* Bind one compiled algorithm for this entire query's lifetime. */
+  budget->matcher = matcher;
   budget->remaining_hits = max_hits;
   budget->remaining_scans = max_scans;
   budget->initialized = true;
@@ -241,22 +246,20 @@ salts_search_matcher_status salts_search_matcher_query_budget_init(
 
 salts_search_matcher_status salts_search_matcher_query_enumerate(
     salts_search_matcher_query_budget *budget,
-    const salts_search_matcher *compiled,
     const void *subject, size_t subject_length,
     bool overlapping, salts_search_matcher_hit_callback callback,
     void *user, size_t *out_emitted) {
+  const salts_search_matcher *compiled;
   salts_search_matcher_status result;
   size_t used = 0;
   size_t before_scans;
   if (out_emitted)
     *out_emitted = 0u;
   if (!budget || !budget->initialized || budget->terminal ||
-      budget->in_call || !compiled || !compiled->compiled ||
-      !callback || !out_emitted)
+      budget->in_call || !budget->matcher ||
+      !budget->matcher->compiled || !callback || !out_emitted)
     return SALTS_SEARCH_MATCHER_INVALID;
-  if (compiled->kind != SALTS_SEARCH_MATCHER_REGEX &&
-      compiled->kind != SALTS_SEARCH_MATCHER_LITERAL)
-    return SALTS_SEARCH_MATCHER_UNSUPPORTED;
+  compiled = budget->matcher;
 
   before_scans = budget->remaining_scans;
   budget->in_call = true;

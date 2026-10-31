@@ -323,8 +323,10 @@ remain unchanged; consumers must explicitly opt in to the scan budget.
 **Per-query owner budget (Draft):** the existing private C11 Matcher
 now owns `salts_search_matcher_query_budget` and
 `salts_search_matcher_query_enumerate()`. One caller-owned, zero-initialized
-ledger carries **remaining hit callbacks and TRE scans across multiple
-original source lines**, with cumulative counters. The exact-regex and
+ledger binds a single compiled Literal/TRE matcher at initialization and
+carries **remaining hit callbacks and TRE scans across multiple original
+source lines**, with cumulative counters. A later call cannot substitute a
+different matcher or bypass the TRE budget by switching algorithms. The exact-regex and
 literal paths reuse their sole existing algorithms. TRE's bounded
 enumerator and the query owner call one common inner executor that debits a
 shared `remaining_scans` *before* each scan, including final negative probes.

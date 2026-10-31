@@ -118,8 +118,9 @@ salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
     size_t *out_emitted);
 
 /* Query-owned cumulative resource ledger across complete source lines.
- * The same one compiled matcher is borrowed for all calls; per-line original
- * bytes remain borrowed only during enumerate(). Initialize a zeroed object
+ * The same compiled matcher is bound exactly once, borrowed for all calls,
+ * and cannot change mid-query. Do not destroy it during query execution.
+ * Per-line original bytes are borrowed only during enumerate(). Initialize a zeroed object
  * exactly once. Any LIMIT/STOPPED/NO_MEMORY/error makes owner terminal.
  * A subsequent call is INVALID, never a misleading OK or silent restart.
  * Callback must not reenter the query owner or destroy the compiled matcher.
@@ -131,6 +132,7 @@ salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
  * This does not cap one TRE call's CPU, compile work, or other owners.
  */
 typedef struct salts_search_matcher_query_budget {
+  const salts_search_matcher *matcher; /* fixed once, borrowed, immutable */
   size_t remaining_hits, remaining_scans;
   size_t total_emitted, total_scans;
   bool initialized, terminal, in_call;
@@ -138,6 +140,7 @@ typedef struct salts_search_matcher_query_budget {
 
 salts_search_matcher_status salts_search_matcher_query_budget_init(
     salts_search_matcher_query_budget *budget,
+    const salts_search_matcher *matcher,
     size_t max_hits, size_t max_scans);
 
 /* Enumerate one original, complete line under a shared query-wide ledger.
@@ -149,7 +152,6 @@ salts_search_matcher_status salts_search_matcher_query_budget_init(
  */
 salts_search_matcher_status salts_search_matcher_query_enumerate(
     salts_search_matcher_query_budget *budget,
-    const salts_search_matcher *compiled,
     const void *subject, size_t subject_length,
     bool overlapping, salts_search_matcher_hit_callback callback,
     void *user, size_t *out_emitted);

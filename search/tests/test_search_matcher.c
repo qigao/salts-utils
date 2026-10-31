@@ -209,10 +209,10 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     size_t n = 99u;
     check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
                 "aba", 3u, 16u, 16u), SALTS_SEARCH_MATCHER_OK);
-    check_equal(salts_search_matcher_query_budget_init(&owner, 4u, 4u),
+    check_equal(salts_search_matcher_query_budget_init(&owner, &m, 4u, 4u),
                 SALTS_SEARCH_MATCHER_OK);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "ababa", 5u, true,
+                &owner, "ababa", 5u, true,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
     check_equal(n, 2u);
     check_equal(owner.total_emitted, 2u);
@@ -221,19 +221,19 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     check_equal(owner.remaining_scans, 1u);
     memset(&p, 0, sizeof(p));
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "x", 1u, true,
+                &owner, "x", 1u, true,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
     check_equal(n, 0u);
     check_equal(owner.total_scans, 4u);
     check_equal(owner.remaining_scans, 0u);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "x", 1u, true,
+                &owner, "x", 1u, true,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
     check_equal(n, 0u);
     check_equal(owner.total_scans, 4u);
     check_true(owner.terminal);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "x", 1u, true,
+                &owner, "x", 1u, true,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_INVALID);
     salts_search_matcher_destroy(&m);
   }
@@ -245,16 +245,16 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     size_t n = 17u;
     check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
                 "a", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
-    check_equal(salts_search_matcher_query_budget_init(&owner, 1u, 5u),
+    check_equal(salts_search_matcher_query_budget_init(&owner, &m, 1u, 5u),
                 SALTS_SEARCH_MATCHER_OK);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "a", 1u, false,
+                &owner, "a", 1u, false,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
     check_equal(n, 1u);
     check_equal(owner.remaining_hits, 0u);
     check_equal(owner.total_scans, 2u);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "aaa", 3u, false,
+                &owner, "aaa", 3u, false,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
     check_equal(n, 0u);
     check_equal(p.count, 1u);
@@ -265,11 +265,11 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     memset(&p, 0, sizeof(p));
     check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
                 "a", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
-    check_equal(salts_search_matcher_query_budget_init(&owner, 4u, 1u),
+    check_equal(salts_search_matcher_query_budget_init(&owner, &m, 4u, 1u),
                 SALTS_SEARCH_MATCHER_OK);
     p.stop_at = 1u;
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "aaa", 3u, true,
+                &owner, "aaa", 3u, true,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_STOPPED);
     check_equal(n, 1u);
     check_equal(owner.total_emitted, 1u);
@@ -286,29 +286,29 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     size_t n = 9u;
     check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_LITERAL,
                 "a", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
-    check_equal(salts_search_matcher_query_budget_init(&owner, 2u, 0u),
+    check_equal(salts_search_matcher_query_budget_init(&owner, &m, 2u, 0u),
                 SALTS_SEARCH_MATCHER_OK);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "a", 1u, false,
+                &owner, "a", 1u, false,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
     check_equal(n, 1u);
     check_equal(owner.total_scans, 0u);
     check_equal(owner.remaining_hits, 1u);
     memset(&p, 0, sizeof(p));
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "a", 1u, false,
+                &owner, "a", 1u, false,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
     check_equal(n, 1u);
     check_equal(owner.total_emitted, 2u);
     check_equal(owner.remaining_hits, 0u);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "b", 1u, false,
+                &owner, "b", 1u, false,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_OK);
     check_equal(n, 0u); /* no more hits, even with quota == 0 */
     check_equal(owner.total_emitted, 2u);
     check_equal(owner.total_scans, 0u);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "a", 1u, false,
+                &owner, "a", 1u, false,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
     check_equal(n, 0u);
     check_true(owner.terminal);
@@ -323,15 +323,16 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
                 "z", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "xxx", 3u, false,
+                &owner, "xxx", 3u, false,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_INVALID);
     check_equal(n, 0u);
-    check_equal(salts_search_matcher_query_budget_init(&owner, 2u, 0u),
+    check_equal(salts_search_matcher_query_budget_init(&owner, &m, 2u, 0u),
                 SALTS_SEARCH_MATCHER_OK);
-    check_equal(salts_search_matcher_query_budget_init(&owner, 2u, 0u),
+    check_equal(salts_search_matcher_query_budget_init(&owner, &m, 2u, 0u),
                 SALTS_SEARCH_MATCHER_INVALID);
+    check_true(owner.matcher == &m);
     check_equal(salts_search_matcher_query_enumerate(
-                &owner, &m, "xxx", 3u, false,
+                &owner, "xxx", 3u, false,
                 record_literal_hit, &p, &n), SALTS_SEARCH_MATCHER_LIMIT);
     check_equal(owner.total_scans, 0u);
     check_equal(owner.total_emitted, 0u);
