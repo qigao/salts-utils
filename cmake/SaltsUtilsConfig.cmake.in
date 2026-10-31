@@ -9,7 +9,7 @@ unset(Salts_DIR CACHE)
 unset(Salts_DIR)
 # Cache invalidation requires a real lookup, even after another package has
 # resolved this same dependency in the current directory.
-find_package(Salts CONFIG REQUIRED PATHS "${_salts_utils_salts_root}"
+find_package(Salts 4 CONFIG REQUIRED PATHS "${_salts_utils_salts_root}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 # The sole Unicode implementation and target must come from the installed

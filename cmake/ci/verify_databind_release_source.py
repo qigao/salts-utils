@@ -116,10 +116,10 @@ def violations(source: dict[str, str]) -> list[str]:
             errors.append(f"Canonical Unicode imported target missing from {label} SDK contract")
     if "PRIVATE Salts::Unicode Salts::CSTL" not in jinja_cmake:
         errors.append("Jinja must depend directly on the canonical Salts Unicode owner")
-    if 'SALTS_NATIVE_VERSION = "2.3.0-rc.17"' not in github_packages:
-        errors.append("curl SDK restore must pin the exact official Salts.Native 2.3 release")
-    if "Salts::Unicode" not in github_packages or "salts-sdk-manifest.txt" not in github_packages:
-        errors.append("curl SDK restore lacks canonical Unicode/provenance admission")
+    if 'SALTS_NATIVE_VERSION = "4.0.0"' not in github_packages:
+        errors.append("curl SDK restore must pin the exact Salts.Native 4 ownership contract")
+    if "salts-sdk-manifest.txt" not in github_packages:
+        errors.append("curl SDK restore lacks exact SDK provenance admission")
     if '"curl"' not in github_packages or "dotnet" in github_packages.lower() or "mono-complete" in github_packages.lower():
         errors.append("native package restore must use curl without .NET/Mono")
     for label, value in (("Unix", restore_unix), ("Windows", restore_windows)):
@@ -186,11 +186,11 @@ def exercise_negative_cases(source: dict[str, str]) -> None:
         if not violations(broken):
             raise AssertionError(f"Source gate failed open after dropping {token}")
     # Negative producer-owner/source-pin regression: never accept a revived
-    # local implementation or a floating/stable-2.2 Salts restore.
+    # local implementation or a floating/old Salts restore.
     for path, old, replacement in (
         ("CMakeLists.txt", "add_subdirectory(jinja)",
          "add_subdirectory(unicode)\nadd_subdirectory(jinja)"),
-        ("cmake/ci/github_packages.py", 'SALTS_NATIVE_VERSION = "2.3.0-rc.17"',
+        ("cmake/ci/github_packages.py", 'SALTS_NATIVE_VERSION = "4.0.0"',
          'SALTS_NATIVE_VERSION = "*"'),
     ):
         if old not in source[path]:
