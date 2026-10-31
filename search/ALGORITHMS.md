@@ -297,8 +297,14 @@ capture tag allocation to **8 MiB**. Overflow/overbudget returns `REG_ESPACE`
 (which the existing private adapter currently maps to `NO_MEMORY`). This
 bound does not limit *pattern compilation*, total query CPU time, cumulative
 allocation across repeated hits, or independent concurrent callers; those
-remain separate A4 gates. Legacy TRE APIs retain their matching semantics
-and the single shared static provider retains approximate/backtrack support.
+remain separate A4 gates. The same TRE patch now also aligns the four
+TNFA pointer-bearing workspace regions to **pointer width**, rather than
+using `long` (4 bytes on Windows LLP64). The allocation size includes all
+four maximum alignment paddings in the checked 8 MiB budget. The existing
+`test_salts_search_regex` includes an executable 1,024-capture overbudget
+regression; its **new exact-head CI** is required before acceptance.
+Legacy TRE APIs retain their matching semantics and the single shared
+static provider retains approximate/backtrack support.
 
 **Performance remains OPEN:** repeating an original-subject TNFA scan
 may cost O(hit_count × subject_length), even though every scan is
