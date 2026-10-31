@@ -1009,7 +1009,7 @@ spec("Jinja M2f emits bounded half-open ORIGINAL instruction spans") {
   it("preserves author byte spans across CRLF folding and UTF-8 literals") {
     static const char source[] =
         "A\r\n\xE4\xB8\xAD{{ user.name | escape }}Z";
-    static const char output[] = "A\n\xE4\xB8\xADAdaZ";
+    static const char output[] = "A\n\xE4\xB8\xAD" "AdaZ";
     const char *expression = strstr(source, "{{ user.name");
     check_not_null(expression);
     if (expression == NULL) return;
