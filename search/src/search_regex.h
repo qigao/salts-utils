@@ -50,7 +50,8 @@ salts_search_regex_status salts_search_regex_compile(
 /* Return first exact match only; no suffix-rescan semantics are exposed,
  * preventing incorrect anchoring/word-boundary behavior of sliced rescans.
  * Failure zeroes out_span. No fallback engine, hidden truncation or allocation
- * owned by this wrapper. TRE allocates its own bounded-by-input workspace.
+ * owned by this wrapper. First and repeated exact lookups share the same
+ * 8 MiB per-execution TRE workspace budget (not compile/aggregate CPU).
  */
 salts_search_regex_status salts_search_regex_find_first(
     const salts_search_regex_pattern *compiled, const void *subject,

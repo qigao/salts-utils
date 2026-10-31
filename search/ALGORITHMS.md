@@ -293,7 +293,10 @@ backtracking/approx flags in the new API.
 **Execution workspace bound (Draft):** the unique TRE port's new
 `tre_regnexecb_from()` now checks arithmetic for TNFA workspace size before
 allocation, and limits the combined per-invocation matching workspace and
-capture tag allocation to **8 MiB**. Overflow/overbudget returns `REG_ESPACE`
+capture tag allocation to **8 MiB**. Both private `find_first()` and
+`find_from()` now use that *one* bounded exact executor, so the first-match
+and line/context path cannot bypass it by calling legacy `tre_regnexecb()`.
+Overflow/overbudget returns `REG_ESPACE`
 (which the existing private adapter currently maps to `NO_MEMORY`). This
 bound does not limit *pattern compilation*, total query CPU time, cumulative
 allocation across repeated hits, or independent concurrent callers; those

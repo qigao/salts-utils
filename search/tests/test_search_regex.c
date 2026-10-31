@@ -164,6 +164,33 @@ spec("search A1 unique TRE exact Tagged NFA (C11)") {
     tre_regfree(&pattern);
   }
 
+  it("bounds the first-match wrapper with the same 8 MiB exact TRE executor") {
+    enum { GROUPS = 1024 };
+    char expression[GROUPS * 3u];
+    salts_search_regex_pattern regex = {0};
+    salts_search_regex_span span = {77u, 88u};
+    size_t i;
+    for (i = 0u; i < GROUPS; ++i) {
+      expression[3u * i] = '(';
+      expression[3u * i + 1u] = 'a';
+      expression[3u * i + 2u] = ')';
+    }
+    check_equal(salts_search_regex_compile(&regex, expression,
+                sizeof(expression), sizeof(expression), 1u),
+                SALTS_SEARCH_REGEX_OK);
+    check_equal(salts_search_regex_find_first(&regex, "z", 1u, &span),
+                SALTS_SEARCH_REGEX_NO_MEMORY);
+    check_equal(span.byte_start, UINT64_C(0));
+    check_equal(span.byte_end, UINT64_C(0));
+    span.byte_start = 77u;
+    span.byte_end = 88u;
+    check_equal(salts_search_regex_find_from(&regex, "z", 1u,
+                0u, &span), SALTS_SEARCH_REGEX_NO_MEMORY);
+    check_equal(span.byte_start, UINT64_C(0));
+    check_equal(span.byte_end, UINT64_C(0));
+    salts_search_regex_destroy(&regex);
+  }
+
   it("rejects oversized execution workspace with real compiled captures") {
     /* Deliberately generate a TNFA with many states and capture tags.
      * On both 32-bit and 64-bit builds the tag/state workspace exceeds

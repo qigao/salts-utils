@@ -89,6 +89,28 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     salts_search_matcher_destroy(&m);
   }
 
+  it("propagates bounded first-match TRE memory rejection through common matcher") {
+    enum { GROUPS = 1024 };
+    char expression[GROUPS * 3u];
+    salts_search_matcher matcher = {0};
+    salts_search_matcher_span span = {77u, 88u};
+    size_t i;
+    for (i = 0u; i < GROUPS; ++i) {
+      expression[3u * i] = '(';
+      expression[3u * i + 1u] = 'a';
+      expression[3u * i + 2u] = ')';
+    }
+    check_equal(salts_search_matcher_compile(&matcher,
+                SALTS_SEARCH_MATCHER_REGEX, expression,
+                sizeof(expression), sizeof(expression), 1u),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_find_first(&matcher, "z", 1u, &span),
+                SALTS_SEARCH_MATCHER_NO_MEMORY);
+    check_equal(span.byte_start, UINT64_C(0));
+    check_equal(span.byte_end, UINT64_C(0));
+    salts_search_matcher_destroy(&matcher);
+  }
+
   it("bounds original-subject TRE calls without reporting incomplete success") {
     salts_search_matcher m = {0};
     literal_hit_probe p = {0};

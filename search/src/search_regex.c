@@ -42,32 +42,11 @@ salts_search_regex_status salts_search_regex_compile(
 salts_search_regex_status salts_search_regex_find_first(
     const salts_search_regex_pattern *compiled, const void *subject,
     size_t subject_length, salts_search_regex_span *out_span) {
-  static const char empty[] = "";
-  regmatch_t span[1] = {{-1, -1}};
-  int rc;
-  if (out_span) {
-    out_span->byte_start = 0;
-    out_span->byte_end = 0;
-  }
-  if (!compiled || !compiled->compiled || !out_span ||
-      (subject_length != 0 && subject == NULL))
-    return SALTS_SEARCH_REGEX_INVALID;
-  if (subject_length > compiled->max_subject_bytes ||
-      subject_length > INT_MAX)
-    return SALTS_SEARCH_REGEX_LIMIT;
-  rc = tre_regnexecb(&compiled->tre, subject ? (const char *)subject : empty,
-                     subject_length, 1u, span, 0);
-  if (rc == REG_NOMATCH)
-    return SALTS_SEARCH_REGEX_NOT_FOUND;
-  if (rc == REG_ESPACE)
-    return SALTS_SEARCH_REGEX_NO_MEMORY;
-  if (rc != REG_OK || span[0].rm_so < 0 ||
-      span[0].rm_eo < span[0].rm_so ||
-      (size_t)span[0].rm_eo > subject_length)
-    return SALTS_SEARCH_REGEX_ENGINE_ERROR;
-  out_span->byte_start = (uint64_t)span[0].rm_so;
-  out_span->byte_end = (uint64_t)span[0].rm_eo;
-  return SALTS_SEARCH_REGEX_OK;
+  /* A first match is exactly a min_start=0 match on the unchanged subject.
+   * Reuse the *same* bounded TRE Tagged-NFA path as repeated exact search;
+   * the legacy tre_regnexecb() would bypass the 8 MiB execution cap. */
+  return salts_search_regex_find_from(
+      compiled, subject, subject_length, 0u, out_span);
 }
 
 salts_search_regex_status salts_search_regex_find_from(
