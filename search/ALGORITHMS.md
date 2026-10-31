@@ -346,6 +346,37 @@ existing 8 MiB per-call budget. Adversarial runtime, broad randomized
 replay and concurrency/fuzz must still be proven before A4 can close. This implementation is not claimed
 leftmost-first (ripgrep default) or one-pass linear multi-regex search.
 
+### A4 stage5: query-owned all-hit byte stream over real chunked lines (Draft)
+
+The existing private C11 `search_context.[ch]` has a **separate**
+`salts_search_hit_stream` callback compatible with `salts_search_lines_init`.
+It borrows one query-selected compiled Literal or exact TRE Matcher and consumes
+the **same cumulative** `remaining_hits` / `remaining_scans` owner across
+complete original lines. Each result contains a borrowed line and absolute,
+half-open 64-bit byte offsets for **each** hit. It does not copy per-hit
+payloads, create a second parser, or use a substring rescan. Tests cover
+actual chunk-split LF/CRLF, embedded NUL, optional overlap, physical offsets
+near `UINT64_MAX`, hit/scan exhaustion and cancellation.
+
+**Compatibility:** the original A2 BEFORE/MATCH/AFTER context collector still
+emits at most one MATCH event per line and is entirely unchanged. This is a
+separate internal per-hit result protocol, not a second context algorithm,
+an installed SDK, a file walker, or B0 filesystem acceptance.
+
+**Strict stop semantics:** invalid or discontinuous line records, invalid
+64-bit ranges/overflow, callback stop, regex resource failures, hit budgets
+and TRE invocation budgets terminally close the all-hit stream. The existing
+`search_lines` driver reports STOPPED when its callback returns false; callers
+must inspect the stream's precise `LIMIT`, `INVALID`, `STOPPED`, `NO_MEMORY`
+or `MATCH_ERROR`. Already-delivered hits remain counted, never rolled back.
+An incomplete query must not return successful completion. Any callback
+reentrancy is rejected and terminal even when a client ignores its error.
+
+**OPEN:** This connects an already-implemented streaming byte line scanner
+to true multi-hit reporting. It does not enumerate files, implement
+ripgrep's leftmost-first priority, cap one TRE call's CPU or compilation
+resource cost, provide concurrent ownership, or prove remote cache-only TRE.
+
 ## Algorithm and complexity
 
 A0 uses the **Two-Way** string matching algorithm (Crochemore–Perrin): maximal suffix in two lexicographic orders yields the critical position and period. For periodic patterns it retains the matched prefix as *memory* after shifts; for aperiodic patterns it uses the guaranteed-safe long shift. The prefix equality test chooses between them. Pattern preprocessing is O(m), each find is worst-case O(n+m) comparisons with O(1) per-call workspace, not including the O(m) owned needle bytes.

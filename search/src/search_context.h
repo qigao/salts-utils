@@ -94,4 +94,50 @@ bool salts_search_context_accept_line(void *ctx, const salts_search_line *line);
 
 salts_search_context_status salts_search_context_finish(salts_search_context *ctx);
 
+/* A4 query-owned all-hit stream: a distinct private result protocol from
+ * the existing one-MATCH-event-per-line context collector. A line and its
+ * bytes are borrowed only during the callback; events are per exact match
+ * and have absolute half-open 64-bit offsets. No copied per-hit payload.
+ */
+typedef struct salts_search_hit_event {
+  salts_search_line line; /* borrowed until callback returns */
+  uint64_t match_byte_start, match_byte_end;
+} salts_search_hit_event;
+
+typedef bool (*salts_search_hit_callback)(
+    void *user, const salts_search_hit_event *event);
+
+typedef struct salts_search_hit_stream {
+  salts_search_matcher_query_budget budget;
+  salts_search_hit_callback callback;
+  void *user;
+  uint64_t last_line_number, next_byte_start;
+  size_t matched_lines; /* unique lines with delivered hits */
+  salts_search_context_status status;
+  bool overlapping, initialized, finished, in_line;
+  bool have_last_line, last_terminated;
+} salts_search_hit_stream;
+
+/* One query chooses one compiled Literal or exact TRE matcher at init.
+ * max_hits is the whole-query callback quota; max_scans is the quota of
+ * full-original-line TRE calls including final no-match probes. Literal
+ * consumes no TRE scans. A terminal LIMIT/STOPPED/error cannot be resumed.
+ */
+salts_search_context_status salts_search_hit_stream_init(
+    salts_search_hit_stream *stream, const salts_search_matcher *matcher,
+    size_t max_hits, size_t max_scans, bool overlapping,
+    salts_search_hit_callback callback, void *user);
+
+/* Direct salts_search_line_callback for the existing chunked line scanner.
+ * Lines must be contiguous in line number and physical byte offsets,
+ * including LF/CRLF widths. On failure returns false and scanner STOPPED,
+ * while stream->status retains the actual LIMIT/STOPPED/NO_MEMORY/INVALID.
+ * Already-emitted hits remain counted. No callback reentry is permitted.
+ */
+bool salts_search_hit_stream_accept_line(
+    void *stream, const salts_search_line *line);
+
+salts_search_context_status salts_search_hit_stream_finish(
+    salts_search_hit_stream *stream);
+
 #endif

@@ -187,3 +187,297 @@ spec("search A2 bounded literal match context") {
     salts_search_literal_destroy(&pattern);
   }
 }
+
+
+/* A4 query-owned all-hit stream, distinct from A2's one context event/line.
+ * Test captures are fixed-size and copy input bytes before the callback ends. */
+enum { MAX_HIT_EVENTS = 32 };
+typedef struct hit_event_copy {
+  uint64_t line_number, line_start, line_end, match_start, match_end;
+  unsigned terminator;
+  unsigned char bytes[MAX_LINE_BYTES];
+  size_t length;
+} hit_event_copy;
+
+typedef struct hit_stream_probe {
+  hit_event_copy hits[MAX_HIT_EVENTS];
+  size_t count, stop_after;
+  bool overflow, reenter_finish;
+  salts_search_hit_stream *stream;
+  salts_search_context_status reenter_result;
+} hit_stream_probe;
+
+static bool collect_hit(void *user, const salts_search_hit_event *event) {
+  hit_stream_probe *probe = (hit_stream_probe *)user;
+  hit_event_copy *dst;
+  if (probe->count >= MAX_HIT_EVENTS ||
+      event->line.length > MAX_LINE_BYTES) {
+    probe->overflow = true;
+    return false;
+  }
+  dst = &probe->hits[probe->count++];
+  dst->line_number = event->line.line_number;
+  dst->line_start = event->line.byte_start;
+  dst->line_end = event->line.byte_end;
+  dst->terminator = event->line.terminator_size;
+  dst->match_start = event->match_byte_start;
+  dst->match_end = event->match_byte_end;
+  dst->length = event->line.length;
+  if (dst->length)
+    memcpy(dst->bytes, event->line.bytes, dst->length);
+  if (probe->reenter_finish)
+    probe->reenter_result = salts_search_hit_stream_finish(probe->stream);
+  return probe->stop_after == 0u || probe->count < probe->stop_after;
+}
+
+spec("search A4 query-budgeted original-line multi-hit stream") {
+  it("streams overlapping TRE hits through split CRLF, LF and EOF") {
+    salts_search_matcher matcher = {0};
+    salts_search_hit_stream stream = {0};
+    salts_search_line_scanner scanner = {0};
+    hit_stream_probe probe = {0};
+    unsigned char buffer[16];
+    const char raw[] = "ababa\r\nxaba\naba";
+    size_t pos = 0u, consumed = 0u;
+    check_equal(salts_search_matcher_compile(&matcher, SALTS_SEARCH_MATCHER_REGEX,
+                "aba", 3u, 16u, sizeof(buffer)), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_hit_stream_init(
+                &stream, &matcher, 12u, 10u, true, collect_hit, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_equal(salts_search_lines_init(
+                &scanner, buffer, sizeof(buffer), SALTS_SEARCH_LINES_LF,
+                SALTS_SEARCH_LINES_BINARY_ALLOW,
+                salts_search_hit_stream_accept_line, &stream),
+                SALTS_SEARCH_LINES_OK);
+    while (pos < sizeof(raw) - 1u) {
+      const size_t remaining = sizeof(raw) - 1u - pos;
+      const size_t count = remaining < 2u ? remaining : 2u;
+      check_equal(salts_search_lines_feed(&scanner, raw + pos, count,
+                  &consumed), SALTS_SEARCH_LINES_OK);
+      check_equal(consumed, count);
+      pos += count;
+    }
+    check_equal(salts_search_lines_finish(&scanner), SALTS_SEARCH_LINES_OK);
+    check_equal(salts_search_hit_stream_finish(&stream), SALTS_SEARCH_CONTEXT_OK);
+    check_equal(salts_search_hit_stream_finish(&stream), SALTS_SEARCH_CONTEXT_CLOSED);
+    check_true(!probe.overflow);
+    check_equal(probe.count, 4u);
+    check_equal(stream.matched_lines, 3u);
+    check_equal(stream.budget.total_emitted, 4u);
+    check_equal(stream.budget.total_scans, 7u);
+    check_equal(probe.hits[0].line_number, UINT64_C(1));
+    check_equal(probe.hits[0].terminator, 2u);
+    check_equal(probe.hits[0].match_start, UINT64_C(0));
+    check_equal(probe.hits[0].match_end, UINT64_C(3));
+    check_equal(probe.hits[1].match_start, UINT64_C(2));
+    check_equal(probe.hits[1].match_end, UINT64_C(5));
+    check_equal(probe.hits[2].line_number, UINT64_C(2));
+    check_equal(probe.hits[2].terminator, 1u);
+    check_equal(probe.hits[2].match_start, UINT64_C(8));
+    check_equal(probe.hits[2].match_end, UINT64_C(11));
+    check_equal(probe.hits[3].line_number, UINT64_C(3));
+    check_equal(probe.hits[3].terminator, 0u);
+    check_equal(probe.hits[3].match_start, UINT64_C(12));
+    check_equal(probe.hits[3].match_end, UINT64_C(15));
+    check_equal(probe.hits[0].length, 5u);
+    check_equal(probe.hits[1].bytes[4], (unsigned char)'a');
+    salts_search_matcher_destroy(&matcher);
+  }
+
+  it("fails closed on a global hit limit after earlier line delivery") {
+    salts_search_matcher matcher = {0};
+    salts_search_hit_stream stream = {0};
+    salts_search_line_scanner scanner = {0};
+    hit_stream_probe probe = {0};
+    unsigned char buffer[8];
+    size_t consumed = 0u;
+    check_equal(salts_search_matcher_compile(&matcher, SALTS_SEARCH_MATCHER_REGEX,
+                "a", 1u, 8u, sizeof(buffer)), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_hit_stream_init(
+                &stream, &matcher, 1u, 5u, false, collect_hit, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_equal(salts_search_lines_init(
+                &scanner, buffer, sizeof(buffer), SALTS_SEARCH_LINES_LF,
+                SALTS_SEARCH_LINES_BINARY_ALLOW,
+                salts_search_hit_stream_accept_line, &stream),
+                SALTS_SEARCH_LINES_OK);
+    check_equal(salts_search_lines_feed(&scanner, "a\na\n", 4u, &consumed),
+                SALTS_SEARCH_LINES_STOPPED);
+    check_equal(consumed, 4u);
+    check_equal(probe.count, 1u);
+    check_equal(probe.hits[0].match_start, UINT64_C(0));
+    check_equal(stream.matched_lines, 1u);
+    check_equal(stream.budget.total_emitted, 1u);
+    check_equal(stream.budget.total_scans, 3u);
+    check_equal(stream.status, SALTS_SEARCH_CONTEXT_LIMIT);
+    check_equal(salts_search_hit_stream_finish(&stream), SALTS_SEARCH_CONTEXT_LIMIT);
+    check_equal(salts_search_lines_feed(&scanner, "a", 1u, &consumed),
+                SALTS_SEARCH_LINES_CLOSED);
+    check_equal(consumed, 0u);
+    salts_search_matcher_destroy(&matcher);
+  }
+
+  it("debits final negative TRE lookups across separate source lines") {
+    salts_search_matcher matcher = {0};
+    salts_search_hit_stream stream = {0};
+    salts_search_line_scanner scanner = {0};
+    hit_stream_probe probe = {0};
+    unsigned char buffer[8];
+    size_t consumed = 0u;
+    check_equal(salts_search_matcher_compile(&matcher, SALTS_SEARCH_MATCHER_REGEX,
+                "aba", 3u, 8u, sizeof(buffer)), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_hit_stream_init(
+                &stream, &matcher, 8u, 2u, false, collect_hit, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_equal(salts_search_lines_init(
+                &scanner, buffer, sizeof(buffer), SALTS_SEARCH_LINES_LF,
+                SALTS_SEARCH_LINES_BINARY_ALLOW,
+                salts_search_hit_stream_accept_line, &stream),
+                SALTS_SEARCH_LINES_OK);
+    check_equal(salts_search_lines_feed(&scanner, "aba\nx\n", 6u, &consumed),
+                SALTS_SEARCH_LINES_STOPPED);
+    check_equal(consumed, 6u);
+    check_equal(probe.count, 1u);
+    check_equal(stream.matched_lines, 1u);
+    check_equal(stream.budget.remaining_scans, 0u);
+    check_equal(stream.budget.total_scans, 2u);
+    check_equal(stream.status, SALTS_SEARCH_CONTEXT_LIMIT);
+    check_equal(salts_search_hit_stream_finish(&stream), SALTS_SEARCH_CONTEXT_LIMIT);
+    salts_search_matcher_destroy(&matcher);
+  }
+
+  it("propagates early hit-callback cancellation through scanner STOPPED") {
+    salts_search_matcher matcher = {0};
+    salts_search_hit_stream stream = {0};
+    salts_search_line_scanner scanner = {0};
+    hit_stream_probe probe = {0};
+    unsigned char buffer[8];
+    size_t consumed = 0u;
+    probe.stop_after = 1u;
+    check_equal(salts_search_matcher_compile(&matcher, SALTS_SEARCH_MATCHER_REGEX,
+                "a", 1u, 8u, sizeof(buffer)), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_hit_stream_init(
+                &stream, &matcher, 8u, 5u, true, collect_hit, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_equal(salts_search_lines_init(
+                &scanner, buffer, sizeof(buffer), SALTS_SEARCH_LINES_LF,
+                SALTS_SEARCH_LINES_BINARY_ALLOW,
+                salts_search_hit_stream_accept_line, &stream),
+                SALTS_SEARCH_LINES_OK);
+    check_equal(salts_search_lines_feed(&scanner, "aaa\n", 4u, &consumed),
+                SALTS_SEARCH_LINES_STOPPED);
+    check_equal(consumed, 4u);
+    check_equal(probe.count, 1u);
+    check_equal(stream.status, SALTS_SEARCH_CONTEXT_STOPPED);
+    check_true(stream.budget.terminal);
+    check_equal(stream.budget.total_scans, 1u);
+    check_equal(stream.budget.total_emitted, 1u);
+    check_equal(salts_search_hit_stream_finish(&stream), SALTS_SEARCH_CONTEXT_STOPPED);
+    salts_search_matcher_destroy(&matcher);
+  }
+
+  it("preserves absolute offsets near UINT64_MAX and rejects discontinuity") {
+    salts_search_matcher matcher = {0};
+    salts_search_hit_stream stream = {0};
+    hit_stream_probe probe = {0};
+    const unsigned char raw[] = {'x',0,'a'};
+    const salts_search_line near = {raw, sizeof(raw),
+        UINT64_MAX - UINT64_C(4), UINT64_MAX - UINT64_C(1), 42u, 1u};
+    const salts_search_line empty = {NULL, 0u,
+        UINT64_MAX, UINT64_MAX, 43u, 0u};
+    const salts_search_line broken = {raw, sizeof(raw),
+        UINT64_MAX - UINT64_C(3), UINT64_MAX, 43u, 0u};
+    check_equal(salts_search_matcher_compile(&matcher, SALTS_SEARCH_MATCHER_REGEX,
+                "a", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_hit_stream_init(
+                &stream, &matcher, 8u, 8u, false, collect_hit, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_true(salts_search_hit_stream_accept_line(&stream, &near));
+    check_true(salts_search_hit_stream_accept_line(&stream, &empty));
+    check_equal(probe.count, 1u);
+    check_equal(probe.hits[0].match_start, UINT64_MAX - UINT64_C(2));
+    check_equal(probe.hits[0].match_end, UINT64_MAX - UINT64_C(1));
+    check_equal(stream.budget.total_scans, 3u);
+    check_equal(salts_search_hit_stream_finish(&stream), SALTS_SEARCH_CONTEXT_OK);
+    salts_search_matcher_destroy(&matcher);
+
+    memset(&stream, 0, sizeof(stream));
+    memset(&probe, 0, sizeof(probe));
+    check_equal(salts_search_matcher_compile(&matcher, SALTS_SEARCH_MATCHER_REGEX,
+                "a", 1u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_hit_stream_init(
+                &stream, &matcher, 8u, 8u, false, collect_hit, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_true(salts_search_hit_stream_accept_line(&stream, &near));
+    check_true(!salts_search_hit_stream_accept_line(&stream, &broken));
+    check_equal(stream.status, SALTS_SEARCH_CONTEXT_INVALID);
+    check_equal(probe.count, 1u);
+    check_equal(salts_search_hit_stream_finish(&stream), SALTS_SEARCH_CONTEXT_INVALID);
+    salts_search_matcher_destroy(&matcher);
+  }
+
+  it("streams NUL-containing Literal hits with zero TRE scan consumption") {
+    salts_search_matcher matcher = {0};
+    salts_search_hit_stream stream = {0};
+    salts_search_line_scanner scanner = {0};
+    hit_stream_probe probe = {0};
+    unsigned char buffer[8];
+    const unsigned char raw[] = {'a',0,'a',0,'\n','z'};
+    const unsigned char pattern[] = {'a',0};
+    size_t consumed = 0u;
+    check_equal(salts_search_matcher_compile(&matcher, SALTS_SEARCH_MATCHER_LITERAL,
+                pattern, sizeof(pattern), 8u, sizeof(buffer)),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_hit_stream_init(
+                &stream, &matcher, 2u, 0u, false, collect_hit, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_equal(salts_search_lines_init(
+                &scanner, buffer, sizeof(buffer), SALTS_SEARCH_LINES_LF,
+                SALTS_SEARCH_LINES_BINARY_ALLOW,
+                salts_search_hit_stream_accept_line, &stream),
+                SALTS_SEARCH_LINES_OK);
+    check_equal(salts_search_lines_feed(&scanner, raw, sizeof(raw), &consumed),
+                SALTS_SEARCH_LINES_OK);
+    check_equal(consumed, sizeof(raw));
+    check_equal(salts_search_lines_finish(&scanner), SALTS_SEARCH_LINES_OK);
+    check_equal(salts_search_hit_stream_finish(&stream), SALTS_SEARCH_CONTEXT_OK);
+    check_equal(probe.count, 2u);
+    check_equal(probe.hits[0].match_start, UINT64_C(0));
+    check_equal(probe.hits[0].match_end, UINT64_C(2));
+    check_equal(probe.hits[1].match_start, UINT64_C(2));
+    check_equal(probe.hits[1].match_end, UINT64_C(4));
+    check_equal(probe.hits[0].bytes[1], 0u);
+    check_equal(stream.matched_lines, 1u);
+    check_equal(stream.budget.total_scans, 0u);
+    check_equal(stream.budget.total_emitted, 2u);
+    salts_search_matcher_destroy(&matcher);
+  }
+
+  it("rejects callback reentrancy even when client ignores its error") {
+    salts_search_matcher matcher = {0};
+    salts_search_hit_stream stream = {0};
+    salts_search_line_scanner scanner = {0};
+    hit_stream_probe probe = {0};
+    unsigned char buffer[8];
+    size_t consumed = 0u;
+    check_equal(salts_search_matcher_compile(&matcher, SALTS_SEARCH_MATCHER_REGEX,
+                "a", 1u, 8u, sizeof(buffer)), SALTS_SEARCH_MATCHER_OK);
+    probe.reenter_finish = true;
+    probe.stream = &stream;
+    check_equal(salts_search_hit_stream_init(
+                &stream, &matcher, 8u, 5u, false, collect_hit, &probe),
+                SALTS_SEARCH_CONTEXT_OK);
+    check_equal(salts_search_lines_init(
+                &scanner, buffer, sizeof(buffer), SALTS_SEARCH_LINES_LF,
+                SALTS_SEARCH_LINES_BINARY_ALLOW,
+                salts_search_hit_stream_accept_line, &stream),
+                SALTS_SEARCH_LINES_OK);
+    check_equal(salts_search_lines_feed(&scanner, "a\n", 2u, &consumed),
+                SALTS_SEARCH_LINES_STOPPED);
+    check_equal(probe.reenter_result, SALTS_SEARCH_CONTEXT_INVALID);
+    check_equal(probe.count, 1u);
+    check_equal(stream.status, SALTS_SEARCH_CONTEXT_INVALID);
+    check_equal(salts_search_hit_stream_finish(&stream), SALTS_SEARCH_CONTEXT_INVALID);
+    salts_search_matcher_destroy(&matcher);
+  }
+}
