@@ -16,6 +16,11 @@ target_compile_features(salts_markdown_source_map_test PRIVATE c_std_11)
 target_link_libraries(salts_markdown_source_map_test PRIVATE Salts::MarkdownParser Salts::MarkdownHtml)
 add_test(NAME salts_markdown_source_map_test COMMAND salts_markdown_source_map_test)
 
+add_executable(salts_markdown_source_map_allocation_test markdown_source_map_allocation_test.c)
+target_compile_features(salts_markdown_source_map_allocation_test PRIVATE c_std_11)
+target_link_libraries(salts_markdown_source_map_allocation_test PRIVATE Salts::MarkdownParser)
+add_test(NAME salts_markdown_source_map_allocation_test COMMAND salts_markdown_source_map_allocation_test)
+
 # #185: canonical HTML5 named/numeric character references through one C11
 # frontend; independent native AST and exact HTML byte gates.
 add_executable(salts_markdown_entities_test markdown_entities_test.c)

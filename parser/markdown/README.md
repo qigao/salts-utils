@@ -94,3 +94,7 @@ TurboAgent FTS/source evidence. Those gates remain open in
 Native tests verify exact lexemes, entity/escape expansion, repeated text,
 CRLF, CJK/emoji, semantic/SAFE/SPEC parity, UNKNOWN and failure-atomic budgets.
 The existing C11 grammar suite also runs with provenance enabled.
+The native allocation-failure test compiles the same canonical parser with
+test-local allocator interception and checks every allocation, including map
+and node growth and container-reference replay, for atomic cleanup. It links
+the real Unicode implementation; it does not substitute a parser or provider.
