@@ -18,6 +18,40 @@ static const char ORBIT_GOOD[] =
     "    [orbit(20,101)] Pong: PingRequest -> PingResponse;\n"
     "}\n";
 
+static const char ORBIT_CONTEXTUAL[] =
+    "schema Game [version(1)];\n"
+    "message PingRequest { uint64 seq; }\n"
+    "message PingResponse { uint64 ack; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),native_context(1)] Ping: PingRequest -> PingResponse;\n"
+    "    [orbit(20,101),native_context(1)] Pong: PingRequest -> PingResponse;\n"
+    "}\n";
+
+static const char ORBIT_CONTEXT_MIXED[] =
+    "schema Game [version(1)];\n"
+    "message Req { uint64 seq; }\n"
+    "message Resp { uint64 ack; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),native_context(1)] Ping: Req -> Resp;\n"
+    "    [orbit(20,101)] Pong: Req -> Resp;\n"
+    "}\n";
+
+static const char ORBIT_CONTEXT_VERSION_UNSUPPORTED[] =
+    "schema Game [version(1)];\n"
+    "message Req { uint64 seq; }\n"
+    "message Resp { uint64 ack; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),native_context(2)] Ping: Req -> Resp;\n"
+    "}\n";
+
+static const char ORBIT_CONTEXT_DUPLICATED[] =
+    "schema Game [version(1)];\n"
+    "message Req { uint64 seq; }\n"
+    "message Resp { uint64 ack; }\n"
+    "service Room {\n"
+    "    [orbit(10,100),native_context(1),native_context(1)] Ping: Req -> Resp;\n"
+    "}\n";
+
 static const char ORBIT_DUP_EVENT[] =
     "schema Game [version(1)];\n"
     "message Req { uint64 seq; }\n"
@@ -154,6 +188,15 @@ static int check_case(const char *source, int should_admit) {
           strstr(printed, "business_status = databind_4_Game_4_Room_4_Ping(") == NULL ||
           strstr(printed, "ORBIT_METHOD_CALL_TOKEN") == NULL)
         goto done;
+      if (strstr(source, "native_context") != NULL &&
+          (strstr(printed, "__orbit_binding") == NULL ||
+           strstr(printed, "__orbit_bind(") == NULL ||
+           strstr(printed, "void *receiver = bound->receiver;") == NULL ||
+           strstr(printed, "receiver, &typed_request, &typed_response") == NULL))
+        goto done;
+      if (strstr(source, "native_context") == NULL &&
+          strstr(printed, "void *receiver = bound->receiver;") != NULL)
+        goto done;
     } else if (printed[0] != '\0') {
       fprintf(stderr, "Unannotated Service unexpectedly emitted Orbit code\n");
       goto done;
@@ -175,6 +218,10 @@ int databind_compiler_orbit_native_tests(void) {
   };
   const struct case_row cases[] = {
       {ORBIT_GOOD, 1},
+      {ORBIT_CONTEXTUAL, 1},
+      {ORBIT_CONTEXT_MIXED, 0},
+      {ORBIT_CONTEXT_VERSION_UNSUPPORTED, 0},
+      {ORBIT_CONTEXT_DUPLICATED, 0},
       {ORBIT_DUP_EVENT, 0},
       {ORBIT_OUT_OF_ORDER, 0},
       {ORBIT_MISSING_METHOD, 0},
