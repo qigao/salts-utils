@@ -284,7 +284,19 @@ publication for all unsupported shapes. `BINARY_CODEC` is not a transparent
 fallback and cannot select this Contract-only Orbit binding.
 
 Consumers explicitly define `DATABIND_NATIVE_ENABLE_ORBIT` and link the
-actual `Orbit::Core` target to access the generated
+actual `Orbit::Core` target. In this first scalar-only projection, the
+same generated Native Service header selects **only** the canonical
+NativeSourceIR Record declarations, the original business C prototypes and
+Orbit's typed adapter. It deliberately does **not** pull in the unrelated
+Native DataBind/CMeta metadata headers. The ordinary NATIVE generated
+FunctionDesc/FunctionAbi/Execution and Plugin targets are unchanged when the
+Orbit define is absent. Selecting both the Orbit scalar projection and
+`DATABIND_NATIVE_ENABLE_CMETA` or `DATABIND_NATIVE_ENABLE_DATABIND`
+is rejected at compile time instead of silently mixing SDK ABI epochs.
+This is a single-compiler, single-Contract header view, not a fallback
+engine or a second reflected function.
+
+The generated header then exposes the
 `databind_<len>_<schema>_<len>_<service>__orbit_methods[]` and each
 operation's `<canonical_symbol>__orbit_call_async()` typed request wrapper.
 The wrapper retains the **canonical generated Request and Response records**
