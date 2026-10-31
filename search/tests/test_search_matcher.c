@@ -89,6 +89,97 @@ spec("search common matcher chooses one literal or TRE byte engine") {
     salts_search_matcher_destroy(&m);
   }
 
+  it("bounds original-subject TRE calls without reporting incomplete success") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t n = 99u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "aba", 3u, 16u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "ababa", 5u,
+                true, 8u, 0u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 0u);
+    check_equal(p.count, 0u);
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "ababa", 5u,
+                true, 8u, 1u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 1u);
+    check_equal(p.count, 1u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "ababa", 5u,
+                true, 8u, 2u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 2u); /* both hits emitted, but final no-match is unproven */
+    check_equal(p.count, 2u);
+    check_equal(p.hits[1].byte_start, UINT64_C(2));
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "ababa", 5u,
+                true, 8u, 3u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 2u);
+    check_equal(p.count, 2u);
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "ababa", 5u,
+                false, 8u, 2u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_OK); /* one hit, then proven no-match */
+    check_equal(n, 1u);
+    check_equal(p.count, 1u);
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("keeps scan budget conservative on no-match, hit-cap, and cancel") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t n = 99u;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "a", 1u, 8u, 16u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "zzz", 3u,
+                false, 8u, 0u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 0u);
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "zzz", 3u,
+                false, 8u, 1u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 0u);
+    check_equal(p.count, 0u);
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "aaa", 3u,
+                true, 0u, 1u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_LIMIT); /* one observed hit, no callback */
+    check_equal(n, 0u);
+    p.stop_at = 1u;
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "aaa", 3u,
+                true, 8u, 1u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_STOPPED);
+    check_equal(n, 1u);
+    check_equal(p.count, 1u);
+    salts_search_matcher_destroy(&m);
+  }
+
+  it("bounds zero-width enumeration through the original EOF boundary") {
+    salts_search_matcher m = {0};
+    literal_hit_probe p = {0};
+    size_t n = 0;
+    check_equal(salts_search_matcher_compile(&m, SALTS_SEARCH_MATCHER_REGEX,
+                "a*", 2u, 8u, 8u), SALTS_SEARCH_MATCHER_OK);
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "ba", 2u,
+                false, 8u, 2u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_LIMIT);
+    check_equal(n, 2u);
+    check_equal(p.hits[0].byte_start, UINT64_C(0));
+    check_equal(p.hits[0].byte_end, UINT64_C(0));
+    check_equal(p.hits[1].byte_start, UINT64_C(1));
+    check_equal(p.hits[1].byte_end, UINT64_C(2));
+    memset(&p, 0, sizeof(p));
+    check_equal(salts_search_matcher_enumerate_regex_bounded(&m, "ba", 2u,
+                false, 8u, 3u, record_literal_hit, &p, &n),
+                SALTS_SEARCH_MATCHER_OK);
+    check_equal(n, 3u);
+    check_equal(p.hits[2].byte_start, UINT64_C(2));
+    check_equal(p.hits[2].byte_end, UINT64_C(2));
+    salts_search_matcher_destroy(&m);
+  }
+
   it("does not turn an anchored or word-boundary TRE match into a suffix match") {
     salts_search_matcher m = {0};
     literal_hit_probe p = {0};

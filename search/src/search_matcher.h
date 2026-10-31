@@ -69,9 +69,9 @@ salts_search_matcher_status salts_search_matcher_find_first(
  * return LIMIT rather than success with incomplete results.
  * The count includes a hit whose callback returns false (STOPPED).
  *
- * TRE Regex is deliberately UNSUPPORTED here. Re-running TRE on a sliced
- * suffix changes anchors/word boundaries and cannot claim rg parity.
- * A correct single-TRE multi-hit engine is separately gated by #709.
+ * The Literal enumerator rejects REGEX kind; exact TRE enumeration below
+ * preserves original-subject offsets without re-running on a sliced suffix.
+ * A4 full CPU, concurrency and filesystem acceptance remain gated by #709.
  */
 typedef bool (*salts_search_matcher_hit_callback)(
     void *user, const salts_search_matcher_span *hit);
@@ -96,6 +96,24 @@ salts_search_matcher_status salts_search_matcher_enumerate_literals(
 salts_search_matcher_status salts_search_matcher_enumerate_regex(
     const salts_search_matcher *compiled, const void *subject,
     size_t subject_length, bool overlapping, size_t max_hits,
+    salts_search_matcher_hit_callback callback, void *user,
+    size_t *out_emitted);
+
+/* Explicit per-enumeration TRE invocation budget, additive private API.
+ * max_scans bounds the number of FULL-original-subject Tagged-NFA searches,
+ * including the final failed search needed to prove that all hits are found
+ * and any lookahead needed to prove max_hits exhaustion.
+ * Budget exhaustion returns LIMIT even if no more hit would exist: no
+ * incomplete result may be mislabeled success. out_emitted counts callbacks
+ * already invoked, including one requesting STOPPED. max_scans=0 returns
+ * LIMIT for a valid search even on a no-match subject (conservative).
+ * This does NOT bound work within a single TRE scan, compilation time,
+ * aggregate owner concurrency, or wall-clock CPU. Old API remains unchanged.
+ */
+salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
+    const salts_search_matcher *compiled, const void *subject,
+    size_t subject_length, bool overlapping, size_t max_hits,
+    size_t max_scans,
     salts_search_matcher_hit_callback callback, void *user,
     size_t *out_emitted);
 

@@ -306,11 +306,24 @@ regression; its **new exact-head CI** is required before acceptance.
 Legacy TRE APIs retain their matching semantics and the single shared
 static provider retains approximate/backtrack support.
 
+**Per-enumeration scan budget (Draft):** the existing private matcher
+has an additive `salts_search_matcher_enumerate_regex_bounded()` entry
+with `max_scans` to cap the number of full-original-subject TRE
+executions independently of `max_hits`. The terminal unsuccessful
+lookup and the extra hit-count probe consume scans. If there is no
+budget to prove enumeration complete, return `LIMIT` (with the exact
+number of callbacks already emitted), **never** a truncated success.
+`max_scans=0` conservatively returns `LIMIT` even on a nonmatching
+subject. The previous private enumeration signature and its behavior
+remain unchanged; consumers must explicitly opt in to the scan budget.
+
 **Performance remains OPEN:** repeating an original-subject TNFA scan
-may cost O(hit_count × subject_length), even though every scan is
-bounded and maintains exact semantics. Hard TRE internal workspace,
-CPU budgets, broad randomized replay and concurrency/fuzz must be
-proven before A4 can close. This implementation is not claimed
+may still cost O(max_scans × subject_length × per-state work) within
+the new bounded entry. A scan-count limit is **not** a hard CPU-time,
+regex-compilation memory, cancellation, or aggregate concurrent-owner
+limit. Hard TRE execution workspace is separately covered by the
+existing 8 MiB per-call budget. Adversarial runtime, broad randomized
+replay and concurrency/fuzz must still be proven before A4 can close. This implementation is not claimed
 leftmost-first (ripgrep default) or one-pass linear multi-regex search.
 
 ## Algorithm and complexity

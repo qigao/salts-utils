@@ -149,13 +149,15 @@ salts_search_matcher_status salts_search_matcher_enumerate_literals(
   }
 }
 
-salts_search_matcher_status salts_search_matcher_enumerate_regex(
+salts_search_matcher_status salts_search_matcher_enumerate_regex_bounded(
     const salts_search_matcher *compiled, const void *subject,
     size_t subject_length, bool overlapping, size_t max_hits,
+    size_t max_scans,
     salts_search_matcher_hit_callback callback, void *user,
     size_t *out_emitted) {
   size_t start_at = 0;
   size_t count = 0;
+  size_t scans = 0;
   if (out_emitted)
     *out_emitted = 0;
   if (!compiled || !compiled->compiled || !callback || !out_emitted ||
@@ -169,7 +171,13 @@ salts_search_matcher_status salts_search_matcher_enumerate_regex(
 
   for (;;) {
     salts_search_regex_span found = {0};
-    const salts_search_matcher_status status = map_regex(
+    salts_search_matcher_status status;
+    /* A terminal no-match is itself a full TRE invocation. When the
+     * budget is exhausted, never report successful complete enumeration. */
+    if (scans == max_scans)
+      return SALTS_SEARCH_MATCHER_LIMIT;
+    ++scans;
+    status = map_regex(
         salts_search_regex_find_from(&compiled->compiled_pattern.regex,
                                      subject, subject_length, start_at, &found));
     if (status == SALTS_SEARCH_MATCHER_NOT_FOUND)
@@ -204,6 +212,18 @@ salts_search_matcher_status salts_search_matcher_enumerate_regex(
     if (start_at > subject_length)
       return SALTS_SEARCH_MATCHER_OK;
   }
+}
+
+salts_search_matcher_status salts_search_matcher_enumerate_regex(
+    const salts_search_matcher *compiled, const void *subject,
+    size_t subject_length, bool overlapping, size_t max_hits,
+    salts_search_matcher_hit_callback callback, void *user,
+    size_t *out_emitted) {
+  /* Retain original private API/behavior. New callers can explicitly
+   * budget full-original-subject TRE executions via the bounded form. */
+  return salts_search_matcher_enumerate_regex_bounded(
+      compiled, subject, subject_length, overlapping, max_hits,
+      SIZE_MAX, callback, user, out_emitted);
 }
 
 void salts_search_matcher_destroy(salts_search_matcher *compiled) {
