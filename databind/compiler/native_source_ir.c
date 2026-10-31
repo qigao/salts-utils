@@ -856,7 +856,12 @@ static int native_source_ir_render(
   if (!has_unsupported_reflection) {
   if (!failed && fprintf(out,
       "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n"
+      "/* Orbit consumes only the native CMeta owner from installed Salts4. */\n"
+      "#if defined(DATABIND_NATIVE_ENABLE_ORBIT)\n"
+      "#include <cmeta/data.h>\n"
+      "#else\n"
       "#include <cmeta_cmeta_data.h>\n"
+      "#endif\n"
       "#ifdef DATABIND_NATIVE_ENABLE_DATABIND\n"
       "#include <data_bind_native_binding.h>\n"
       "#endif /* DATABIND_NATIVE_ENABLE_DATABIND */\n") < 0)
