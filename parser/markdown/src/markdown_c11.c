@@ -41,6 +41,9 @@ struct salts_md_document {
     size_t metadata_capacity;
     salts_md_block *nodes;
     salts_md_block_metadata *node_metadata;
+    salts_md_node_source *node_sources;
+    salts_md_source_map_entry *source_map;
+    size_t source_map_count, source_map_capacity, source_map_limit;
     size_t node_count;
     size_t capacity;
     size_t node_limit;
@@ -105,6 +108,80 @@ static void md_error(salts_md_document *d, salts_md_status error) {
     if (d->error == SALTS_MD_OK) d->error = error;
 }
 
+/* Only a slice of the retained input proves an origin. Integer addresses
+ * avoid relational comparisons/subtraction between unrelated C objects.
+ * Scratch and synthetic buffers deliberately yield UNKNOWN, even if their
+ * bytes happen to equal a substring of the retained document. */
+static bool md_raw_offset(const salts_md_document *d,const char *s,size_t n,
+                           size_t *offset) {
+    const uintptr_t base=(uintptr_t)(const void*)d->raw;
+    const uintptr_t address=(uintptr_t)(const void*)s;
+    if(address<base || address-base>d->raw_size)return false;
+    const size_t at=(size_t)(address-base);
+    if(n>d->raw_size-at)return false;
+    *offset=at;
+    return true;
+}
+
+static void md_node_origin(salts_md_document *d,uint32_t node,
+                            const char *raw,size_t raw_bytes,
+                            const char *content,size_t content_bytes) {
+    if(!d->source_map_limit || node==UINT32_MAX)return;
+    size_t at=0u;
+    salts_md_node_source *source=&d->node_sources[node];
+    if(md_raw_offset(d,raw,raw_bytes,&at)) {
+        source->raw_begin=at;source->raw_end=at+raw_bytes;
+        source->raw_known=true;
+    }
+    if(md_raw_offset(d,content,content_bytes,&at)) {
+        source->content_begin=at;source->content_end=at+content_bytes;
+        source->content_known=true;
+    }
+}
+
+static bool md_map_append(salts_md_document *d,size_t begin,size_t end,
+                           const char *raw,size_t raw_bytes,
+                           salts_md_source_origin origin) {
+    if(!d->source_map_limit || begin==end)return true;
+    size_t at=0u;
+    if(!md_raw_offset(d,raw,raw_bytes,&at)) {
+        origin=SALTS_MD_SOURCE_UNKNOWN;at=raw_bytes=0u;
+    }
+    if(d->source_map_count) {
+        salts_md_source_map_entry *last=
+            &d->source_map[d->source_map_count-1u];
+        if(last->semantic_end!=begin) {
+            md_error(d,SALTS_MD_INVALID_ARGUMENT);return false;
+        }
+        /* Never merge atomic transformations: their separate lexemes matter. */
+        if(last->origin==origin &&
+           (origin==SALTS_MD_SOURCE_UNKNOWN ||
+            (origin==SALTS_MD_SOURCE_LITERAL && last->raw_end==at))) {
+            last->semantic_end=end;
+            if(origin==SALTS_MD_SOURCE_LITERAL)last->raw_end=at+raw_bytes;
+            return true;
+        }
+    }
+    if(d->source_map_count==d->source_map_limit) {
+        md_error(d,SALTS_MD_CAPACITY_EXCEEDED);return false;
+    }
+    if(d->source_map_count==d->source_map_capacity) {
+        size_t next=d->source_map_capacity?d->source_map_capacity*2u:32u;
+        if(next<d->source_map_capacity || next>d->source_map_limit)
+            next=d->source_map_limit;
+        if(next>SIZE_MAX/sizeof(*d->source_map)) {
+            md_error(d,SALTS_MD_CAPACITY_EXCEEDED);return false;
+        }
+        salts_md_source_map_entry *entries=(salts_md_source_map_entry*)
+            realloc(d->source_map,next*sizeof(*entries));
+        if(!entries) {md_error(d,SALTS_MD_OUT_OF_MEMORY);return false;}
+        d->source_map=entries;d->source_map_capacity=next;
+    }
+    d->source_map[d->source_map_count++]=(salts_md_source_map_entry){
+        begin,end,at,at+raw_bytes,origin};
+    return true;
+}
+
 static bool md_grow(salts_md_document *d) {
     if (d->node_count < d->capacity) return true;
     if (d->node_count >= d->node_limit) {
@@ -114,7 +191,8 @@ static bool md_grow(salts_md_document *d) {
     size_t next = d->capacity ? d->capacity * 2 : 32;
     if (next < d->capacity || next > d->node_limit) next = d->node_limit;
     if (next > SIZE_MAX / sizeof(salts_md_block) ||
-        next > SIZE_MAX / sizeof(salts_md_block_metadata)) {
+        next > SIZE_MAX / sizeof(salts_md_block_metadata) ||
+        (d->source_map_limit && next>SIZE_MAX/sizeof(*d->node_sources))) {
         md_error(d, SALTS_MD_CAPACITY_EXCEEDED);
         return false;
     }
@@ -132,6 +210,12 @@ static bool md_grow(salts_md_document *d) {
         return false;
     }
     d->node_metadata = meta;
+    if(d->source_map_limit) {
+        salts_md_node_source *sources=(salts_md_node_source*)realloc(
+            d->node_sources,next*sizeof(*sources));
+        if(!sources) {md_error(d,SALTS_MD_OUT_OF_MEMORY);return false;}
+        d->node_sources=sources;
+    }
     d->capacity = next;
     return true;
 }
@@ -146,11 +230,14 @@ static uint32_t md_add(salts_md_document *d, uint32_t parent,
         .byte_begin = 0, .byte_end = 0
     };
     d->node_metadata[i] = (salts_md_block_metadata){0,0};
+    if(d->source_map_limit)d->node_sources[i]=(salts_md_node_source){0};
     return i;
 }
 
-static bool md_store(salts_md_document *d, bool is_meta,
-                     const char *s, size_t n, size_t *begin, size_t *end) {
+static bool md_store_origin(salts_md_document *d, bool is_meta,
+                     const char *s, size_t n, size_t *begin, size_t *end,
+                     const char *raw,size_t raw_bytes,
+                     salts_md_source_origin origin) {
     size_t *used = is_meta ? &d->metadata_size : &d->text_size;
     char *target = is_meta ? d->metadata : d->text;
     if (d->error != SALTS_MD_OK) return false;
@@ -206,19 +293,33 @@ static bool md_store(salts_md_document *d, bool is_meta,
     *used += n;
     *end = *used;
     target[*used] = '\0';
+    if(!is_meta && !md_map_append(d,*begin,*end,raw,raw_bytes,origin))
+        return false;
     return true;
 }
 
-static void md_text(salts_md_document *d, uint32_t parent,
-                    const char *s, size_t n) {
+static bool md_store(salts_md_document *d,bool is_meta,const char *s,size_t n,
+                      size_t *begin,size_t *end) {
+    return md_store_origin(d,is_meta,s,n,begin,end,s,n,SALTS_MD_SOURCE_LITERAL);
+}
+
+static void md_text_origin(salts_md_document *d,uint32_t parent,
+                    const char *s,size_t n,const char *raw,size_t raw_bytes,
+                    salts_md_source_origin origin) {
     if (!n || d->error != SALTS_MD_OK) return;
     const uint32_t node = md_add(d, parent, SALTS_MD_BLOCK_TEXT, 0);
     if (node == UINT32_MAX) return;
     size_t from = 0, to = 0;
-    if (md_store(d, false, s, n, &from, &to)) {
+    if (md_store_origin(d,false,s,n,&from,&to,raw,raw_bytes,origin)) {
         d->nodes[node].byte_begin = from;
         d->nodes[node].byte_end = to;
+        md_node_origin(d,node,raw,raw_bytes,raw,raw_bytes);
     }
+}
+
+static void md_text(salts_md_document *d,uint32_t parent,
+                    const char *s,size_t n) {
+    md_text_origin(d,parent,s,n,s,n,SALTS_MD_SOURCE_LITERAL);
 }
 
 /* One owned verbatim semantic span: only the explicit renderer policy
@@ -228,6 +329,7 @@ static void md_raw_html_inline(salts_md_document *d,uint32_t parent,
     if(!n || d->error!=SALTS_MD_OK)return;
     const uint32_t node=md_add(d,parent,SALTS_MD_BLOCK_RAW_HTML_INLINE,0u);
     if(node==UINT32_MAX)return;
+    md_node_origin(d,node,s,n,s,n);
     size_t first=0u,last=0u;
     if(md_store(d,false,s,n,&first,&last)) {
         d->nodes[node].byte_begin=first;
@@ -1284,7 +1386,10 @@ static void md_code_span_text(salts_md_document *d,uint32_t parent,
             if(text[i]!=' ') {nonspace=true;break;}
         if(nonspace) {++begin;--bytes;}
     }
-    md_text(d,parent,text+begin,bytes-begin);
+    if(multiline)
+        md_text_origin(d,parent,text+begin,bytes-begin,s+start,n,
+                       SALTS_MD_SOURCE_TRANSFORMED);
+    else md_text(d,parent,text+begin,bytes-begin);
     free(normalized);
 }
 
@@ -1509,6 +1614,7 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
         free(events);return false;
     }
     uint32_t owners[33]={0u};
+    size_t owner_starts[33]={0u};
     owners[0]=parent;
     unsigned nested=0u;
     size_t p=0u,text_start=0u,physical_line_start=0u;
@@ -1516,6 +1622,12 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
         if(events[p].close) {
             if(!nested) {md_error(d,SALTS_MD_INVALID_ARGUMENT);break;}
             md_text(d,owners[nested],s+text_start,p-text_start);
+            const size_t start=owner_starts[nested];
+            const size_t width=d->nodes[owners[nested]].kind==
+                SALTS_MD_BLOCK_STRONG?2u:1u;
+            md_node_origin(d,owners[nested],s+start,
+                           p+events[p].close-start,
+                           s+start+width,p-start-width);
             --nested;
             p+=events[p].close;
             text_start=p;continue;
@@ -1530,6 +1642,7 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
             const uint32_t node=md_add(d,owners[nested],kind,0u);
             if(node==UINT32_MAX) break;
             owners[++nested]=node;
+            owner_starts[nested]=p;
             p+=events[p].open;
             text_start=p;continue;
         }
@@ -1574,6 +1687,7 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
                     const uint32_t node=md_add(
                         d,owners[nested],SALTS_MD_BLOCK_URI_AUTOLINK,0u);
                     if(node==UINT32_MAX)break;
+                    md_node_origin(d,node,s+p,close+1u-p,s+p+1u,bytes);
                     md_meta(d,node,s+p+1u,bytes);
                     size_t first=0u,last=0u;
                     if(md_store(d,false,s+p+1u,bytes,&first,&last)) {
@@ -1586,6 +1700,7 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
                 const uint32_t link=md_add(
                     d,owners[nested],SALTS_MD_BLOCK_LINK,0u);
                 if(link==UINT32_MAX)break;
+                md_node_origin(d,link,s+p,close+1u-p,s+p+1u,bytes);
                 if(email) {
                     /* Bounded contiguous metadata writes: no transient
                      * global registry, heap string, or alternative parser.
@@ -1616,7 +1731,8 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
         }
         if(s[p]=='\\' && p+1u<n && md_ascii_punct(s[p+1u])) {
             md_text(d,owners[nested],s+text_start,p-text_start);
-            md_text(d,owners[nested],s+p+1u,1u);
+            md_text_origin(d,owners[nested],s+p+1u,1u,s+p,2u,
+                           SALTS_MD_SOURCE_TRANSFORMED);
             p+=2u;text_start=p;continue;
         }
         /* #185: decode a recognized HTML5 entity as SEMANTIC UTF-8 only
@@ -1630,7 +1746,8 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
             if(salts_md_decode_character_reference(
                     s+p,n-p,&consumed,decoded,&written)) {
                 md_text(d,owners[nested],s+text_start,p-text_start);
-                md_text(d,owners[nested],decoded,written);
+                md_text_origin(d,owners[nested],decoded,written,s+p,consumed,
+                               SALTS_MD_SOURCE_TRANSFORMED);
                 p+=consumed;
                 text_start=p;
                 continue;
@@ -1645,6 +1762,7 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
                 const uint32_t node=md_add(d,owners[nested],
                     SALTS_MD_BLOCK_CODE_SPAN,0u);
                 if(node==UINT32_MAX) break;
+                md_node_origin(d,node,s+p,close-p+(end-p),s+end,close-end);
                 md_code_span_text(d,node,s,end,close);
                 p=close+end-p;text_start=p;
             } else p=end;
@@ -1657,6 +1775,7 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
                 const uint32_t node=md_add(d,owners[nested],
                     SALTS_MD_BLOCK_STRIKETHROUGH,0u);
                 if(node==UINT32_MAX) break;
+                md_node_origin(d,node,s+p,close+2u-p,s+p+2u,close-p-2u);
                 if(!md_inline(d,node,s+p+2u,close-(p+2u),
                               depth+nested+1u)) break;
                 p=close+2u;text_start=p;continue;
@@ -1695,6 +1814,7 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
                     const uint32_t node=md_add(d,owners[nested],
                         image?SALTS_MD_BLOCK_IMAGE:SALTS_MD_BLOCK_LINK,0u);
                     if(node!=UINT32_MAX) {
+                        md_node_origin(d,node,s+p,round+1u-p,s+b,square-b);
                         md_meta(d,node,dest,dest_len);
                         if(target.has_title) {
                             const uint32_t title_node=md_add(
@@ -1722,6 +1842,8 @@ static bool md_inline(salts_md_document *d, uint32_t parent,
                         d,owners[nested],
                         image?SALTS_MD_BLOCK_IMAGE:SALTS_MD_BLOCK_LINK,0u);
                     if(node==UINT32_MAX)break;
+                    md_node_origin(d,node,s+p,token_end-p,
+                                   s+opener+1u,first_end-opener-1u);
                     md_meta(d,node,ref->href,ref->href_bytes);
                     if(ref->has_title) {
                         const uint32_t title=md_add(
@@ -2009,8 +2131,11 @@ static bool md_list_begin_atx(salts_md_document *d,md_list_frame *f,
     const unsigned level=md_atx(s,&text_begin,&text_end);
     if(!level) return false;
     const uint32_t heading=md_add(d,f->item,SALTS_MD_BLOCK_HEADING,level);
-    if(heading!=UINT32_MAX)
+    if(heading!=UINT32_MAX) {
+        md_node_origin(d,heading,s+begin,end-begin,
+                       s+text_begin,text_end-text_begin);
         (void)md_inline(d,heading,s+text_begin,text_end-text_begin,0u);
+    }
     f->paragraph=f->code=f->quote=f->quote_paragraph=UINT32_MAX;
     return true;
 }
@@ -2889,6 +3014,7 @@ static bool md_quote_line(salts_md_document *d,md_quote_stack *q,
         if(heading) {
             const uint32_t node=md_add(d,parent,SALTS_MD_BLOCK_HEADING,heading);
             if(node==UINT32_MAX)return false;
+            md_node_origin(d,node,s+begin,line.end-begin,s+hbegin,hend-hbegin);
             q->paragraph=UINT32_MAX;q->lazy=false;
             return md_inline(d,node,s+hbegin,hend-hbegin,0u);
         }
@@ -3790,6 +3916,8 @@ static void md_parse_blocks(salts_md_document *d) {
            md_reference_definition_line(d,line.begin))continue;
         reference_continuation=false;
         if (code_open) {
+            if(d->source_map_limit)
+                d->node_sources[fence.node].raw_end=line.next;
             if (indent<=3 && md_fence_close(s,begin,end,fence)) {
                 code_open=false;
                 continue;
@@ -3806,6 +3934,8 @@ static void md_parse_blocks(salts_md_document *d) {
                 ++removed;
             }
             md_text(d,fence.node,s+content,line.next-content);
+            if(d->source_map_limit)
+                d->node_sources[fence.node].content_end=line.next;
             continue;
         }
         if(md_list_consume(d,&lists,line,&pos,0u)) continue;
@@ -3962,6 +4092,8 @@ static void md_parse_blocks(salts_md_document *d) {
         if (paragraph!=UINT32_MAX && indent<=3 && setext) {
             d->nodes[paragraph].kind=SALTS_MD_BLOCK_HEADING;
             d->nodes[paragraph].heading_level=setext;
+            if(d->source_map_limit && d->node_sources[paragraph].raw_known)
+                d->node_sources[paragraph].raw_end=line.next;
             paragraph=UINT32_MAX;
             continue;
         }
@@ -3975,6 +4107,8 @@ static void md_parse_blocks(salts_md_document *d) {
                 &marker,&run,&info_b,&info_e)) {
             const uint32_t node=md_add(d,0u,SALTS_MD_BLOCK_CODE_FENCE,0);
             if (node==UINT32_MAX) return;
+            md_node_origin(d,node,s+line.begin,line.next-line.begin,
+                           s+line.next,0u);
             md_fence_info_meta(d,node,s+info_b,info_e-info_b);
             fence=(md_fence){marker,run,node};
             root_fence_indent=indent;
@@ -3988,6 +4122,8 @@ static void md_parse_blocks(salts_md_document *d) {
             if (level) {
                 const uint32_t node=md_add(d,0u,SALTS_MD_BLOCK_HEADING,level);
                 if (node==UINT32_MAX) return;
+                md_node_origin(d,node,s+line.begin,line.next-line.begin,
+                               s+hstart,hend-hstart);
                 (void)md_inline(d,node,s+hstart,hend-hstart,0);
                 paragraph=UINT32_MAX;
                 continue;
@@ -4054,10 +4190,16 @@ static void md_parse_blocks(salts_md_document *d) {
         if (paragraph==UINT32_MAX) {
             paragraph=md_add(d,0u,SALTS_MD_BLOCK_PARAGRAPH,0);
             if (paragraph==UINT32_MAX) return;
+            md_node_origin(d,paragraph,s+line.begin,line.next-line.begin,
+                           s+begin,text_end-begin);
         } else if(root) {
             if(!md_root_emit_break(d,paragraph,pending_break))return;
         } else if(md_add(d,paragraph,SALTS_MD_BLOCK_LINE_BREAK,0)==
                   UINT32_MAX)return;
+        if(d->source_map_limit && d->node_sources[paragraph].raw_known) {
+            d->node_sources[paragraph].raw_end=line.next;
+            d->node_sources[paragraph].content_end=text_end;
+        }
         if(!md_inline(d,paragraph,s+begin,text_end-begin,0u))return;
         pending_break=next_break;
     }
@@ -4070,6 +4212,8 @@ void salts_md_document_destroy(salts_md_document *d) {
     free(d->metadata);
     free(d->nodes);
     free(d->node_metadata);
+    free(d->node_sources);
+    free(d->source_map);
     md_reference_clear(d);
     free(d);
 }
@@ -4092,18 +4236,70 @@ salts_md_rich_document_view salts_md_get_document_view(const salts_md_document *
     };
 }
 
-salts_md_status salts_md_parse(const char *input,size_t length,
+salts_md_source_map_view salts_md_get_source_map(const salts_md_document *d) {
+    if(!d || !d->source_map_limit)return (salts_md_source_map_view){0};
+    bool complete=true;
+    for(size_t i=0u;i<d->source_map_count;++i)
+        if(d->source_map[i].origin==SALTS_MD_SOURCE_UNKNOWN)complete=false;
+    return (salts_md_source_map_view){d->source_map,d->source_map_count,
+        d->node_sources,d->node_count,1u,complete};
+}
+
+/* Validate the unpublished map against its owner, including exact literal
+ * bytes and monotonic, nonoverlapping known semantic origins. Node ranges
+ * may nest, but a known content interval must lie within its raw interval. */
+static bool md_map_validate(salts_md_document *d) {
+    if(!d->source_map_limit)return true;
+    size_t semantic_end=0u,raw_end=0u;
+    for(size_t i=0u;i<d->source_map_count;++i) {
+        const salts_md_source_map_entry *m=&d->source_map[i];
+        if(m->semantic_begin!=semantic_end || m->semantic_end<=semantic_end ||
+           m->semantic_end>d->text_size || m->raw_begin>m->raw_end ||
+           m->raw_end>d->raw_size)return false;
+        if(m->origin==SALTS_MD_SOURCE_UNKNOWN) {
+            if(m->raw_begin || m->raw_end)return false;
+        } else {
+            if(m->raw_begin<raw_end || m->raw_begin==m->raw_end)return false;
+            raw_end=m->raw_end;
+            if(m->origin==SALTS_MD_SOURCE_LITERAL) {
+                const size_t n=m->semantic_end-m->semantic_begin;
+                if(n!=m->raw_end-m->raw_begin ||
+                   memcmp(d->text+m->semantic_begin,d->raw+m->raw_begin,n))
+                    return false;
+            } else if(m->origin!=SALTS_MD_SOURCE_TRANSFORMED)return false;
+        }
+        semantic_end=m->semantic_end;
+    }
+    if(semantic_end!=d->text_size)return false;
+    for(size_t i=0u;i<d->node_count;++i) {
+        const salts_md_node_source *n=&d->node_sources[i];
+        if(n->raw_begin>n->raw_end || n->raw_end>d->raw_size ||
+           n->content_begin>n->content_end || n->content_end>d->raw_size ||
+           (!n->raw_known && (n->raw_begin || n->raw_end)) ||
+           (!n->content_known && (n->content_begin || n->content_end)) ||
+           (n->raw_known && n->content_known &&
+            (n->content_begin<n->raw_begin || n->content_end>n->raw_end)))
+            return false;
+    }
+    return true;
+}
+
+static salts_md_status md_parse(const char *input,size_t length,
                              size_t max_nodes,size_t max_source_bytes,
+                             size_t max_map_entries,
                              salts_md_document **out) {
     if (!out) return SALTS_MD_INVALID_ARGUMENT;
     *out=NULL;
     if ((!input && length) || !max_nodes || !max_source_bytes)
         return SALTS_MD_INVALID_ARGUMENT;
     if (length>max_source_bytes || max_nodes>UINT32_MAX ||
-        length==SIZE_MAX) return SALTS_MD_CAPACITY_EXCEEDED;
+        length==SIZE_MAX ||
+        max_map_entries>SIZE_MAX/sizeof(salts_md_source_map_entry))
+        return SALTS_MD_CAPACITY_EXCEEDED;
     salts_md_document *d=(salts_md_document *)calloc(1,sizeof(*d));
     if (!d) return SALTS_MD_OUT_OF_MEMORY;
     d->node_limit=max_nodes;
+    d->source_map_limit=max_map_entries;
     d->raw_size=length;
     d->raw=(char*)malloc(length+1u);
     d->text=(char*)malloc(length+1u);
@@ -4133,6 +4329,7 @@ salts_md_status salts_md_parse(const char *input,size_t length,
         d->collecting_container_definitions=false;
         if(d->error==SALTS_MD_OK && d->discovered_container_definition) {
             d->node_count=d->text_size=d->metadata_size=0u;
+            d->source_map_count=0u;
             d->text[0]=d->metadata[0]='\0';
             if(md_add(d,SALTS_MD_PARENT_NONE,
                       SALTS_MD_BLOCK_DOCUMENT,0u)!=UINT32_MAX)
@@ -4143,9 +4340,12 @@ salts_md_status salts_md_parse(const char *input,size_t length,
      * snapshot is validated or returned. No raw runtime binding persists. */
     md_reference_clear(d);
     if (d->error==SALTS_MD_OK) {
+        md_node_origin(d,0u,d->raw,d->raw_size,d->raw,d->raw_size);
         d->nodes[0].byte_end=d->text_size;
         const salts_md_rich_document_view view=salts_md_get_document_view(d);
         d->error=salts_md_rich_document_validate(&view,max_nodes);
+        if(d->error==SALTS_MD_OK && !md_map_validate(d))
+            d->error=SALTS_MD_INVALID_ARGUMENT;
     }
     if (d->error!=SALTS_MD_OK) {
         const salts_md_status error=d->error;
@@ -4154,4 +4354,20 @@ salts_md_status salts_md_parse(const char *input,size_t length,
     }
     *out=d;
     return SALTS_MD_OK;
+}
+
+salts_md_status salts_md_parse(const char *input,size_t length,
+                             size_t max_nodes,size_t max_source_bytes,
+                             salts_md_document **out) {
+    return md_parse(input,length,max_nodes,max_source_bytes,0u,out);
+}
+
+salts_md_status salts_md_parse_with_source_map(
+    const char *input,size_t length,size_t max_nodes,size_t max_source_bytes,
+    size_t max_map_entries,salts_md_document **out) {
+    if(!max_map_entries) {
+        if(out)*out=NULL;
+        return SALTS_MD_INVALID_ARGUMENT;
+    }
+    return md_parse(input,length,max_nodes,max_source_bytes,max_map_entries,out);
 }
