@@ -158,6 +158,7 @@ typedef struct JinjaTraceSample {
   struct {
     char source[64];
     size_t source_offset;
+    size_t source_end;
     size_t generated_offset;
     size_t generated_bytes;
     JINJA_CMETA_EMIT_KIND kind;
@@ -202,6 +203,7 @@ static int jinja_trace_sample_event(const JINJA_CMETA_EMIT_ANCHOR *event, void *
     memcpy(sample->events[index].source, event->template_name.data, event->template_name.len);
   sample->events[index].source[event->template_name.len] = '\0';
   sample->events[index].source_offset = event->source_offset;
+  sample->events[index].source_end = event->source_end;
   sample->events[index].generated_offset = event->generated_offset;
   sample->events[index].generated_bytes = event->generated_bytes;
   sample->events[index].kind = event->kind;
@@ -270,6 +272,7 @@ spec("Jinja emits bounded original instruction anchors without inventing output 
       check(sample.count >= 3u);
       size_t next = 0u, expression_bytes = 0u, literals = 0u;
       const size_t expression_at = 1u;
+      const size_t expression_end = (size_t)(strstr(source, "}}") - source) + 2u;
       const size_t last_literal_at = sizeof(source) - 2u;
       for (size_t i = 0u; i < sample.count; ++i) {
         check_equal(sample.events[i].generated_offset, next);
@@ -277,10 +280,14 @@ spec("Jinja emits bounded original instruction anchors without inventing output 
         check_equal(strcmp(sample.events[i].source, "studio.ui.xml.jinja"), 0);
         if (sample.events[i].kind == JINJA_CMETA_EMIT_EXPRESSION) {
           check_equal(sample.events[i].source_offset, expression_at);
+          check_equal(sample.events[i].source_end, expression_end);
           expression_bytes += sample.events[i].generated_bytes;
         } else if (sample.events[i].kind == JINJA_CMETA_EMIT_LITERAL) {
           check(sample.events[i].source_offset == 0u ||
                 sample.events[i].source_offset == last_literal_at);
+          check_equal(sample.events[i].source_end,
+              sample.events[i].source_offset == 0u
+                  ? expression_at : sizeof(source) - 1u);
           ++literals;
         } else {
           check_false(true); /* no indirect attribution in this simple source */
@@ -322,6 +329,8 @@ spec("Jinja emits bounded original instruction anchors without inventing output 
         if (sample.events[i].kind == JINJA_CMETA_EMIT_EXPRESSION) {
           ++count;
           check_equal(sample.events[i].source_offset, print_offset);
+          check_equal(sample.events[i].source_end,
+              print_offset + sizeof("{{ user.name }}") - 1u);
         }
       }
       check_equal(count, 2u);
@@ -988,6 +997,121 @@ spec("Jinja M2e empty capture provenance must fail closed") {
     if (status == JINJA_CMETA_OK) {
       check_equal(plain.bytes, 3u);
       check_equal(memcmp(plain.output, "   ", 3u), 0);
+    }
+    jinja_cmeta_release(templ);
+  }
+}
+
+
+/* M2f public source_end is the original instruction's lexical END, not an
+ * output-byte projection. All checks run in the established real Jinja target. */
+spec("Jinja M2f emits bounded half-open ORIGINAL instruction spans") {
+  it("preserves author byte spans across CRLF folding and UTF-8 literals") {
+    static const char source[] =
+        "A\r\n\xE4\xB8\xAD{{ user.name | escape }}Z";
+    static const char output[] = "A\n\xE4\xB8\xADAdaZ";
+    const char *expression = strstr(source, "{{ user.name");
+    check_not_null(expression);
+    if (expression == NULL) return;
+    const size_t expr_begin = (size_t)(expression - source);
+    const size_t expr_end = (size_t)(strstr(expression, "}}") + 2u - source);
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_buf(source, sizeof(source) - 1u), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, sizeof(output) - 1u);
+      check_equal(memcmp(sample.output, output, sample.bytes), 0);
+      check(sample.count >= 3u);
+      size_t emitted = 0u, literal_prefix = 0u;
+      size_t literal_suffix = 0u, expression_count = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, emitted);
+        emitted += sample.events[i].generated_bytes;
+        check(sample.events[i].source_end != SIZE_MAX);
+        check(sample.events[i].source_offset <= sample.events[i].source_end);
+        check(sample.events[i].source_end <= sizeof(source) - 1u);
+        if (sample.events[i].kind == JINJA_CMETA_EMIT_LITERAL &&
+            sample.events[i].source_offset == 0u) {
+          ++literal_prefix;
+          check_equal(sample.events[i].source_end, expr_begin);
+          /* CRLF takes two author bytes but one GENERATED LF byte: a
+           * lexical source interval is not a byte-identity mapping. */
+          check_equal(expr_begin, sample.events[i].generated_bytes + 1u);
+        } else if (sample.events[i].kind == JINJA_CMETA_EMIT_LITERAL &&
+                   sample.events[i].source_offset == expr_end) {
+          ++literal_suffix;
+          check_equal(sample.events[i].source_end, sizeof(source) - 1u);
+        } else if (sample.events[i].kind == JINJA_CMETA_EMIT_EXPRESSION) {
+          ++expression_count;
+          check_equal(sample.events[i].source_offset, expr_begin);
+          check_equal(sample.events[i].source_end, expr_end);
+        } else {
+          check_false(true);
+        }
+      }
+      check_equal(emitted, sample.bytes);
+      check_equal(literal_prefix, 1u);
+      check_equal(literal_suffix, 1u);
+      check_equal(expression_count, 1u);
+    }
+    jinja_cmeta_release(templ);
+  }
+
+  it("keeps print-site lexical ends independent of captured author candidates") {
+    static const char source[] =
+        "{% set label %}<span>x</span>{% endset %}"
+        "{{ label }}";
+    const char *print = strstr(source, "{{ label }}");
+    check_not_null(print);
+    if (print == NULL) return;
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ =
+        jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, sizeof("<span>x</span>") - 1u);
+      check_equal(memcmp(sample.output, "<span>x</span>", sample.bytes), 0);
+      const size_t print_begin = (size_t)(print - source);
+      const size_t print_end = print_begin + sizeof("{{ label }}") - 1u;
+      const size_t body = (size_t)(strstr(source, "<span>x</span>") - source);
+      size_t indirect = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check(sample.events[i].kind == JINJA_CMETA_EMIT_INDIRECT);
+        check_equal(sample.events[i].source_offset, print_begin);
+        check_equal(sample.events[i].source_end, print_end);
+        check_equal(sample.events[i].generated_offset, 0u);
+        check_equal(sample.events[i].generated_bytes, sample.bytes);
+        for (size_t j = 0u; j < sample.events[i].source_range_count; ++j) {
+          const size_t lo = sample.events[i].ranges[j].source_begin;
+          const size_t hi = sample.events[i].ranges[j].source_end;
+          if (lo <= body && hi >= body + sizeof("<span>x</span>") - 1u)
+            ++indirect;
+        }
+      }
+      check(indirect != 0u);
     }
     jinja_cmeta_release(templ);
   }

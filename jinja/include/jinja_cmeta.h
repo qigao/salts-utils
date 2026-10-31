@@ -435,6 +435,17 @@ typedef struct JINJA_CMETA_EMIT_ANCHOR {
   size_t source_range_count;
   size_t intermediate_offset;
   int intermediate_identity;
+  /* Half-open END of the original emitting Jinja INSTRUCTION, in
+   * template_name; source_offset <= source_end. SIZE_MAX means no trustworthy
+   * lexical end. Appended for ABI compatibility with existing field offsets.
+   *
+   * This is instruction COVERAGE, not an original character/byte projection.
+   * For INDIRECT/captured output it is the *emitting statement* only. A
+   * newline-normalized literal or escaped expression can have a different
+   * output byte length. Never add generated_bytes to source_offset to infer
+   * the author source end.
+   */
+  size_t source_end;
 } JINJA_CMETA_EMIT_ANCHOR;
 
 typedef struct JINJA_CMETA_SOURCE_TRACE {

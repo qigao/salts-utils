@@ -10898,6 +10898,9 @@ static int jinja_output_verbatim(const char *text, size_t size, void *opaque) {
     const JINJA_CMETA_EMIT_ANCHOR anchor = {
         .template_name = provider->shared.traced_source_name,
         .source_offset = provider->shared.traced_source_offset,
+        .source_end = provider->shared.traced_source_end >=
+                provider->shared.traced_source_offset
+            ? provider->shared.traced_source_end : SIZE_MAX,
         .generated_offset = provider->shared.traced_bytes,
         .generated_bytes = size,
         .kind = provider->shared.traced_kind,
