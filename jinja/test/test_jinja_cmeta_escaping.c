@@ -749,3 +749,177 @@ spec("Jinja M2c derived strings preserve all candidate source owners") {
   }
 }
 
+
+/* M2c resource and source-span acceptance in the EXISTING native Jinja C11
+ * test. It deliberately does not use the fixed-size diagnostic recorder for
+ * the capacity case: that recorder must not be the reason rendering fails. */
+typedef struct JinjaTraceCountSink {
+  size_t bytes;
+  size_t trace_events;
+  size_t next_generated;
+  int bad_offset;
+} JinjaTraceCountSink;
+
+static int jinja_trace_count_write(const char *bytes, size_t count, void *opaque) {
+  JinjaTraceCountSink *sink = (JinjaTraceCountSink *)opaque;
+  if (sink == NULL || (count != 0u && bytes == NULL) ||
+      count > SIZE_MAX - sink->bytes) return -1;
+  sink->bytes += count;
+  return 0;
+}
+
+static int jinja_trace_count_event(const JINJA_CMETA_EMIT_ANCHOR *event, void *opaque) {
+  JinjaTraceCountSink *sink = (JinjaTraceCountSink *)opaque;
+  if (sink == NULL || event == NULL ||
+      event->generated_offset != sink->next_generated ||
+      event->generated_bytes > SIZE_MAX - sink->next_generated) {
+    if (sink != NULL) sink->bad_offset = 1;
+    return -1;
+  }
+  sink->next_generated += event->generated_bytes;
+  ++sink->trace_events;
+  return 0;
+}
+
+spec("Jinja M2c source ledger resource and lifetime contract") {
+  it("fails source range exhaustion while the same untraced bytes still render") {
+    /* Each chained concat copies accumulated candidate origin intervals and
+     * adds one UNKNOWN. Cumulative intervals exceed max_nodes=64 while the
+     * normal Jinja evaluation of the same small expression stays bounded. */
+    static const char source[] =
+        "{% set label %}x{% endset %}{{ label"
+        " ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-'"
+        " ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-'"
+        " }}";
+    static const char expected[] = "x--------------------";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JINJA_CMETA_RENDER_OPTIONS options = JINJA_CMETA_RENDER_OPTIONS_INIT;
+    options.max_nodes = 64u;
+    options.max_string_bytes = 4096u;
+    JinjaTraceSample baseline = {0};
+    const JINJA_CMETA_RENDERER ordinary = {jinja_trace_sample_write};
+    JINJA_CMETA_STATUS status = jinja_cmeta_render(
+        templ, &model.root_desc, &root, &options, &ordinary, &baseline, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(baseline.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(baseline.output, expected, sizeof(expected) - 1u), 0);
+    }
+    JinjaTraceCountSink count = {0};
+    const JINJA_CMETA_RENDERER counter = {jinja_trace_count_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_count_event};
+    status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, &options, &counter, &count,
+        &trace, &count, &error);
+    check_equal(status, JINJA_CMETA_ERR_CAPACITY);
+    check_equal(error.status, JINJA_CMETA_ERR_CAPACITY);
+    check_equal(count.bad_offset, 0);
+    /* Failure is during intermediate evaluation, before any final sink write;
+     * neither a user callback refusal nor a speculative final trace. */
+    check_equal(count.bytes, 0u);
+    check_equal(count.trace_events, 0u);
+    /* A failed traced call cannot poison another ordinary invocation. */
+    JinjaTraceSample after = {0};
+    status = jinja_cmeta_render(
+        templ, &model.root_desc, &root, &options, &ordinary, &after, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(after.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(after.output, expected, sizeof(expected) - 1u), 0);
+    }
+    jinja_cmeta_release(templ);
+  }
+
+  it("stops a rejected multi-source trace after an accepted final byte write") {
+    static const char source[] =
+        "{% set left %}A{% endset %}{% set right %}B{% endset %}"
+        "{{ left ~ right }}";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample rejected = {.reject_trace = 1};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &rejected,
+        &trace, &rejected, &error);
+    check_equal(status, JINJA_CMETA_ERR_RENDER);
+    check_equal(error.status, JINJA_CMETA_ERR_RENDER);
+    check_equal(rejected.bytes, 2u);
+    check_equal(memcmp(rejected.output, "AB", 2u), 0);
+    check_equal(rejected.count, 0u);
+    JinjaTraceSample admitted = {0};
+    status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &admitted,
+        &trace, &admitted, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(admitted.bytes, 2u);
+      check_equal(admitted.count, 1u);
+      check_equal(admitted.events[0].source_range_count, 2u);
+      check_equal(admitted.events[0].intermediate_identity, 0);
+    }
+    jinja_cmeta_release(templ);
+  }
+
+  it("keeps separate original CRLF and UTF-8 byte coverage through concatenation") {
+    static const char source[] =
+        "{% set first %}\xE4\xB8\xAD\r\nA{% endset %}"
+        "{% set second %}\xF0\x9F\x99\x82{% endset %}"
+        "{{ first ~ second }}";
+    static const char expected[] = "\xE4\xB8\xAD\nA\xF0\x9F\x99\x82";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_buf(source, sizeof(source) - 1u), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(sample.output, expected, sizeof(expected) - 1u), 0);
+      const char *first = strstr(source, "\xE4\xB8\xAD");
+      const char *second = strstr(source, "\xF0\x9F\x99\x82");
+      check_not_null(first);
+      check_not_null(second);
+      const size_t first_offset = (size_t)(first - source);
+      const size_t second_offset = (size_t)(second - source);
+      size_t covered = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].kind, JINJA_CMETA_EMIT_INDIRECT);
+        check_equal(sample.events[i].intermediate_identity, 0);
+        for (size_t j = 0u; j < sample.events[i].source_range_count; ++j) {
+          const size_t start = sample.events[i].ranges[j].source_begin;
+          const size_t end = sample.events[i].ranges[j].source_end;
+          check(end <= sizeof(source) - 1u);
+          if (start <= first_offset && end >= first_offset + sizeof("\xE4\xB8\xAD\r\nA") - 1u)
+            covered |= 1u;
+          if (start <= second_offset && end >= second_offset + sizeof("\xF0\x9F\x99\x82") - 1u)
+            covered |= 2u;
+        }
+      }
+      check_equal(covered, 3u);
+    }
+    jinja_cmeta_release(templ);
+  }
+}
