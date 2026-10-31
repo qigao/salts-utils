@@ -116,20 +116,20 @@ second DataBind candidate generator.
 
 ## M0k Native owned VALUE qualification (not Orbit managed CallPort admission)
 
-The canonical \`NativeSourceIR\` record renderer already emits owning
-\`string\` / \`bytes\` storage as \`databind_native_text\` /
-\`databind_native_bytes\`, plus generated \`<Record>_clone\`,
-\`<Record>_move\`, \`<Record>_clear\` and complete
-\`<Record>_native_cmeta_value_bind\` for a value whose fields have exact
-canonical CMeta lifecycle providers. The \`DataBindNativeExecution.context\`
+The canonical `NativeSourceIR` record renderer already emits owning
+`string` / `bytes` storage as `databind_native_text` /
+`databind_native_bytes`, plus generated `<Record>_clone`,
+`<Record>_move`, `<Record>_clear` and complete
+`<Record>_native_cmeta_value_bind` for a value whose fields have exact
+canonical CMeta lifecycle providers. The `DataBindNativeExecution.context`
 method ABI is orthogonal to that owning storage; it must not invent a
 second callback form, binary serializer, registry or default receiver.
 
-The existing \`test_databind_native_context_v1\` native executable now
-runs an additional \`Counter.Echo: OwnedPacket -> OwnedPacket\` operation,
-where \`OwnedPacket\` has an owning text label and owning raw bytes. Its
+The existing `test_databind_native_context_v1` native executable now
+runs an additional `Counter.Echo: OwnedPacket -> OwnedPacket` operation,
+where `OwnedPacket` has an owning text label and owning raw bytes. Its
 single generated Native method is
-\`int method(void *receiver, const OwnedPacket *, OwnedPacket *)\`.
+`int method(void *receiver, const OwnedPacket *, OwnedPacket *)`.
 The application-owned method uses the **generated clone** to publish
 caller-owned response storage before mutating its exact receiver.
 Two differently bound receivers share the same immutable generated
@@ -141,23 +141,43 @@ acceptance checks:
   must not change the owned request;
 - two responses from separate receivers do not alias request buffers or
   each other; clearing the request does not invalidate either response;
-- \`OwnedPacket_native_cmeta_value_bind\` admits a complete owning VALUE,
+- `OwnedPacket_native_cmeta_value_bind` admits a complete owning VALUE,
   while the original unbound Native execution remains fail-closed;
 - malformed owned inputs reject clone without clearing an earlier
   destination, and application-error invocation does not mutate the
   receiver; moved records reset their source to semantic zero and clear
   twice safely.
 
-**Important boundary:** the actual Orbit \`orbit_call_u64_async\` API and
-\`salts-idlc\` \`[orbit(method,event)]\` projection still accept **only a
-single required uint64** on each side. Even with \`native_context(1)\`,
-owned \`string\` / \`bytes\` are rejected by Orbit codegen. Native
-execution's \`OwnedPacket\` is not yet an Actor-owned request, and its
-caller-owned response is not a CallPort managed response. A later Orbit
-change must add explicit copy/move/destroy on the existing bounded slot,
-generation-checked cancellation and failure-atomic cleanup **before**
-exposing managed VALUE client calls. A new secondary parser, scheduler or
-unbounded per-message pointer borrow is forbidden.
+**M0k.2a is complete as a separate Orbit Core prerequisite:** Orbit
+Draft #27 has a bounded owning CMeta VALUE slot and an independent
+post-commit execution borrow pin in the **original** CallPort, qualified
+on Salts4/ServiceHost ABI2. The CFlow mailbox still only copies the uint64
+token. That installed runtime API is not a second dispatcher or generator.
+
+**M0k.2b generated opt-in:** with exactly one Service operation declaring
+`[orbit(method,event), native_context(1), orbit_value(request_max,response_max)]`,
+the single canonical NativeSourceIR compiler may now project owning
+`string`/`bytes`-only Request/Response messages into:
+- the original immutable Orbit CFlow Event/method identity (still a uint64 token);
+- a caller-address-stable pair of CMeta VALUE binders and an explicit-budget
+  `__orbit_port_init_value` helper;
+- a typed `__orbit_call_async` using the existing bounded Core VALUE slot
+  and its borrowed typed callback (valid only until callback return);
+- one post-commit `__orbit_dispatch` using the original business symbol,
+  `orbit_call_value_begin/stage_reply/end/observe` and generated
+  `Record_clear` to release the app-owned response on success **or stale**.
+
+This is a deliberately **single-managed-method-per-Service** opt-in. It
+rejects a missing/duplicate/overflowing `orbit_value` annotation, unsupported
+`native_context` version, optional/nullable, nested/collection, typed errors
+and mixed scalar/managed Services before output publication. Ordinary scalar
+Service wrappers and unannotated Native/Plugin artifacts are unchanged.
+No new parser, transport, FunctionAbi, runtime or DSO loader is introduced.
+
+M0k.2b is **not** accepted for product use until the generated managed
+header compiles/runs inside a genuine installed Salts4 Orbit application
+and the N/N+1 Provider DSO cancellation/retirement gates pass. Upstream
+compiler CI alone is not proof of downstream memory safety.
 
 This qualification is placed in the existing SaltsUtils native compiler
 tests and primary CI. It adds no new project, CTest executable, alternate
