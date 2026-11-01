@@ -61,3 +61,9 @@
 - Close the source nupkg before `os.replace` when rewriting Unix executable
   bits. Unix permits replacement through an open archive, but Windows rejects
   it with `ERROR_ACCESS_DENIED`; keep the cross-platform regression test.
+- Published SaltsCore/CMeta Windows SDKs use the LLVM-MinGW UCRT ABI. Every
+  SaltsUtils Windows CI producer, including the private GmSSL/Crypto build,
+  must use the pinned `setup-llvm-mingw` toolchain and
+  `qigao-x64-windows-llvm-mingw` triplet. Activating VSDevCmd or producing
+  `.lib` archives mixes MSVC with dependency `.a` files and fails at link time
+  on MinGW runtime symbols such as `___chkstk_ms` and `__imp__setjmp`.
