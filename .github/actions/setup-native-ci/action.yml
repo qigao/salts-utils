@@ -2,9 +2,9 @@ name: Native CI dependencies with curl
 description: Pinned vcpkg contract and GitHub package downloads without Mono, NuGet or .NET.
 inputs:
   contract-ref:
-    description: Immutable qigao/vcpkg-cache contract commit.
+    description: Versioned qigao/vcpkg-cache source contract Release tag.
     required: false
-    default: 529019437597fa71f7d8dcc561d26fc7b0603ae6
+    default: v0.1.0
   re2c:
     description: Restore the host re2c package in this job.
     required: false
