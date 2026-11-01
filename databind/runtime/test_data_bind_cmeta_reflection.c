@@ -1,7 +1,7 @@
 #include "data_bind.h"
 #include "tinytest.h"
 #include <cmeta/data.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <string.h>
 
 /* Mutations caught: the legacy flag/string classifier masks canonical kind;

@@ -1,4 +1,4 @@
-#include <salts/plugin.h>
+#include <cmeta/plugin.h>
 #include <data_bind_plugin_catalog.h>
 #include <tinytest.h>
 

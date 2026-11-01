@@ -2407,6 +2407,44 @@ spec("tbe_compiler") {
       cleanup_test_file(old_temp_path);
     }
 
+    it("should render a valid Windows output without nesting temporary suffixes") {
+#ifdef _WIN32
+      char current_directory[MAX_PATH];
+      char output_path[MAX_PATH];
+      const char *template_path = "test_tbe_compiler_bounded_temp.mustache";
+      const DWORD current_length =
+          GetCurrentDirectoryA((DWORD)sizeof(current_directory), current_directory);
+      const size_t desired_absolute_length = MAX_PATH - 40u;
+      Node *root = create_node_map(NULL);
+      char *output = NULL;
+
+      check_true(current_length > 0u && current_length < sizeof(current_directory));
+      check_true(desired_absolute_length > (size_t)current_length + 8u);
+      check_not_null(root);
+      if (current_length > 0u && current_length < sizeof(current_directory) &&
+          desired_absolute_length > (size_t)current_length + 8u && root != NULL) {
+        const size_t name_length =
+            desired_absolute_length - (size_t)current_length - 1u;
+        memset(output_path, 'x', name_length);
+        memcpy(output_path + name_length - 4u, ".out", 5u);
+        cleanup_test_file(template_path);
+        cleanup_test_file(output_path);
+        check_equal(write_test_file(template_path, "bounded-path-output"), 0);
+        check_equal(
+            tbe_compiler_render_file(root, template_path, output_path), 0);
+        output = tt_read_file(output_path, NULL);
+        check_not_null(output);
+        if (output != NULL) check_equal(output, "bounded-path-output");
+        free(output);
+        cleanup_test_file(template_path);
+        cleanup_test_file(output_path);
+      }
+      node_free(root);
+#else
+      check_true(1);
+#endif
+    }
+
     it("preserves output on template failure and releases render state before retry") {
       const char *template_path = "test_tbe_compiler_invalid_template.mustache";
       const char *output_path = "test_tbe_compiler_preserved_output.out";

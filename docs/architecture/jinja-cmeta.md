@@ -417,7 +417,7 @@ compile 调用内创建长度有界且 NUL 结尾的 scratch copy，再进行词
 ## 架构影响与验证
 
 `jinja/` 独立拥有 `Salts::JinjaCMeta` target、源码、测试和 README，公开依赖
-`Salts::Mustache`、`Salts::CMeta` 和 `Salts::Core`。依赖只从 Jinja 指向 Mustache；
+`Salts::Mustache`、`CMeta::CMeta` 和 `Salts::Core`。依赖只从 Jinja 指向 Mustache；
 `mustache/` 不引用 Jinja 文件或 target。现有 target 名、DLL/import library 名、C API、
 状态码和运行时行为不变。public header 安装到 `include/jinja/jinja_cmeta.h`，target-based
 consumer 继续使用 `#include <jinja_cmeta.h>`。

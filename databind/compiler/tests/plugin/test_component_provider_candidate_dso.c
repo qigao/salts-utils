@@ -1,8 +1,8 @@
 #include "contract_plugin.component.h"
 
-#include <salts/component_runtime_abi.h>
-#include <salts/plugin.h>
-#include <salts/service_host.h>
+#include <cmeta/service_host_abi.h>
+#include <cmeta/plugin.h>
+#include <cmeta/service_host.h>
 #include <salts/thread.h>
 #include <salts/clock.h>
 

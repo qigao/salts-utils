@@ -37,7 +37,7 @@ target_include_directories(${TARGET_NAME} PRIVATE ${SIMDE_INCLUDE_DIRS})
 
 # Link dependencies
 target_link_libraries(${TARGET_NAME}
-  PRIVATE Salts::CSTL
+  PRIVATE CMeta::CSTL
   PUBLIC Salts::Core Salts::JsonParser)
 if(UNIX)
   target_link_libraries(${TARGET_NAME} PRIVATE m)

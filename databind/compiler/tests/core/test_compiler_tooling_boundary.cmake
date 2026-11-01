@@ -45,7 +45,7 @@ foreach(DIRECT IN ITEMS
 endforeach()
 
 string(FIND "${COMPILER_CMAKE}"
-  "Salts::PluginABI \${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core"
+  "CMeta::PluginABI \${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core"
   BOUNDARY_USE_POS)
 if(BOUNDARY_USE_POS EQUAL -1)
   message(FATAL_ERROR

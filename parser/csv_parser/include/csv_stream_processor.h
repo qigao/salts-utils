@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include "csv_parser.h"
-#include "platform.h"
+#include <salts/platform.h>
 
 #ifdef __cplusplus
 extern "C" {

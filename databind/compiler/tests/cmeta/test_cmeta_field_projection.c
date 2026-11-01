@@ -283,9 +283,9 @@ suite("compiler_cmeta_field_projection") {
                         "deferred_container");
             check_null(field_projection_text(states, "native_cstl_set"));
             check_equal(field_projection_text(map, "native_map_key_type_ref"),
-                        "SALTS_TSTR_CMETA_TYPE_REF");
+                        "CMETA_TSTR_TYPE_REF");
             check_equal(field_projection_text(map, "native_map_key_data_ref"),
-                        "SALTS_TSTR_CMETA_DATA_REF");
+                        "CMETA_TSTR_DATA_REF");
             check_equal(field_projection_text(map, "native_map_value_type_symbol"),
                         "Item_CMETA_TYPE");
             check_equal(field_projection_text(map, "native_map_value_data_symbol"),

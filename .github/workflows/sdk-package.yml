@@ -31,8 +31,6 @@ jobs:
         test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake
         test -f package/sdk/linux-x64/include/data_bind_binding_plan.h
         test -f package/sdk/linux-x64/include/data_bind_cmeta_adapter_plan.h
-        test -f package/sdk/linux-x64/include/salts_capture.h
-        test -f package/sdk/linux-x64/include/salts_playback.h
         test -f package/sdk/linux-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
         test -f package/sdk/linux-arm64/lib/cmake/SaltsUtils/IDL.cmake
         test -f package/sdk/linux-arm64/include/data_bind_binding_plan.h
@@ -43,29 +41,14 @@ jobs:
         test -f package/sdk/linux-arm64/include/data_bind_plugin_catalog.h
         test -f package/sdk/linux-arm64/include/data_bind_plugin_execution.h
         test -f package/sdk/linux-arm64/bin/salts-idlc
-        test ! -e package/sdk/linux-arm64/include/salts_capture.h
         test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
         test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/IDL.cmake
         test -f package/sdk/windows-x64/include/data_bind_binding_plan.h
         test -f package/sdk/windows-x64/include/data_bind_cmeta_adapter_plan.h
-        test -f package/sdk/windows-x64/include/salts_capture.h
-        test -f package/sdk/windows-x64/include/salts_playback.h
-        test -f package/sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
-        test -f package/sdk/android-arm64-v8a/include/data_bind_binding_plan.h
-        test -f package/sdk/android-arm64-v8a/include/data_bind_cmeta_adapter_plan.h
-        test -f package/sdk/android-arm64-v8a/include/salts_capture.h
-        test -f package/sdk/android-arm64-v8a/include/salts_playback.h
-        rid=ios-arm64
-        test -f "package/sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-        test -f "package/sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake"
-        test -f "package/sdk/$rid/include/data_bind_binding_plan.h"
-        test -f "package/sdk/$rid/include/data_bind_cmeta_adapter_plan.h"
-        test -f "package/sdk/$rid/include/salts_capture.h"
-        test -f "package/sdk/$rid/include/salts_playback.h"
-        test ! -e "package/sdk/$rid/bin/salts-idlc"
-        test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
-        test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
-        test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 6
+        test -f package/sdk/android-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
+        test -f package/sdk/android-arm64/include/data_bind_binding_plan.h
+        test -f package/sdk/android-arm64/include/data_bind_cmeta_adapter_plan.h
+        test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 5
     - uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
@@ -123,8 +106,6 @@ jobs:
         grep -Fx "sdk/linux-x64/include/data_bind_native_binding.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/linux-x64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/linux-x64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/linux-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/linux-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/linux-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/linux-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/linux-arm64/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
@@ -135,43 +116,18 @@ jobs:
         grep -Fx "sdk/linux-arm64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/linux-arm64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/linux-arm64/include/data_bind_plugin_execution.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        if grep -Fxq "sdk/linux-arm64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
-          echo "Linux arm64 focused profile must not claim unwarmed capture support" >&2
-          exit 1
-        fi
         grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/windows-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/windows-x64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/windows-x64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/windows-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/windows-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        rid=ios-arm64
-        grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        if grep -Fxq "sdk/$rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
-          echo "target iOS RID must not package host salts-idlc: $rid" >&2
-          exit 1
-        fi
+        grep -Fx "sdk/android-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/android-arm64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/android-arm64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/android-arm64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/android-arm64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         mac_rid=macos-arm64
         grep -Fx "sdk/$mac_rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/$mac_rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$mac_rid/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$mac_rid/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$mac_rid/lib/libsalts_capture.dylib" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$mac_rid/lib/libsalts_playback.dylib" "$RUNNER_TEMP/salts-utils-nupkg.txt"
     - uses: actions/upload-artifact@v4
       with:
         name: salts-utils-native-nuget

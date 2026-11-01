@@ -35,12 +35,12 @@ The **default source-only** qualification runs the generator and checks
 complete FR2/ProviderBinding emission and negative shape admission. The
 **real DSO qualification is a separate explicit opt-in**:
 `-DDATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO=ON`, and requires the
-exact source-built upstream `Salts::ComponentProviderABI` and
-`Salts::ServiceHost` targets; missing targets are a configuration error,
+exact installed `CMeta::ServiceHostProviderABI` and
+`CMeta::ServiceHost` targets; missing targets are a configuration error,
 not permission to invent duplicate ABI headers or a fallback runtime. When
 those targets are supplied, C11/C++17 and real Plugin load/lease,
 Configurator graph, typed invocation, Scope BUSY→drain and unload are exercised. Candidate
-runtime ownership stays in Salts. Public `salts-idlc` flags and CMake
+runtime ownership stays in CMeta. Public `salts-idlc` flags and CMake
 `salts_idl_target` semantics remain unchanged until a separate integration
 review grants an additive opt-in artifact entry.
 
@@ -71,8 +71,8 @@ compiler/runtime code. The exact-source Provider gate pins current Salts master
 `a6f49357b8886cecf2badd4896b04b4e0547f1be`, replacing the previous pin
 `a51947d241a60bc92e92efa8fd6de1d0bb2fbac2` and the older pre-ServiceHost
 source `23032bfe124df327317ce9b4d132054e99b2c0cb`. It builds and installs the
-canonical `Salts::Configurator`, `Salts::ServiceHost`, and
-`Salts::ComponentProviderABI` from that exact source, verifies installed ABI
+canonical `CMeta::Configurator`, `CMeta::ServiceHost`, and
+`CMeta::ServiceHostProviderABI` from that exact source, verifies installed ABI
 epoch/layout markers and exported targets, then compiles the generated
 Provider DSO and host against those installed exports.
 
@@ -87,22 +87,12 @@ also passed its recorded exact-head gates at `8ec8c58b3a798d1920bf8e1d93a8b76994
 and [normal five-platform CI #39789468953](https://github.com/qigao/salts-utils/actions/runs/39789468953).
 These source-built results do not qualify a published SDK.
 
-## Immutable published-SDK gate — still blocked
+## Current SDK boundary
 
-The published Salts.Native `v2.3.0-rc.17` does not contain
-`component-runtime/include/salts/service_host.h`; the
-`v2.3.0-rc.18` tag is not present yet. The next release must pass Salts'
-tag-scoped six-RID installed ServiceHost ABI, package/manifest provenance,
-formal and benchmark gates. Then this consumer must build against that exact
-published asset and pass installed C11/C++17 and real Provider DSO
-admission/invocation/stop-drain/unload tests.
-
-Release execution remains blocked by [Salts #1267](https://github.com/qigao/salts/issues/1267):
-the current Salts `master` reports `protected: false`, branch protection is
-disabled, and no repository rulesets are present. Repository administration
-must enable and verify protection before an immutable release tag is created.
-No release tag, package publication, production switch, or merge is authorized
-by this test-only candidate.
+Provider metadata and runtime contracts come from `CMeta.Native`; the C11
+runtime utilities come from `SaltsCore.Native`. This repository validates the
+provider behavior in its normal CTest graph and does not maintain a separate
+published-SDK consumer gate.
 
 **DRAFT / DO NOT MERGE / DO NOT PUBLISH** until the immutable published-SDK
 and downstream consumer gates are complete.

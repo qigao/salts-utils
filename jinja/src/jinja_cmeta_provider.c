@@ -10,7 +10,7 @@
 #include "jinja_float.h"
 #include "parser/jinja_text_lexer.h"
 
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <cmeta/object_scope.h>
 #include <cmeta/scope.h>
 #include <salts_unicode.h>

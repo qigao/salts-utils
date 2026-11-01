@@ -4,7 +4,7 @@
 #include "data_bind_plugin_catalog.h"
 #include "data_bind_native_binding.h"
 
-#include <salts/plugin.h>
+#include <cmeta/plugin.h>
 
 #include <stddef.h>
 #include <string.h>

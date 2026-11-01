@@ -7,7 +7,7 @@
  */
 #include <cflow/io_actor.h>
 #include <cflow/io_native_adapter.h>
-#include <salts/process.h>
+#include <cflow/process.h>
 #include <salts/clock.h>
 #include <salts/error_codes.h>
 #include <salts/thread.h>
@@ -145,16 +145,16 @@ static void fault_collect_stats(void *user) {
   }
 }
 
-static void fault_process_options(cmeta_process_options_t *options) {
+static void fault_process_options(salts_process_options_t *options) {
 #if defined(_WIN32)
   static const char *args[] = {
       "-NoProfile", "-Command",
       "[Console]::OpenStandardInput().CopyTo([Console]::OpenStandardOutput())", NULL};
-  cmeta_process_options_init(options);
+  salts_process_options_init(options);
   options->program = "powershell.exe";
   options->args = args;
 #else
-  cmeta_process_options_init(options);
+  salts_process_options_init(options);
   options->program = "/bin/cat";
   options->args = NULL;
 #endif
@@ -195,7 +195,7 @@ static int fault_drive_to_quiescence(cflow_process *process) {
 
 spec("CFlow Process private lifecycle faults") {
   it("closes admission and requests termination after actor close error") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     fault_probe probe = {0};
     cflow_process_config config = fault_config(&probe);
@@ -222,7 +222,7 @@ spec("CFlow Process private lifecycle faults") {
      * already have received its termination request (before a second close). */
     {
       const uint64_t started = cmeta_hrtime();
-      cmeta_process_result_t terminal;
+      salts_process_result_t terminal;
       int poll_status;
       do {
         poll_status = cflow_process_poll(&process, &terminal);
@@ -245,7 +245,7 @@ spec("CFlow Process private lifecycle faults") {
   }
 
   it("retains a delivered lease while Actor acknowledgment repeatedly fails") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     fault_probe probe = {0};
     cflow_process_config config = fault_config(&probe);
@@ -302,7 +302,7 @@ spec("CFlow Process private lifecycle faults") {
   }
 
   it("returns promptly from each shutdown step while a delivered lease is stuck") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     fault_probe probe = {0};
     cflow_process_config config = fault_config(&probe);
@@ -375,7 +375,7 @@ spec("CFlow Process private lifecycle faults") {
   }
 
   it("publishes consistent status snapshots to a concurrent observer during close") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     fault_probe probe = {0};
     cflow_process_config config = fault_config(&probe);
@@ -432,7 +432,7 @@ spec("CFlow Process private lifecycle faults") {
   }
 
   it("refuses Process destruction during a live driver turn") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     fault_probe probe = {0};
     cflow_process_config config = fault_config(&probe);
@@ -468,7 +468,7 @@ spec("CFlow Process private lifecycle faults") {
     cflow_process_retainer_token token = {0};
     cflow_process_retainer_token second = {0};
     cflow_process process = {0};
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     fault_probe *probe = (fault_probe *)calloc(1u, sizeof(*probe) + 8u);
     cflow_process_config config;
     cflow_process_submit_result read;
@@ -558,7 +558,7 @@ spec("CFlow Process private lifecycle faults") {
     cflow_process_retainer owner = {0};
     cflow_process_retainer_token token = {0};
     cflow_process process = {0};
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     fault_probe *probe = (fault_probe *)calloc(1u, sizeof(*probe) + 8u);
     cflow_process_config config;
     cflow_process_submit_result read;
@@ -607,7 +607,7 @@ spec("CFlow Process private lifecycle faults") {
       cflow_process_retainer owner = {0};
       cflow_process_retainer_token token = {0};
       cflow_process process = {0};
-      cmeta_process_options_t options;
+      salts_process_options_t options;
       fault_probe *probe = (fault_probe *)calloc(1u, sizeof(*probe) + 8u);
       cflow_process_config config;
       cflow_process_submit_result read;
@@ -661,7 +661,7 @@ spec("CFlow Process private lifecycle faults") {
   }
 
   it("reports persistent NativeIO observe faults without discarding the read") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     fault_probe probe = {0};
     cflow_process_config config = fault_config(&probe);

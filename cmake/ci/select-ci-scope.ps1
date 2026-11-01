@@ -20,31 +20,19 @@ if (-not $full) {
   if ($LASTEXITCODE -ne 0) { throw 'Could not determine changed files' }
 }
 
-# Package-only work is safe to split only for this explicit, narrow allowlist.
-# CI scope selection, CMake/build files, headers/sources and unknown paths must
-# continue to select the full native graph. Release preparation always selects
-# the full six-RID matrix, regardless of which files changed.
-$packagingOnlyPath = '^(packaging/nuget/|cmake/ci/github_packages(_test)?\.py$|\.github/scripts/(test-release-asset-identity|verify-release-asset-identity)\.sh$|\.github/workflows/(sdk-package|native-sdk-release|release-from-actions)\.yml$)'
-$nonDocChanges = @($changed | Where-Object {
-  $_ -notmatch '^(docs/|.*\.md$|LICENSE$|NOTICE$|\.gitignore$|\.editorconfig$)'
-})
-$packagingOnly = $false
-if (-not $full -and $EventName -ne 'workflow_dispatch' -and $nonDocChanges.Count -gt 0) {
-  $packagingOnly = @($nonDocChanges | Where-Object {
-    $_ -notmatch $packagingOnlyPath
-  }).Count -eq 0
-}
-$native = $full -or ($nonDocChanges.Count -gt 0 -and -not $packagingOnly)
-$runPackagingContract = $packagingOnly -or @($changed | Where-Object {
-  $_ -match $packagingOnlyPath -or $_ -in @('cmake/ci/select-ci-scope.ps1', '.github/workflows/ci.yml')
-}).Count -gt 0
+# Documentation and release-packaging-only changes do not compile product
+# code. CMake/build files, headers/sources and unknown paths remain
+# conservative and select the full native graph. Manual release preparation
+# always selects every release RID.
+$nonNativePath = '^(docs/|.*\.md$|LICENSE$|NOTICE$|\.gitignore$|\.editorconfig$|packaging/nuget/|cmake/ci/github_packages(_test)?\.py$|\.github/scripts/(test-release-asset-identity|verify-release-asset-identity)\.sh$|\.github/workflows/(sdk-package|native-sdk-release)\.yml$)'
+$nativeChanges = @($changed | Where-Object { $_ -notmatch $nonNativePath })
+$native = $full -or $nativeChanges.Count -gt 0
 
 $profiles = @(
   @{ id='linux-release'; runner='ubuntu-24.04'; family='linux'; rid='linux-x64'; host='linux-x64'; triplet='x64-linux'; host_triplet='x64-linux'; preset='ci-native-release-user' },
-  @{ id='windows-release'; runner='windows-2025'; family='windows'; rid='windows-x64'; host='windows-x64'; triplet=''; host_triplet=''; preset='ci-win-release-user' },
+  @{ id='windows-release'; runner='windows-2025'; family='windows'; rid='windows-x64'; host='windows-x64'; triplet='qigao-x64-windows-llvm-mingw'; host_triplet='qigao-x64-windows-llvm-mingw'; preset='ci-win-release-user' },
   @{ id='macos-release'; runner='macos-15'; family='mac'; rid='macos-arm64'; host='macos-arm64'; triplet='arm64-osx'; host_triplet='arm64-osx'; preset='ci-macos-release-user' },
-  @{ id='android-release'; runner='ubuntu-24.04'; family='android'; rid='android-arm64-v8a'; host='linux-x64'; triplet='arm64-android'; host_triplet='x64-linux'; preset='ci-android-sdk-release-user' },
-  @{ id='ios-release'; runner='macos-15'; family='ios'; rid='ios-arm64'; host='macos-arm64'; triplet='arm64-ios'; host_triplet='arm64-osx'; sysroot='iphoneos'; preset='ci-ios-sdk-release-user' }
+  @{ id='android-release'; runner='ubuntu-24.04'; family='android'; rid='android-arm64'; host='linux-x64'; triplet='arm64-android'; host_triplet='x64-linux'; preset='ci-android-sdk-release-user' }
 )
 if ($releaseQualification) {
   $profiles += @{ id='linux-arm64-release'; runner='ubuntu-24.04-arm'; family='linux'; rid='linux-arm64'; host='linux-arm64'; triplet='arm64-linux'; host_triplet='arm64-linux'; preset='ci-native-minimal-release-user' }
@@ -53,7 +41,7 @@ $builds = @()
 $tests = @()
 if ($native) {
   foreach ($profile in $profiles) {
-    $profile.cross = $profile.family -in @('android', 'ios')
+    $profile.cross = $profile.family -eq 'android'
     $profile.package = $releaseQualification
     $profile.build_dir = switch ($profile.id) {
       'windows-release' { 'build/ci-win-release' }
@@ -70,8 +58,6 @@ $outputs = [ordered]@{
   tests = ConvertTo-Json -Depth 5 -Compress -InputObject @{ include = @($tests) }
   has_builds = ($builds.Count -gt 0).ToString().ToLowerInvariant()
   has_tests = ($tests.Count -gt 0).ToString().ToLowerInvariant()
-  packaging_only = $packagingOnly.ToString().ToLowerInvariant()
-  run_packaging_contract = $runPackagingContract.ToString().ToLowerInvariant()
 }
 foreach ($key in $outputs.Keys) {
   Write-Output "$key=$($outputs[$key])"

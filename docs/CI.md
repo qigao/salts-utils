@@ -83,10 +83,9 @@ Windows 恢复原 triplet，通过 preset 的 PATH 选择依赖；不手工复�
 的发布入口提交 `c259f4c6fabc8c5d4c9663c44c5cb738519f5c30` 合并，保留双方历史。
 已发布 tag 和包保持不可变；本次同步不发布稳定包，也不包含 Unicode 所有权迁移。
 
-主线继续通过 `Salts.Native` 的 `Version="*"` 和 `--no-cache --force-evaluate`
-解析最新稳定 SDK。RC 分支曾为六平台验收选择 Salts 2.3.0 周期的正式 RC 包；
-该版本周期限制不带入 master，避免未来发布后仍停留在 2.3.0。RC tag 的成功 CI
-只能证明其原始组合，合并结果必须重新通过完整原生构建与 CTest。
+主线分别恢复 `SaltsCore.Native`、`CMeta.Native` 与 `SaltsUtils.Native`，并将
+Core/CMeta 安装根作为两个独立依赖传给 configure。旧单体 `Salts.Native` 不再是
+构建或发布入口；合并结果必须重新通过完整原生构建与 CTest。
 
 `release/salts-utils-4.3-idlc-606` 的 RC 版本后缀与打包触发条件继续限定在该分支；
 普通 master push 不发布 SDK。手动发布仍保留既有 tag 不可变、精确来源验收与

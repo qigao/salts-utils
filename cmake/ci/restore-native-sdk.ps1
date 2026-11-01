@@ -36,10 +36,12 @@ if ($Local) {
     New-Item -ItemType Junction -Path $link -Target $target | Out-Null
     return $link
   }
-  $env:SALTS_ROOT = Set-LocalPackageLink "salts/$SaltsRid" $resolved.SALTS_ROOT
-  $env:SALTS_HOST_ROOT = Set-LocalPackageLink "salts/$Re2cRid" $resolved.SALTS_HOST_ROOT
+  $env:SALTSCORE_ROOT = Set-LocalPackageLink "saltscore/$SaltsRid" $resolved.SALTSCORE_ROOT
+  $env:SALTSCORE_HOST_ROOT = Set-LocalPackageLink "saltscore/$Re2cRid" $resolved.SALTSCORE_HOST_ROOT
+  $env:CMETA_ROOT = Set-LocalPackageLink "cmeta/$SaltsRid" $resolved.CMETA_ROOT
+  $env:CMETA_HOST_ROOT = Set-LocalPackageLink "cmeta/$Re2cRid" $resolved.CMETA_HOST_ROOT
   $env:RE2C_ROOT = Set-LocalPackageLink "re2c/$Re2cRid" $resolved.RE2C_ROOT
   $env:QIGAO_NUGET_PACKAGES = $packages
   if ($WithTurboWasm) { $env:TURBOWASM_ROOT = $resolved.TURBOWASM_ROOT }
 }
-Write-Host "restored Salts.Native $($resolved.SALTS_VERSION) with curl for $SaltsRid"
+Write-Host "restored SaltsCore.Native $($resolved.SALTSCORE_VERSION) and CMeta.Native $($resolved.CMETA_VERSION) with curl for $SaltsRid"

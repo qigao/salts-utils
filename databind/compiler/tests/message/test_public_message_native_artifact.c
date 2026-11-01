@@ -281,9 +281,9 @@ spec("DataBind public Message native artifact") {
     check_true(cmeta_type_equal(
         value.values.raw.element_type, &cmeta_type_uint32));
     check_true(cmeta_type_equal(
-        value.tags.raw.element_type, SALTS_TSTR_CMETA_TYPE_REF));
+        value.tags.raw.element_type, CMETA_TSTR_TYPE_REF));
     check_true(cmeta_type_equal(
-        value.attrs.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF));
+        value.attrs.raw.key_type, CMETA_TSTR_TYPE_REF));
     check_true(cmeta_type_equal(
         value.attrs.raw.value_type, &cmeta_type_uint32));
 
@@ -377,10 +377,10 @@ spec("DataBind public Message native artifact") {
 
     check_equal(Event_counters_map_t_map_data.kind, CMETA_DATA_MAP);
     check_equal(Event_aliases_map_t_map_data.kind, CMETA_DATA_MAP);
-    check_true(cmeta_data_desc_equal(counter_key, SALTS_TSTR_CMETA_DATA_REF));
+    check_true(cmeta_data_desc_equal(counter_key, CMETA_TSTR_DATA_REF));
     check_true(cmeta_data_desc_equal(counter_value, &cmeta_data_uint32));
-    check_true(cmeta_data_desc_equal(alias_key, SALTS_TSTR_CMETA_DATA_REF));
-    check_true(cmeta_data_desc_equal(alias_value, SALTS_TSTR_CMETA_DATA_REF));
+    check_true(cmeta_data_desc_equal(alias_key, CMETA_TSTR_DATA_REF));
+    check_true(cmeta_data_desc_equal(alias_value, CMETA_TSTR_DATA_REF));
 
     check_not_null(alpha);
     check_not_null(beta);
@@ -391,9 +391,9 @@ spec("DataBind public Message native artifact") {
     check_equal(Event_aliases_map_t_init(&aliases, 4u), STL_OK);
     {
       const cmeta_type_desc *counter_arguments[] = {
-          SALTS_TSTR_CMETA_TYPE_REF, &cmeta_type_uint32};
+          CMETA_TSTR_TYPE_REF, &cmeta_type_uint32};
       const cmeta_type_desc *alias_arguments[] = {
-          SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_TYPE_REF};
+          CMETA_TSTR_TYPE_REF, CMETA_TSTR_TYPE_REF};
       check_generated_generic_field(
           event_data, "counters", &stl_map_generic_desc,
           counter_arguments, 2u);
@@ -475,7 +475,7 @@ spec("DataBind public Message native artifact") {
     check_equal(Event_ids_set_t_collection_data.kind, CMETA_DATA_SET);
     check_equal(Event_tags_set_t_collection_data.kind, CMETA_DATA_SET);
     check_true(cmeta_data_desc_equal(id_element, &cmeta_data_uint32));
-    check_true(cmeta_data_desc_equal(tag_element, SALTS_TSTR_CMETA_DATA_REF));
+    check_true(cmeta_data_desc_equal(tag_element, CMETA_TSTR_DATA_REF));
 
     check_equal(Event_cmeta_data(&event_data, &generic_error), DATA_BIND_OK);
     check_not_null(event_data);
@@ -494,7 +494,7 @@ spec("DataBind public Message native artifact") {
       check_equal(Event_tags_set_t_init(&tags, 4u), STL_OK);
       {
         const cmeta_type_desc *tag_arguments[] = {
-            SALTS_TSTR_CMETA_TYPE_REF};
+            CMETA_TSTR_TYPE_REF};
         check_generated_generic_field(
             event_data, "tags", &stl_set_generic_desc, tag_arguments, 1u);
       }
@@ -544,7 +544,7 @@ spec("DataBind public Message native artifact") {
         cmeta_data_collection_element_data(&Event_labels_vec_t_collection_data);
 
     check_true(cmeta_data_desc_equal(value_element, &cmeta_data_uint32));
-    check_true(cmeta_data_desc_equal(label_element, SALTS_TSTR_CMETA_DATA_REF));
+    check_true(cmeta_data_desc_equal(label_element, CMETA_TSTR_DATA_REF));
     check_equal(Event_cmeta_data(&event_data, &generic_error), DATA_BIND_OK);
     check_not_null(event_data);
     check_equal(Event_values_vec_t_init(&values, 4u), STL_OK);
@@ -561,7 +561,7 @@ spec("DataBind public Message native artifact") {
       check_equal(Event_labels_vec_t_init(&labels, 4u), STL_OK);
       {
         const cmeta_type_desc *label_arguments[] = {
-            SALTS_TSTR_CMETA_TYPE_REF};
+            CMETA_TSTR_TYPE_REF};
         check_generated_generic_field(
             event_data, "labels", &stl_vec_generic_desc, label_arguments, 1u);
       }

@@ -1,5 +1,6 @@
 #include "data_bind_value_reader.h"
 #include <tinytest.hpp>
+#include <cstring>
 #include <type_traits>
 
 static_assert(std::is_standard_layout<DataBindValueReaderLimits>::value,
@@ -29,7 +30,8 @@ spec("DataBind value reader public C++ boundary") {
     check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
     check_equal(token.kind, CSERDE_STRING);
     check_equal(token.value.slice.size, sizeof("C++ reader") - 1u);
-    check_equal(token.value.slice.data, "C++ reader", token.value.slice.size);
+    check_equal(std::memcmp(token.value.slice.data, "C++ reader",
+                            token.value.slice.size), 0);
     check_equal(cserde_reader_next(reader, &token), CSERDE_DONE);
     data_bind_value_reader_close(reader);
     data_bind_value_free(value);

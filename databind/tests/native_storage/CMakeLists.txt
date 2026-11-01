@@ -57,7 +57,7 @@ set_tests_properties(test_data_bind_native_control_records PROPERTIES
 
 cmake_add_test(test_data_bind_native_collection_message
   SOURCES native_collection_message_test.c
-  LIBS Salts::DataBind Salts::CSTL Salts::TinyTest
+  LIBS Salts::DataBind CMeta::CSTL Salts::TinyTest
   FOLDER "databind/tests")
 set_tests_properties(test_data_bind_native_collection_message PROPERTIES
   LABELS "databind;cmeta;native;collection" TIMEOUT 60)
@@ -71,14 +71,14 @@ set_tests_properties(test_data_bind_native_ownership_boundary PROPERTIES
 
 cmake_add_test(test_data_bind_native_bytes_json
   SOURCES native_bytes_json_test.c
-  LIBS Salts::DataBind Salts::CSTL Salts::TinyTest
+  LIBS Salts::DataBind CMeta::CSTL Salts::TinyTest
   FOLDER "databind/tests")
 set_tests_properties(test_data_bind_native_bytes_json PROPERTIES
   LABELS "databind;cmeta;native;bytes;json" TIMEOUT 60)
 
 cmake_add_test(test_data_bind_native_value_reader
   SOURCES native_value_reader_test.c
-  LIBS Salts::DataBind Salts::CSTL Salts::TinyTest
+  LIBS Salts::DataBind CMeta::CSTL Salts::TinyTest
   FOLDER "databind/tests")
 set_tests_properties(test_data_bind_native_value_reader PROPERTIES
   LABELS "databind;cmeta;native;dynamic;ownership" TIMEOUT 60)

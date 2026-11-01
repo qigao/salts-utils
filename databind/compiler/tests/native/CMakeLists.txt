@@ -112,7 +112,7 @@ cmake_add_test(test_databind_service_native_lowering
     "${DATABIND_SERVICE_NATIVE_SOURCE}"
   LIBS
     Salts::DataBind
-    Salts::CFlow
+    CMeta::CFlow
     Salts::TinyTest
   INCLUDES
     "${DATABIND_SERVICE_NATIVE_TEST_DIR}"

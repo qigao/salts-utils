@@ -50,6 +50,13 @@ set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "cmake")
 
 include(CMakeOptions.cmake)
 
+# The reduced production graph is C11-only, but its public-header contract
+# tests intentionally compile both C and C++. Enable C++ only for that test
+# surface instead of pulling the full C++ module graph into the subset.
+if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET AND BUILD_TESTS)
+  enable_language(CXX)
+endif()
+
 if(BUILD_TESTS)
   enable_testing()
 endif()
@@ -72,38 +79,33 @@ set_target_properties(run-program PROPERTIES FOLDER "Tools")
 
 find_package(Threads REQUIRED)
 
-if(NOT DEFINED ENV{SALTS_ROOT} OR NOT IS_DIRECTORY "$ENV{SALTS_ROOT}")
-  message(FATAL_ERROR "SALTS_ROOT must name the restored Salts SDK; run cmake/ci/restore-native-sdk first")
-endif()
-# A previous configure must not keep selecting an older restored SDK.
-file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" SALTS_ROOT_PATH)
-unset(Salts_DIR CACHE)
-unset(Salts_DIR)
-find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
-             NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-# SHA256, Ed448, SM3, X.509 and TLS are sourced solely from qigao/crypto.
-# No fallback implementation or local Crypto target may be built by Utils.
-# For cross-compilation, do not re-root the explicitly provisioned Crypto
-# SDK through the Android/iOS/vcpkg sysroot. Do not search another provider.
-if(DEFINED ENV{CRYPTO_ROOT} AND NOT "$ENV{CRYPTO_ROOT}" STREQUAL "")
-  file(TO_CMAKE_PATH "$ENV{CRYPTO_ROOT}" SALTS_UTILS_CRYPTO_ROOT)
-  if(NOT EXISTS "${SALTS_UTILS_CRYPTO_ROOT}/lib/cmake/Crypto/CryptoConfig.cmake")
-    message(FATAL_ERROR "CRYPTO_ROOT must point to the installed static Crypto SDK")
+foreach(_dependency_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
+  if(NOT DEFINED ENV{${_dependency_root}} OR
+     NOT IS_DIRECTORY "$ENV{${_dependency_root}}")
+    message(FATAL_ERROR
+      "${_dependency_root} must name the restored SDK; run cmake/ci/restore-native-sdk first")
   endif()
-  find_package(Crypto 0.1 CONFIG REQUIRED
-    PATHS "${SALTS_UTILS_CRYPTO_ROOT}"
-    NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-  unset(SALTS_UTILS_CRYPTO_ROOT)
-else()
-  find_package(Crypto 0.1 CONFIG REQUIRED)
-endif()
+endforeach()
+# Previous configures must not keep selecting an older or monolithic SDK.
+file(TO_CMAKE_PATH "$ENV{SALTSCORE_ROOT}" SALTSCORE_ROOT_PATH)
+file(TO_CMAKE_PATH "$ENV{CMETA_ROOT}" CMETA_ROOT_PATH)
+unset(SaltsCore_DIR CACHE)
+unset(SaltsCore_DIR)
+unset(CMeta_DIR CACHE)
+unset(CMeta_DIR)
+find_package(SaltsCore 0.1 CONFIG REQUIRED PATHS "${SALTSCORE_ROOT_PATH}"
+             NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+find_package(CMeta 0.1 CONFIG REQUIRED PATHS "${CMETA_ROOT_PATH}"
+             NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+# ASN.1, Crypto, native FS/Process and other base utilities come from the one
+# SaltsCore SDK. CMeta/CFlow/CSTL come only from the independent CMeta SDK.
 if(NOT TARGET Salts::Crypto)
-  message(FATAL_ERROR "Canonical Salts::Crypto static SDK is required")
+  message(FATAL_ERROR "Canonical SaltsCore Salts::Crypto owner is required")
 endif()
 get_target_property(_crypto_kind Salts::Crypto TYPE)
 get_target_property(_crypto_imported Salts::Crypto IMPORTED)
 if(NOT _crypto_imported OR NOT _crypto_kind STREQUAL "STATIC_LIBRARY")
-  message(FATAL_ERROR "Salts::Crypto must be the imported static Crypto package owner")
+  message(FATAL_ERROR "Salts::Crypto must be the imported static SaltsCore owner")
 endif()
 unset(_crypto_kind)
 unset(_crypto_imported)
@@ -119,6 +121,7 @@ if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
   add_subdirectory(parser/query_vm)
   add_subdirectory(parser/json_parser)
   add_subdirectory(parser/cyaml)
+  add_subdirectory(cflow-fs)
   add_subdirectory(cflow-process)
   add_subdirectory(behavior-tree)
 else()
@@ -128,14 +131,6 @@ else()
   add_subdirectory(cflow-fs)
   add_subdirectory(cflow-process)
   add_subdirectory(behavior-tree)
-  if(SALTS_UTILS_ENABLE_CAPTURE)
-    add_subdirectory(playback)
-    add_subdirectory(capture)
-  endif()
-  add_subdirectory(salts_serial)
-  if(SALTS_UTILS_ENABLE_CFLOW_USB)
-    add_subdirectory(cflow-usb)
-  endif()
   add_subdirectory(cron)
   add_subdirectory(mustache)
 endif()

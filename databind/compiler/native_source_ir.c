@@ -856,7 +856,7 @@ static int native_source_ir_render(
   if (!has_unsupported_reflection) {
   if (!failed && fprintf(out,
       "#ifdef DATABIND_NATIVE_ENABLE_CMETA\n"
-      "#include <cmeta_cmeta_data.h>\n"
+      "#include <cmeta/core_data.h>\n"
       "#ifdef DATABIND_NATIVE_ENABLE_DATABIND\n"
       "#include <data_bind_native_binding.h>\n"
       "#endif /* DATABIND_NATIVE_ENABLE_DATABIND */\n") < 0)

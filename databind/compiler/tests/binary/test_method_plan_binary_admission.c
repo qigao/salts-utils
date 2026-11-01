@@ -2,7 +2,7 @@
 #include "method_plan_projection.h"
 #include "binary_contract_overlay.h"
 
-#include "cmeta_fs.h"
+#include "salts/fs.h"
 #include "tinytest.h"
 
 #include <stdlib.h>
@@ -13,11 +13,11 @@
 #endif
 
 static int file_contains(const char *path, const char *needle) {
-  cmeta_fs_buf_t buffer = {0};
+  salts_fs_buf_t buffer = {0};
   int found = 0;
-  if (cmeta_fs_read_file(path, &buffer) == 0 && buffer.base != NULL)
+  if (salts_fs_read_file(path, &buffer) == 0 && buffer.base != NULL)
     found = strstr(buffer.base, needle) != NULL;
-  cmeta_fs_buf_free(&buffer);
+  salts_fs_buf_free(&buffer);
   return found;
 }
 
@@ -47,7 +47,7 @@ spec("DataBind generated Binary MethodPlan admission") {
     databind_compiler_projection_backend backend =
         databind_compiler_rpc_method_plan_backend();
 
-    (void)cmeta_fs_unlink(output);
+    (void)salts_fs_unlink(output);
     check_equal(
         databind_compiler_parse_contract_file(
             BINARY_ADMISSION_SCHEMA, &root, &contract, &schema_data),
@@ -73,9 +73,9 @@ spec("DataBind generated Binary MethodPlan admission") {
             &input, &request, 1u, &backend, 1u),
         0);
     check_equal(
-        cmeta_fs_access(output, SALTS_FS_ACCESS_EXISTS),
+        salts_fs_access(output, SALTS_FS_ACCESS_EXISTS),
         0);
-    (void)cmeta_fs_unlink(output);
+    (void)salts_fs_unlink(output);
 
     /*
      * The same canonical Service contract is legal, but Choice has no
@@ -86,7 +86,7 @@ spec("DataBind generated Binary MethodPlan admission") {
         databind_compiler_projection_run(
             &input, &request, 1u, &backend, 1u),
         -1);
-    check(cmeta_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
     {
       static const char opaque_output[] =
@@ -115,7 +115,7 @@ spec("DataBind generated Binary MethodPlan admission") {
       databind_compiler_projection_backend http_backend =
           databind_compiler_http_method_plan_backend();
 
-      (void)cmeta_fs_unlink(opaque_output);
+      (void)salts_fs_unlink(opaque_output);
       check_equal(
           databind_compiler_projection_run(
               &input, &http_request, 1u, &http_backend, 1u),
@@ -126,7 +126,7 @@ spec("DataBind generated Binary MethodPlan admission") {
           opaque_output, "DATA_BIND_OPAQUE_STATE_VALUE, 64u"));
       check(file_contains(
           opaque_output, "&opaque_admission_opaque_plan"));
-      (void)cmeta_fs_unlink(opaque_output);
+      (void)salts_fs_unlink(opaque_output);
 
       http_operation.service_name = "BinaryGate";
       http_operation.operation_name = "Use";
@@ -135,7 +135,7 @@ spec("DataBind generated Binary MethodPlan admission") {
           databind_compiler_projection_run(
               &input, &http_request, 1u, &http_backend, 1u),
           -1);
-      check(cmeta_fs_access(opaque_output, SALTS_FS_ACCESS_EXISTS) != 0);
+      check(salts_fs_access(opaque_output, SALTS_FS_ACCESS_EXISTS) != 0);
     }
 
     databind_binary_format_plan_destroy(&format_plan);

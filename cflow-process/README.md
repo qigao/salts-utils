@@ -1,10 +1,10 @@
 # CFlowProcess
 
-`Salts::Process` combines the existing Core process owner with the
-CFlow Actor over the canonical NativeIO pipe adapter. It is a separate target because Core already uses
-CFlow internally; placing this adapter in CFlow would create a dependency cycle.
+`Salts::CFlowProcess` combines SaltsCore's `Salts::Process` owner with the
+CFlow Actor over the canonical NativeIO pipe adapter. It is a separate target
+because SaltsCore must not depend on CMeta/CFlow.
 
-The adapter owns one `cmeta_process_t`, three parent-side asynchronous pipe
+The adapter owns one `salts_process_t`, three parent-side asynchronous pipe
 endpoints, one fixed-capacity NativeIO adapter, one manual Executor, one IO Actor,
 and exactly `request_capacity` operation slots. It never exposes raw endpoints,
 captures output into an unbounded buffer, or creates a second process state
@@ -40,7 +40,7 @@ authoritative operation completion has been delivered and acknowledged.
 ## Complete lifecycle example
 
 ```c
-#include <salts/process.h>
+#include <cflow/process.h>
 
 #include <salts/clock.h>
 #include <salts/error_codes.h>
@@ -62,12 +62,12 @@ static void completed(void *user, cflow_io_request_id request_id,
 int main(void) {
     cflow_process process = {0};
     cflow_process_config config = {0};
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     const uint64_t deadline_ns = UINT64_C(5000000000);
     uint64_t started;
     int status;
 
-    cmeta_process_options_init(&options);
+    salts_process_options_init(&options);
 #if defined(_WIN32)
     {
         static const char *args[] = {
@@ -120,7 +120,7 @@ Build consumers with:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED)
-target_link_libraries(app PRIVATE Salts::Process)
+target_link_libraries(app PRIVATE Salts::CFlowProcess)
 ```
 
 The cross-platform capability matrix, state machines, ownership proofs, and

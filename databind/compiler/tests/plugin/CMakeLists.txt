@@ -17,7 +17,7 @@ target_compile_features(test_databind_contract_plugin_lease_c11 PRIVATE c_std_11
 target_compile_definitions(test_databind_contract_plugin_lease_c11 PRIVATE
   GENERATED_CONTRACT_PLUGIN_PATH="$<TARGET_FILE:databind_contract_plugin_lease_fixture_plugin>")
 target_link_libraries(test_databind_contract_plugin_lease_c11 PRIVATE
-  databind_contract_plugin_lease_fixture_plugin_client Salts::Plugin)
+  databind_contract_plugin_lease_fixture_plugin_client CMeta::Plugin)
 add_dependencies(test_databind_contract_plugin_lease_c11
   databind_contract_plugin_lease_fixture_plugin
   databind_contract_plugin_lease_fixture_plugin_client)
@@ -84,10 +84,10 @@ if("Salts::IDL"
   message(FATAL_ERROR
           "generated Plugin client must not link Salts::IDL")
 endif()
-if(NOT "Salts::Plugin"
+if(NOT "CMeta::Plugin"
        IN_LIST _databind_plugin_generated_client_links)
   message(FATAL_ERROR
-          "generated Plugin client must link Salts::Plugin")
+          "generated Plugin client must link CMeta::Plugin")
 endif()
 if(NOT "Salts::DataBind"
        IN_LIST _databind_plugin_generated_client_links)
@@ -280,7 +280,7 @@ cmake_add_executable(databind_component_candidate_codegen_tool
     "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c"
     "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c"
   LIBS
-    Salts::IDL ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core Salts::PluginABI
+    Salts::IDL ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core CMeta::PluginABI
   INCLUDES
     "${DATABIND_SOURCE_ROOT}/idl/contract"
     "${DATABIND_COMPILER_SOURCE_DIR}"
@@ -331,10 +331,10 @@ set_source_files_properties(
 option(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO
   "Run source-qualified canonical Salts ServiceHost Provider DSO tests" OFF)
 if(DATABIND_ENABLE_COMPONENT_PROVIDER_CANDIDATE_DSO)
-  if(NOT TARGET Salts::ComponentProviderABI OR
-     NOT TARGET Salts::ServiceHost)
+  if(NOT TARGET CMeta::ServiceHostProviderABI OR
+     NOT TARGET CMeta::ServiceHost)
     message(FATAL_ERROR
-      "ComponentProvider DSO gate requires exact Salts::ComponentProviderABI and Salts::ServiceHost targets; no fallback or shadow ABI allowed")
+      "ComponentProvider DSO gate requires exact CMeta::ServiceHostProviderABI and CMeta::ServiceHost targets; no fallback or shadow ABI allowed")
   endif()
 add_library(databind_component_candidate_provider SHARED
   "${_databind_component_candidate_header}"
@@ -346,7 +346,7 @@ target_compile_features(databind_component_candidate_provider PRIVATE c_std_11)
 target_include_directories(databind_component_candidate_provider PRIVATE
   "${_databind_component_candidate_dir}")
 target_link_libraries(databind_component_candidate_provider PRIVATE
-  Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
+  CMeta::ServiceHostProviderABI CMeta::PluginABI CMeta::CMeta Salts::DataBind)
 set_target_properties(databind_component_candidate_provider PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   PREFIX "" OUTPUT_NAME "contract_component_candidate"
@@ -362,7 +362,7 @@ target_compile_definitions(test_databind_component_candidate_dso_c11 PRIVATE
   GENERATED_COMPONENT_PROVIDER_PATH="$<TARGET_FILE:databind_component_candidate_provider>"
   DATABIND_COMPONENT_PROVIDER_STRICT_SOURCE=1)
 target_link_libraries(test_databind_component_candidate_dso_c11 PRIVATE
-  Salts::ServiceHost Salts::Plugin Salts::Platform Salts::CMeta Salts::DataBind)
+  CMeta::ServiceHost CMeta::Plugin Salts::Platform CMeta::CMeta Salts::DataBind)
 set_target_properties(test_databind_component_candidate_dso_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   FOLDER "databind/compiler/tests/plugin")
@@ -403,7 +403,7 @@ foreach(mode IN ITEMS export contract binding)
   target_include_directories(databind_component_candidate_bad_${mode}_provider
     PRIVATE "${_databind_component_candidate_dir}")
   target_link_libraries(databind_component_candidate_bad_${mode}_provider PRIVATE
-    Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta Salts::DataBind)
+    CMeta::ServiceHostProviderABI CMeta::PluginABI CMeta::CMeta Salts::DataBind)
   set_target_properties(databind_component_candidate_bad_${mode}_provider PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     PREFIX "" OUTPUT_NAME "contract_component_candidate_bad_${mode}"
@@ -415,7 +415,7 @@ add_library(databind_component_candidate_bad_kind_provider SHARED
 target_compile_features(databind_component_candidate_bad_kind_provider
   PRIVATE c_std_11)
 target_link_libraries(databind_component_candidate_bad_kind_provider PRIVATE
-  Salts::ComponentProviderABI Salts::PluginABI Salts::CMeta)
+  CMeta::ServiceHostProviderABI CMeta::PluginABI CMeta::CMeta)
 set_target_properties(databind_component_candidate_bad_kind_provider PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   PREFIX "" OUTPUT_NAME "contract_component_candidate_bad_kind"
@@ -433,7 +433,7 @@ target_compile_definitions(test_databind_component_candidate_negative_dso_c11
   DATABIND_COMPONENT_PROVIDER_BAD_BINDING_DSO_PATH="$<TARGET_FILE:databind_component_candidate_bad_binding_provider>"
   DATABIND_COMPONENT_PROVIDER_BAD_KIND_DSO_PATH="$<TARGET_FILE:databind_component_candidate_bad_kind_provider>")
 target_link_libraries(test_databind_component_candidate_negative_dso_c11 PRIVATE
-  Salts::ServiceHost Salts::Plugin Salts::CMeta Salts::DataBind)
+  CMeta::ServiceHost CMeta::Plugin CMeta::CMeta Salts::DataBind)
 add_dependencies(test_databind_component_candidate_negative_dso_c11
   databind_component_candidate_provider
   databind_component_candidate_bad_export_provider
@@ -456,7 +456,7 @@ add_dependencies(test_databind_component_candidate_header_cpp
 target_include_directories(test_databind_component_candidate_header_cpp PRIVATE
   "${_databind_component_candidate_dir}")
 target_link_libraries(test_databind_component_candidate_header_cpp PRIVATE
-  Salts::ComponentProviderABI Salts::CMeta Salts::DataBind)
+  CMeta::ServiceHostProviderABI CMeta::CMeta Salts::DataBind)
 set_target_properties(test_databind_component_candidate_header_cpp PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
   FOLDER "databind/compiler/tests/plugin")

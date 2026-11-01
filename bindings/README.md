@@ -156,9 +156,9 @@ when packaging the bindings. Validation now traverses export metadata at
 registration; invocation reuses the existing conversion/call adapters. No
 performance improvement is claimed.
 
-Focused Windows validation (after configuring `win-capture-release-user`):
+Windows validation uses the normal native Release graph:
 
 ```powershell
-cmake --build --preset win-capture-release-user --target salts_native_c_frontend_test salts_native_cpp_frontend_test
-ctest --preset win-capture-release-user -R "^salts_native_(c|cpp)_frontend_test$"
+cmake --build --preset ci-native-release-user
+ctest --preset ci-native-release-user -R "^salts_native_(c|cpp)_frontend_test$" --output-on-failure
 ```

@@ -2,7 +2,7 @@
 #include "binary_layout_ir.h"
 #include "opaque_plan_codegen.h"
 
-#include "cmeta_fs.h"
+#include "salts/fs.h"
 #include "cmeta_uuid.h"
 
 #include <stdio.h>
@@ -118,8 +118,8 @@ static int projection_commit_atomic(
     const char *output, char *temp, FILE *file, int success) {
   int result = -1;
   if (file != NULL && fclose(file) != 0) success = 0;
-  if (success && cmeta_fs_rename(temp, output) == SALTS_OK) result = 0;
-  if (result != 0 && temp != NULL) (void)cmeta_fs_unlink(temp);
+  if (success && salts_fs_rename(temp, output) == SALTS_OK) result = 0;
+  if (result != 0 && temp != NULL) (void)salts_fs_unlink(temp);
   free(temp);
   return result;
 }

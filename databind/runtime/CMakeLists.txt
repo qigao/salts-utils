@@ -84,10 +84,10 @@ target_link_libraries(
     databind_binary_contract
   PUBLIC
     Salts::Core
-    Salts::CMeta
-    Salts::CSTL
+    CMeta::CMeta
+    CMeta::CSTL
     Salts::CSerde
-    Salts::CFlow)
+    CMeta::CFlow)
 
 if(BUILD_TESTS)
   get_target_property(DATA_BIND_PUBLIC_LINKS
@@ -114,7 +114,7 @@ target_include_directories(data_bind_plugin
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>)
 target_link_libraries(data_bind_plugin
-  INTERFACE Salts::DataBind Salts::Plugin)
+  INTERFACE Salts::DataBind CMeta::Plugin)
 cmake_config_target(
   data_bind_plugin
   ALIAS Salts::DataBindPlugin

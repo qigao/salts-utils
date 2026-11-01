@@ -23,7 +23,7 @@
 #include "data_bind_value_reader_internal.h"
 #include "data_bind_cmeta.h"
 #include <cmeta/data_reflect.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include "data_bind_message_plan.h"
 #include <json_parser.h>
 #include <csv_parser.h>
@@ -33,9 +33,9 @@
 #include <xml_parser/xml_parser.h>
 #include <xml_parser/xml_sax.h>
 #include <query_vm.h>
-#include <cmeta_fs.h>
+#include <salts/fs.h>
 #include <tstr.h>
-#include <cmeta_thread.h>
+#include <salts/thread.h>
 #include <cmeta_uuid.h>
 #include <cstl.h>
 #include <cstl/typed.h>
@@ -5729,7 +5729,7 @@ static DataBindStatus data_bind_create_from_root(
 DataBindStatus data_bind_create(
     const char *schema_path, DataBind **out_codec,
     DataBindError *error) {
-  cmeta_fs_buf_t schema = {NULL, 0};
+  salts_fs_buf_t schema = {NULL, 0};
   Node *schema_root;
   IdlContract *contract = NULL;
   DataBindStatus status;
@@ -5740,7 +5740,7 @@ DataBindStatus data_bind_create(
         error, DATA_BIND_ERR_INVALID_ARG, schema_path, -1, -1,
         "Invalid codec create arguments");
 
-  if (cmeta_fs_read_file(schema_path, &schema) != 0)
+  if (salts_fs_read_file(schema_path, &schema) != 0)
     return db_error_set(
         error, DATA_BIND_ERR_IO, schema_path, -1, -1,
         "Cannot read schema: %s", schema_path);
@@ -5748,7 +5748,7 @@ DataBindStatus data_bind_create(
   schema_root = parse_schema_text_to_root(
       schema.base, schema.len, schema_path, NULL, 0, error);
   if (schema_root == NULL) {
-    cmeta_fs_buf_free(&schema);
+    salts_fs_buf_free(&schema);
     return db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
   }
 
@@ -5756,13 +5756,13 @@ DataBindStatus data_bind_create(
       schema.base, schema.len, schema_path, &contract, error);
   if (status != DATA_BIND_OK) {
     node_free(schema_root);
-    cmeta_fs_buf_free(&schema);
+    salts_fs_buf_free(&schema);
     return status;
   }
 
   status = data_bind_create_from_root(
       schema_root, contract, out_codec, error);
-  cmeta_fs_buf_free(&schema);
+  salts_fs_buf_free(&schema);
   return status;
 }
 
@@ -8412,7 +8412,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
   data_bind_stream_t *parser = (data_bind_stream_t *)stream;
   DataBindError *error = parser ? parser->error : NULL;
   char *chunk = NULL;
-  cmeta_file_t fd;
+  salts_file_t fd;
   DataBindStatus status;
   int close_rc;
 
@@ -8420,7 +8420,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_feed_file", -1, -1,
                         "Invalid stream file feed arguments");
   }
-  fd = cmeta_fs_open(file_path, SALTS_FS_O_RDONLY, 0);
+  fd = salts_fs_open(file_path, SALTS_FS_O_RDONLY, 0);
   if (fd == SALTS_INVALID_FILE) {
     return db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                         "Failed to open stream input file");
@@ -8428,14 +8428,14 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
 
   chunk = (char *)malloc(DATA_BIND_FILE_STREAM_CHUNK_SIZE);
   if (chunk == NULL) {
-    cmeta_fs_close(fd);
+    salts_fs_close(fd);
     return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed_file", -1, -1,
                         "Out of memory allocating stream file chunk");
   }
 
   status = DATA_BIND_OK;
   for (;;) {
-    int nread = cmeta_fs_read(fd, chunk, DATA_BIND_FILE_STREAM_CHUNK_SIZE);
+    int nread = salts_fs_read(fd, chunk, DATA_BIND_FILE_STREAM_CHUNK_SIZE);
     if (nread < 0) {
       status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                             "Failed to read stream input file");
@@ -8447,7 +8447,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
   }
 
   free(chunk);
-  close_rc = cmeta_fs_close(fd);
+  close_rc = salts_fs_close(fd);
   if (status == DATA_BIND_OK && close_rc != 0) {
     status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                           "Failed to close stream input file");
@@ -10594,8 +10594,8 @@ typedef struct data_bind_csv_cell {
 /* Each cell owns both strings, including partially filled cells on failure. */
 #define DATA_BIND_CSV_CELL_ID "salts-utils.databind.csv-cell"
 cmeta_reflect_value(data_bind_csv_cell_t, DATA_BIND_CSV_CELL_ID,
-    cmeta_data_field(tstr, path, SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
-    cmeta_data_field(tstr, text, SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+    cmeta_data_field(tstr, path, CMETA_TSTR_DATA_REF, CMETA_TSTR_TYPE_REF)
+    cmeta_data_field(tstr, text, CMETA_TSTR_DATA_REF, CMETA_TSTR_TYPE_REF)
 );
 CMETA_DEFINE_DATA_TRAITS(data_bind_csv_cell_t, cmeta_reflected_data(data_bind_csv_cell_t));
 static const cmeta_type_identity DATA_BIND_CSV_CELL_IDENTITY =

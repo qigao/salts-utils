@@ -1,7 +1,7 @@
 #include "binary_layout_ir.h"
 #include "schema_cmeta.h"
 #include "schema_size.h"
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 
 #include <limits.h>
 #include <stdint.h>

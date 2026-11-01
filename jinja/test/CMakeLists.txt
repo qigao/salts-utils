@@ -34,11 +34,11 @@ foreach(test_source IN LISTS JINJA_CMETA_CASE_SOURCES)
   set_tests_properties(${test_target} PROPERTIES LABELS "jinja;cmeta;unit")
 endforeach()
 
-target_link_libraries(test_jinja_cmeta_collections PRIVATE Salts::CSTL)
+target_link_libraries(test_jinja_cmeta_collections PRIVATE CMeta::CSTL)
 
 cmake_add_test(test_jinja_cmeta_cstl_collections
   SOURCES test_jinja_cmeta_cstl_collections.c
-  LIBS Salts::JinjaCMeta Salts::CSTL Salts::TinyTest
+  LIBS Salts::JinjaCMeta CMeta::CSTL Salts::TinyTest
   INCLUDES ${TEST_INCLUDES}
   FOLDER "jinja/tests")
 set_tests_properties(test_jinja_cmeta_cstl_collections
@@ -71,7 +71,7 @@ foreach(test_source IN LISTS JINJA_EXPRESSION_TEST_SOURCES)
             ../src/jinja_float.c
             ${JINJA_EXPRESSION_LEXER_GEN}
             ${JINJA_EXPRESSION_GRAMMAR_GEN}
-    LIBS Salts::Core Salts::Unicode Salts::CSTL Salts::TinyTest
+    LIBS Salts::Core Salts::Unicode CMeta::CSTL Salts::TinyTest
     INCLUDES ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR}/../src/parser
              ${CMAKE_CURRENT_BINARY_DIR}/..
     FOLDER "jinja/tests")
@@ -91,7 +91,7 @@ foreach(test_source IN LISTS JINJA_TEMPLATE_TEST_SOURCES)
             ${JINJA_EXPRESSION_LEXER_GEN}
             ${JINJA_EXPRESSION_GRAMMAR_GEN}
             ${JINJA_TEMPLATE_LEXER_GEN}
-    LIBS Salts::Core Salts::Unicode Salts::CSTL Salts::TinyTest
+    LIBS Salts::Core Salts::Unicode CMeta::CSTL Salts::TinyTest
     INCLUDES ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR}/../src/parser
              ${CMAKE_CURRENT_BINARY_DIR}/..
     FOLDER "jinja/tests")
@@ -118,7 +118,7 @@ foreach(test_source IN LISTS JINJA_NATIVE_TEST_SOURCES)
             ../src/parser/jinja_template_parser.c ../src/parser/jinja_expression_parser.c
             ${JINJA_TEXT_LEXER_GEN}
             ${JINJA_EXPRESSION_LEXER_GEN} ${JINJA_EXPRESSION_GRAMMAR_GEN} ${JINJA_TEMPLATE_LEXER_GEN}
-    LIBS Salts::CMeta Salts::Core Salts::CSTL Salts::Unicode Salts::TinyTest
+    LIBS CMeta::CMeta Salts::Core CMeta::CSTL Salts::Unicode Salts::TinyTest
     INCLUDES ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR}/../src/parser ${CMAKE_CURRENT_BINARY_DIR}/..
     FOLDER "jinja/tests")
   add_dependencies(${test_target} jinja_text_lexer_codegen)
@@ -136,14 +136,14 @@ set_tests_properties(test_jinja_environment PROPERTIES LABELS "jinja;environment
 
 cmake_add_test(test_jinja_value_storage
   SOURCES test_jinja_value_storage.c ../src/jinja_cmeta_cells.c
-  LIBS Salts::JinjaCMeta Salts::CSTL Salts::TinyTest
+  LIBS Salts::JinjaCMeta CMeta::CSTL Salts::TinyTest
   INCLUDES ${TEST_INCLUDES}
   FOLDER "jinja/tests")
 set_tests_properties(test_jinja_value_storage PROPERTIES LABELS "jinja;storage;unit")
 
 cmake_add_test(test_jinja_text_storage
   SOURCES test_jinja_text_storage.c
-  LIBS Salts::JinjaCMeta Salts::CSTL Salts::TinyTest
+  LIBS Salts::JinjaCMeta CMeta::CSTL Salts::TinyTest
   INCLUDES ${TEST_INCLUDES}
   FOLDER "jinja/tests")
 set_tests_properties(test_jinja_text_storage PROPERTIES LABELS "jinja;storage;unit")

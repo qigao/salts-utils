@@ -63,7 +63,7 @@
             "cacheVariables": {
                 "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
                 "VCPKG_TARGET_TRIPLET": "$env{QIGAO_TARGET_TRIPLET}",
-                "VCPKG_HOST_TRIPLET": "$env{QIGAO_TARGET_TRIPLET}"
+                "VCPKG_HOST_TRIPLET": "$env{QIGAO_HOST_TRIPLET}"
             },
             "environment": {
                 "PKG_ROOT": "${sourceDir}/stage",
@@ -80,50 +80,41 @@
             "binaryDir": "$env{SALTS_UTILS_CI_BUILD_ROOT}",
             "description": "Release SDK packaging retains the existing stage/sdk/<RID> installation contract.",
             "cacheVariables": {
-                "CMAKE_PREFIX_PATH": "$env{CRYPTO_ROOT};$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}",
+                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/sdk/$env{QIGAO_SDK_RID}",
-                "SALTS_UTILS_ENABLE_CAPTURE": false,
                 "BUILD_TESTS": false,
                 "BUILD_BENCHMARKS": false,
                 "BUILD_EXAMPLES": false,
                 "ENABLE_SANITIZER_ADDRESS": false,
-                "ENABLE_SANITIZER_UNDEFINED": false,
-                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
+                "ENABLE_SANITIZER_UNDEFINED": false
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}",
-                "LD_LIBRARY_PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}",
-                "DYLD_LIBRARY_PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{DYLD_LIBRARY_PATH}"
-            }
-        },
-        {
-            "name": "ci-sdk-capture-release-user",
-            "inherits": "ci-sdk-release-user",
-            "cacheVariables": {
-                "SALTS_UTILS_ENABLE_CAPTURE": true,
-                "VCPKG_MANIFEST_FEATURES": "capture"
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}",
+                "LD_LIBRARY_PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/lib${pathListSep}$env{CMETA_ROOT}/lib${pathListSep}$env{SALTSCORE_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}",
+                "DYLD_LIBRARY_PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/lib${pathListSep}$env{CMETA_ROOT}/lib${pathListSep}$env{SALTSCORE_ROOT}/lib${pathListSep}$penv{DYLD_LIBRARY_PATH}"
             }
         },
         {
             "name": "ci-win-sdk-release-user",
-            "inherits": [
-                "ci-sdk-capture-release-user",
-                "base-win-release-user"
-            ],
+            "inherits": "ci-sdk-release-user",
+            "description": "Windows LLVM-MinGW UCRT release SDK build.",
+            "cacheVariables": {
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{LLVM_MINGW_TOOLCHAIN_FILE}"
+            },
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}"
             }
         },
         {
             "name": "ci-win-release-user",
-            "inherits": [
-                "ci-native-release-user",
-                "base-win-release-user"
-            ],
+            "inherits": "ci-native-release-user",
+            "description": "Windows LLVM-MinGW UCRT release and test build.",
             "binaryDir": "${sourceDir}/build/ci-win-release",
             "cacheVariables": {
-                "BUILD_TESTS": true
+                "BUILD_TESTS": true,
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{LLVM_MINGW_TOOLCHAIN_FILE}"
             },
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}",
@@ -134,23 +125,23 @@
             "name": "ci-win-dev-user",
             "inherits": [
                 "ci-native-paths",
-                "base-win-dev-user"
+                "developer-mode"
             ],
             "binaryDir": "${sourceDir}/build/ci-win-dev",
             "cacheVariables": {
-                "CMAKE_PREFIX_PATH": "$env{CRYPTO_ROOT};$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug",
+                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug",
                 "BUILD_TESTS": true,
                 "BUILD_BENCHMARKS": false,
                 "BUILD_EXAMPLES": false,
-                "SALTS_UTILS_ENABLE_CAPTURE": false,
                 "ENABLE_SANITIZER_ADDRESS": true,
-                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{LLVM_MINGW_TOOLCHAIN_FILE}"
             },
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}",
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/ci-win-dev/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/ci-win-dev/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/$env{QIGAO_TARGET_TRIPLET}/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}"
             }
         },
         {
@@ -163,15 +154,15 @@
             "environment": {
                 "QIGAO_TARGET_TRIPLET": "$env{QIGAO_HOST_TRIPLET}",
                 "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed-host",
-                "SALTS_ROOT": "$penv{SALTS_HOST_ROOT}",
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_HOST_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_HOST_ROOT}",
                 "SALTS_UTILS_CI_BUILD_ROOT": "${sourceDir}/build/ci-host",
-                "X_VCPKG_NUGET_ID_PREFIX": "",
-                "CRYPTO_ROOT": "$penv{CRYPTO_HOST_ROOT}"
+                "X_VCPKG_NUGET_ID_PREFIX": ""
             }
         },
         {
             "name": "ci-android-sdk-release-user",
-            "inherits": "ci-sdk-capture-release-user",
+            "inherits": "ci-sdk-release-user",
             "cacheVariables": {
                 "CMAKE_SYSTEM_NAME": "Android",
                 "VCPKG_HOST_TRIPLET": "$env{QIGAO_HOST_TRIPLET}",
@@ -187,7 +178,7 @@
         },
         {
             "name": "ci-ios-sdk-release-user",
-            "inherits": "ci-sdk-capture-release-user",
+            "inherits": "ci-sdk-release-user",
             "cacheVariables": {
                 "VCPKG_OVERLAY_PORTS": "${sourceDir}/cmake/vcpkg-ports",
                 "CMAKE_SYSTEM_NAME": "iOS",
@@ -208,7 +199,7 @@
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/stage/sdk/windows-x64"
             },
             "environment": {
-                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-SDK-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-SDK-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}"
             }
         },
         {
@@ -221,7 +212,6 @@
             "cacheVariables": {
                 "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
                 "VCPKG_TARGET_TRIPLET": "x64-linux",
-                "SALTS_UTILS_ENABLE_CAPTURE": false,
                 "BUILD_TESTS": true,
                 "BUILD_BENCHMARKS": true,
                 "BUILD_EXAMPLES": false
@@ -240,15 +230,15 @@
             "binaryDir": "${sourceDir}/build/ci-linux-release",
             "cacheVariables": {
                 "BUILD_TESTS": true,
-                "CMAKE_PREFIX_PATH": "$env{CRYPTO_ROOT};$env{VCPKG_INSTALLED_DIR}/x64-linux",
+                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release",
                 "ENABLE_SANITIZER_ADDRESS": false,
-                "ENABLE_SANITIZER_UNDEFINED": false,
-                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
+                "ENABLE_SANITIZER_UNDEFINED": false
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "LD_LIBRARY_PATH": "${sourceDir}/build/ci-linux-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}",
+                "LD_LIBRARY_PATH": "${sourceDir}/build/ci-linux-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{CMETA_ROOT}/lib${pathListSep}$env{SALTSCORE_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             }
         },
         {
@@ -259,17 +249,17 @@
             ],
             "binaryDir": "${sourceDir}/build/ci-linux-dev",
             "cacheVariables": {
-                "CMAKE_PREFIX_PATH": "$env{CRYPTO_ROOT};$env{VCPKG_INSTALLED_DIR}/x64-linux/debug",
+                "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux/debug",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug",
                 "ENABLE_SANITIZER_ADDRESS": true,
                 "ENABLE_SANITIZER_UNDEFINED": true,
-                "CMAKE_SUPPRESS_REGENERATION": true,
-                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
+                "CMAKE_SUPPRESS_REGENERATION": true
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}",
                 "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1",
-                "LD_LIBRARY_PATH": "${sourceDir}/build/ci-linux-dev/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+                "LD_LIBRARY_PATH": "${sourceDir}/build/ci-linux-dev/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{CMETA_ROOT}/lib${pathListSep}$env{SALTSCORE_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             }
         },
         {
@@ -292,9 +282,7 @@
                 "PKG_CONFIG_EXECUTABLE": "${sourceDir}/vcpkg_installed/x64-windows/tools/pkgconf/pkgconf.exe",
                 "VCPKG_TARGET_TRIPLET": "x64-windows",
                 "VCPKG_MANIFEST_MODE": "ON",
-                "VCPKG_APPLOCAL_DEPS": "OFF",
-                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
-                "VCPKG_MANIFEST_FEATURES": "capture"
+                "VCPKG_APPLOCAL_DEPS": "OFF"
             },
             "architecture": {
                 "value": "x64",
@@ -339,24 +327,22 @@
             "name": "android-dependencies-debug",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils-android/debug",
-                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
-                "VCPKG_MANIFEST_FEATURES": "capture"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils-android/debug"
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}"
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}"
             }
         },
         {
             "name": "android-dependencies-release",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils-android/release",
-                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
-                "VCPKG_MANIFEST_FEATURES": "capture"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils-android/release"
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}"
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}"
             }
         },
         {
@@ -367,8 +353,9 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug"
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-dev-user",
@@ -383,29 +370,14 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/windows-x64",
-                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "SALTSCORE_ROOT": "${sourceDir}/stage/dependencies/saltscore/windows-x64",
+                "CMETA_ROOT": "${sourceDir}/stage/dependencies/cmeta/windows-x64",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-release-user",
                 "win-paths"
             ]
-        },
-        {
-            "name": "win-capture-dev-user",
-            "binaryDir": "${sourceDir}/build/Msvc-Capture",
-            "environment": {
-                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-Capture/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
-            },
-            "inherits": "win-dev-user"
-        },
-        {
-            "name": "win-capture-release-user",
-            "binaryDir": "${sourceDir}/build/Msvc-Capture-Release",
-            "environment": {
-                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Msvc-Capture-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
-            },
-            "inherits": "win-release-user"
         },
         {
             "name": "linux-dev-user",
@@ -415,25 +387,14 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug"
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}",
+                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{CMETA_ROOT}/lib${pathListSep}$env{SALTSCORE_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": [
                 "base-linux-dev-user",
                 "linux-paths"
             ]
-        },
-        {
-            "name": "linux-capture-dev-user",
-            "binaryDir": "${sourceDir}/build/linux-gcc-capture-debug",
-            "cacheVariables": {
-                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
-                "VCPKG_MANIFEST_FEATURES": "capture"
-            },
-            "environment": {
-                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-capture-debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
-            },
-            "inherits": "linux-dev-user"
         },
         {
             "name": "linux-release-user",
@@ -442,26 +403,15 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/linux-x64",
+                "SALTSCORE_ROOT": "${sourceDir}/stage/dependencies/saltscore/linux-x64",
+                "CMETA_ROOT": "${sourceDir}/stage/dependencies/cmeta/linux-x64",
                 "RE2C_ROOT": "$penv{RE2C_ROOT}",
-                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{CMETA_ROOT}/lib${pathListSep}$env{SALTSCORE_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": [
                 "release-linux-ninja",
                 "linux-paths"
             ]
-        },
-        {
-            "name": "linux-capture-release-user",
-            "binaryDir": "${sourceDir}/build/linux-gcc-capture-release",
-            "cacheVariables": {
-                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
-                "VCPKG_MANIFEST_FEATURES": "capture"
-            },
-            "environment": {
-                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-capture-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
-            },
-            "inherits": "linux-release-user"
         },
         {
             "name": "linux-sdk-package",
@@ -474,7 +424,8 @@
                 "BUILD_EXAMPLES": "OFF"
             },
             "environment": {
-                "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/linux-x64",
+                "SALTSCORE_ROOT": "${sourceDir}/stage/dependencies/saltscore/linux-x64",
+                "CMETA_ROOT": "${sourceDir}/stage/dependencies/cmeta/linux-x64",
                 "RE2C_ROOT": "$penv{RE2C_ROOT}"
             },
             "inherits": [
@@ -562,8 +513,9 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug"
             },
             "environment": {
-                "SALTS_ROOT": "$penv{SALTS_ROOT}",
-                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Clang/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Clang/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-dev-clang-user",
@@ -579,8 +531,9 @@
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "SALTS_ROOT": "${sourceDir}/stage/dependencies/salts/windows-x64",
-                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Clang-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
+                "SALTSCORE_ROOT": "${sourceDir}/stage/dependencies/saltscore/windows-x64",
+                "CMETA_ROOT": "${sourceDir}/stage/dependencies/cmeta/windows-x64",
+                "PATH": "$env{RE2C_ROOT}/bin${pathListSep}${sourceDir}/build/Clang-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-release-clang-user",
@@ -589,7 +542,7 @@
         },
         {
             "name": "ci-native-release-user",
-            "inherits": "ci-sdk-capture-release-user",
+            "inherits": "ci-sdk-release-user",
             "cacheVariables": {
                 "BUILD_TESTS": true,
                 "BUILD_BENCHMARKS": true,
@@ -607,11 +560,24 @@
         },
         {
             "name": "ci-native-minimal-release-user",
-            "inherits": "ci-sdk-release-user",
+            "displayName": "LLVM native C11 split-package tests",
+            "inherits": [
+                "ci-native-paths",
+                "release-mode"
+            ],
+            "binaryDir": "${sourceDir}/build/ci-native-minimal-release",
             "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/stage/salts-utils-native-minimal",
+                "SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET": true,
                 "BUILD_TESTS": true,
-                "BUILD_BENCHMARKS": true,
+                "BUILD_BENCHMARKS": false,
+                "BUILD_EXAMPLES": false,
                 "CMAKE_SUPPRESS_REGENERATION": true
+            },
+            "environment": {
+                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
+                "CMETA_ROOT": "$penv{CMETA_ROOT}",
+                "PATH": "${sourceDir}/build/ci-native-minimal-release/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}"
             }
         }
     ],
@@ -634,17 +600,6 @@
         {
             "name": "install-ci-sdk-release-user",
             "configurePreset": "ci-sdk-release-user",
-            "targets": [
-                "install"
-            ]
-        },
-        {
-            "name": "ci-sdk-capture-release-user",
-            "configurePreset": "ci-sdk-capture-release-user"
-        },
-        {
-            "name": "install-ci-sdk-capture-release-user",
-            "configurePreset": "ci-sdk-capture-release-user",
             "targets": [
                 "install"
             ]
@@ -746,28 +701,12 @@
             "configurePreset": "win-release-user"
         },
         {
-            "name": "win-capture-dev-user",
-            "configurePreset": "win-capture-dev-user"
-        },
-        {
-            "name": "win-capture-release-user",
-            "configurePreset": "win-capture-release-user"
-        },
-        {
             "name": "linux-dev-user",
             "configurePreset": "linux-dev-user"
         },
         {
-            "name": "linux-capture-dev-user",
-            "configurePreset": "linux-capture-dev-user"
-        },
-        {
             "name": "linux-release-user",
             "configurePreset": "linux-release-user"
-        },
-        {
-            "name": "linux-capture-release-user",
-            "configurePreset": "linux-capture-release-user"
         },
         {
             "name": "linux-sdk-package",
@@ -788,13 +727,6 @@
             ]
         },
         {
-            "name": "install-win-capture-dev-user",
-            "configurePreset": "win-capture-dev-user",
-            "targets": [
-                "install"
-            ]
-        },
-        {
             "name": "install-linux-dev-user",
             "configurePreset": "linux-dev-user",
             "targets": [
@@ -804,20 +736,6 @@
         {
             "name": "install-linux-release-user",
             "configurePreset": "linux-release-user",
-            "targets": [
-                "install"
-            ]
-        },
-        {
-            "name": "install-linux-capture-dev-user",
-            "configurePreset": "linux-capture-dev-user",
-            "targets": [
-                "install"
-            ]
-        },
-        {
-            "name": "install-linux-capture-release-user",
-            "configurePreset": "linux-capture-release-user",
             "targets": [
                 "install"
             ]
@@ -986,16 +904,6 @@
             "configurePreset": "win-release-user"
         },
         {
-            "name": "win-capture-dev-user",
-            "inherits": "base-test",
-            "configurePreset": "win-capture-dev-user"
-        },
-        {
-            "name": "win-capture-release-user",
-            "inherits": "base-test",
-            "configurePreset": "win-capture-release-user"
-        },
-        {
             "name": "linux-dev-user",
             "inherits": "base-test",
             "configurePreset": "linux-dev-user"
@@ -1004,16 +912,6 @@
             "name": "linux-release-user",
             "inherits": "base-test",
             "configurePreset": "linux-release-user"
-        },
-        {
-            "name": "linux-capture-dev-user",
-            "inherits": "base-test",
-            "configurePreset": "linux-capture-dev-user"
-        },
-        {
-            "name": "linux-capture-release-user",
-            "inherits": "base-test",
-            "configurePreset": "linux-capture-release-user"
         },
         {
             "name": "win-clang-user",

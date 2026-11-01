@@ -17,21 +17,21 @@ else()
 endif()
 cmake_config_target(
   salts_cflow_fs
-  ALIAS Salts::FS
+  ALIAS Salts::CFlowFS
   FOLDER "cflow-fs"
-  EXPORT_NAME FS)
+  EXPORT_NAME CFlowFS)
 
 target_compile_features(salts_cflow_fs PUBLIC c_std_11)
 target_include_directories(salts_cflow_fs PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(salts_cflow_fs
-  PUBLIC Salts::Core Salts::CFlow
+  PUBLIC Salts::Core Salts::FS CMeta::CFlow
   PRIVATE Salts::Platform)
 
 install(TARGETS salts_cflow_fs EXPORT SaltsUtilsTargets)
 install(
-  DIRECTORY include/salts
+  DIRECTORY include/cflow
   DESTINATION include
   FILES_MATCHING PATTERN "*.h")
 

@@ -1,5 +1,5 @@
-#include <salts/process.h>
-#include <salts/process_retainer.h>
+#include <cflow/process.h>
+#include <cflow/process_retainer.h>
 
 #include <salts/clock.h>
 #include <salts/error_codes.h>
@@ -48,7 +48,7 @@ static void process_completion(void *user, cflow_io_request_id request_id,
   }
 }
 
-static void init_output_options(cmeta_process_options_t *options) {
+static void init_output_options(salts_process_options_t *options) {
 #ifdef _WIN32
   static const char *args[] = {"-NoProfile", "-Command",
                                "$o=[Text.Encoding]::ASCII.GetBytes('partial-output');"
@@ -56,12 +56,12 @@ static void init_output_options(cmeta_process_options_t *options) {
                                "$e=[Text.Encoding]::ASCII.GetBytes('stderr-output');"
                                "[Console]::OpenStandardError().Write($e,0,$e.Length)",
                                NULL};
-  cmeta_process_options_init(options);
+  salts_process_options_init(options);
   options->program = "powershell.exe";
   options->args = args;
 #else
   static const char *args[] = {"-c", "printf partial-output; printf stderr-output >&2", NULL};
-  cmeta_process_options_init(options);
+  salts_process_options_init(options);
   options->program = "/bin/sh";
   options->args = args;
 #endif
@@ -113,18 +113,18 @@ static const cflow_io_completion *completion_for_stream(const process_completion
   return NULL;
 }
 
-static void init_process_options(cmeta_process_options_t *options, bool echo_stdin) {
+static void init_process_options(salts_process_options_t *options, bool echo_stdin) {
 #ifdef _WIN32
   static const char *echo_args[] = {
       "-NoProfile", "-Command",
       "[Console]::OpenStandardInput().CopyTo([Console]::OpenStandardOutput())", NULL};
   static const char *exit_args[] = {"-NoProfile", "-Command", "exit 0", NULL};
-  cmeta_process_options_init(options);
+  salts_process_options_init(options);
   options->program = "powershell.exe";
   options->args = echo_stdin ? echo_args : exit_args;
 #else
   static const char *args[] = {NULL};
-  cmeta_process_options_init(options);
+  salts_process_options_init(options);
   options->program = echo_stdin ? "/bin/cat" : "/usr/bin/true";
   options->args = args;
 #endif
@@ -167,11 +167,11 @@ static int close_and_drain(cflow_process *process) {
 spec("CFlow subprocess adapter") {
   it("reports a write after child exit without delivering SIGPIPE to the host") {
     static const char payload[] = "closed-peer";
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     process_completion_probe probe = {0};
     cflow_process_config config = process_test_config(&probe);
-    cmeta_process_result_t result = {0};
+    salts_process_result_t result = {0};
     const uint64_t started = cmeta_hrtime();
     int status;
     init_process_options(&options, false);
@@ -196,14 +196,14 @@ spec("CFlow subprocess adapter") {
 
   it("moves bytes through bounded asynchronous standard streams") {
     static const char payload[] = "cflow-process-payload";
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process_config config = {0};
     cflow_process process = {0};
     cflow_process_submit_result read_submitted;
     cflow_process_submit_result write_submitted;
     cflow_process_stats stats;
     process_completion_probe probe = {0};
-    cmeta_process_result_t result;
+    salts_process_result_t result;
     char output[sizeof(payload)] = {0};
     const uint64_t started = cmeta_hrtime();
     int drive_status;
@@ -266,7 +266,7 @@ spec("CFlow subprocess adapter") {
   }
 
   it("publishes stdout EOF after a child exits without output") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     process_completion_probe probe = {0};
     cflow_process_config config = process_test_config(&probe);
@@ -289,7 +289,7 @@ spec("CFlow subprocess adapter") {
   it("preserves partial stdout and stderr bytes before independent EOF") {
     static const char stdout_payload[] = "partial-output";
     static const char stderr_payload[] = "stderr-output";
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     process_completion_probe probe = {0};
     cflow_process_config config = process_test_config(&probe);
@@ -338,7 +338,7 @@ spec("CFlow subprocess adapter") {
   }
 
   it("drains an accepted request through bounded public shutdown steps") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     process_completion_probe probe = {0};
     cflow_process_config config = process_test_config(&probe);
@@ -380,7 +380,7 @@ spec("CFlow subprocess adapter") {
     cflow_process_retainer_token reservation = {0};
     cflow_process_retainer_token overflow = {0};
     cflow_process process = {0};
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     retained_probe_payload *payload =
         (retained_probe_payload *)calloc(1u, sizeof(*payload));
     cflow_process_config config;
@@ -423,7 +423,7 @@ spec("CFlow subprocess adapter") {
   }
 
   it("waits for authoritative cancellation of a pending stdout read") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     process_completion_probe probe = {0};
     cflow_process_config config = process_test_config(&probe);
@@ -449,7 +449,7 @@ spec("CFlow subprocess adapter") {
 
   it("keeps repeated close idempotent and forbids destroy before I/O acknowledgments") {
     static const char payload[] = "closing-input";
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     process_completion_probe probe = {0};
     cflow_process_config config = process_test_config(&probe);
@@ -504,7 +504,7 @@ spec("CFlow subprocess adapter") {
 
   it("settles queued cancellation for all three standard streams exactly once") {
     static const char payload[] = "cancelled-input";
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     process_completion_probe probe = {0};
     cflow_process_config config = process_test_config(&probe);
@@ -533,7 +533,7 @@ spec("CFlow subprocess adapter") {
 
 #if defined(_WIN32) || defined(__linux__)
   it("releases every adapter-owned process pipe and runtime resource") {
-    cmeta_process_options_t options;
+    salts_process_options_t options;
     cflow_process process = {0};
     process_completion_probe probe = {0};
     cflow_process_config config = process_test_config(&probe);
@@ -542,7 +542,7 @@ spec("CFlow subprocess adapter") {
     size_t iteration;
 
     check_true(process_resource_count(&before));
-    cmeta_process_options_init(&options);
+    salts_process_options_init(&options);
     options.program = "cflow-process-missing-executable-97531";
     options.flags = 0u;
     check_less(cflow_process_start(&process, &options, &config), SALTS_OK);

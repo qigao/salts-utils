@@ -2,7 +2,7 @@
 #include "schema_cmeta.h"
 #include "../src/schema_cmeta_buffer.h"
 
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 
 #include <stddef.h>
 #include <string.h>

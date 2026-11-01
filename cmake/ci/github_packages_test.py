@@ -21,6 +21,52 @@ from github_packages import (
 )
 
 
+def saltscore_files(rids, missing_target=None):
+    files = {}
+    targets = ["Salts::Core", "Salts::FS", "Salts::Process",
+               "Salts::USB", "Salts::Unicode"]
+    crypto_targets = ["Salts::Crypto"]
+    if missing_target in targets:
+        targets.remove(missing_target)
+    if missing_target in crypto_targets:
+        crypto_targets.remove(missing_target)
+    for rid in rids:
+        prefix = f"sdk/{rid}/"
+        files.update({
+            prefix + "lib/cmake/SaltsCore/SaltsCoreConfig.cmake": "",
+            prefix + "lib/cmake/SaltsCore/SaltsCoreTargets.cmake":
+                " ".join(targets),
+            prefix + "lib/cmake/Crypto/CryptoTargets.cmake":
+                " ".join(crypto_targets),
+            prefix + "include/salts_core/runtime_abi.h": "",
+            prefix + "include/salts/fs.h": "",
+            prefix + "include/salts/process.h": "",
+            prefix + "include/cflow/usb.h": "",
+            prefix + "include/salts_unicode.h": "",
+        })
+    return files
+
+
+def cmeta_files(rids, version="0.1.0", missing_target=None):
+    files = {}
+    targets = ["CMeta::CMeta", "CMeta::CSTL", "CMeta::CFlow",
+               "CMeta::PluginABI", "CMeta::Plugin", "CMeta::Configurator",
+               "CMeta::ServiceHost"]
+    if missing_target:
+        targets.remove(missing_target)
+    for rid in rids:
+        prefix = f"sdk/{rid}/"
+        files.update({
+            prefix + "lib/cmake/CMeta/CMetaConfig.cmake": "",
+            prefix + "lib/cmake/CMeta/CMetaTargets.cmake": " ".join(targets),
+            prefix + "include/cmeta/cmeta.h": "",
+            prefix + "include/cflow/cflow.h": "",
+            prefix + "cmeta-sdk-manifest.txt":
+                f"release=0.1.000\npackage={version}\nrid={rid}\n",
+        })
+    return files
+
+
 class Feed:
     def __init__(self):
         self.documents = {}
@@ -111,14 +157,11 @@ class PackageTests(unittest.TestCase):
             self.packages.extract("escape.native", "1.0.0", self.root)
         self.assertFalse((self.root / "outside").exists())
 
-    def test_exact_salts_and_re2c_environment_is_fail_closed(self):
-        self.feed.add("Salts.Native", "2.3.0-rc.17", {
-            "sdk/linux-x64/lib/cmake/Salts/SaltsConfig.cmake": "",
-            "sdk/linux-x64/lib/cmake/Salts/SaltsTargets.cmake": "Salts::Unicode",
-            "sdk/linux-x64/include/cmeta/function.h": "",
-            "sdk/linux-x64/include/unicode/salts_unicode.h": "",
-            "sdk/linux-x64/salts-sdk-manifest.txt": "version=2.3.0-rc.17\n",
-        })
+    def test_exact_split_sdks_and_re2c_environment_are_fail_closed(self):
+        self.feed.add("SaltsCore.Native", "0.1.0",
+                      saltscore_files(("linux-x64",)))
+        self.feed.add("CMeta.Native", "0.1.2",
+                      cmeta_files(("linux-x64",), "0.1.2"))
         self.feed.add("Qigao.Re2c.Binary", "1.0.0", {
             "tools/linux-x64/bin/re2c": "#!/bin/sh\nexit 0\n",
             "tools/linux-x64/share/re2c/stdlib/unicode_categories.re": "",
@@ -127,37 +170,29 @@ class PackageTests(unittest.TestCase):
         args = argparse.Namespace(
             packages=self.root / "packages", salts_rid="linux-x64",
             host_rid="linux-x64", with_turbowasm=False,
-            salts_version=None, require_component_runtime=False,
+            saltscore_version=None, cmeta_version=None,
+            require_component_runtime=False,
             result=self.root / "result.json")
         env = self.root / "env"
         path = self.root / "path"
-        with patch.dict(os.environ, {"GITHUB_ENV": str(env), "GITHUB_PATH": str(path)}):
+        with patch.dict(os.environ, {"GITHUB_ENV": str(env), "GITHUB_PATH": str(path)}), \
+                patch("github_packages.restore_re2c_for_rid",
+                      return_value=("1.0.0", self.root / "re2c")):
             restore_native_sdk(args, self.packages)
         values = env.read_text()
-        self.assertIn("SALTS_VERSION=2.3.0-rc.17", values)
-        self.assertIn("SALTS_ROOT=", values)
+        self.assertIn("SALTSCORE_VERSION=0.1.0", values)
+        self.assertIn("CMETA_VERSION=0.1.2", values)
+        self.assertIn("SALTSCORE_ROOT=", values)
+        self.assertIn("CMETA_ROOT=", values)
         self.assertIn("RE2C_ROOT=", values)
         self.assertTrue(args.result.is_file())
 
     def test_explicit_published_component_runtime_version(self):
-        version = "2.3.0-rc.18"
-        files = {}
-        for rid in ("linux-x64", "linux-arm64", "windows-x64",
-                    "macos-arm64", "android-arm64-v8a", "ios-arm64"):
-            prefix = "sdk/" + rid + "/"
-            files.update({
-                prefix + "lib/cmake/Salts/SaltsConfig.cmake": "",
-                prefix + "lib/cmake/Salts/SaltsTargets.cmake":
-                    "Salts::Unicode Salts::ComponentProviderABI Salts::Configurator Salts::ServiceHost",
-                prefix + "include/cmeta/function.h": "",
-                prefix + "include/unicode/salts_unicode.h": "",
-                prefix + "include/salts/component_provider_abi.h": "",
-                prefix + "include/salts/component_runtime_abi.h": "",
-                prefix + "include/salts/configurator.h": "",
-                prefix + "include/salts/service_host.h": "",
-                prefix + "salts-sdk-manifest.txt": "version=2.3.0-rc.18\n",
-            })
-        self.feed.add("Salts.Native", version, files)
+        version = "0.1.0"
+        rids = ("linux-x64", "linux-arm64", "windows-x64", "windows-arm64",
+                "macos-x64", "macos-arm64", "android-x64", "android-arm64")
+        self.feed.add("SaltsCore.Native", version, saltscore_files(rids))
+        self.feed.add("CMeta.Native", version, cmeta_files(rids, version))
         self.feed.add("Qigao.Re2c.Binary", "1.0.0", {
             "tools/linux-x64/bin/re2c": "#!/bin/sh\nexit 0\n",
             "tools/linux-x64/share/re2c/stdlib/unicode_categories.re": "",
@@ -166,30 +201,46 @@ class PackageTests(unittest.TestCase):
         args = argparse.Namespace(
             packages=self.root / "published-packages", salts_rid="linux-x64",
             host_rid="linux-x64", with_turbowasm=False,
-            salts_version=version, require_component_runtime=True,
+            saltscore_version=version, cmeta_version=version,
+            require_component_runtime=True,
             result=self.root / "published-result.json")
         env = self.root / "published-env"
         path = self.root / "published-path"
-        with patch.dict(os.environ, {"GITHUB_ENV": str(env), "GITHUB_PATH": str(path)}):
+        with patch.dict(os.environ, {"GITHUB_ENV": str(env), "GITHUB_PATH": str(path)}), \
+                patch("github_packages.restore_re2c_for_rid",
+                      return_value=("1.0.0", self.root / "re2c")):
             resolved = restore_native_sdk(args, self.packages)
-        self.assertEqual(resolved["SALTS_VERSION"], version)
-        self.assertIn("SALTS_VERSION=2.3.0-rc.18", env.read_text())
+        self.assertEqual(resolved["SALTSCORE_VERSION"], version)
+        self.assertEqual(resolved["CMETA_VERSION"], version)
+        self.assertIn("SALTSCORE_VERSION=0.1.0", env.read_text())
 
     def test_explicit_published_component_runtime_rejects_missing_export(self):
-        version = "2.3.0-rc.18"
-        self.feed.add("Salts.Native", version, {
-            "sdk/linux-x64/lib/cmake/Salts/SaltsConfig.cmake": "",
-            "sdk/linux-x64/lib/cmake/Salts/SaltsTargets.cmake": "Salts::Unicode",
-            "sdk/linux-x64/include/cmeta/function.h": "",
-            "sdk/linux-x64/include/unicode/salts_unicode.h": "",
-            "sdk/linux-x64/salts-sdk-manifest.txt": "version=2.3.0-rc.18\n",
-        })
+        version = "0.1.0"
+        self.feed.add("SaltsCore.Native", version,
+                      saltscore_files(("linux-x64",)))
+        self.feed.add("CMeta.Native", version, cmeta_files(
+            ("linux-x64",), version, missing_target="CMeta::ServiceHost"))
         args = argparse.Namespace(
             packages=self.root / "missing-runtime", salts_rid="linux-x64",
             host_rid="linux-x64", with_turbowasm=False,
-            salts_version=version, require_component_runtime=True,
+            saltscore_version=version, cmeta_version=version,
+            require_component_runtime=True,
             result=None)
-        with self.assertRaisesRegex(ValueError, "Component Runtime SDK"):
+        with self.assertRaisesRegex(ValueError, "missing target CMeta::ServiceHost"):
+            restore_native_sdk(args, self.packages)
+
+    def test_split_saltscore_rejects_missing_sibling_crypto_export(self):
+        version = "0.1.0"
+        self.feed.add("SaltsCore.Native", version, saltscore_files(
+            ("linux-x64",), missing_target="Salts::Crypto"))
+        self.feed.add("CMeta.Native", "0.1.2",
+                      cmeta_files(("linux-x64",), "0.1.2"))
+        args = argparse.Namespace(
+            packages=self.root / "missing-crypto", salts_rid="linux-x64",
+            host_rid="linux-x64", with_turbowasm=False,
+            saltscore_version=version, cmeta_version="0.1.2",
+            require_component_runtime=False, result=None)
+        with self.assertRaisesRegex(ValueError, "missing target Salts::Crypto"):
             restore_native_sdk(args, self.packages)
 
     def test_exact_abi_cache_conversion_and_prefix(self):

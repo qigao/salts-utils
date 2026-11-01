@@ -122,8 +122,8 @@ def main():
         'VCPKG_NUGET_REPOSITORY': 'https://github.com/qigao/vcpkg-cache',
         'VCPKG_OVERLAY_PORTS': canonical / 'ports', 'VCPKG_OVERLAY_TRIPLETS': canonical / 'triplets',
         'QIGAO_VCPKG_TOOLCHAIN_FILE': canonical / 'cmake/QigaoVcpkgToolchain.cmake',
-        'QIGAO_VCPKG_WINDOWS_TRIPLET': 'qigao-x64-windows-v145',
-        'QIGAO_VCPKG_WINDOWS_HOST_TRIPLET': 'qigao-x64-windows-v145',
+        'QIGAO_VCPKG_WINDOWS_TRIPLET': 'qigao-x64-windows-llvm-mingw',
+        'QIGAO_VCPKG_WINDOWS_HOST_TRIPLET': 'qigao-x64-windows-llvm-mingw',
         'VCPKG_BINARY_SOURCES': f'clear;files,{cache},readwrite;http,http://127.0.0.1:{port}/{{name}}/{{triplet}}/{{version}}/{{sha}},read',
     }
     if os.environ.get('RUNNER_OS') == 'Linux' and os.environ.get('RUNNER_ARCH') == 'ARM64':

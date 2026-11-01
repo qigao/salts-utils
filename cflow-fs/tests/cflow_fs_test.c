@@ -1,4 +1,4 @@
-#include <salts/fs.h>
+#include <cflow/fs.h>
 #include <salts/error_codes.h>
 #include <salts/thread.h>
 #include <tinytest.h>
@@ -86,7 +86,7 @@ describe("lifecycle and metadata") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 2u);
-        cmeta_fs_stat_t stat_result = {0};
+        salts_fs_stat_t stat_result = {0};
         cflow_fs_submit_result submitted;
         char original_path[1024];
 
@@ -120,7 +120,7 @@ describe("lifecycle and metadata") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 1u);
-        cmeta_fs_stat_t stat_result = {0};
+        salts_fs_stat_t stat_result = {0};
         char path[4] = {'a', 'b', 'c', '\0'};
 
         config.path_capacity = sizeof(path);
@@ -139,7 +139,7 @@ describe("lifecycle and metadata") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 1u);
-        cmeta_fs_stat_t stat_result = {0};
+        salts_fs_stat_t stat_result = {0};
         cflow_fs_submit_result submitted;
         size_t attempts = 0u;
 
@@ -169,8 +169,8 @@ describe("lifecycle and metadata") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 1u);
-        cmeta_fs_stat_t first = {0};
-        cmeta_fs_stat_t second = {0};
+        salts_fs_stat_t first = {0};
+        salts_fs_stat_t second = {0};
         cflow_fs_submit_result submitted;
         cflow_fs_stats stats = {0};
 
@@ -211,7 +211,7 @@ describe("directory and path mutations") {
         char *root = tt_make_temp_dir("cflow-fs-dir-");
         char child[1024];
         char nested[1024];
-        cmeta_fs_dirent_t entries[4] = {0};
+        salts_fs_dirent_t entries[4] = {0};
         char names[128] = {0};
         cflow_fs_dir_buffer directory = {
             .entries = entries,
@@ -227,9 +227,9 @@ describe("directory and path mutations") {
         size_t index;
 
         check_not_null(root);
-        check_equal(cmeta_fs_path_join(child, sizeof(child), root,
+        check_equal(salts_fs_path_join(child, sizeof(child), root,
                                        "child.txt"), 0);
-        check_equal(cmeta_fs_path_join(nested, sizeof(nested), root,
+        check_equal(salts_fs_path_join(nested, sizeof(nested), root,
                                        "nested"), 0);
         check_equal(tt_write_file(child, "x", 1u), 0);
         check_equal(tt_make_dir(nested), 0);
@@ -271,14 +271,14 @@ describe("directory and path mutations") {
         cflow_fs_service service = {0};
         fs_completion_probe probe = {0};
         cflow_fs_config config = fs_test_config(&probe, 2u);
-        cmeta_fs_stat_t stat_result = {0};
+        salts_fs_stat_t stat_result = {0};
 
         check_not_null(root);
-        check_equal(cmeta_fs_path_join(directory, sizeof(directory), root,
+        check_equal(salts_fs_path_join(directory, sizeof(directory), root,
                                        "created"), 0);
-        check_equal(cmeta_fs_path_join(source, sizeof(source), root,
+        check_equal(salts_fs_path_join(source, sizeof(source), root,
                                        "source.txt"), 0);
-        check_equal(cmeta_fs_path_join(destination, sizeof(destination), root,
+        check_equal(salts_fs_path_join(destination, sizeof(destination), root,
                                        "destination.txt"), 0);
         check_equal(cflow_fs_service_init(&service, &config), SALTS_OK);
 
@@ -286,7 +286,7 @@ describe("directory and path mutations") {
                     CFLOW_FS_SUBMIT_ACCEPTED);
         check_equal(fs_wait(&service, &probe, 1u), SALTS_OK);
         check_equal(probe.results[0], SALTS_OK);
-        check_equal(cmeta_fs_stat(directory, &stat_result), SALTS_OK);
+        check_equal(salts_fs_stat(directory, &stat_result), SALTS_OK);
         check_true(stat_result.is_directory);
 
         check_equal(tt_write_file(source, "move", 4u), 0);
@@ -294,8 +294,8 @@ describe("directory and path mutations") {
                     CFLOW_FS_SUBMIT_ACCEPTED);
         check_equal(fs_wait(&service, &probe, 2u), SALTS_OK);
         check_equal(probe.results[1], SALTS_OK);
-        check_less(cmeta_fs_stat(source, &stat_result), 0);
-        check_equal(cmeta_fs_stat(destination, &stat_result), SALTS_OK);
+        check_less(salts_fs_stat(source, &stat_result), 0);
+        check_equal(salts_fs_stat(destination, &stat_result), SALTS_OK);
 
         check_equal(cflow_fs_try_unlink(&service, destination).status,
                     CFLOW_FS_SUBMIT_ACCEPTED);

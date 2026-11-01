@@ -9,11 +9,11 @@ function Invoke-Git([string[]]$Arguments) {
   return (($result | Out-String).Trim())
 }
 function Assert-Output([string]$Output, [string]$Key, [string]$Expected, [string]$CaseName) {
-  if ($Output -notmatch "(?m)^$([regex]::Escape($Key))=$([regex]::Escape($Expected))$") {
+  if ($Output -notmatch "(?m)^$([regex]::Escape($Key))=$([regex]::Escape($Expected))\r?$") {
     throw "$CaseName expected $Key=$Expected; got: $Output"
   }
 }
-function Test-Scope([string]$Name, [string[]]$Paths, [string]$ExpectedPackaging, [string]$ExpectedBuilds, [string]$ExpectedPackageTests) {
+function Test-Scope([string]$Name, [string[]]$Paths, [string]$ExpectedBuilds) {
   Invoke-Git @('reset','--hard',$script:base) | Out-Null
   Invoke-Git @('clean','-fdq') | Out-Null
   foreach ($relative in $Paths) {
@@ -31,9 +31,7 @@ function Test-Scope([string]$Name, [string[]]$Paths, [string]$ExpectedPackaging,
     if ($LASTEXITCODE -ne 0) { throw "${Name}: selector exited $LASTEXITCODE" }
   } finally { Pop-Location }
   $joined = $output -join [Environment]::NewLine
-  Assert-Output $joined 'packaging_only' $ExpectedPackaging $Name
   Assert-Output $joined 'has_builds' $ExpectedBuilds $Name
-  Assert-Output $joined 'run_packaging_contract' $ExpectedPackageTests $Name
   Write-Output "PASS $Name"
 }
 
@@ -46,13 +44,39 @@ try {
   Invoke-Git @('commit','-m','base') | Out-Null
   $script:base = Invoke-Git @('rev-parse','HEAD')
 
-  Test-Scope 'packaging-only script' @('packaging/nuget/preserve_nupkg_permissions.py') 'true' 'false' 'true'
-  Test-Scope 'packaging workflow' @('.github/workflows/sdk-package.yml') 'true' 'false' 'true'
-  Test-Scope 'documentation-only' @('docs/example.md') 'false' 'false' 'false'
-  Test-Scope 'native source' @('databind/runtime/data_bind.c') 'false' 'true' 'false'
-  Test-Scope 'mixed packaging and source' @('packaging/nuget/README.md','databind/runtime/data_bind.c') 'false' 'true' 'true'
-  Test-Scope 'unknown path is conservative' @('new-module/unknown.c') 'false' 'true' 'false'
-  Test-Scope 'scope selector change is native' @('cmake/ci/select-ci-scope.ps1') 'false' 'true' 'true'
+  Test-Scope 'packaging-only script' @('packaging/nuget/preserve_nupkg_permissions.py') 'false'
+  Test-Scope 'packaging workflow' @('.github/workflows/sdk-package.yml') 'false'
+  Test-Scope 'documentation-only' @('docs/example.md') 'false'
+  Test-Scope 'native source' @('databind/runtime/data_bind.c') 'true'
+  Test-Scope 'mixed packaging and source' @('packaging/nuget/README.md','databind/runtime/data_bind.c') 'true'
+  Test-Scope 'unknown path is conservative' @('new-module/unknown.c') 'true'
+  Test-Scope 'scope selector change is native' @('cmake/ci/select-ci-scope.ps1') 'true'
+
+  Push-Location $temp
+  try {
+    $releaseOutput = & $selector -EventName workflow_dispatch `
+      -HeadRef $script:base -PrepareRelease $true
+    if ($LASTEXITCODE -ne 0) { throw "release selector exited $LASTEXITCODE" }
+  } finally { Pop-Location }
+  $buildLine = @($releaseOutput | Where-Object { $_ -like 'builds=*' })
+  if ($buildLine.Count -ne 1) { throw 'release selector did not emit one builds value' }
+  $releaseBuilds = ($buildLine[0].Substring('builds='.Length) | ConvertFrom-Json).include
+  $actualRids = @($releaseBuilds.rid | Sort-Object)
+  $expectedRids = @('android-arm64', 'linux-arm64', 'linux-x64',
+                    'macos-arm64', 'windows-x64') | Sort-Object
+  if (($actualRids -join ',') -ne ($expectedRids -join ',')) {
+    throw "release RID set mismatch: $($actualRids -join ',')"
+  }
+  if (@($releaseBuilds | Where-Object { $_.family -eq 'ios' }).Count -ne 0) {
+    throw 'release selector must not emit iOS without matching dependency SDKs'
+  }
+  $windows = @($releaseBuilds | Where-Object { $_.family -eq 'windows' })
+  if ($windows.Count -ne 1 -or
+      $windows[0].triplet -ne 'qigao-x64-windows-llvm-mingw' -or
+      $windows[0].host_triplet -ne 'qigao-x64-windows-llvm-mingw') {
+    throw 'Windows release must use LLVM-MinGW for target and host dependencies'
+  }
+  Write-Output 'PASS release RID contract'
 } finally {
   Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }

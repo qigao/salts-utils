@@ -76,7 +76,7 @@ cmake_add_test(test_databind_projection_frontend
     "${DATABIND_COMPILER_SOURCE_DIR}/opaque_plan_codegen.c"
   LIBS
     Salts::IDL
-    Salts::PluginABI
+    CMeta::PluginABI
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
@@ -235,7 +235,7 @@ add_executable(test_databind_contract_plugin_c11
 target_include_directories(test_databind_contract_plugin_c11
   PRIVATE "${_contract_plugin_dir}")
 target_link_libraries(test_databind_contract_plugin_c11
-  PRIVATE Salts::DataBind Salts::PluginABI Salts::Plugin)
+  PRIVATE Salts::DataBind CMeta::PluginABI CMeta::Plugin)
 set_target_properties(test_databind_contract_plugin_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME test_databind_contract_plugin_c11
@@ -379,7 +379,7 @@ add_executable(test_databind_native_sequence_c11
   native_header_sequence_c11_consumer.c "${_native_sequence_header}")
 target_include_directories(test_databind_native_sequence_c11 PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(test_databind_native_sequence_c11 PRIVATE Salts::CSTL)
+target_link_libraries(test_databind_native_sequence_c11 PRIVATE CMeta::CSTL)
 set_target_properties(test_databind_native_sequence_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME test_databind_native_sequence_c11
@@ -396,7 +396,7 @@ add_custom_command(OUTPUT "${_native_assoc_header}"
 add_executable(test_databind_native_assoc_c11
   native_header_assoc_c11_consumer.c "${_native_assoc_header}")
 target_include_directories(test_databind_native_assoc_c11 PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(test_databind_native_assoc_c11 PRIVATE Salts::CSTL)
+target_link_libraries(test_databind_native_assoc_c11 PRIVATE CMeta::CSTL)
 set_target_properties(test_databind_native_assoc_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME test_databind_native_assoc_c11
@@ -417,7 +417,7 @@ add_executable(test_databind_native_owned_containers_c11
   "${_native_owned_containers_header}")
 target_include_directories(test_databind_native_owned_containers_c11
   PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(test_databind_native_owned_containers_c11 PRIVATE Salts::CSTL)
+target_link_libraries(test_databind_native_owned_containers_c11 PRIVATE CMeta::CSTL)
 set_target_properties(test_databind_native_owned_containers_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME test_databind_native_owned_containers_c11
@@ -439,7 +439,7 @@ add_executable(test_databind_native_record_containers_c11
   "${_native_record_containers_header}")
 target_include_directories(test_databind_native_record_containers_c11
   PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(test_databind_native_record_containers_c11 PRIVATE Salts::CSTL)
+target_link_libraries(test_databind_native_record_containers_c11 PRIVATE CMeta::CSTL)
 set_target_properties(test_databind_native_record_containers_c11 PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME test_databind_native_record_containers_c11
@@ -478,7 +478,7 @@ foreach(_native_profile IN ITEMS alpha alpha_copy beta alpha_v2)
     "NATIVE_IDENTITY_HEADER=\"native_identity_${_native_profile}.h\""
     "NATIVE_IDENTITY_GETTER=native_identity_${_native_profile}")
   target_link_libraries(databind_native_identity_${_native_profile} PRIVATE
-    Salts::Core)
+    CMeta::CMeta)
   set_target_properties(databind_native_identity_${_native_profile} PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   list(APPEND _native_identity_objects
@@ -487,7 +487,7 @@ endforeach()
 
 add_executable(test_databind_native_identity
   native_header_identity_compare.c ${_native_identity_objects})
-target_link_libraries(test_databind_native_identity PRIVATE Salts::Core)
+target_link_libraries(test_databind_native_identity PRIVATE CMeta::CMeta)
 set_target_properties(test_databind_native_identity PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME test_databind_native_identity

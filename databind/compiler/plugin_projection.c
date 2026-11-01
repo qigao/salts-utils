@@ -2,9 +2,9 @@
 
 #include "service_native.h"
 #include "native_service_projection.h"
-#include "cmeta_fs.h"
+#include "salts/fs.h"
 
-#include <salts/plugin.h>
+#include <cmeta/plugin.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -251,8 +251,8 @@ static char *plugin_suffixed_path(
 
 static void plugin_unlink_if_exists(const char *path) {
   if (path != NULL &&
-      cmeta_fs_access(path, SALTS_FS_ACCESS_EXISTS) == 0)
-    (void)cmeta_fs_unlink(path);
+      salts_fs_access(path, SALTS_FS_ACCESS_EXISTS) == 0)
+    (void)salts_fs_unlink(path);
 }
 
 static FILE *plugin_open_staging(
@@ -307,9 +307,9 @@ static int plugin_prepare_output_backup(
 
   plugin_unlink_if_exists(output->backup_path);
 
-  if (cmeta_fs_access(
+  if (salts_fs_access(
           output->final_path, SALTS_FS_ACCESS_EXISTS) == 0) {
-    if (cmeta_fs_rename(
+    if (salts_fs_rename(
             output->final_path, output->backup_path) != 0)
       return 0;
     output->had_original = 1;
@@ -326,7 +326,7 @@ static void plugin_rollback_output(
     plugin_unlink_if_exists(output->final_path);
 
   if (output->had_original && output->backup_path != NULL)
-    (void)cmeta_fs_rename(
+    (void)salts_fs_rename(
         output->backup_path, output->final_path);
   else if (output->backup_path != NULL)
     plugin_unlink_if_exists(output->backup_path);
@@ -362,7 +362,7 @@ static int plugin_commit_output_set(
       goto rollback;
 
   for (i = 0u; i < output_count; ++i) {
-    if (cmeta_fs_rename(
+    if (salts_fs_rename(
             outputs[i].staging_path,
             outputs[i].final_path) != 0)
       goto rollback;
@@ -403,7 +403,7 @@ static int plugin_write_header(
     return 0;
 
   if (fprintf(file, "#ifndef %s\n#define %s\n\n", guard, guard) < 0 ||
-      fputs("#include \"data_bind.h\"\n#include <cmeta_cmeta_data.h>\n#include <string.h>\n#include ", file) == EOF ||
+      fputs("#include \"data_bind.h\"\n#include <cmeta/core_data.h>\n#include <string.h>\n#include ", file) == EOF ||
       !plugin_write_c_string(file, config->native_header) ||
       fputs(
           "\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
@@ -455,7 +455,7 @@ static int plugin_write_client_header(
       !plugin_write_c_string(file, service_header) ||
       fputs(
           "\n#include <data_bind_plugin_catalog.h>\n"
-          "#include <salts/plugin.h>\n"
+          "#include <cmeta/plugin.h>\n"
           "#include <stdbool.h>\n\n"
           "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
           file) == EOF ||
@@ -919,7 +919,7 @@ static int plugin_write_source(
   if (fputs("#include ", file) == EOF ||
       !plugin_write_c_string(file, service_header) ||
       fputs(
-          "\n#include <salts/plugin.h>\n"
+          "\n#include <cmeta/plugin.h>\n"
           "#include <data_bind_native_binding.h>\n"
           "#include <data_bind_plugin_catalog.h>\n"
           "#include <cmeta/function.h>\n\n",
@@ -1125,7 +1125,7 @@ static int plugin_contract_write_header(
       !plugin_write_c_string(file, config->native_header) ||
       fputs("\n#include <data_bind_binding_plan.h>\n"
             "#include <cmeta/function.h>\n"
-            "#include <salts/plugin.h>\n"
+            "#include <cmeta/plugin.h>\n"
             "#ifdef __cplusplus\nextern \"C\" {\n#endif\n", file) == EOF)
     return 0;
   for (i = 0u; i < ir->operation_count; ++i)
@@ -1146,7 +1146,7 @@ static int plugin_contract_write_provider(
   if (!plugin_text_valid(provider_header) ||
       fputs("#include ", file) == EOF ||
       !plugin_write_c_string(file, provider_header) ||
-      fputs("\n#include <string.h>\n#include <salts/plugin.h>\n", file) == EOF)
+      fputs("\n#include <string.h>\n#include <cmeta/plugin.h>\n", file) == EOF)
     return 0;
   for (i = 0u; i < ir->operation_count; ++i) {
     const databind_compiler_service_native_operation *op = &ir->operations[i];
@@ -1222,7 +1222,7 @@ static int plugin_contract_write_client_header(
   if (fprintf(file, "#ifndef %s\n#define %s\n#include ", guard, guard) < 0 ||
       !plugin_write_c_string(file, provider_header) ||
       fprintf(file,
-          "\n#include <salts/plugin.h>\n#include <stdbool.h>\n"
+          "\n#include <cmeta/plugin.h>\n#include <stdbool.h>\n"
           "#ifdef __cplusplus\nextern \"C\" {\n#endif\n"
           "typedef struct %s {\n"
           "  cmeta_plugin_registry *registry;\n"

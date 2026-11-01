@@ -3,7 +3,7 @@
 #include "data_bind_projection_plan.h"
 #include "tinytest.h"
 
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>

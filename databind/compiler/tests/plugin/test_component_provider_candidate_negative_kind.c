@@ -1,8 +1,8 @@
 /* A real DSO that deliberately exports the Provider's canonical export
  * ID and contract as FUNCTION rather than INTERFACE. ServiceHost must reject
  * it during admission before interpreting it as a ComponentProvider. */
-#include <salts/component_provider_abi.h>
-#include <salts/plugin.h>
+#include <cmeta/service_host_provider_abi.h>
+#include <cmeta/plugin.h>
 
 #include <stdint.h>
 

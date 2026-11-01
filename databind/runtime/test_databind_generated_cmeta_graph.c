@@ -1,8 +1,8 @@
 #include "cmeta_graph_generated.h"
 #include "tinytest.h"
 
-#include <cmeta_cmeta_data.h>
-#include <cmeta_cmeta_fixed_width.h>
+#include <cmeta/core_data.h>
+#include <cmeta/core_fixed_width.h>
 
 #include <stddef.h>
 #include <string.h>

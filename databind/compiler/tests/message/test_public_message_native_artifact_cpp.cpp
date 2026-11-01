@@ -112,28 +112,28 @@ extern "C" int databind_message_native_artifact_cpp_probe(void) {
       event.labels.cmeta.descriptor == nullptr ||
       event.labels.raw.element_type == nullptr ||
       !cmeta_type_equal(
-          event.labels.raw.element_type, SALTS_TSTR_CMETA_TYPE_REF) ||
+          event.labels.raw.element_type, CMETA_TSTR_TYPE_REF) ||
       event.ids.cmeta.descriptor == nullptr ||
       event.ids.raw.element_type == nullptr ||
       !cmeta_type_equal(event.ids.raw.element_type, &cmeta_type_uint32) ||
       event.tags.cmeta.descriptor == nullptr ||
       event.tags.raw.element_type == nullptr ||
       !cmeta_type_equal(
-          event.tags.raw.element_type, SALTS_TSTR_CMETA_TYPE_REF) ||
+          event.tags.raw.element_type, CMETA_TSTR_TYPE_REF) ||
       event.counters.cmeta.descriptor == nullptr ||
       event.counters.raw.key_type == nullptr ||
       event.counters.raw.value_type == nullptr ||
       !cmeta_type_equal(
-          event.counters.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF) ||
+          event.counters.raw.key_type, CMETA_TSTR_TYPE_REF) ||
       !cmeta_type_equal(
           event.counters.raw.value_type, &cmeta_type_uint32) ||
       event.aliases.cmeta.descriptor == nullptr ||
       event.aliases.raw.key_type == nullptr ||
       event.aliases.raw.value_type == nullptr ||
       !cmeta_type_equal(
-          event.aliases.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF) ||
+          event.aliases.raw.key_type, CMETA_TSTR_TYPE_REF) ||
       !cmeta_type_equal(
-          event.aliases.raw.value_type, SALTS_TSTR_CMETA_TYPE_REF)) {
+          event.aliases.raw.value_type, CMETA_TSTR_TYPE_REF)) {
     Event_clear(&event);
     return 2;
   }
@@ -156,12 +156,12 @@ extern "C" int databind_message_native_artifact_cpp_probe(void) {
       overlay.tags.cmeta.descriptor == nullptr ||
       overlay.tags.raw.element_type == nullptr ||
       !cmeta_type_equal(
-          overlay.tags.raw.element_type, SALTS_TSTR_CMETA_TYPE_REF) ||
+          overlay.tags.raw.element_type, CMETA_TSTR_TYPE_REF) ||
       overlay.attrs.cmeta.descriptor == nullptr ||
       overlay.attrs.raw.key_type == nullptr ||
       overlay.attrs.raw.value_type == nullptr ||
       !cmeta_type_equal(
-          overlay.attrs.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF) ||
+          overlay.attrs.raw.key_type, CMETA_TSTR_TYPE_REF) ||
       !cmeta_type_equal(
           overlay.attrs.raw.value_type, &cmeta_type_uint32)) {
     OverlayContainers_clear(&overlay);

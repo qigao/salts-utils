@@ -4,12 +4,24 @@ include(CMakeParseArguments)
 set(SaltsUtils_IDLC_EXECUTABLE ""
     CACHE FILEPATH
     "Host salts-idlc executable used by salts_idl_target()")
-set(SaltsUtils_IDLC_HOST_SALTS_ROOT ""
+set(SaltsUtils_IDLC_HOST_SALTSCORE_ROOT ""
     CACHE PATH
-    "Host Salts SDK used to run salts-idlc while cross-compiling")
+    "Host SaltsCore SDK used to run salts-idlc while cross-compiling")
+set(SaltsUtils_IDLC_HOST_CMETA_ROOT ""
+    CACHE PATH
+    "Host CMeta SDK used to run salts-idlc while cross-compiling")
 
 function(_saltsutils_idl_resolve_compiler
-         out_executable out_dependency out_runtime_root out_salts_root)
+         out_executable out_dependency out_runtime_root
+         out_saltscore_root out_cmeta_root)
+  set(_idlc_requires_host_tool ${CMAKE_CROSSCOMPILING})
+  if(CMAKE_HOST_SYSTEM_NAME STREQUAL CMAKE_SYSTEM_NAME AND
+     CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL CMAKE_SYSTEM_PROCESSOR)
+    # llvm-mingw reports cross-compiling because it selects a Windows
+    # toolchain explicitly, even when the generated executable matches the
+    # Windows host architecture and is directly runnable.
+    set(_idlc_requires_host_tool FALSE)
+  endif()
   if(SaltsUtils_IDLC_EXECUTABLE)
     if(NOT EXISTS "${SaltsUtils_IDLC_EXECUTABLE}")
       message(FATAL_ERROR
@@ -22,21 +34,25 @@ function(_saltsutils_idl_resolve_compiler
     get_filename_component(_idlc_prefix
       "${_idlc_bin}" DIRECTORY)
 
-    if(CMAKE_CROSSCOMPILING)
-      if(NOT SaltsUtils_IDLC_HOST_SALTS_ROOT)
+    if(_idlc_requires_host_tool)
+      if(NOT SaltsUtils_IDLC_HOST_SALTSCORE_ROOT OR
+         NOT SaltsUtils_IDLC_HOST_CMETA_ROOT)
         message(FATAL_ERROR
                 "Cross-compiling salts_idl_target() requires "
-                "SaltsUtils_IDLC_HOST_SALTS_ROOT for the host compiler "
-                "runtime closure.")
+                "SaltsUtils_IDLC_HOST_SALTSCORE_ROOT and "
+                "SaltsUtils_IDLC_HOST_CMETA_ROOT for the host compiler runtime closure.")
       endif()
-      set(_idlc_salts_root
-          "${SaltsUtils_IDLC_HOST_SALTS_ROOT}")
+      set(_idlc_saltscore_root "${SaltsUtils_IDLC_HOST_SALTSCORE_ROOT}")
+      set(_idlc_cmeta_root "${SaltsUtils_IDLC_HOST_CMETA_ROOT}")
     else()
-      if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
-        message(FATAL_ERROR
-                "SALTS_ROOT must identify the host Salts SDK used by salts-idlc")
-      endif()
-      file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _idlc_salts_root)
+      foreach(_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
+        if(NOT DEFINED ENV{${_root}} OR "$ENV{${_root}}" STREQUAL "")
+          message(FATAL_ERROR
+                  "${_root} must identify the host SDK used by salts-idlc")
+        endif()
+      endforeach()
+      file(TO_CMAKE_PATH "$ENV{SALTSCORE_ROOT}" _idlc_saltscore_root)
+      file(TO_CMAKE_PATH "$ENV{CMETA_ROOT}" _idlc_cmeta_root)
     endif()
 
     set(${out_executable}
@@ -45,29 +61,34 @@ function(_saltsutils_idl_resolve_compiler
         "${SaltsUtils_IDLC_EXECUTABLE}" PARENT_SCOPE)
     set(${out_runtime_root}
         "${_idlc_prefix}" PARENT_SCOPE)
-    set(${out_salts_root}
-        "${_idlc_salts_root}" PARENT_SCOPE)
+    set(${out_saltscore_root} "${_idlc_saltscore_root}" PARENT_SCOPE)
+    set(${out_cmeta_root} "${_idlc_cmeta_root}" PARENT_SCOPE)
     return()
   endif()
 
-  if(CMAKE_CROSSCOMPILING)
+  if(_idlc_requires_host_tool)
     message(FATAL_ERROR
             "salts_idl_target() requires a host salts-idlc while cross-compiling. "
             "Set SaltsUtils_IDLC_EXECUTABLE and "
-            "SaltsUtils_IDLC_HOST_SALTS_ROOT.")
+            "SaltsUtils_IDLC_HOST_SALTSCORE_ROOT and "
+            "SaltsUtils_IDLC_HOST_CMETA_ROOT.")
   endif()
 
-  if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
-    message(FATAL_ERROR
-            "SALTS_ROOT must identify the host Salts SDK used by salts-idlc")
-  endif()
-  file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _idlc_salts_root)
+  foreach(_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
+    if(NOT DEFINED ENV{${_root}} OR "$ENV{${_root}}" STREQUAL "")
+      message(FATAL_ERROR
+              "${_root} must identify the host SDK used by salts-idlc")
+    endif()
+  endforeach()
+  file(TO_CMAKE_PATH "$ENV{SALTSCORE_ROOT}" _idlc_saltscore_root)
+  file(TO_CMAKE_PATH "$ENV{CMETA_ROOT}" _idlc_cmeta_root)
 
   if(TARGET salts_idlc)
     set(${out_executable} "$<TARGET_FILE:salts_idlc>" PARENT_SCOPE)
     set(${out_dependency} "salts_idlc" PARENT_SCOPE)
     set(${out_runtime_root} "${CMAKE_BINARY_DIR}" PARENT_SCOPE)
-    set(${out_salts_root} "${_idlc_salts_root}" PARENT_SCOPE)
+    set(${out_saltscore_root} "${_idlc_saltscore_root}" PARENT_SCOPE)
+    set(${out_cmeta_root} "${_idlc_cmeta_root}" PARENT_SCOPE)
     return()
   endif()
 
@@ -111,11 +132,12 @@ function(_saltsutils_idl_resolve_compiler
   set(${out_executable} "${_idlc_program}" PARENT_SCOPE)
   set(${out_dependency} "${_idlc_program}" PARENT_SCOPE)
   set(${out_runtime_root} "${_idlc_prefix}" PARENT_SCOPE)
-  set(${out_salts_root} "${_idlc_salts_root}" PARENT_SCOPE)
+  set(${out_saltscore_root} "${_idlc_saltscore_root}" PARENT_SCOPE)
+  set(${out_cmeta_root} "${_idlc_cmeta_root}" PARENT_SCOPE)
 endfunction()
 
 function(_saltsutils_idl_host_command
-         out_command executable runtime_root salts_root)
+         out_command executable runtime_root saltscore_root cmeta_root)
   if(WIN32)
     # Never interpolate the inherited Windows PATH (a semicolon-delimited
     # string) into a CMake COMMAND list. The Visual Studio/MSBuild generator
@@ -127,7 +149,9 @@ function(_saltsutils_idl_host_command
     set(${out_command}
         "${CMAKE_COMMAND};-E;env"
         "--modify"
-        "PATH=path_list_prepend:${salts_root}/bin"
+        "PATH=path_list_prepend:${saltscore_root}/bin"
+        "--modify"
+        "PATH=path_list_prepend:${cmeta_root}/bin"
         "--modify"
         "PATH=path_list_prepend:${runtime_root}/lib"
         "--modify"
@@ -137,13 +161,13 @@ function(_saltsutils_idl_host_command
         PARENT_SCOPE)
   elseif(APPLE)
     set(_runtime_path
-        "${runtime_root}/bin:${runtime_root}/lib:${salts_root}/lib:$ENV{DYLD_LIBRARY_PATH}")
+        "${runtime_root}/bin:${runtime_root}/lib:${cmeta_root}/lib:${saltscore_root}/lib:$ENV{DYLD_LIBRARY_PATH}")
     set(${out_command}
         "${CMAKE_COMMAND};-E;env;DYLD_LIBRARY_PATH=${_runtime_path};${executable}"
         PARENT_SCOPE)
   else()
     set(_runtime_path
-        "${runtime_root}/bin:${runtime_root}/lib:${salts_root}/lib:$ENV{LD_LIBRARY_PATH}")
+        "${runtime_root}/bin:${runtime_root}/lib:${cmeta_root}/lib:${saltscore_root}/lib:$ENV{LD_LIBRARY_PATH}")
     set(${out_command}
         "${CMAKE_COMMAND};-E;env;LD_LIBRARY_PATH=${_runtime_path};${executable}"
         PARENT_SCOPE)
@@ -463,12 +487,14 @@ function(salts_idl_target)
     _idlc
     _idlc_dependency
     _idlc_runtime_root
-    _idlc_salts_root)
+    _idlc_saltscore_root
+    _idlc_cmeta_root)
   _saltsutils_idl_host_command(
     _idlc_command
     "${_idlc}"
     "${_idlc_runtime_root}"
-    "${_idlc_salts_root}")
+    "${_idlc_saltscore_root}"
+    "${_idlc_cmeta_root}")
 
   set(_generated_dir
       "${CMAKE_CURRENT_BINARY_DIR}/${DB_TARGET}.idl")
@@ -617,7 +643,7 @@ function(salts_idl_target)
     add_dependencies("${DB_TARGET}_types" "${DB_TARGET}_idl_codegen")
     target_include_directories("${DB_TARGET}_types" INTERFACE
       "${_generated_dir}")
-    target_link_libraries("${DB_TARGET}_types" INTERFACE Salts::CSTL)
+    target_link_libraries("${DB_TARGET}_types" INTERFACE CMeta::CSTL)
   endif()
 
   if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
@@ -641,7 +667,7 @@ function(salts_idl_target)
       Salts::DataBind
       ${DB_LIBRARIES})
     if(_has_native AND DB_BINARY_CODEC)
-      target_link_libraries("${DB_TARGET}_native" PUBLIC Salts::CFlow)
+      target_link_libraries("${DB_TARGET}_native" PUBLIC CMeta::CFlow)
     endif()
   endif()
 
@@ -663,7 +689,7 @@ function(salts_idl_target)
     target_include_directories("${DB_TARGET}_plugin" PRIVATE
       "${_generated_dir}")
     target_link_libraries("${DB_TARGET}_plugin" PRIVATE
-      Salts::PluginABI
+      CMeta::PluginABI
       Salts::DataBind
       ${DB_LIBRARIES})
     set_target_properties("${DB_TARGET}_plugin" PROPERTIES
@@ -680,7 +706,7 @@ function(salts_idl_target)
     target_include_directories("${DB_TARGET}_plugin_client" PUBLIC
       "${_generated_dir}")
     target_link_libraries("${DB_TARGET}_plugin_client" PUBLIC
-      Salts::Plugin
+      CMeta::Plugin
       Salts::DataBind)
   endif()
 

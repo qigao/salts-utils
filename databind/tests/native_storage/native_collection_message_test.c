@@ -4,7 +4,7 @@
 #include "native_test_alignment.h"
 
 #include <cstl/typed.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <tinytest.h>
 
 #include <stddef.h>
@@ -25,7 +25,7 @@ enum {
 
 cmeta_type(Vec, NativeListValues, uint32_t, &cmeta_type_uint32, &cmeta_data_uint32);
 cmeta_type(Map, NativeJsonKeys, tstr, uint32_t,
-      SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_DATA_REF,
+      CMETA_TSTR_TYPE_REF, CMETA_TSTR_DATA_REF,
       &cmeta_type_uint32, &cmeta_data_uint32);
 
 typedef struct NativeListOrder {
