@@ -121,6 +121,10 @@ jobs:
       packages: write
       actions: read
     steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.metadata.outputs.release_sha }}
+        persist-credentials: false
     - uses: actions/download-artifact@v4
       with:
         name: salts-utils-native-nuget

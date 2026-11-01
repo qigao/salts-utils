@@ -88,3 +88,7 @@
   headers such as `data_bind_binding_plan.h`; it is a local subset gate, not a
   publishable RID. A standalone reduced layout also makes provenance fail only
   after installation, so do not weaken either the path or payload checks.
+- The native SDK publisher invokes repository-local release verification
+  scripts after downloading the prepared package. Its publish job must check
+  out the exact validated `release_sha`; checking out only in the metadata job
+  leaves later jobs without those scripts and fails before publication.
