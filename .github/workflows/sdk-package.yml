@@ -66,6 +66,33 @@ jobs:
         test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
         test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
         test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 6
+        # Five full-profile RIDs must contain the same exact public Jinja trace
+        # ABI, exported target and real platform library. The sixth RID,
+        # linux-arm64, is deliberately a focused C11 workflow-only SDK.
+        jinja_header=package/sdk/linux-x64/include/jinja/jinja_cmeta.h
+        test -f "$jinja_header"
+        for rid in linux-x64 windows-x64 macos-arm64 android-arm64-v8a ios-arm64; do
+          prefix="package/sdk/$rid"
+          test -f "$prefix/include/jinja/jinja_cmeta.h"
+          cmp "$jinja_header" "$prefix/include/jinja/jinja_cmeta.h"
+          targets="$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
+          test -f "$targets"
+          grep -Fq 'add_library(Salts::JinjaCMeta SHARED IMPORTED)' "$targets"
+          case "$rid" in
+            linux-x64|android-arm64-v8a)
+              test -f "$prefix/lib/libjinja_cmeta.so" ;;
+            macos-arm64|ios-arm64)
+              test -f "$prefix/lib/libjinja_cmeta.dylib" ;;
+            windows-x64)
+              test -f "$prefix/bin/jinja_cmeta.dll"
+              test -f "$prefix/lib/jinja_cmeta.lib" ;;
+          esac
+        done
+        test ! -e package/sdk/linux-arm64/include/jinja/jinja_cmeta.h
+        if grep -Fq 'add_library(Salts::JinjaCMeta ' package/sdk/linux-arm64/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake; then
+          echo 'Focused Linux ARM64 SDK must not advertise JinjaCMeta' >&2
+          exit 1
+        fi
     - uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
@@ -114,6 +141,19 @@ jobs:
           exit 1
         fi
         unzip -Z1 "$nupkg" | sort | tee "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        # The final NuGet archive (not merely the staged SDK tree) must retain
+        # each full-RID Jinja public header and its actual shared runtime.
+        for rid in linux-x64 windows-x64 macos-arm64 android-arm64-v8a ios-arm64; do
+          grep -Fx "sdk/$rid/include/jinja/jinja_cmeta.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          case "$rid" in
+            linux-x64|android-arm64-v8a) binary="sdk/$rid/lib/libjinja_cmeta.so" ;;
+            macos-arm64|ios-arm64) binary="sdk/$rid/lib/libjinja_cmeta.dylib" ;;
+            windows-x64) binary="sdk/$rid/bin/jinja_cmeta.dll" ;;
+          esac
+          grep -Fx "$binary" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        done
+        grep -Fx "sdk/windows-x64/lib/jinja_cmeta.lib" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/linux-x64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/windows-x64/bin/salts-idlc.exe" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"

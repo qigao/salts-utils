@@ -52,10 +52,11 @@ jobs:
           $pythonPath = if ([string]::IsNullOrEmpty($existing)) { $target } else { "$target$separator$existing" }
           "PYTHONPATH=$pythonPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      # The real installed producer package must expose both static Markdown
-      # targets and public headers. No fabricated installer/consumer project,
-      # no extra workflow and no source-level fallback.
-      - name: Verify installed native Markdown static SDK exports
+      # Verify the actual installed producer SDK. Markdown has one pair of
+      # canonical static targets, and the same full native build exports the
+      # existing JinjaCMeta SHARED target and public source trace API. This is
+      # an install/export product contract, not another consumer/probe project.
+      - name: Verify installed native Markdown and JinjaCMeta SDK exports
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -85,7 +86,31 @@ jobs:
               throw "Markdown installed-SDK contract: missing compiled static archive $name"
             }
           }
-          Write-Host "PASS: real installed SaltsUtils MarkdownParser/Html static SDK ($env:QIGAO_SDK_RID)"
+          # The Jinja trace callback is a published header/API plus real shared
+          # runtime. An in-tree TinyTest PASS alone does not prove installed
+          # package completeness; no fallback target or source headers allowed.
+          foreach ($rel in @('include/jinja/jinja_cmeta.h',
+                             'lib/cmake/SaltsUtils/SaltsUtilsTargets-release.cmake')) {
+            if (-not (Test-Path (Join-Path $prefix $rel))) {
+              throw "JinjaCMeta installed-SDK contract: missing $rel"
+            }
+          }
+          if (-not $targets.Contains('add_library(Salts::JinjaCMeta SHARED IMPORTED)')) {
+            throw 'JinjaCMeta installed-SDK contract: missing canonical SHARED target'
+          }
+          $jinjaBinaries = if ($IsWindows) {
+            @('bin/jinja_cmeta.dll', 'lib/jinja_cmeta.lib')
+          } elseif ($IsMacOS) {
+            @('lib/libjinja_cmeta.dylib')
+          } else {
+            @('lib/libjinja_cmeta.so')
+          }
+          foreach ($rel in $jinjaBinaries) {
+            if (-not (Test-Path (Join-Path $prefix $rel))) {
+              throw "JinjaCMeta installed-SDK contract: missing real binary $rel"
+            }
+          }
+          Write-Host "PASS: installed MarkdownParser/Html STATIC and JinjaCMeta SHARED SDK ($env:QIGAO_SDK_RID)"
 
       - name: Run complete Unix CTest graph
         if: matrix.family != 'windows'
