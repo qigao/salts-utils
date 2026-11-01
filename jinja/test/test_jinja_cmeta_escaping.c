@@ -148,3 +148,971 @@ spec("Jinja CMeta: escaping 3") {
     free(output);
   }
 }
+
+
+/* A native test of the real Jinja renderer's ORIGINAL instruction metadata,
+ * not an after-the-fact substring match or a fabricated generated XML map. */
+typedef struct JinjaTraceSample {
+  char output[512];
+  size_t bytes;
+  struct {
+    char source[64];
+    size_t source_offset;
+    size_t source_end;
+    size_t generated_offset;
+    size_t generated_bytes;
+    JINJA_CMETA_EMIT_KIND kind;
+    size_t call_count;
+    struct {
+      char name[64];
+      size_t source_offset;
+      JINJA_CMETA_EMIT_CALL_KIND kind;
+    } calls[8];
+    size_t source_range_count;
+    size_t intermediate_offset;
+    int intermediate_identity;
+    struct {
+      char name[64];
+      size_t source_begin, source_end;
+      size_t intermediate_begin, intermediate_end;
+      JINJA_CMETA_EMIT_KIND kind;
+    } ranges[16];
+  } events[64];
+  size_t count;
+  int reject_trace;
+} JinjaTraceSample;
+
+static int jinja_trace_sample_write(const char *bytes, size_t count, void *opaque) {
+  JinjaTraceSample *sample = (JinjaTraceSample *)opaque;
+  if (sample == NULL || sample->bytes > sizeof(sample->output) ||
+      count > sizeof(sample->output) - sample->bytes) return -1;
+  if (count != 0u) memcpy(sample->output + sample->bytes, bytes, count);
+  sample->bytes += count;
+  return 0;
+}
+
+static int jinja_trace_sample_event(const JINJA_CMETA_EMIT_ANCHOR *event, void *opaque) {
+  JinjaTraceSample *sample = (JinjaTraceSample *)opaque;
+  if (sample == NULL || event == NULL || sample->reject_trace ||
+      sample->count >= sizeof(sample->events) / sizeof(sample->events[0]) ||
+      event->template_name.len >= sizeof(sample->events[0].source))
+    return -1;
+  /* The source identity is borrowed only for this callback. */
+  const size_t index = sample->count++;
+  if (event->template_name.len != 0u)
+    memcpy(sample->events[index].source, event->template_name.data, event->template_name.len);
+  sample->events[index].source[event->template_name.len] = '\0';
+  sample->events[index].source_offset = event->source_offset;
+  sample->events[index].source_end = event->source_end;
+  sample->events[index].generated_offset = event->generated_offset;
+  sample->events[index].generated_bytes = event->generated_bytes;
+  sample->events[index].kind = event->kind;
+  if (event->active_call_count > 8u ||
+      (event->active_call_count != 0u && event->active_calls == NULL))
+    return -1;
+  sample->events[index].call_count = event->active_call_count;
+  for (size_t i = 0u; i < event->active_call_count; ++i) {
+    const JINJA_CMETA_EMIT_CALL *call = &event->active_calls[i];
+    if (call->template_name.len >= sizeof(sample->events[index].calls[i].name))
+      return -1;
+    if (call->template_name.len != 0u)
+      memcpy(sample->events[index].calls[i].name,
+             call->template_name.data, call->template_name.len);
+    sample->events[index].calls[i].name[call->template_name.len] = '\0';
+    sample->events[index].calls[i].source_offset = call->source_offset;
+    sample->events[index].calls[i].kind = call->kind;
+  }
+  if (event->source_range_count > 16u ||
+      (event->source_range_count != 0u && event->source_ranges == NULL))
+    return -1;
+  sample->events[index].source_range_count = event->source_range_count;
+  sample->events[index].intermediate_offset = event->intermediate_offset;
+  sample->events[index].intermediate_identity = event->intermediate_identity;
+  for (size_t i = 0u; i < event->source_range_count; ++i) {
+    const JINJA_CMETA_EMIT_SOURCE_RANGE *range = &event->source_ranges[i];
+    if (range->template_name.len >= sizeof(sample->events[index].ranges[i].name))
+      return -1;
+    if (range->template_name.len != 0u)
+      memcpy(sample->events[index].ranges[i].name,
+          range->template_name.data, range->template_name.len);
+    sample->events[index].ranges[i].name[range->template_name.len] = '\0';
+    sample->events[index].ranges[i].source_begin = range->source_begin;
+    sample->events[index].ranges[i].source_end = range->source_end;
+    sample->events[index].ranges[i].intermediate_begin = range->intermediate_begin;
+    sample->events[index].ranges[i].intermediate_end = range->intermediate_end;
+    sample->events[index].ranges[i].kind = range->kind;
+  }
+  return 0;
+}
+
+spec("Jinja emits bounded original instruction anchors without inventing output source maps") {
+  it("reports contiguous written ranges across XML escapes and original named source offsets") {
+    static const char source[] = "A{{ user.name | escape }}B";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_ENV *env = jinja_cmeta_env_create(NULL, &error);
+    check_not_null(env);
+    if (!env) return;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_env_compile(env,
+        vstr_from_cstr("studio.ui.xml.jinja"), vstr_from_cstr(source), &error);
+    check_not_null(templ);
+    if (!templ) { jinja_cmeta_env_destroy(env); return; }
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("<Ada>"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, sizeof("A&lt;Ada&gt;B") - 1u);
+      check_equal(memcmp(sample.output, "A&lt;Ada&gt;B", sample.bytes), 0);
+      check(sample.count >= 3u);
+      size_t next = 0u, expression_bytes = 0u, literals = 0u;
+      const size_t expression_at = 1u;
+      const size_t expression_end = (size_t)(strstr(source, "}}") - source) + 2u;
+      const size_t last_literal_at = sizeof(source) - 2u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, next);
+        next += sample.events[i].generated_bytes;
+        check_equal(strcmp(sample.events[i].source, "studio.ui.xml.jinja"), 0);
+        if (sample.events[i].kind == JINJA_CMETA_EMIT_EXPRESSION) {
+          check_equal(sample.events[i].source_offset, expression_at);
+          check_equal(sample.events[i].source_end, expression_end);
+          expression_bytes += sample.events[i].generated_bytes;
+        } else if (sample.events[i].kind == JINJA_CMETA_EMIT_LITERAL) {
+          check(sample.events[i].source_offset == 0u ||
+                sample.events[i].source_offset == last_literal_at);
+          check_equal(sample.events[i].source_end,
+              sample.events[i].source_offset == 0u
+                  ? expression_at : sizeof(source) - 1u);
+          ++literals;
+        } else {
+          check_false(true); /* no indirect attribution in this simple source */
+        }
+      }
+      check_equal(next, sample.bytes);
+      check_equal(expression_bytes, sizeof("&lt;Ada&gt;") - 1u);
+      check_equal(literals, 2u);
+    }
+    jinja_cmeta_release(templ);
+    jinja_cmeta_env_destroy(env);
+  }
+
+  it("keeps repeated loop emission anchors at their original instruction byte") {
+    static const char source[] = "{% for i in range(2) %}[{{ user.name }}]{% endfor %}";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ =
+        jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (!templ) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, sizeof("[Ada][Ada]") - 1u);
+      check_equal(memcmp(sample.output, "[Ada][Ada]", sample.bytes), 0);
+      size_t count = 0u, expected_offset = 0u;
+      const size_t print_offset = (size_t)(strstr(source, "{{ user.name }}") - source);
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, expected_offset);
+        expected_offset += sample.events[i].generated_bytes;
+        if (sample.events[i].kind == JINJA_CMETA_EMIT_EXPRESSION) {
+          ++count;
+          check_equal(sample.events[i].source_offset, print_offset);
+          check_equal(sample.events[i].source_end,
+              print_offset + sizeof("{{ user.name }}") - 1u);
+        }
+      }
+      check_equal(count, 2u);
+      check_equal(expected_offset, sample.bytes);
+    }
+    jinja_cmeta_release(templ);
+  }
+
+  it("fails closed for a missing trace callback and stops on trace sink refusal") {
+    static const char source[] = "A{{ user.name }}B";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ =
+        jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (!templ) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE invalid = {NULL};
+    check_equal(jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &invalid, &sample, &error), JINJA_CMETA_ERR_INVALID_ARGUMENT);
+    check_equal(sample.bytes, 0u);
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    sample.reject_trace = 1;
+    check_equal(jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error), JINJA_CMETA_ERR_RENDER);
+    check(sample.bytes > 0u);
+    jinja_cmeta_release(templ);
+  }
+}
+
+
+static JINJA_CMETA_STATUS jinja_trace_local_load(void *userdata, vstr name,
+    JINJA_CMETA_SOURCE *source, JINJA_CMETA_ERROR *error) {
+  (void)userdata; (void)error;
+  static char included[] = "<span>{{ user.name }}</span>";
+  if (!vstr_eq(name, vstr_from_cstr("fragment"))) return JINJA_CMETA_ERR_NOT_FOUND;
+  *source = (JINJA_CMETA_SOURCE){
+      vstr_from_buf(included, sizeof(included) - 1u), included};
+  return JINJA_CMETA_OK;
+}
+
+static void jinja_trace_local_release(void *userdata, JINJA_CMETA_SOURCE *source) {
+  (void)userdata; (void)source; /* The known template is static and borrowed. */
+}
+
+spec("Jinja preserves active nested template callsites and marks materialized values indirect") {
+  it("reports original included-template instructions with parent include callsite") {
+    static const char root_source[] = "A{% include 'fragment' %}B";
+    JINJA_CMETA_ENV_OPTIONS options = JINJA_CMETA_ENV_OPTIONS_INIT;
+    options.loader = (JINJA_CMETA_LOADER){
+        jinja_trace_local_load, jinja_trace_local_release, NULL};
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_ENV *env = jinja_cmeta_env_create(&options, &error);
+    check_not_null(env);
+    if (!env) return;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_env_compile(env,
+        vstr_from_cstr("app.ui.xml.jinja"), vstr_from_cstr(root_source), &error);
+    check_not_null(templ);
+    if (!templ) { jinja_cmeta_env_destroy(env); return; }
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      static const char expected[] = "A<span>Ada</span>B";
+      check_equal(sample.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(sample.output, expected, sizeof(expected) - 1u), 0);
+      size_t next = 0u, inside = 0u, outside = 0u;
+      const size_t include_at = (size_t)(strstr(root_source, "{% include") - root_source);
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, next);
+        next += sample.events[i].generated_bytes;
+        if (strcmp(sample.events[i].source, "fragment") == 0) {
+          ++inside;
+          check_equal(sample.events[i].call_count, 1u);
+          check_equal(strcmp(sample.events[i].calls[0].name,
+                            "app.ui.xml.jinja"), 0);
+          check_equal(sample.events[i].calls[0].source_offset, include_at);
+          check(sample.events[i].calls[0].kind == JINJA_CMETA_CALL_INCLUDE);
+        } else {
+          ++outside;
+          check_equal(strcmp(sample.events[i].source,
+                             "app.ui.xml.jinja"), 0);
+          check_equal(sample.events[i].call_count, 0u);
+        }
+      }
+      check_equal(next, sample.bytes);
+      check(inside >= 3u);
+      check_equal(outside, 2u);
+    }
+    jinja_cmeta_release(templ);
+    jinja_cmeta_env_destroy(env);
+  }
+
+  it("identifies the direct streaming block invocation without attributing its bytes to the caller") {
+    static const char source[] = "A{% block section %}inside{% endblock %}B";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_ENV *env = jinja_cmeta_env_create(NULL, &error);
+    check_not_null(env);
+    if (!env) return;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_env_compile(
+        env, vstr_from_cstr("blocks.ui.xml.jinja"),
+        vstr_from_cstr(source), &error);
+    check_not_null(templ);
+    if (!templ) { jinja_cmeta_env_destroy(env); return; }
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      static const char expected[] = "AinsideB";
+      check_equal(sample.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(sample.output, expected, sizeof(expected) - 1u), 0);
+      const size_t opener = (size_t)(strstr(source, "{% block") - source);
+      size_t inside = 0u, outside = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        if (sample.events[i].call_count == 1u) {
+          ++inside;
+          check(sample.events[i].kind == JINJA_CMETA_EMIT_LITERAL);
+          check_equal(strcmp(sample.events[i].calls[0].name,
+                            "blocks.ui.xml.jinja"), 0);
+          check_equal(sample.events[i].calls[0].source_offset, opener);
+          check(sample.events[i].calls[0].kind == JINJA_CMETA_CALL_FUNCTION);
+        } else {
+          ++outside;
+          check_equal(sample.events[i].call_count, 0u);
+        }
+      }
+      check(inside > 0u);
+      check_equal(outside, 2u);
+    }
+    jinja_cmeta_release(templ);
+    jinja_cmeta_env_destroy(env);
+  }
+
+  it("conservatively classifies captured and macro-derived strings as INDIRECT") {
+    static const struct {
+      const char *source;
+      const char *expected;
+    } cases[] = {
+        {"{% set label %}<b>{% endset %}{{ label }}", "<b>"},
+        {"{% macro badge() %}<b>{% endmacro %}{{ badge() }}", "<b>"},
+        {"{% filter upper %}<b>x</b>{% endfilter %}", "<B>X</B>"},
+        {"{% macro inner() %}x{% endmacro %}{% filter upper %}{{ inner() }}{% endfilter %}", "X"}
+    };
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    for (size_t i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+      JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+      JINJA_CMETA_TEMPLATE *templ =
+          jinja_cmeta_compile(vstr_from_cstr(cases[i].source), NULL, &error);
+      check_not_null(templ);
+      if (!templ) continue;
+      JinjaTraceSample sample = {0};
+      const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+          templ, &model.root_desc, &root, NULL, &renderer, &sample,
+          &trace, &sample, &error);
+      check_equal(status, JINJA_CMETA_OK);
+      if (status == JINJA_CMETA_OK) {
+        check_equal(sample.bytes, strlen(cases[i].expected));
+        check_equal(memcmp(sample.output, cases[i].expected, sample.bytes), 0);
+        check(sample.count > 0u);
+        size_t accounted = 0u;
+        for (size_t j = 0u; j < sample.count; ++j) {
+          check_equal(sample.events[j].generated_offset, accounted);
+          accounted += sample.events[j].generated_bytes;
+          check(sample.events[j].kind == JINJA_CMETA_EMIT_INDIRECT);
+          check_equal(sample.events[j].call_count, 0u);
+        }
+        check_equal(accounted, sample.bytes);
+      }
+      jinja_cmeta_release(templ);
+    }
+  }
+}
+
+
+
+/* The same real render path: capture provenance survives exited macro frames.
+ * Transforms preserve diagnostic coverage, never a fictitious column map. */
+spec("Jinja M2 source intervals survive macros, captures and filters") {
+  it("keeps an original macro body range across a later set-capture emission") {
+    static const char source[] =
+        "{% macro badge() %}<i>A</i>{% endmacro %}"
+        "{% set label %}{{ badge() }}{% endset %}"
+        "<div>{{ label }}</div>";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_ENV *env = jinja_cmeta_env_create(NULL, &error);
+    check_not_null(env);
+    if (!env) return;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_env_compile(env,
+        vstr_from_cstr("nested.ui.xml.jinja"), vstr_from_cstr(source), &error);
+    check_not_null(templ);
+    if (!templ) { jinja_cmeta_env_destroy(env); return; }
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      static const char expected[] = "<div><i>A</i></div>";
+      check_equal(sample.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(sample.output, expected, sizeof(expected) - 1u), 0);
+      const size_t body = (size_t)(strstr(source, "<i>A</i>") - source);
+      int found = 0;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        for (size_t j = 0u; j < sample.events[i].source_range_count; ++j) {
+          const size_t lo = sample.events[i].ranges[j].source_begin;
+          const size_t hi = sample.events[i].ranges[j].source_end;
+          if (lo <= body && hi >= body + sizeof("<i>A</i>") - 1u) {
+            check_equal(strcmp(sample.events[i].ranges[j].name,
+                               "nested.ui.xml.jinja"), 0);
+            check(sample.events[i].kind == JINJA_CMETA_EMIT_INDIRECT);
+            check(sample.events[i].intermediate_identity != 0);
+            found = 1;
+          }
+        }
+      }
+      check(found);
+    }
+    jinja_cmeta_release(templ);
+    jinja_cmeta_env_destroy(env);
+  }
+
+  it("reports filter input ranges but never claims identity after uppercasing") {
+    static const char source[] = "{% filter upper %}ab{% endfilter %}";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ =
+        jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (!templ) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, 2u);
+      check_equal(memcmp(sample.output, "AB", 2u), 0);
+      size_t accounted = 0u, origins = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, accounted);
+        accounted += sample.events[i].generated_bytes;
+        check(sample.events[i].kind == JINJA_CMETA_EMIT_INDIRECT);
+        check_equal(sample.events[i].intermediate_identity, 0);
+        check_equal(sample.events[i].intermediate_offset, SIZE_MAX);
+        origins += sample.events[i].source_range_count;
+      }
+      check_equal(accounted, 2u);
+      check(origins > 0u);
+    }
+    jinja_cmeta_release(templ);
+  }
+}
+
+
+/* Existing native test target: no separate consumer, workflow or renderer. */
+spec("Jinja M2b copied versus transformed capture provenance") {
+  it("keeps author ranges for direct filters and rejects transformed identity") {
+    static const struct {
+      const char *source;
+      const char *expected;
+      const char *author_bytes;
+      int unchanged;
+    } cases[] = {
+      {"{% set label %}ab{% endset %}{{ label | upper }}", "AB", "ab", 0},
+      {"{% set label %}a&{% endset %}{{ label | escape }}", "a&amp;", "a&", 0},
+      {"{% set label %}ab{% endset %}{{ label | safe }}", "ab", "ab", 1},
+      {"{% set label %} ab {% endset %}{{ label | trim }}", "ab", " ab ", 0},
+      {"{% set label %}ab{% endset %}{% set next %}{{ label | upper }}{% endset %}{{ next }}",
+       "AB", "ab", 0}
+    };
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    for (size_t case_index = 0u; case_index < sizeof(cases) / sizeof(cases[0]); ++case_index) {
+      const char *source = cases[case_index].source;
+      JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+      JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
+      check_not_null(templ);
+      if (templ == NULL) continue;
+      JinjaTraceSample sample = {0};
+      const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+          templ, &model.root_desc, &root, NULL, &renderer, &sample,
+          &trace, &sample, &error);
+      check_equal(status, JINJA_CMETA_OK);
+      if (status == JINJA_CMETA_OK) {
+        check_equal(sample.bytes, strlen(cases[case_index].expected));
+        check_equal(memcmp(sample.output, cases[case_index].expected, sample.bytes), 0);
+        /* Search within the actual capture body, not the Jinja statement:
+         * the requested "ab" also occurs inside the variable name "label".
+         * A pre-body strstr() falsely tests source offsets in the identifier. */
+        const char *opening_end = strstr(source, "%}");
+        const char *position = opening_end == NULL ? NULL
+            : strstr(opening_end + 2u, cases[case_index].author_bytes);
+        check_not_null(position);
+        if (position != NULL) {
+          const size_t original = (size_t)(position - source);
+          int has_source = 0, has_output = 0;
+          size_t next = 0u;
+          for (size_t j = 0u; j < sample.count; ++j) {
+            check_equal(sample.events[j].generated_offset, next);
+            next += sample.events[j].generated_bytes;
+            if (sample.events[j].kind != JINJA_CMETA_EMIT_INDIRECT) continue;
+            check(sample.events[j].source_range_count != 0u);
+            check_equal(sample.events[j].intermediate_identity, cases[case_index].unchanged);
+            if (!cases[case_index].unchanged)
+              check_equal(sample.events[j].intermediate_offset, SIZE_MAX);
+            has_output = 1;
+            for (size_t k = 0u; k < sample.events[j].source_range_count; ++k) {
+              if (sample.events[j].ranges[k].source_begin <= original &&
+                  sample.events[j].ranges[k].source_end >=
+                      original + strlen(cases[case_index].author_bytes))
+                has_source = 1;
+            }
+          }
+          check_equal(next, sample.bytes);
+          check(has_output);
+          check(has_source);
+        }
+      }
+      jinja_cmeta_release(templ);
+    }
+  }
+}
+
+/* M2c multi-owner provenance stays inside the original Jinja TinyTest target. */
+spec("Jinja M2c derived strings preserve all candidate source owners") {
+  it("retains both capture sources and explicitly marks unknown literal bytes") {
+    static const struct {
+      const char *source, *expected;
+      size_t known_sources;
+      size_t unknown_sources;
+    } cases[] = {
+      {"{% set first %}Left{% endset %}{% set second %}Right{% endset %}{{ first ~ second }}",
+       "LeftRight", 2u, 0u},
+      {"{% set first %}Left{% endset %}{{ first ~ '-' }}",
+       "Left-", 1u, 1u},
+      {"{% set first %}Left{% endset %}{{ '-' ~ first }}",
+       "-Left", 1u, 1u},
+      {"{% set first %}Left{% endset %}{% set second %}Right{% endset %}"
+       "{% set both %}{{ first ~ second }}{% endset %}{{ both }}",
+       "LeftRight", 2u, 0u},
+      /* Unknown must remain unknown even when recaptured or concatenated
+       * again, never converted into a generic indirect source span. */
+      {"{% set first %}Left{% endset %}"
+       "{% set both %}{{ first ~ '-' }}{% endset %}{{ both }}",
+       "Left-", 1u, 1u},
+      {"{% set first %}Left{% endset %}"
+       "{% set middle %}{{ first ~ '-' }}{% endset %}"
+       "{{ middle ~ '?' }}", "Left-?", 1u, 2u}
+    };
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    for (size_t c = 0u; c < sizeof(cases) / sizeof(cases[0]); ++c) {
+      JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+      JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+          vstr_from_cstr(cases[c].source), NULL, &error);
+      check_not_null(templ);
+      if (templ == NULL) continue;
+      JinjaTraceSample sample = {0};
+      JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+          templ, &model.root_desc, &root, NULL, &renderer, &sample,
+          &trace, &sample, &error);
+      check_equal(status, JINJA_CMETA_OK);
+      if (status == JINJA_CMETA_OK) {
+        check_equal(sample.bytes, strlen(cases[c].expected));
+        check_equal(memcmp(sample.output, cases[c].expected, sample.bytes), 0);
+        check(sample.count > 0u);
+        size_t known = 0u, unknown = 0u, next = 0u;
+        for (size_t i = 0u; i < sample.count; ++i) {
+          check_equal(sample.events[i].generated_offset, next);
+          next += sample.events[i].generated_bytes;
+          check(sample.events[i].kind == JINJA_CMETA_EMIT_INDIRECT);
+          check_equal(sample.events[i].intermediate_identity, 0);
+          check_equal(sample.events[i].intermediate_offset, SIZE_MAX);
+          for (size_t j = 0u; j < sample.events[i].source_range_count; ++j) {
+            const size_t lo = sample.events[i].ranges[j].source_begin;
+            const size_t hi = sample.events[i].ranges[j].source_end;
+            if (sample.events[i].ranges[j].kind == JINJA_CMETA_EMIT_UNKNOWN) {
+              check_equal(lo, SIZE_MAX);
+              check_equal(hi, SIZE_MAX);
+              check_equal(sample.events[i].ranges[j].name[0], '\0');
+              ++unknown;
+            } else {
+              check(lo < hi);
+              check(hi <= strlen(cases[c].source));
+              ++known;
+            }
+          }
+        }
+        check_equal(next, sample.bytes);
+        check_equal(known, cases[c].known_sources);
+        check_equal(unknown, cases[c].unknown_sources);
+      }
+      jinja_cmeta_release(templ);
+    }
+  }
+}
+
+
+/* M2c resource and source-span acceptance in the EXISTING native Jinja C11
+ * test. It deliberately does not use the fixed-size diagnostic recorder for
+ * the capacity case: that recorder must not be the reason rendering fails. */
+typedef struct JinjaTraceCountSink {
+  size_t bytes;
+  size_t trace_events;
+  size_t next_generated;
+  int bad_offset;
+} JinjaTraceCountSink;
+
+static int jinja_trace_count_write(const char *bytes, size_t count, void *opaque) {
+  JinjaTraceCountSink *sink = (JinjaTraceCountSink *)opaque;
+  if (sink == NULL || (count != 0u && bytes == NULL) ||
+      count > SIZE_MAX - sink->bytes) return -1;
+  sink->bytes += count;
+  return 0;
+}
+
+static int jinja_trace_count_event(const JINJA_CMETA_EMIT_ANCHOR *event, void *opaque) {
+  JinjaTraceCountSink *sink = (JinjaTraceCountSink *)opaque;
+  if (sink == NULL || event == NULL ||
+      event->generated_offset != sink->next_generated ||
+      event->generated_bytes > SIZE_MAX - sink->next_generated) {
+    if (sink != NULL) sink->bad_offset = 1;
+    return -1;
+  }
+  sink->next_generated += event->generated_bytes;
+  ++sink->trace_events;
+  return 0;
+}
+
+spec("Jinja M2c source ledger resource and lifetime contract") {
+  it("fails source range exhaustion while the same untraced bytes still render") {
+    /* Each chained concat copies accumulated candidate origin intervals and
+     * adds one UNKNOWN. Cumulative intervals exceed max_nodes=64 while the
+     * normal Jinja evaluation of the same small expression stays bounded. */
+    static const char source[] =
+        "{% set label %}x{% endset %}{{ label"
+        " ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-'"
+        " ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-' ~ '-'"
+        " }}";
+    static const char expected[] = "x--------------------";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JINJA_CMETA_RENDER_OPTIONS options = JINJA_CMETA_RENDER_OPTIONS_INIT;
+    options.max_nodes = 64u;
+    options.max_string_bytes = 4096u;
+    JinjaTraceSample baseline = {0};
+    const JINJA_CMETA_RENDERER ordinary = {jinja_trace_sample_write};
+    JINJA_CMETA_STATUS status = jinja_cmeta_render(
+        templ, &model.root_desc, &root, &options, &ordinary, &baseline, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(baseline.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(baseline.output, expected, sizeof(expected) - 1u), 0);
+    }
+    JinjaTraceCountSink count = {0};
+    const JINJA_CMETA_RENDERER counter = {jinja_trace_count_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_count_event};
+    status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, &options, &counter, &count,
+        &trace, &count, &error);
+    check_equal(status, JINJA_CMETA_ERR_CAPACITY);
+    check_equal(error.status, JINJA_CMETA_ERR_CAPACITY);
+    check_equal(count.bad_offset, 0);
+    /* Failure is during intermediate evaluation, before any final sink write;
+     * neither a user callback refusal nor a speculative final trace. */
+    check_equal(count.bytes, 0u);
+    check_equal(count.trace_events, 0u);
+    /* A failed traced call cannot poison another ordinary invocation. */
+    JinjaTraceSample after = {0};
+    status = jinja_cmeta_render(
+        templ, &model.root_desc, &root, &options, &ordinary, &after, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(after.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(after.output, expected, sizeof(expected) - 1u), 0);
+    }
+    jinja_cmeta_release(templ);
+  }
+
+  it("stops a rejected multi-source trace after an accepted final byte write") {
+    static const char source[] =
+        "{% set left %}A{% endset %}{% set right %}B{% endset %}"
+        "{{ left ~ right }}";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample rejected = {.reject_trace = 1};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &rejected,
+        &trace, &rejected, &error);
+    check_equal(status, JINJA_CMETA_ERR_RENDER);
+    check_equal(error.status, JINJA_CMETA_ERR_RENDER);
+    check_equal(rejected.bytes, 2u);
+    check_equal(memcmp(rejected.output, "AB", 2u), 0);
+    check_equal(rejected.count, 0u);
+    JinjaTraceSample admitted = {0};
+    status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &admitted,
+        &trace, &admitted, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(admitted.bytes, 2u);
+      check_equal(admitted.count, 1u);
+      check_equal(admitted.events[0].source_range_count, 2u);
+      check_equal(admitted.events[0].intermediate_identity, 0);
+    }
+    jinja_cmeta_release(templ);
+  }
+
+  it("keeps separate original CRLF and UTF-8 byte coverage through concatenation") {
+    static const char source[] =
+        "{% set first %}\xE4\xB8\xAD\r\nA{% endset %}"
+        "{% set second %}\xF0\x9F\x99\x82{% endset %}"
+        "{{ first ~ second }}";
+    static const char expected[] = "\xE4\xB8\xAD\nA\xF0\x9F\x99\x82";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_buf(source, sizeof(source) - 1u), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, sizeof(expected) - 1u);
+      check_equal(memcmp(sample.output, expected, sizeof(expected) - 1u), 0);
+      const char *first = strstr(source, "\xE4\xB8\xAD");
+      const char *second = strstr(source, "\xF0\x9F\x99\x82");
+      check_not_null(first);
+      check_not_null(second);
+      const size_t first_offset = (size_t)(first - source);
+      const size_t second_offset = (size_t)(second - source);
+      size_t covered = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].kind, JINJA_CMETA_EMIT_INDIRECT);
+        check_equal(sample.events[i].intermediate_identity, 0);
+        for (size_t j = 0u; j < sample.events[i].source_range_count; ++j) {
+          const size_t start = sample.events[i].ranges[j].source_begin;
+          const size_t end = sample.events[i].ranges[j].source_end;
+          check(end <= sizeof(source) - 1u);
+          if (start <= first_offset && end >= first_offset + sizeof("\xE4\xB8\xAD\r\nA") - 1u)
+            covered |= 1u;
+          if (start <= second_offset && end >= second_offset + sizeof("\xF0\x9F\x99\x82") - 1u)
+            covered |= 2u;
+        }
+      }
+      check_equal(covered, 3u);
+    }
+    jinja_cmeta_release(templ);
+  }
+}
+
+
+/* Only existing Jinja renderer and C11 TinyTest, no separate project/CI. */
+spec("Jinja M2e empty capture provenance must fail closed") {
+  it("reports UNKNOWN when a filter synthesizes bytes from an empty capture") {
+    static const char source[] =
+        "{% set empty %}{% endset %}"
+        "{% set label %}{{ empty | center(3) }}{% endset %}"
+        "{{ label }}";
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    JinjaTraceSample sample = {0};
+    JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, 3u);
+      check_equal(memcmp(sample.output, "   ", 3u), 0);
+      check(sample.count > 0u);
+      size_t accounted = 0u, unknown = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, accounted);
+        accounted += sample.events[i].generated_bytes;
+        check_equal(sample.events[i].kind, JINJA_CMETA_EMIT_INDIRECT);
+        check_equal(sample.events[i].intermediate_identity, 0);
+        check_equal(sample.events[i].intermediate_offset, SIZE_MAX);
+        check(sample.events[i].source_range_count != 0u);
+        for (size_t j = 0u; j < sample.events[i].source_range_count; ++j) {
+          const size_t lo = sample.events[i].ranges[j].source_begin;
+          const size_t hi = sample.events[i].ranges[j].source_end;
+          check_equal(sample.events[i].ranges[j].kind, JINJA_CMETA_EMIT_UNKNOWN);
+          check_equal(lo, SIZE_MAX);
+          check_equal(hi, SIZE_MAX);
+          check_equal(sample.events[i].ranges[j].name[0], '\0');
+          ++unknown;
+        }
+      }
+      check_equal(accounted, sample.bytes);
+      check(unknown != 0u);
+    }
+    /* The optional trace must not alter ordinary production output. */
+    JinjaTraceSample plain = {0};
+    status = jinja_cmeta_render(
+        templ, &model.root_desc, &root, NULL, &renderer, &plain, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(plain.bytes, 3u);
+      check_equal(memcmp(plain.output, "   ", 3u), 0);
+    }
+    jinja_cmeta_release(templ);
+  }
+}
+
+
+/* M2f public source_end is the original instruction's lexical END, not an
+ * output-byte projection. All checks run in the established real Jinja target. */
+spec("Jinja M2f emits bounded half-open ORIGINAL instruction spans") {
+  it("preserves author byte spans across CRLF folding and UTF-8 literals") {
+    static const char source[] =
+        "A\r\n\xE4\xB8\xAD{{ user.name | escape }}Z";
+    static const char output[] = "A\n\xE4\xB8\xAD" "AdaZ";
+    const char *expression = strstr(source, "{{ user.name");
+    check_not_null(expression);
+    if (expression == NULL) return;
+    const size_t expr_begin = (size_t)(expression - source);
+    const size_t expr_end = (size_t)(strstr(expression, "}}") + 2u - source);
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(
+        vstr_from_buf(source, sizeof(source) - 1u), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, sizeof(output) - 1u);
+      check_equal(memcmp(sample.output, output, sample.bytes), 0);
+      check(sample.count >= 3u);
+      size_t emitted = 0u, literal_prefix = 0u;
+      size_t literal_suffix = 0u, expression_count = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check_equal(sample.events[i].generated_offset, emitted);
+        emitted += sample.events[i].generated_bytes;
+        check(sample.events[i].source_end != SIZE_MAX);
+        check(sample.events[i].source_offset <= sample.events[i].source_end);
+        check(sample.events[i].source_end <= sizeof(source) - 1u);
+        if (sample.events[i].kind == JINJA_CMETA_EMIT_LITERAL &&
+            sample.events[i].source_offset == 0u) {
+          ++literal_prefix;
+          check_equal(sample.events[i].source_end, expr_begin);
+          /* CRLF takes two author bytes but one GENERATED LF byte: a
+           * lexical source interval is not a byte-identity mapping. */
+          check_equal(expr_begin, sample.events[i].generated_bytes + 1u);
+        } else if (sample.events[i].kind == JINJA_CMETA_EMIT_LITERAL &&
+                   sample.events[i].source_offset == expr_end) {
+          ++literal_suffix;
+          check_equal(sample.events[i].source_end, sizeof(source) - 1u);
+        } else if (sample.events[i].kind == JINJA_CMETA_EMIT_EXPRESSION) {
+          ++expression_count;
+          check_equal(sample.events[i].source_offset, expr_begin);
+          check_equal(sample.events[i].source_end, expr_end);
+        } else {
+          check_false(true);
+        }
+      }
+      check_equal(emitted, sample.bytes);
+      check_equal(literal_prefix, 1u);
+      check_equal(literal_suffix, 1u);
+      check_equal(expression_count, 1u);
+    }
+    jinja_cmeta_release(templ);
+  }
+
+  it("keeps print-site lexical ends independent of captured author candidates") {
+    static const char source[] =
+        "{% set label %}<span>x</span>{% endset %}"
+        "{{ label }}";
+    const char *print = strstr(source, "{{ label }}");
+    check_not_null(print);
+    if (print == NULL) return;
+    JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+    JINJA_CMETA_TEMPLATE *templ =
+        jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    if (templ == NULL) return;
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {NULL, 0u, 0u, NULL}};
+    JinjaTraceSample sample = {0};
+    const JINJA_CMETA_RENDERER renderer = {jinja_trace_sample_write};
+    const JINJA_CMETA_SOURCE_TRACE trace = {jinja_trace_sample_event};
+    const JINJA_CMETA_STATUS status = jinja_cmeta_render_with_trace(
+        templ, &model.root_desc, &root, NULL, &renderer, &sample,
+        &trace, &sample, &error);
+    check_equal(status, JINJA_CMETA_OK);
+    if (status == JINJA_CMETA_OK) {
+      check_equal(sample.bytes, sizeof("<span>x</span>") - 1u);
+      check_equal(memcmp(sample.output, "<span>x</span>", sample.bytes), 0);
+      const size_t print_begin = (size_t)(print - source);
+      const size_t print_end = print_begin + sizeof("{{ label }}") - 1u;
+      const size_t body = (size_t)(strstr(source, "<span>x</span>") - source);
+      size_t indirect = 0u;
+      for (size_t i = 0u; i < sample.count; ++i) {
+        check(sample.events[i].kind == JINJA_CMETA_EMIT_INDIRECT);
+        check_equal(sample.events[i].source_offset, print_begin);
+        check_equal(sample.events[i].source_end, print_end);
+        check_equal(sample.events[i].generated_offset, 0u);
+        check_equal(sample.events[i].generated_bytes, sample.bytes);
+        for (size_t j = 0u; j < sample.events[i].source_range_count; ++j) {
+          const size_t lo = sample.events[i].ranges[j].source_begin;
+          const size_t hi = sample.events[i].ranges[j].source_end;
+          if (lo <= body && hi >= body + sizeof("<span>x</span>") - 1u)
+            ++indirect;
+        }
+      }
+      check(indirect != 0u);
+    }
+    jinja_cmeta_release(templ);
+  }
+}

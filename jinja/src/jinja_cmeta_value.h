@@ -157,6 +157,13 @@ typedef struct JINJA_CMETA_VALUE {
   size_t first_collection_item;
   size_t collection_item_count;
   const struct JINJA_CMETA_VALUE *collection_values;
+  /* Private render-only provenance marker. A capture, macro result or
+   * recursive-loop materialization cannot claim direct source-byte lineage.
+   * This field does not affect Jinja string equality or public value ABI. */
+  uint8_t trace_indirect;
+  /* Private render-owned intermediate capture provenance, not public ABI. */
+  struct JINJA_CMETA_CAPTURE_TRACE *trace_origin;
+  uint8_t trace_transformed;
 } JINJA_CMETA_VALUE;
 
 /* Render-owned state shared by aliases and bound methods. value is the cycler's

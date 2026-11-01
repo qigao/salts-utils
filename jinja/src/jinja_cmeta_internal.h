@@ -273,6 +273,7 @@ typedef struct JINJA_CMETA_INSTRUCTION {
   size_t target;
   size_t end;
   size_t source_offset;
+  size_t source_end; /* Half-open conservative lexer source range. */
   size_t depth;
   int flag;
 } JINJA_CMETA_INSTRUCTION;
