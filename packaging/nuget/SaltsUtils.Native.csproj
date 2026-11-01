@@ -5,10 +5,10 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <PackageId>SaltsUtils.Native</PackageId>
-    <PackageVersion Condition="'$(PackageVersion)' == ''">4.3.0</PackageVersion>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">0.1.0</PackageVersion>
     <Authors>qigao</Authors>
     <Description>Prebuilt SaltsUtils C/C++ SDK install trees for native consumers.</Description>
-    <PackageTags>salts-utils;native;c;cpp;cmake;android;ios</PackageTags>
+    <PackageTags>salts-utils;native;c;cpp;cmake;linux;windows;macos;android</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/qigao/salts-utils</RepositoryUrl>

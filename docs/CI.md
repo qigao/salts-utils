@@ -1,8 +1,8 @@
 # CI 与发布
 
 工作流参照相邻 Salts 仓库的 `ci.yml`、`native-build.yml`、`native-tests.yml`、
-`sdk-package.yml` 和 `native-sdk-release.yml` 分工，保留 SaltsUtils 自身的 SDK、
-Capture、宿主生成器及 sanitizer 配置。CI 只编排已有 CMake/CTest graph。
+`sdk-package.yml` 和 `native-sdk-release.yml` 分工，保留 SaltsUtils 自身的 SDK 与
+宿主生成器配置。CI 只编排已有 CMake/CTest graph。
 
 ## 分工与事实源
 
@@ -12,7 +12,7 @@ Capture、宿主生成器及 sanitizer 配置。CI 只编排已有 CMake/CTest g
 | [select-ci-scope.ps1](../cmake/ci/select-ci-scope.ps1) | 根据实际 git diff 生成构建和测试矩阵 |
 | [native-build.yml](../.github/workflows/native-build.yml) | 每个配置完整编译一次，上传构建产物；发布准备时安装 SDK |
 | [native-tests.yml](../.github/workflows/native-tests.yml) | 恢复相同提交的产物和工具链，运行完整 CTest graph，不重建主工程 |
-| [sdk-package.yml](../.github/workflows/sdk-package.yml) | 合并本轮六个平台 SDK，生成 NuGet 工件 |
+| [sdk-package.yml](../.github/workflows/sdk-package.yml) | 合并本轮五个平台 SDK，生成 NuGet 工件 |
 | [native-sdk-release.yml](../.github/workflows/native-sdk-release.yml) | 校验既有 tag、精确 SHA 和成功准备 run，原样发布包 |
 
 矩阵由 selector 单独维护；编译器、模块开关和依赖路径由 `CMakeUserPresets.json`
@@ -33,26 +33,18 @@ CI CMake User Presets 配置 `CMAKE_C_COMPILER_LAUNCHER` 与
 隔离，保持 Release、Sanitizers 和交叉编译隔离。
 
 `CCACHE_COMPILERCHECK=content` 避免依赖编译器二进制 mtime，
-源文件、头文件与实际编译参数仍参与 cache key。Windows MSVC 构建
+源文件、头文件与实际编译参数仍参与 cache key。Windows LLVM-MinGW 构建
 也经过 ccache launcher，若发现当前参数不受支持则由 ccache 委托编译，
 CI 以真实编译和 CTest 结果作为通过条件，不以缓存命中为前提。
 测试 job 恢复缓存以供嵌套 CMake 生成器使用；不缓存 build trees、
 Ninja 状态、vcpkg 安装目录或还原的 Native SDK。
 
-iOS preset 通过 `cmake/vcpkg-ports/quickjs-ng` 修正工具打包：保持共享 port 的
-QuickJS-ng 0.16.2 版本、源码摘要和库配置，但依照
-[上游 iOS 安装规则](https://github.com/quickjs-ng/quickjs/blob/v0.16.2/CMakeLists.txt#L517)
-不复制未生成的 `qjs/qjsc`。共享 port 来源为
-[qigao/vcpkg-cache 6f23a1e](https://github.com/qigao/vcpkg-cache/tree/6f23a1e4a5fc51ed5377d92611b66769f87280e9/ports/quickjs-ng)。
-其他平台继续使用共享 port；共享版本修正并经 iOS 真机构建验证后，
-删除该本地 recipe 和 preset 中的 overlay 设置。
-
 普通 CI 覆盖 Linux x64、Windows x64、macOS arm64 Release 构建与测试，
-以及 Android arm64-v8a、iOS 真机 arm64 交叉构建。
-发布准备额外加入 Linux arm64 Release；该平台保持现有 Capture 关闭契约。
+以及 Android arm64-v8a 交叉构建。
+发布准备额外加入 Linux arm64 Release；该平台只执行安装 SDK 门禁。
 交叉编译成功不代表移动设备运行测试通过。Release 与 sanitizer 使用独立构建树。
-macOS C/C++ 使用与 Salts 发布 SDK 一致的 GCC 15，保证 TinyTest 等库的 TLS ABI
-一致；平台 Objective-C 源码使用 Apple Clang。构建与测试 host 都安装 GCC 运行库。
+Windows 使用共享 `setup-llvm-mingw` action 提供的 LLVM-MinGW UCRT 工具链，且
+obfuscator 固定关闭；macOS 使用 Apple Clang。构建与测试使用同一 ABI 工具链。
 
 ## 构建产物与生命周期
 
@@ -77,19 +69,15 @@ Windows 恢复原 triplet，通过 preset 的 PATH 选择依赖；不手工复�
 
 ## 发布与迁移
 
-### 4.3 RC 合入主线
-
-将 `v4.3.0-rc.1`（`049f8e39e1d19ff21e9825df7c497e40b75a8ddf`）与 master
-的发布入口提交 `c259f4c6fabc8c5d4c9663c44c5cb738519f5c30` 合并，保留双方历史。
-已发布 tag 和包保持不可变；本次同步不发布稳定包，也不包含 Unicode 所有权迁移。
+SaltsUtils 的新发布线从包版本 `0.1.0` 开始。包使用标准 SemVer，发布 tag 使用
+三位 patch 字段，因此 `0.1.0` 的唯一发布 tag 是 `v0.1.000`。映射由
+[`release-tag.sh`](../.github/scripts/release-tag.sh) 校验；不接受预发布版本或大于
+999 的 patch 值。`release/salts-utils-0.1-*` 仅用于 RC 打包，普通 master push
+不发布 SDK。
 
 主线分别恢复 `SaltsCore.Native`、`CMeta.Native` 与 `SaltsUtils.Native`，并将
 Core/CMeta 安装根作为两个独立依赖传给 configure。旧单体 `Salts.Native` 不再是
-构建或发布入口；合并结果必须重新通过完整原生构建与 CTest。
-
-`release/salts-utils-4.3-idlc-606` 的 RC 版本后缀与打包触发条件继续限定在该分支；
-普通 master push 不发布 SDK。手动发布仍保留既有 tag 不可变、精确来源验收与
-稳定版下游确认要求。若集成发生回归，回滚此合并并重新运行 CI，不移动发布 tag。
+构建或发布入口；发布提交必须重新通过完整原生构建与 CTest。
 
 ### 手动发布
 
@@ -97,11 +85,12 @@ Core/CMeta 安装根作为两个独立依赖传给 configure。旧单体 `Salts.
 
 1. 在默认分支手动运行 `ci.yml`，设置 `prepare_release=true`。
 2. 等待整轮成功，记录该 run ID 和完整 40 位提交 SHA。
-3. 为该 SHA 创建匹配版本的既有 `v<version>` tag，不移动已经发布的 tag。
+3. 使用 `release-tag.sh <package-version>` 计算 tag，为该 SHA 创建该 tag，不移动
+   已经发布的 tag；`0.1.0` 对应 `v0.1.000`。
 4. 手动运行 `native-sdk-release.yml`，传入 `release_sha`、`tag`、`ci_run_id`。
 
 发布 job 校验准备 run 来自本仓库、默认分支、`ci.yml` 的手动成功运行，并逐个核对包内
-六个平台 manifest 的版本、提交与 Release profile。仅 publisher 持有发布权限；PR 和
+五个平台 manifest 的版本、提交与 Release profile。仅 publisher 持有发布权限；PR 和
 普通 CI 不发布。包名仍为 `SaltsUtils.Native`，平台 install tree 保持 `sdk/<RID>`。
 
 分支保护应使用新的 `CI result` 状态。需要回滚时，回滚整套 workflow、actions、selector
