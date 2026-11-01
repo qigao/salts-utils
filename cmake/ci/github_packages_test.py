@@ -21,20 +21,28 @@ from github_packages import (
 )
 
 
-def saltscore_files(rids):
+def saltscore_files(rids, missing_target=None):
     files = {}
-    targets = " ".join(("Salts::Core", "Salts::FS", "Salts::Process",
-                        "Salts::USB", "Salts::Crypto", "Salts::Unicode"))
+    targets = ["Salts::Core", "Salts::FS", "Salts::Process",
+               "Salts::USB", "Salts::Unicode"]
+    crypto_targets = ["Salts::Crypto"]
+    if missing_target in targets:
+        targets.remove(missing_target)
+    if missing_target in crypto_targets:
+        crypto_targets.remove(missing_target)
     for rid in rids:
         prefix = f"sdk/{rid}/"
         files.update({
             prefix + "lib/cmake/SaltsCore/SaltsCoreConfig.cmake": "",
-            prefix + "lib/cmake/SaltsCore/SaltsCoreTargets.cmake": targets,
-            prefix + "include/salts/core.h": "",
+            prefix + "lib/cmake/SaltsCore/SaltsCoreTargets.cmake":
+                " ".join(targets),
+            prefix + "lib/cmake/Crypto/CryptoTargets.cmake":
+                " ".join(crypto_targets),
+            prefix + "include/salts_core/runtime_abi.h": "",
             prefix + "include/salts/fs.h": "",
             prefix + "include/salts/process.h": "",
             prefix + "include/cflow/usb.h": "",
-            prefix + "include/unicode/salts_unicode.h": "",
+            prefix + "include/salts_unicode.h": "",
         })
     return files
 
@@ -219,6 +227,20 @@ class PackageTests(unittest.TestCase):
             require_component_runtime=True,
             result=None)
         with self.assertRaisesRegex(ValueError, "missing target CMeta::ServiceHost"):
+            restore_native_sdk(args, self.packages)
+
+    def test_split_saltscore_rejects_missing_sibling_crypto_export(self):
+        version = "0.1.0"
+        self.feed.add("SaltsCore.Native", version, saltscore_files(
+            ("linux-x64",), missing_target="Salts::Crypto"))
+        self.feed.add("CMeta.Native", "0.1.1",
+                      cmeta_files(("linux-x64",), "0.1.1"))
+        args = argparse.Namespace(
+            packages=self.root / "missing-crypto", salts_rid="linux-x64",
+            host_rid="linux-x64", with_turbowasm=False,
+            saltscore_version=version, cmeta_version="0.1.1",
+            require_component_runtime=False, result=None)
+        with self.assertRaisesRegex(ValueError, "missing target Salts::Crypto"):
             restore_native_sdk(args, self.packages)
 
     def test_exact_abi_cache_conversion_and_prefix(self):

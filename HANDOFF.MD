@@ -47,3 +47,9 @@
   `databind/tests/package_config` and behavior checks in the normal CTest graph;
   otherwise stale consumer presets can silently retain the removed monolithic
   `SALTS_ROOT` contract.
+- Admit published SDKs against their actual immutable payload, not a guessed
+  umbrella layout. SaltsCore exposes `salts_core/runtime_abi.h` and
+  `salts_unicode.h`; it has no `salts/core.h` or
+  `unicode/salts_unicode.h`. `Salts::Crypto` is imported by the sibling
+  `Crypto/CryptoTargets.cmake`, while the other checked Core targets live in
+  `SaltsCoreTargets.cmake`.

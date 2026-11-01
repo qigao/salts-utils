@@ -208,24 +208,31 @@ def read_manifest(path):
 
 def validate_saltscore(root, rid):
     root = Path(root)
+    core_targets_path = root / "lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
+    crypto_targets_path = root / "lib/cmake/Crypto/CryptoTargets.cmake"
     required = [
         root / "lib/cmake/SaltsCore/SaltsCoreConfig.cmake",
-        root / "lib/cmake/SaltsCore/SaltsCoreTargets.cmake",
-        root / "include/salts/core.h",
+        core_targets_path,
+        crypto_targets_path,
+        root / "include/salts_core/runtime_abi.h",
         root / "include/salts/fs.h",
         root / "include/salts/process.h",
         root / "include/cflow/usb.h",
-        root / "include/unicode/salts_unicode.h",
+        root / "include/salts_unicode.h",
     ]
     for path in required:
         if not path.is_file():
             raise ValueError(f"incomplete SaltsCore.Native SDK for {rid}: {path}")
-    targets = required[1].read_text(
+    targets = core_targets_path.read_text(
         encoding="utf-8", errors="replace")
     for target in ("Salts::Core", "Salts::FS", "Salts::Process",
-                   "Salts::USB", "Salts::Crypto", "Salts::Unicode"):
+                   "Salts::USB", "Salts::Unicode"):
         if target not in targets:
             raise ValueError(f"SaltsCore.Native SDK is missing target {target}")
+    crypto_targets = crypto_targets_path.read_text(
+        encoding="utf-8", errors="replace")
+    if "Salts::Crypto" not in crypto_targets:
+        raise ValueError("SaltsCore.Native SDK is missing target Salts::Crypto")
 
 
 def validate_cmeta(root, rid, expected_version=CMETA_NATIVE_VERSION):
