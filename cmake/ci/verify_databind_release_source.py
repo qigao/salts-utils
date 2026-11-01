@@ -24,7 +24,6 @@ PATHS = (
     "cmake/ci/restore-native-sdk.sh",
     "cmake/ci/restore-native-sdk.ps1",
     "cmake/ci/github_packages.py",
-    "cmake/ci/install_static_crypto_sdk.py",
     "cmake/ci/setup_native_ci.py",
     ".github/actions/setup-native-ci/action.yml",
     ".github/workflows/native-build.yml",
@@ -55,7 +54,6 @@ def violations(source: dict[str, str]) -> list[str]:
     restore_unix = source["cmake/ci/restore-native-sdk.sh"]
     restore_windows = source["cmake/ci/restore-native-sdk.ps1"]
     github_packages = source["cmake/ci/github_packages.py"]
-    crypto_setup = source["cmake/ci/install_static_crypto_sdk.py"]
     native_bootstrap = source["cmake/ci/setup_native_ci.py"]
     native_setup = source[".github/actions/setup-native-ci/action.yml"]
     native_build = source[".github/workflows/native-build.yml"]
@@ -165,12 +163,13 @@ def violations(source: dict[str, str]) -> list[str]:
             errors.append(f"{label} must explicitly disable the compiler obfuscator")
         if "VSDevCmd" in value or "VSINSTALL" in value:
             errors.append(f"{label} must not activate an MSVC environment")
-    if ("LLVM_MINGW_TOOLCHAIN_FILE" not in crypto_setup
-            or 'gmssl.lib' in crypto_setup or 'salts_crypto.lib' in crypto_setup):
-        errors.append("Windows Crypto must use the LLVM-MinGW toolchain and static .a ABI")
     if ("VCPKG_CHAINLOAD_TOOLCHAIN_FILE" not in user_presets
             or "Windows LLVM-MinGW UCRT" not in user_presets):
         errors.append("Windows CI presets must chainload the explicit LLVM-MinGW product toolchain")
+    if ("qigao/crypto" in native_build or "guanzhi/GmSSL" in native_build
+            or "install_static_crypto_sdk" in native_build
+            or "CRYPTO_ROOT" in native_build or "CRYPTO_ROOT" in user_presets):
+        errors.append("native CI must consume the sole SaltsCore Crypto owner, not rebuild an archived duplicate")
     if "nugetconfig" in user_presets.lower() or "nugettimeout" in user_presets.lower():
         errors.append("root user presets must not configure a NuGet-backed vcpkg binary source")
     if "dotnet restore" not in sdk_package or "<clear />" not in sdk_package:
