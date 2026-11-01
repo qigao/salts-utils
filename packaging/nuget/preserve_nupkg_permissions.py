@@ -39,21 +39,21 @@ def rewrite(package: Path) -> None:
     if not package.is_file():
         raise SystemExit(f"missing nupkg: {package}")
 
-    with zipfile.ZipFile(package, "r") as source:
-        names = set(source.namelist())
-        missing = [name for name in HOST_EXECUTABLES if name not in names]
-        if missing:
-            raise SystemExit(f"missing packaged host compiler(s): {missing}")
+    fd, temp_name = tempfile.mkstemp(
+        prefix=package.name + ".",
+        suffix=".tmp",
+        dir=package.parent,
+    )
+    os.close(fd)
+    temp = Path(temp_name)
 
-        fd, temp_name = tempfile.mkstemp(
-            prefix=package.name + ".",
-            suffix=".tmp",
-            dir=package.parent,
-        )
-        os.close(fd)
-        temp = Path(temp_name)
+    try:
+        with zipfile.ZipFile(package, "r") as source:
+            names = set(source.namelist())
+            missing = [name for name in HOST_EXECUTABLES if name not in names]
+            if missing:
+                raise SystemExit(f"missing packaged host compiler(s): {missing}")
 
-        try:
             with zipfile.ZipFile(temp, "w", allowZip64=True) as target:
                 target.comment = source.comment
                 for item in source.infolist():
@@ -65,18 +65,19 @@ def rewrite(package: Path) -> None:
                     )
                     target.writestr(out, data)
 
-            with zipfile.ZipFile(temp, "r") as checked:
-                for name in HOST_EXECUTABLES:
-                    mode = unix_mode(checked.getinfo(name))
-                    if mode & 0o111 != 0o111:
-                        raise SystemExit(
-                            f"{name}: executable mode not preserved: {oct(mode)}"
-                        )
+        with zipfile.ZipFile(temp, "r") as checked:
+            for name in HOST_EXECUTABLES:
+                mode = unix_mode(checked.getinfo(name))
+                if mode & 0o111 != 0o111:
+                    raise SystemExit(
+                        f"{name}: executable mode not preserved: {oct(mode)}"
+                    )
 
-            os.replace(temp, package)
-        finally:
-            if temp.exists():
-                temp.unlink()
+        # Windows does not permit replacing an archive while it is open.
+        os.replace(temp, package)
+    finally:
+        if temp.exists():
+            temp.unlink()
 
 
 def main() -> int:

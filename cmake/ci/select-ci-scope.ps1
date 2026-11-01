@@ -32,8 +32,7 @@ $profiles = @(
   @{ id='linux-release'; runner='ubuntu-24.04'; family='linux'; rid='linux-x64'; host='linux-x64'; triplet='x64-linux'; host_triplet='x64-linux'; preset='ci-native-release-user' },
   @{ id='windows-release'; runner='windows-2025'; family='windows'; rid='windows-x64'; host='windows-x64'; triplet=''; host_triplet=''; preset='ci-win-release-user' },
   @{ id='macos-release'; runner='macos-15'; family='mac'; rid='macos-arm64'; host='macos-arm64'; triplet='arm64-osx'; host_triplet='arm64-osx'; preset='ci-macos-release-user' },
-  @{ id='android-release'; runner='ubuntu-24.04'; family='android'; rid='android-arm64-v8a'; host='linux-x64'; triplet='arm64-android'; host_triplet='x64-linux'; preset='ci-android-sdk-release-user' },
-  @{ id='ios-release'; runner='macos-15'; family='ios'; rid='ios-arm64'; host='macos-arm64'; triplet='arm64-ios'; host_triplet='arm64-osx'; sysroot='iphoneos'; preset='ci-ios-sdk-release-user' }
+  @{ id='android-release'; runner='ubuntu-24.04'; family='android'; rid='android-arm64'; host='linux-x64'; triplet='arm64-android'; host_triplet='x64-linux'; preset='ci-android-sdk-release-user' }
 )
 if ($releaseQualification) {
   $profiles += @{ id='linux-arm64-release'; runner='ubuntu-24.04-arm'; family='linux'; rid='linux-arm64'; host='linux-arm64'; triplet='arm64-linux'; host_triplet='arm64-linux'; preset='ci-native-minimal-release-user' }
@@ -42,7 +41,7 @@ $builds = @()
 $tests = @()
 if ($native) {
   foreach ($profile in $profiles) {
-    $profile.cross = $profile.family -in @('android', 'ios')
+    $profile.cross = $profile.family -eq 'android'
     $profile.package = $releaseQualification
     $profile.build_dir = switch ($profile.id) {
       'windows-release' { 'build/ci-win-release' }

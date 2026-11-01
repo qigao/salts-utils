@@ -11,8 +11,7 @@ The re2c host generator is a build-time tool and is not a runtime dependency of 
 - `sdk/linux-arm64/`
 - `sdk/windows-x64/`
 - `sdk/macos-arm64/`
-- `sdk/android-arm64-v8a/`
-- `sdk/ios-arm64/`
+- `sdk/android-arm64/`
 
 Each directory is a normal CMake install prefix containing
 `lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake`.
@@ -47,5 +46,5 @@ The SDK's Lua dependency is resolved through the vcpkg `unofficial-lua` CMake
 config target. Use the project's manifest and matching target triplet.
 
 Native Windows, Linux, macOS, and Android builds use the configured LLVM
-toolchains. Cross-compilation validates Android and iOS builds, not execution
-on devices.
+toolchains. Cross-compilation validates the Android build, not execution on a
+device.

@@ -33,16 +33,12 @@ def native_toolchain(rid: str) -> tuple[list[str], list[str]]:
         toolchain = ndk / "build" / "cmake" / "android.toolchain.cmake"
         if not toolchain.is_file():
             raise FileNotFoundError(toolchain)
-        arch = {"android-arm64-v8a": "arm64-v8a",
+        arch = {"android-arm64": "arm64-v8a",
                 "android-x64": "x86_64", "android-x86": "x86"}.get(rid)
         if arch is None:
             raise ValueError("unsupported Android Crypto target " + rid)
         opts.extend([f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
                      f"-DANDROID_ABI={arch}", "-DANDROID_PLATFORM=android-26"])
-    elif rid == "ios-arm64":
-        opts.extend(["-DCMAKE_SYSTEM_NAME=iOS", "-DCMAKE_OSX_SYSROOT=iphoneos",
-                     "-DCMAKE_OSX_ARCHITECTURES=arm64",
-                     "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY"])
     elif rid == "macos-arm64":
         opts.append("-DCMAKE_OSX_ARCHITECTURES=arm64")
     elif rid not in ("linux-x64", "linux-arm64"):

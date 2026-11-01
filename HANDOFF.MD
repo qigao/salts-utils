@@ -53,3 +53,11 @@
   `unicode/salts_unicode.h`. `Salts::Crypto` is imported by the sibling
   `Crypto/CryptoTargets.cmake`, while the other checked Core targets live in
   `SaltsCoreTargets.cmake`.
+- SaltsUtils release RIDs must be a subset of the published split dependency
+  RIDs. Use the canonical dependency/package RID `android-arm64` (the CMake
+  `ANDROID_ABI` remains `arm64-v8a`). Do not restore the former `ios-arm64`
+  release profile unless SaltsCore.Native and CMeta.Native first publish a
+  matching iOS SDK; substituting `macos-arm64` would be ABI-invalid.
+- Close the source nupkg before `os.replace` when rewriting Unix executable
+  bits. Unix permits replacement through an open archive, but Windows rejects
+  it with `ERROR_ACCESS_DENIED`; keep the cross-platform regression test.

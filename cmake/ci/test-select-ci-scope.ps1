@@ -51,6 +51,26 @@ try {
   Test-Scope 'mixed packaging and source' @('packaging/nuget/README.md','databind/runtime/data_bind.c') 'true'
   Test-Scope 'unknown path is conservative' @('new-module/unknown.c') 'true'
   Test-Scope 'scope selector change is native' @('cmake/ci/select-ci-scope.ps1') 'true'
+
+  Push-Location $temp
+  try {
+    $releaseOutput = & $selector -EventName workflow_dispatch `
+      -HeadRef $script:base -PrepareRelease $true
+    if ($LASTEXITCODE -ne 0) { throw "release selector exited $LASTEXITCODE" }
+  } finally { Pop-Location }
+  $buildLine = @($releaseOutput | Where-Object { $_ -like 'builds=*' })
+  if ($buildLine.Count -ne 1) { throw 'release selector did not emit one builds value' }
+  $releaseBuilds = ($buildLine[0].Substring('builds='.Length) | ConvertFrom-Json).include
+  $actualRids = @($releaseBuilds.rid | Sort-Object)
+  $expectedRids = @('android-arm64', 'linux-arm64', 'linux-x64',
+                    'macos-arm64', 'windows-x64') | Sort-Object
+  if (($actualRids -join ',') -ne ($expectedRids -join ',')) {
+    throw "release RID set mismatch: $($actualRids -join ',')"
+  }
+  if (@($releaseBuilds | Where-Object { $_.family -eq 'ios' }).Count -ne 0) {
+    throw 'release selector must not emit iOS without matching dependency SDKs'
+  }
+  Write-Output 'PASS release RID contract'
 } finally {
   Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }

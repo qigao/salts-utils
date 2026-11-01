@@ -45,16 +45,10 @@ jobs:
         test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/IDL.cmake
         test -f package/sdk/windows-x64/include/data_bind_binding_plan.h
         test -f package/sdk/windows-x64/include/data_bind_cmeta_adapter_plan.h
-        test -f package/sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
-        test -f package/sdk/android-arm64-v8a/include/data_bind_binding_plan.h
-        test -f package/sdk/android-arm64-v8a/include/data_bind_cmeta_adapter_plan.h
-        rid=ios-arm64
-        test -f "package/sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-        test -f "package/sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake"
-        test -f "package/sdk/$rid/include/data_bind_binding_plan.h"
-        test -f "package/sdk/$rid/include/data_bind_cmeta_adapter_plan.h"
-        test ! -e "package/sdk/$rid/bin/salts-idlc"
-        test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 6
+        test -f package/sdk/android-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
+        test -f package/sdk/android-arm64/include/data_bind_binding_plan.h
+        test -f package/sdk/android-arm64/include/data_bind_cmeta_adapter_plan.h
+        test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 5
     - uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
@@ -126,22 +120,11 @@ jobs:
         grep -Fx "sdk/windows-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/windows-x64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/windows-x64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/android-arm64-v8a/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        rid=ios-arm64
-        grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        grep -Fx "sdk/$rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-        if grep -Fxq "sdk/$rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
-          echo "target iOS RID must not package host salts-idlc: $rid" >&2
-          exit 1
-        fi
+        grep -Fx "sdk/android-arm64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/android-arm64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/android-arm64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/android-arm64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+        grep -Fx "sdk/android-arm64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         mac_rid=macos-arm64
         grep -Fx "sdk/$mac_rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
         grep -Fx "sdk/$mac_rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
