@@ -194,6 +194,11 @@ jobs:
 
       - uses: ./.github/actions/setup-build-host
 
+      - name: Install formal test requirements
+        if: matrix.run_tests
+        shell: bash
+        run: python -m pip install --disable-pip-version-check --requirement parser/markdown/tests/oracle-requirements.txt
+
       - name: Select target LLVM toolchain
         shell: bash
         env:

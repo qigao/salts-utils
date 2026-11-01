@@ -92,6 +92,15 @@
   Functional directories such as `bindings/` remain intact, while formerly
   prefixed headers such as `simd.h`, `behavior_tree.h`, `cron.h`, and
   `selector.h` are installed without compatibility forwarding headers.
+- The CYaml benchmark includes implementation files after its own system
+  headers so it can interpose allocation calls. On Linux it must define
+  `_GNU_SOURCE` before those first headers; defining it inside `cyaml_utf8.c`
+  is too late for the amalgamated benchmark translation unit and hides the
+  `strtod_l` declaration.
+- The formal Markdown CTest deliberately fails when its independent Python
+  oracles are absent. Native CI must install the pinned
+  `parser/markdown/tests/oracle-requirements.txt` before running CTest; a
+  developer machine's preinstalled modules are not evidence that CI has them.
 
 ## 2026-11-01 CI migration after migrated-library removal
 
