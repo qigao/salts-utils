@@ -1,7 +1,7 @@
 // re2c --lang c
 #include "jinja_expression_grammar_gen.h"
 #include "jinja_expression_parser.h"
-#include "salts_unicode.h"
+#include "unicode.h"
 
 /*!include:re2c "unicode_properties.re" */
 /*!include:re2c "unicode_categories.re" */

@@ -2,9 +2,9 @@
  * #206/#354/#540, plus reverse-casefold negative controls. Both default SAFE
  * and explicit test-only SPEC HTML policies must match exact official bytes.
  * No local Unicode table, old parser fallback or Tango migration. */
-#include <salts/markdown.h>
-#include <salts/markdown_html.h>
-#include <salts_unicode.h>
+#include <markdown.h>
+#include <markdown_html.h>
+#include <unicode.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

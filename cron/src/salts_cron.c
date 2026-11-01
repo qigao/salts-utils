@@ -1,6 +1,6 @@
-#include "salts_cron.h"
+#include "cron.h"
 #include "cron_lexer.h"
-#include "salts/thread.h"
+#include "thread.h"
 
 #include <stdarg.h>
 #include <stdio.h>

@@ -2,7 +2,7 @@
 #include "method_plan_projection.h"
 #include "binary_contract_overlay.h"
 
-#include "salts/fs.h"
+#include "fs.h"
 #include "tinytest.h"
 
 #include <stdlib.h>

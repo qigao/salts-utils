@@ -1,7 +1,7 @@
 #ifndef SALTS_SELECTOR_INTERNAL_H
 #define SALTS_SELECTOR_INTERNAL_H
 
-#include "salts_selector.h"
+#include "selector.h"
 
 #include <stddef.h>
 #include <stdint.h>

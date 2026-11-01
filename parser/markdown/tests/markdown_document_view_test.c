@@ -1,7 +1,7 @@
 /* Markdown-owned RichDoc contract migrated from Stun ui_core_test.c.
  * Stun retains its UI Runtime, rect layout and CMeta tests.
  */
-#include <salts/markdown.h>
+#include <markdown.h>
 #include <stdio.h>
 #include <string.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL %s:%d %s\n", __FILE__, __LINE__, #x); return 1; } } while (0)

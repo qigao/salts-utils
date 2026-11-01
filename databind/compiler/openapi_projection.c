@@ -1,6 +1,6 @@
 #include "openapi_projection.h"
 
-#include "salts/fs.h"
+#include "fs.h"
 
 #include <cmeta_uuid.h>
 

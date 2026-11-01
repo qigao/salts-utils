@@ -5,7 +5,7 @@
 
 #include "json_parser.h"
 #include "tinytest.h"
-#include <salts/thread.h>
+#include <thread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

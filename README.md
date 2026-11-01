@@ -45,12 +45,12 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 | --- | --- |
 | Crypto (external dependency) | imported static `Salts::Crypto` from SaltsCore |
 | Plugin | `CMeta::PluginABI` / `CMeta::Plugin` from the CMeta SDK |
-| Filesystem adapter | `Salts::CFlowFS` over SaltsCore `Salts::FS` |
-| Process adapter | `Salts::CFlowProcess` over SaltsCore `Salts::Process` |
+| Testing | `Salts::TinyMock` reflected mocks over Core `Salts::TinyTest` and CMeta |
+| SIMD | `Salts::SIMD` descriptor-driven static execution layer |
 | Query | `Salts::QueryVM` |
 | Parsers | JSON, XML, YAML, CSV, INI, TLV/LTV, Modbus, SOA, DotEnv, Cmd, TOON, TOML, DateTime, and related component targets |
 | Templates | Mustache and Jinja CMeta |
-| Unicode | generated Unicode property/scalar support |
+| Unicode (external dependency) | imported `Salts::Unicode` from SaltsCore |
 | Helpers | Cron and related higher-level utilities |
 | IDL / Schema | `Salts::IDL`, `Salts::Schema`, `salts-idlc` |
 | DataBind | `Salts::DataBind`; native/dynamic binding, immutable plans, rollback |
@@ -61,6 +61,11 @@ Parser capabilities remain independent component targets rather than a single ag
 Playback, Capture, Serial, and USB are SaltsCore capabilities and are not
 rebuilt or re-exported by SaltsUtils. The `salts-idlc` compiler is always built
 and installed with DataBind.
+
+TinyMock and SIMD have their sole source/export owner in SaltsUtils. TinyMock
+links the canonical Core `Salts::TinyTest` runtime and `CMeta::CMeta`; SIMD
+links `CMeta::CMeta` and keeps SIMDe private. See [TinyMock](tinymock/README.md)
+and [SIMD](simd/README.md).
 
 ## Ownership boundaries
 
@@ -97,8 +102,6 @@ target_link_libraries(app PRIVATE
   Salts::XmlParser
   Salts::Crypto # installed static Crypto package, not a SaltsUtils export
   CMeta::Plugin
-  Salts::CFlowFS
-  Salts::CFlowProcess
   Salts::Mustache
   Salts::JinjaCMeta
   Salts::Unicode
@@ -138,7 +141,7 @@ cmake --build --preset linux-release-user
 ctest --preset linux-release-user --output-on-failure
 ```
 
-Both restore paths use authenticated `curl` against GitHub Packages NuGet v3 metadata. `SaltsCore.Native` is fail-closed at exact `0.1.0` and `CMeta.Native` at exact `0.1.2`; re2c resolves the latest stable published tool package. No NuGet client, Mono, or `dotnet restore` participates in native dependency restore. Run restore before configure when updating dependencies; configure consumes the resolved SDKs and does not download packages. An incompatible release fails instead of selecting an older SDK. `-WithTurboWasm` (PowerShell) or the third Bash argument also restores TurboWasm. Local restore exposes version-independent `stage/dependencies/saltscore/<RID>` and `stage/dependencies/cmeta/<RID>` links plus the re2c host link. Existing non-link directories at these paths are rejected instead of overwritten. The published SDKs contain Release libraries; use matching Release profiles.
+Both restore paths use authenticated `curl` against GitHub Packages NuGet v3 metadata. `SaltsCore.Native` is fail-closed at exact `0.1.2` and `CMeta.Native` at exact `0.1.3`; re2c resolves the latest stable published tool package. No NuGet client, Mono, or `dotnet restore` participates in native dependency restore. Run restore before configure when updating dependencies; configure consumes the resolved SDKs and does not download packages. An incompatible release fails instead of selecting an older SDK. `-WithTurboWasm` (PowerShell) or the third Bash argument also restores TurboWasm. Local restore exposes version-independent `stage/dependencies/saltscore/<RID>` and `stage/dependencies/cmeta/<RID>` links plus the re2c host link. Existing non-link directories at these paths are rejected instead of overwritten. The published SDKs contain Release libraries; use matching Release profiles.
 
 ### Migrating from Salts 1.x
 
@@ -166,13 +169,11 @@ Plugin runtime ownership is in the CMeta SDK. SaltsUtils consumes
 `CMeta::PluginABI` / `CMeta::Plugin` for generated Plugin artifacts. Plugin
 and CFlow remain independent; there is no public PluginCFlow subsystem.
 
-### Filesystem
+### Filesystem and process
 
-`Salts::CFlowFS` provides bounded filesystem services, native watch support, and typed watch publishers over SaltsCore `Salts::FS`. Public adapter headers are `<cflow/fs.h>`, `<cflow/fs_watch.h>`, and `<cflow/fs_watch_publisher.h>`.
-
-### Process
-
-`Salts::CFlowProcess` adapts SaltsCore process ownership and CFlow-native pipes into bounded asynchronous standard-stream handling through `<cflow/process.h>`.
+Filesystem and process implementations and their former CFlow adapters have moved out of
+SaltsUtils. Consume the canonical `Salts::FS` and `Salts::Process` targets from SaltsCore;
+SaltsUtils no longer builds or exports `Salts::CFlowFS` or `Salts::CFlowProcess`.
 
 ### Mustache and Jinja CMeta
 
@@ -237,31 +238,6 @@ opt-in for the default `all` task. `TARGET` selects one build target,
 as argv. Windows requires `VSDEVCMD_BAT`; dependency roots and cache settings
 come from the parent environment or the ignored `.env`, as described above.
 
-### Installed consumer validation
-
-The existing package consumers have their own configure/build/test presets and
-vcpkg manifests. On Windows, run these commands from a Visual Studio developer
-PowerShell at the repository root:
-
-```powershell
-cmake --preset win-sdk-package-user
-cmake --build --preset install-win-sdk-package-user
-$env:SALTS_UTILS_ROOT = "$PWD/stage/sdk/windows-x64"
-Push-Location databind/compiler/package_config/databind_target
-cmake --preset win-release-user
-cmake --build --preset win-release-user
-ctest --preset win-release-user
-Pop-Location
-```
-
-The eight CTest entries exercise installed generated messages, services and
-FlowMQ projections. The Binary consumer checks literal wire bytes, bounded
-output and decoded byte-buffer ownership after input reuse and codec destruction.
-The Producer, Plugin and public CMeta consumer projects also expose these presets.
-These consumer projects use `ci-native-release-user` with explicit `SALTSCORE_ROOT`, `CMETA_ROOT`, `SALTS_UTILS_ROOT`,
-`QIGAO_TARGET_TRIPLET` and `VCPKG_CACHE_REPOSITORY_ROOT` inputs. Each consumer selects
-that exact SDK; a cached package directory cannot select another installation.
-
 ### Cross-compilation host tools
 
 Cross-compilation requires an existing host Lemon executable through
@@ -277,18 +253,17 @@ cmake --build --preset android-arm64-v8a-release-win
 ```
 
 The Android Windows presets reference `build/Msvc-Release/bin/lemon.exe` explicitly.
-Android/iOS CI builds the host graph with `ci-host-release-user` before
-configuring the target SDK, which uses the completed host `lemon` executable.
+Android CI builds the host graph with `ci-host` before configuring `ci-android`,
+which uses the completed host `lemon` executable.
 This removes the former implicit host-build path; callers
 of other cross-compilation profiles must supply the completed host executable.
 
-### CI and releases
+### CI
 
-CI follows the Salts workflow layout: select affected work, compile each profile once,
-restore its immutable build for CTest, and package only during manual release preparation.
-Publication accepts the exact successful preparation run, commit SHA and existing version tag;
-it neither rebuilds nor repacks. See [CI and release workflow](docs/CI.md) for profiles,
-artifact ownership, validation boundaries and release commands.
+CI follows the current CMeta/SaltsCore LLVM matrix style: each of the eight Win/Linux/macOS/
+Android x64+arm64 profiles configures and builds its full graph in one job, and native profiles
+run CTest there. SaltsUtils has no installer, standalone consumer, NuGet packaging, or release
+publisher CI. See [CI](docs/CI.md) for the exact matrix and toolchain contract.
 
 ## Design rules
 

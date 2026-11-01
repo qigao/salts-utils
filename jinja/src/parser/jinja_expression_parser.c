@@ -2,7 +2,7 @@
 #include "jinja_parser_memory.h"
 #include "jinja_expression_grammar_gen.h"
 #include "jinja_float.h"
-#include <salts_unicode.h>
+#include <unicode.h>
 
 #include <stdint.h>
 #include <stdlib.h>

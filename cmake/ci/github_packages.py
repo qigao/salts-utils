@@ -19,8 +19,8 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 FEED = "https://nuget.pkg.github.com/qigao/index.json"
-SALTSCORE_NATIVE_VERSION = "0.1.0"
-CMETA_NATIVE_VERSION = "0.1.2"
+SALTSCORE_NATIVE_VERSION = "0.1.2"
+CMETA_NATIVE_VERSION = "0.1.3"
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.-]+$")
 VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$")
 RID = re.compile(
@@ -214,11 +214,11 @@ def validate_saltscore(root, rid):
         root / "lib/cmake/SaltsCore/SaltsCoreConfig.cmake",
         core_targets_path,
         crypto_targets_path,
-        root / "include/salts_core/runtime_abi.h",
-        root / "include/salts/fs.h",
-        root / "include/salts/process.h",
+        root / "include/runtime_abi.h",
+        root / "include/fs.h",
+        root / "include/process.h",
         root / "include/cflow/usb.h",
-        root / "include/salts_unicode.h",
+        root / "include/unicode.h",
     ]
     for path in required:
         if not path.is_file():
@@ -229,6 +229,8 @@ def validate_saltscore(root, rid):
                    "Salts::USB", "Salts::Unicode"):
         if target not in targets:
             raise ValueError(f"SaltsCore.Native SDK is missing target {target}")
+    if "Salts::SIMD" in targets:
+        raise ValueError("SaltsCore.Native SDK still exports migrated target Salts::SIMD")
     crypto_targets = crypto_targets_path.read_text(
         encoding="utf-8", errors="replace")
     if "Salts::Crypto" not in crypto_targets:

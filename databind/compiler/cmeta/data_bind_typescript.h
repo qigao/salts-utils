@@ -1,7 +1,7 @@
 #ifndef DATA_BIND_TYPESCRIPT_H
 #define DATA_BIND_TYPESCRIPT_H
 
-#include <salts/bindings/module.h>
+#include <bindings/module.h>
 
 #ifdef __cplusplus
 extern "C" {

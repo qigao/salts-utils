@@ -1,4 +1,4 @@
-#include <salts/markdown.h>
+#include <markdown.h>
 
 #include <stdint.h>
 #include <stdio.h>

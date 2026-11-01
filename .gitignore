@@ -24,6 +24,8 @@ coverage.xml
 _ReSharper*
 *.log
 .cache/
+__pycache__/
+*.py[cod]
 
 # Compiled Object files
 *.slo

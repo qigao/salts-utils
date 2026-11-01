@@ -1,6 +1,6 @@
 /* #181: quote/list ownership and byte-exact CommonMark HTML. */
-#include <salts/markdown.h>
-#include <salts/markdown_html.h>
+#include <markdown.h>
+#include <markdown_html.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

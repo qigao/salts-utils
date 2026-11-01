@@ -1,5 +1,5 @@
-#include <salts/bindings/quickjs/cmeta.h>
-#include <salts/bindings/quickjs/module.h>
+#include <bindings/quickjs/cmeta.h>
+#include <bindings/quickjs/module.h>
 #include <data_bind_typescript.h>
 
 #include <cmeta/interface.h>

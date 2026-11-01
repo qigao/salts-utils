@@ -143,7 +143,7 @@ are **not** a simultaneously visible cross-process filesystem snapshot, and
 ordinary stdout cannot be rolled back.
 
 Lua adapters are not a DataBind compiler output. Runtime Lua interoperability
-uses Salts `Salts::Lua` and `<salts/bindings/lua/cmeta.h>` against the canonical
+uses Salts `Salts::Lua` and `<bindings/lua/cmeta.h>` against the canonical
 CMeta descriptors emitted with the native C representation. DataBind does not
 generate schema-specific Lua metadata, ownership models, operation wrappers, or
 fallback adapters.

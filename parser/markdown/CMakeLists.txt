@@ -28,9 +28,9 @@ target_include_directories(markdown_html
 target_link_libraries(markdown_html PUBLIC Salts::MarkdownParser)
 
 install(FILES
-  include/salts/markdown.h
-  include/salts/markdown_html.h
-  DESTINATION include/salts)
+  include/markdown.h
+  include/markdown_html.h
+  DESTINATION include)
 
 if(BUILD_TESTS)
   add_subdirectory(tests)

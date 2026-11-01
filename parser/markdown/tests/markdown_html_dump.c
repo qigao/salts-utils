@@ -3,8 +3,8 @@
  * Output: stdout HTML bytes only; failure emits diagnostics to stderr.
  * Uses the same production-candidate C11 parse + renderer implementations.
  */
-#include <salts/markdown.h>
-#include <salts/markdown_html.h>
+#include <markdown.h>
+#include <markdown_html.h>
 
 #include <stdint.h>
 #include <stdio.h>

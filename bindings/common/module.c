@@ -1,4 +1,4 @@
-#include <salts/bindings/module.h>
+#include <bindings/module.h>
 #include <string.h>
 
 static const char *export_name(const salts_binding_module *module, size_t index) {

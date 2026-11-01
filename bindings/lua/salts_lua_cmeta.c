@@ -1,5 +1,5 @@
-#include <salts/bindings/lua/cmeta.h>
-#include <salts/bindings/lua/module.h>
+#include <bindings/lua/cmeta.h>
+#include <bindings/lua/module.h>
 
 #include <lua.h>
 #include <lauxlib.h>

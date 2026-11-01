@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include <cmd_arger.h>
-#include <salts/fs.h>
+#include <fs.h>
 #include <tstr.h>
 #include <xml_parser/xml_parser.h>
 

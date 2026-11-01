@@ -4,7 +4,7 @@
 
 #include "jinja_float.h"
 
-#include <salts/thread.h>
+#include <thread.h>
 
 #include <locale.h>
 #include <float.h>

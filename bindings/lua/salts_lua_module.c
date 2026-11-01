@@ -1,4 +1,4 @@
-#include <salts/bindings/lua/module.h>
+#include <bindings/lua/module.h>
 #include <lauxlib.h>
 #include <lua.h>
 #include <string.h>

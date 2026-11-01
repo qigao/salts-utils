@@ -1,6 +1,6 @@
 /* #181: real C11 RichDoc block-container semantics and exact HTML output. */
-#include <salts/markdown.h>
-#include <salts/markdown_html.h>
+#include <markdown.h>
+#include <markdown_html.h>
 
 #include <stdbool.h>
 #include <stdint.h>

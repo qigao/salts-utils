@@ -13,7 +13,7 @@ target_include_directories(salts_behavior_tree PUBLIC
 target_link_libraries(salts_behavior_tree PUBLIC Salts::Core)
 
 install(TARGETS salts_behavior_tree EXPORT SaltsUtilsTargets)
-install(DIRECTORY include/salts DESTINATION include FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.h")
 
 if(BUILD_TESTS)
   add_subdirectory(tests)

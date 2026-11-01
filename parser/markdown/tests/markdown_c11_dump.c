@@ -3,7 +3,7 @@
  * Each line: index TAB kind TAB parent TAB heading-level TAB text-hex
  *            TAB metadata-hex. No JSON/text escaping or third-party runtime.
  */
-#include <salts/markdown.h>
+#include <markdown.h>
 
 #include <stdint.h>
 #include <stdio.h>

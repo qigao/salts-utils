@@ -2,7 +2,7 @@
 #include "binary_layout_ir.h"
 #include "opaque_plan_codegen.h"
 
-#include "salts/fs.h"
+#include "fs.h"
 #include "cmeta_uuid.h"
 
 #include <stdio.h>

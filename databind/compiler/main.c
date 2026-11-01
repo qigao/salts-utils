@@ -26,7 +26,7 @@
 #include "cmd_arger.h"
 #include "compiler_core.h"
 #include "projection_frontend.h"
-#include "salts/fs.h"
+#include "fs.h"
 
 static const char *TBE_COMPILER_LANG_OPTION_LIST =
     "c, cpp, cxx, go, rust, python, py, ts, typescript, sqlite, postgresql, postgres";

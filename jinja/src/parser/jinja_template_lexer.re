@@ -1,7 +1,7 @@
 // re2c --lang c
 #include "jinja_template_lexer.h"
 #include <string.h>
-#include <salts_unicode.h>
+#include <unicode.h>
 
 const JINJA_TEMPLATE_DELIMITERS JINJA_TEMPLATE_DEFAULT_DELIMITERS = {.tokens = {
     {.data = "{{", .len = 2u}, {.data = "}}", .len = 2u},

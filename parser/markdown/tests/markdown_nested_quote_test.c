@@ -1,6 +1,6 @@
 /* #181: bounded nested-quote RichDoc ownership and actual HTML. */
-#include <salts/markdown.h>
-#include <salts/markdown_html.h>
+#include <markdown.h>
+#include <markdown_html.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

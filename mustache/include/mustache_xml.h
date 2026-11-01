@@ -6,7 +6,7 @@
 #ifndef MUSTACHE_XML_H
 #define MUSTACHE_XML_H
 
-#include <salts/platform.h>
+#include <platform.h>
 #include "mustache.h"
 
 #ifdef __cplusplus

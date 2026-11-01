@@ -16,7 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <salts/thread.h>
+#include <thread.h>
 #include <tstr.h>
 
 #define MAX_ERROR_LEN 512

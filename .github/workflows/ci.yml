@@ -1,119 +1,272 @@
-name: SaltsUtils CI
+name: SaltsUtils LLVM CI
+
 on:
   pull_request:
+    paths:
+      - "behavior-tree/include/**"
+      - "behavior-tree/src/**"
+      - "bindings/common/include/**"
+      - "bindings/common/*.c"
+      - "bindings/cpp/include/**"
+      - "bindings/lua/include/**"
+      - "bindings/lua/*.c"
+      - "bindings/quickjs/include/**"
+      - "bindings/quickjs/*.c"
+      - "cron/include/**"
+      - "cron/src/**"
+      - "databind/binding/runtime/**"
+      - "databind/compiler/*.c"
+      - "databind/compiler/*.h"
+      - "databind/compiler/binary/include/**"
+      - "databind/compiler/binary/src/**"
+      - "databind/compiler/binding/*.c"
+      - "databind/compiler/binding/*.h"
+      - "databind/compiler/cmeta/*.c"
+      - "databind/compiler/cmeta/*.h"
+      - "databind/formats/binary/include/**"
+      - "databind/formats/binary/internal/**"
+      - "databind/formats/binary/src/**"
+      - "databind/idl/contract/**"
+      - "databind/idl/core/**"
+      - "databind/idl/frontend/**"
+      - "databind/idl/include/**"
+      - "databind/idl/parser/**"
+      - "databind/runtime/*.c"
+      - "databind/runtime/*.h"
+      - "databind/schema/include/**"
+      - "databind/schema/src/**"
+      - "databind/vendor/**"
+      - "jinja/include/**"
+      - "jinja/src/**"
+      - "mustache/include/**"
+      - "mustache/src/**"
+      - "parser/*.h"
+      - "parser/**/adapter/**"
+      - "parser/**/include/**"
+      - "parser/**/parser/**"
+      - "parser/**/src/**"
+      - "parser/**/vendor/**"
+      - "simd/include/**"
+      - "simd/src/**"
+      - "tinymock/include/**"
+      - "tinymock/src/**"
+      - "tools/junit_to_html/*.c"
+      - "tools/lemon/*.c"
+      - "vendor/**/*.c"
+      - "vendor/**/*.h"
+      - "!databind/compiler/cmeta/test_*"
+      - "!databind/runtime/benchmark_*"
+      - "!databind/runtime/test_*"
   push:
-    branches:
-      - master
-      - 'release/salts-utils-0.1-*'
+    branches: [master]
+    paths:
+      - "behavior-tree/include/**"
+      - "behavior-tree/src/**"
+      - "bindings/common/include/**"
+      - "bindings/common/*.c"
+      - "bindings/cpp/include/**"
+      - "bindings/lua/include/**"
+      - "bindings/lua/*.c"
+      - "bindings/quickjs/include/**"
+      - "bindings/quickjs/*.c"
+      - "cron/include/**"
+      - "cron/src/**"
+      - "databind/binding/runtime/**"
+      - "databind/compiler/*.c"
+      - "databind/compiler/*.h"
+      - "databind/compiler/binary/include/**"
+      - "databind/compiler/binary/src/**"
+      - "databind/compiler/binding/*.c"
+      - "databind/compiler/binding/*.h"
+      - "databind/compiler/cmeta/*.c"
+      - "databind/compiler/cmeta/*.h"
+      - "databind/formats/binary/include/**"
+      - "databind/formats/binary/internal/**"
+      - "databind/formats/binary/src/**"
+      - "databind/idl/contract/**"
+      - "databind/idl/core/**"
+      - "databind/idl/frontend/**"
+      - "databind/idl/include/**"
+      - "databind/idl/parser/**"
+      - "databind/runtime/*.c"
+      - "databind/runtime/*.h"
+      - "databind/schema/include/**"
+      - "databind/schema/src/**"
+      - "databind/vendor/**"
+      - "jinja/include/**"
+      - "jinja/src/**"
+      - "mustache/include/**"
+      - "mustache/src/**"
+      - "parser/*.h"
+      - "parser/**/adapter/**"
+      - "parser/**/include/**"
+      - "parser/**/parser/**"
+      - "parser/**/src/**"
+      - "parser/**/vendor/**"
+      - "simd/include/**"
+      - "simd/src/**"
+      - "tinymock/include/**"
+      - "tinymock/src/**"
+      - "tools/junit_to_html/*.c"
+      - "tools/lemon/*.c"
+      - "vendor/**/*.c"
+      - "vendor/**/*.h"
+      - "!databind/compiler/cmeta/test_*"
+      - "!databind/runtime/benchmark_*"
+      - "!databind/runtime/test_*"
   workflow_dispatch:
-    inputs:
-      prepare_release:
-        description: Validate five-RID SDK for Release, publication through Actions UI
-        type: boolean
-        default: false
+
 permissions:
   contents: read
   packages: read
+
 concurrency:
-  group: salts-utils-ci-${{ inputs.prepare_release && github.run_id || github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ !inputs.prepare_release }}
+  group: salts-utils-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  scope:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      builds: ${{ steps.select.outputs.builds }}
-      tests: ${{ steps.select.outputs.tests }}
-      has_builds: ${{ steps.select.outputs.has_builds }}
-      has_tests: ${{ steps.select.outputs.has_tests }}
-      version: ${{ steps.version.outputs.version }}
+  qualify:
+    name: LLVM / ${{ matrix.rid }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {rid: linux-x64, runner: ubuntu-24.04, family: native, preset: ci-native, arch: x64, triplet: x64-linux, host_rid: linux-x64, host_triplet: x64-linux, android_abi: "", run_tests: true, parallel: 2}
+          - {rid: linux-arm64, runner: ubuntu-24.04-arm, family: native, preset: ci-native, arch: arm64, triplet: arm64-linux, host_rid: linux-arm64, host_triplet: arm64-linux, android_abi: "", run_tests: true, parallel: 2}
+          - {rid: windows-x64, runner: windows-2025, family: windows, preset: ci-native, arch: x64, triplet: qigao-x64-windows-llvm-mingw, host_rid: windows-x64, host_triplet: qigao-x64-windows-llvm-mingw, android_abi: "", run_tests: true, parallel: 2}
+          - {rid: windows-arm64, runner: windows-11-arm, family: windows, preset: ci-native, arch: arm64, triplet: qigao-arm64-windows-llvm-mingw, host_rid: windows-arm64, host_triplet: qigao-arm64-windows-llvm-mingw, android_abi: "", run_tests: true, parallel: 2}
+          - {rid: macos-x64, runner: macos-15-intel, family: native, preset: ci-native, arch: x64, triplet: x64-osx, host_rid: macos-x64, host_triplet: x64-osx, android_abi: "", run_tests: true, parallel: 2}
+          - {rid: macos-arm64, runner: macos-15, family: native, preset: ci-native, arch: arm64, triplet: arm64-osx, host_rid: macos-arm64, host_triplet: arm64-osx, android_abi: "", run_tests: true, parallel: 3}
+          - {rid: android-x64, runner: ubuntu-24.04, family: android, preset: ci-android, arch: x64, triplet: x64-android, host_rid: linux-x64, host_triplet: x64-linux, android_abi: x86_64, run_tests: false, parallel: 2}
+          - {rid: android-arm64, runner: ubuntu-24.04, family: android, preset: ci-android, arch: arm64, triplet: arm64-android, host_rid: linux-x64, host_triplet: x64-linux, android_abi: arm64-v8a, run_tests: false, parallel: 2}
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/build/ccache
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-${{ matrix.rid }}
+      QIGAO_SDK_RID: ${{ matrix.rid }}
+      QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
+      QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
+      QIGAO_ANDROID_ABI: ${{ matrix.android_abi }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - name: Select affected checks
-        id: select
-        shell: pwsh
+
+      - name: Set up runner-native LLVM
+        id: llvm_native
+        if: matrix.family == 'native'
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        with:
+          build-type: toolchain-only
+          obfuscator: "false"
+
+      - name: Set up Windows LLVM-MinGW
+        id: llvm_mingw
+        if: matrix.family == 'windows'
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        with:
+          target: ${{ matrix.arch }}
+          version: "20261020"
+          build-type: toolchain-only
+          obfuscator: "false"
+
+      - name: Set up Android LLVM host
+        id: llvm_android_host
+        if: matrix.family == 'android'
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        with:
+          build-type: toolchain-only
+          obfuscator: "false"
+
+      - name: Set up shared dependency contract
+        id: vcpkg
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        with:
+          mode: read
+          token: ${{ github.token }}
+
+      - name: Restore re2c host tools
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        with:
+          token: ${{ github.token }}
+
+      - uses: ./.github/actions/setup-build-host
+
+      - name: Select target LLVM toolchain
+        shell: bash
         env:
-          CI_EVENT: ${{ github.event_name }}
-          CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          CI_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-          PREPARE_RELEASE: ${{ inputs.prepare_release || false }}
-          CI_BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: ./cmake/ci/select-ci-scope.ps1 -EventName $env:CI_EVENT -BaseRef $env:CI_BASE -HeadRef $env:CI_HEAD -HeadBranch $env:CI_BRANCH -PrepareRelease ($env:PREPARE_RELEASE -eq 'true')
-      - name: Test conservative CI scope selection
-        shell: pwsh
-        run: pwsh -NoProfile -File cmake/ci/test-select-ci-scope.ps1
-      - name: Read package version
-        id: version
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $version = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).'version-semver'
-          $project = Get-Content CMakeLists.txt -Raw
-          if ($project -notmatch '(?m)^\s*VERSION\s+([0-9][^\s)]*)' -or $Matches[1] -ne $version) {
-            throw 'CMake and package versions differ'
-          }
-          if ($env:GITHUB_REF -match '^refs/heads/release/salts-utils-0\.1-[^/]+$') {
-            $channel = (Get-Content cmake/ci/rc-channel.txt -Raw).Trim()
-            if ($channel -notmatch '^rc\.[1-9][0-9]*$') { throw "Invalid RC channel: $channel" }
-            $version = "$version-$channel"
-          }
-          "version=$version" >> $env:GITHUB_OUTPUT
-      - name: Qualify immutable release asset identity
-        shell: bash
-        run: bash .github/scripts/test-release-asset-identity.sh
-      - name: Qualify curl GitHub Packages restore
-        shell: bash
-        run: python3 cmake/ci/github_packages_test.py
-      - name: Verify private DataBind source and typed-error uniqueness contracts
-        shell: bash
-        run: python3 cmake/ci/verify_databind_release_source.py --self-test
-  native:
-    needs: scope
-    if: needs.scope.outputs.has_builds == 'true'
-    uses: ./.github/workflows/native-build.yml
-    with:
-      builds: ${{ needs.scope.outputs.builds }}
-      version: ${{ needs.scope.outputs.version }}
-    secrets: inherit
-  tests:
-    needs: [scope, native]
-    if: needs.scope.outputs.has_tests == 'true'
-    uses: ./.github/workflows/native-tests.yml
-    with:
-      tests: ${{ needs.scope.outputs.tests }}
-  package:
-    needs: [scope, native, tests]
-    if: (github.event_name == 'workflow_dispatch' && inputs.prepare_release) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/salts-utils-0.1-'))
-    uses: ./.github/workflows/sdk-package.yml
-    with:
-      version: ${{ needs.scope.outputs.version }}
-    secrets: inherit
-  result:
-    name: CI result
-    needs: [scope, native, tests, package]
-    if: always()
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Require successful selected checks
-        env:
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          SELECTED_RESULTS: ${{ join(needs.*.result, ',') }}
-          HAS_BUILDS: ${{ needs.scope.outputs.has_builds }}
-          BUILD_RESULT: ${{ needs.native.result }}
-          TEST_RESULT: ${{ needs.tests.result }}
-          PREPARE_RELEASE: ${{ inputs.prepare_release || false }}
-          RC_BRANCH_PUSH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/salts-utils-0.1-') }}
-          PACKAGE_RESULT: ${{ needs.package.result }}
+          NATIVE_TOOLCHAIN: ${{ steps.llvm_native.outputs.toolchain-file }}
+          NATIVE_OBFUSCATOR: ${{ steps.llvm_native.outputs.obfuscator-enabled }}
+          WINDOWS_TOOLCHAIN: ${{ steps.llvm_mingw.outputs.toolchain-file }}
+          WINDOWS_OBFUSCATOR: ${{ steps.llvm_mingw.outputs.obfuscator-enabled }}
+          ANDROID_HOST_TOOLCHAIN: ${{ steps.llvm_android_host.outputs.toolchain-file }}
+          ANDROID_OBFUSCATOR: ${{ steps.llvm_android_host.outputs.obfuscator-enabled }}
+          VCPKG_TOOLCHAIN: ${{ steps.vcpkg.outputs.toolchain_file }}
         run: |
           set -euo pipefail
-          test "$SCOPE_RESULT" = success
-          case ",$SELECTED_RESULTS," in *,failure,*|*,cancelled,*) exit 1 ;; esac
-          if [ "$HAS_BUILDS" = true ]; then
-            test "$BUILD_RESULT" = success
-            test "$TEST_RESULT" = success
+          case '${{ matrix.family }}' in
+            native)
+              target_toolchain="$NATIVE_TOOLCHAIN"
+              host_toolchain="$NATIVE_TOOLCHAIN"
+              obfuscator="$NATIVE_OBFUSCATOR"
+              ;;
+            windows)
+              target_toolchain="$WINDOWS_TOOLCHAIN"
+              host_toolchain="$WINDOWS_TOOLCHAIN"
+              obfuscator="$WINDOWS_OBFUSCATOR"
+              ;;
+            android)
+              ndk_root="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
+              target_toolchain="$ndk_root/build/cmake/android.toolchain.cmake"
+              host_toolchain="$ANDROID_HOST_TOOLCHAIN"
+              obfuscator="$ANDROID_OBFUSCATOR"
+              ;;
+            *) echo 'unknown compiler family' >&2; exit 2 ;;
+          esac
+          test -f "$target_toolchain"
+          test -f "$host_toolchain"
+          test -f "$VCPKG_TOOLCHAIN"
+          if [[ "$obfuscator" != false ]]; then
+            echo "compiler obfuscator must remain disabled, got: $obfuscator" >&2
+            exit 1
           fi
-          if [ "$PREPARE_RELEASE" = true ] || [ "$RC_BRANCH_PUSH" = true ]; then test "$PACKAGE_RESULT" = success; fi
+          {
+            echo "QIGAO_TARGET_TOOLCHAIN_FILE=$target_toolchain"
+            echo "QIGAO_HOST_TOOLCHAIN_FILE=$host_toolchain"
+            echo "QIGAO_VCPKG_TOOLCHAIN_FILE=$VCPKG_TOOLCHAIN"
+          } >> "$GITHUB_ENV"
+
+      - name: Restore exact SaltsCore and CMeta SDKs
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./cmake/ci/restore-native-sdk.sh '${{ matrix.rid }}' '${{ matrix.host_rid }}'
+
+      - name: Restore exact SaltsCore and CMeta SDKs on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid '${{ matrix.rid }}' -Re2cRid '${{ matrix.host_rid }}'
+
+      - name: Configure Android host tools
+        if: matrix.family == 'android'
+        shell: bash
+        run: cmake --preset ci-host
+
+      - name: Build Android host tools
+        if: matrix.family == 'android'
+        shell: bash
+        run: cmake --build --preset ci-host --parallel '${{ matrix.parallel }}'
+
+      - name: Configure full graph
+        shell: bash
+        run: cmake --preset '${{ matrix.preset }}'
+
+      - name: Build full graph
+        shell: bash
+        run: cmake --build --preset '${{ matrix.preset }}' --parallel '${{ matrix.parallel }}'
+
+      - name: Run formal CTest suite
+        if: matrix.run_tests
+        shell: bash
+        run: ctest --preset ci-native --parallel '${{ matrix.parallel }}'
