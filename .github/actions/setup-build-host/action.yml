@@ -1,5 +1,5 @@
 name: Prepare SaltsUtils build host
-description: Install native build prerequisites, compiler cache, and select Visual Studio.
+description: Install native build prerequisites and compiler cache.
 runs:
   using: composite
   steps:
@@ -37,8 +37,4 @@ runs:
       $ErrorActionPreference = "Stop"
       choco install ccache nasm ninja -y --no-progress
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
-      $vsInstall = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-      if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($vsInstall)) { throw "Visual Studio x64 C++ toolchain not found" }
-      "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
       if (-not (Get-Command ccache -ErrorAction SilentlyContinue)) { throw "ccache not found on Windows PATH" }

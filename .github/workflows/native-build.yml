@@ -53,6 +53,15 @@ jobs:
         if: matrix.family == 'ios'
         shell: bash
         run: echo 'X_VCPKG_NUGET_ID_PREFIX=vcpkg-cache' >> "$GITHUB_ENV"
+      - name: Set up Windows LLVM-MinGW UCRT toolchain
+        id: llvm_mingw
+        if: matrix.family == 'windows'
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        with:
+          target: x64
+          version: '20261020'
+          build-type: toolchain-only
+          obfuscator: 'false'
       - uses: ./.github/actions/setup-native-ci
         with:
           re2c: 'false'
@@ -62,10 +71,23 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if (-not $env:VCPKG_ROOT -or -not $env:QIGAO_VCPKG_WINDOWS_TRIPLET) { throw 'Shared vcpkg environment is missing' }
+          if (-not $env:VCPKG_ROOT -or -not $env:QIGAO_VCPKG_WINDOWS_TRIPLET -or
+              -not $env:QIGAO_VCPKG_WINDOWS_HOST_TRIPLET -or -not $env:LLVM_MINGW_TOOLCHAIN_FILE) {
+            throw 'Shared LLVM-MinGW/vcpkg environment is missing'
+          }
+          if ($env:QIGAO_VCPKG_WINDOWS_TRIPLET -ne 'qigao-x64-windows-llvm-mingw' -or
+              $env:QIGAO_VCPKG_WINDOWS_HOST_TRIPLET -ne 'qigao-x64-windows-llvm-mingw') {
+            throw 'Windows dependencies must use the LLVM-MinGW ABI triplets'
+          }
+          if (-not (Test-Path -LiteralPath $env:LLVM_MINGW_TOOLCHAIN_FILE -PathType Leaf)) {
+            throw 'LLVM-MinGW product toolchain is missing'
+          }
+          if ('${{ steps.llvm_mingw.outputs.obfuscator-enabled }}' -ne 'false') {
+            throw 'Compiler obfuscator must remain disabled'
+          }
           "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
           "QIGAO_TARGET_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
-          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_TRIPLET" >> $env:GITHUB_ENV
+          "QIGAO_HOST_TRIPLET=$env:QIGAO_VCPKG_WINDOWS_HOST_TRIPLET" >> $env:GITHUB_ENV
       - name: Restore latest published native SDKs on Unix
         if: matrix.family != 'windows'
         shell: bash
@@ -97,15 +119,14 @@ jobs:
           cmake --build --preset '${{ matrix.preset }}' --parallel 2
       - name: Configure and build complete Windows graph
         if: matrix.family == 'windows'
-        shell: cmd
+        shell: pwsh
         run: |
-          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-          if errorlevel 1 exit /b 1
-          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          cmake --preset "${{ matrix.preset }}"
-          if errorlevel 1 exit /b 1
-          cmake --build --preset "${{ matrix.preset }}" --parallel 2
-          if errorlevel 1 exit /b 1
+          $ErrorActionPreference = 'Stop'
+          $env:VCPKG_ROOT = $env:QIGAO_VCPKG_ROOT
+          & cmake --preset '${{ matrix.preset }}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build --preset '${{ matrix.preset }}' --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install Unix release SDK
         if: matrix.package && matrix.family != 'windows'
         shell: bash
@@ -114,13 +135,12 @@ jobs:
           cmake --build --preset 'install-${{ matrix.preset }}' --parallel 2
       - name: Install Windows release SDK
         if: matrix.package && matrix.family == 'windows'
-        shell: cmd
+        shell: pwsh
         run: |
-          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-          if errorlevel 1 exit /b 1
-          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          cmake --build --preset "install-${{ matrix.preset }}" --parallel 2
-          if errorlevel 1 exit /b 1
+          $ErrorActionPreference = 'Stop'
+          $env:VCPKG_ROOT = $env:QIGAO_VCPKG_ROOT
+          & cmake --build --preset 'install-${{ matrix.preset }}' --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Record release SDK provenance
         if: matrix.package
         shell: pwsh

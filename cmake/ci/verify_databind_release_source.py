@@ -24,6 +24,8 @@ PATHS = (
     "cmake/ci/restore-native-sdk.sh",
     "cmake/ci/restore-native-sdk.ps1",
     "cmake/ci/github_packages.py",
+    "cmake/ci/install_static_crypto_sdk.py",
+    "cmake/ci/setup_native_ci.py",
     ".github/actions/setup-native-ci/action.yml",
     ".github/workflows/native-build.yml",
     ".github/workflows/native-tests.yml",
@@ -53,6 +55,8 @@ def violations(source: dict[str, str]) -> list[str]:
     restore_unix = source["cmake/ci/restore-native-sdk.sh"]
     restore_windows = source["cmake/ci/restore-native-sdk.ps1"]
     github_packages = source["cmake/ci/github_packages.py"]
+    crypto_setup = source["cmake/ci/install_static_crypto_sdk.py"]
+    native_bootstrap = source["cmake/ci/setup_native_ci.py"]
     native_setup = source[".github/actions/setup-native-ci/action.yml"]
     native_build = source[".github/workflows/native-build.yml"]
     native_tests = source[".github/workflows/native-tests.yml"]
@@ -148,6 +152,25 @@ def violations(source: dict[str, str]) -> list[str]:
             errors.append(f"{label} must consume the curl-only native CI action")
     if "cmake/ci/setup_native_ci.py" not in native_setup or "github_packages.py" not in native_setup:
         errors.append("native setup action must bootstrap the curl cache and curl re2c restore")
+    llvm_triplet = "qigao-x64-windows-llvm-mingw"
+    if llvm_triplet not in native_bootstrap or "qigao-x64-windows-v145" in native_bootstrap:
+        errors.append("Windows native cache bootstrap must select only the LLVM-MinGW ABI triplet")
+    for label, value in (
+        ("native build workflow", native_build),
+        ("native test workflow", native_tests),
+    ):
+        if "setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6" not in value:
+            errors.append(f"{label} must install the pinned Windows LLVM-MinGW toolchain")
+        if "obfuscator: 'false'" not in value:
+            errors.append(f"{label} must explicitly disable the compiler obfuscator")
+        if "VSDevCmd" in value or "VSINSTALL" in value:
+            errors.append(f"{label} must not activate an MSVC environment")
+    if ("LLVM_MINGW_TOOLCHAIN_FILE" not in crypto_setup
+            or 'gmssl.lib' in crypto_setup or 'salts_crypto.lib' in crypto_setup):
+        errors.append("Windows Crypto must use the LLVM-MinGW toolchain and static .a ABI")
+    if ("VCPKG_CHAINLOAD_TOOLCHAIN_FILE" not in user_presets
+            or "Windows LLVM-MinGW UCRT" not in user_presets):
+        errors.append("Windows CI presets must chainload the explicit LLVM-MinGW product toolchain")
     if "nugetconfig" in user_presets.lower() or "nugettimeout" in user_presets.lower():
         errors.append("root user presets must not configure a NuGet-backed vcpkg binary source")
     if "dotnet restore" not in sdk_package or "<clear />" not in sdk_package:

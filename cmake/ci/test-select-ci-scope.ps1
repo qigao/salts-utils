@@ -70,6 +70,12 @@ try {
   if (@($releaseBuilds | Where-Object { $_.family -eq 'ios' }).Count -ne 0) {
     throw 'release selector must not emit iOS without matching dependency SDKs'
   }
+  $windows = @($releaseBuilds | Where-Object { $_.family -eq 'windows' })
+  if ($windows.Count -ne 1 -or
+      $windows[0].triplet -ne 'qigao-x64-windows-llvm-mingw' -or
+      $windows[0].host_triplet -ne 'qigao-x64-windows-llvm-mingw') {
+    throw 'Windows release must use LLVM-MinGW for target and host dependencies'
+  }
   Write-Output 'PASS release RID contract'
 } finally {
   Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

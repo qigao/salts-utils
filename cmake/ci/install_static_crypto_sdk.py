@@ -26,7 +26,10 @@ def sha(root: Path) -> str:
 
 def native_toolchain(rid: str) -> tuple[list[str], list[str]]:
     if rid == "windows-x64":
-        return ["-G", "Visual Studio 18 2026", "-A", "x64"], []
+        toolchain = Path(os.environ["LLVM_MINGW_TOOLCHAIN_FILE"])
+        if not toolchain.is_file():
+            raise FileNotFoundError(toolchain)
+        return ["-G", "Ninja"], [f"-DCMAKE_TOOLCHAIN_FILE={toolchain}"]
     opts: list[str] = []
     if rid.startswith("android-"):
         ndk = Path(os.environ["ANDROID_NDK_HOME"])
@@ -72,8 +75,7 @@ def install_one(root: Path, rid: str, source: Path, gmssl: Path) -> Path:
         *generator, *cross, *common, *enable)
     run("cmake", "--build", str(gmssl_build), "--config", "Release",
         "--target", "gmssl", "--parallel", "2")
-    archive = (gmssl_build / "bin" / "Release" / "gmssl.lib"
-               if rid == "windows-x64" else gmssl_build / "bin" / "libgmssl.a")
+    archive = gmssl_build / "bin" / "libgmssl.a"
     if not archive.is_file():
         raise FileNotFoundError("Pinned GmSSL archive missing " + str(archive))
 
@@ -85,8 +87,7 @@ def install_one(root: Path, rid: str, source: Path, gmssl: Path) -> Path:
         "--parallel", "2")
     run("cmake", "--install", str(crypto_build), "--config", "Release",
         "--prefix", str(sdk))
-    expected = sdk / "lib" / ("salts_crypto.lib" if rid == "windows-x64"
-                               else "libsalts_crypto.a")
+    expected = sdk / "lib" / "libsalts_crypto.a"
     cfg = sdk / "lib" / "cmake" / "Crypto" / "CryptoConfig.cmake"
     if not expected.is_file() or not cfg.is_file():
         raise RuntimeError("Incomplete installed single-owner Crypto SDK " + str(sdk))

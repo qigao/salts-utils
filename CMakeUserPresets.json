@@ -63,7 +63,7 @@
             "cacheVariables": {
                 "VCPKG_INSTALLED_DIR": "$env{VCPKG_INSTALLED_DIR}",
                 "VCPKG_TARGET_TRIPLET": "$env{QIGAO_TARGET_TRIPLET}",
-                "VCPKG_HOST_TRIPLET": "$env{QIGAO_TARGET_TRIPLET}"
+                "VCPKG_HOST_TRIPLET": "$env{QIGAO_HOST_TRIPLET}"
             },
             "environment": {
                 "PKG_ROOT": "${sourceDir}/stage",
@@ -99,23 +99,23 @@
         },
         {
             "name": "ci-win-sdk-release-user",
-            "inherits": [
-                "ci-sdk-release-user",
-                "base-win-release-user"
-            ],
+            "inherits": "ci-sdk-release-user",
+            "description": "Windows LLVM-MinGW UCRT release SDK build.",
+            "cacheVariables": {
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{LLVM_MINGW_TOOLCHAIN_FILE}"
+            },
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}"
             }
         },
         {
             "name": "ci-win-release-user",
-            "inherits": [
-                "ci-native-release-user",
-                "base-win-release-user"
-            ],
+            "inherits": "ci-native-release-user",
+            "description": "Windows LLVM-MinGW UCRT release and test build.",
             "binaryDir": "${sourceDir}/build/ci-win-release",
             "cacheVariables": {
-                "BUILD_TESTS": true
+                "BUILD_TESTS": true,
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{LLVM_MINGW_TOOLCHAIN_FILE}"
             },
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}",
@@ -126,7 +126,7 @@
             "name": "ci-win-dev-user",
             "inherits": [
                 "ci-native-paths",
-                "base-win-dev-user"
+                "developer-mode"
             ],
             "binaryDir": "${sourceDir}/build/ci-win-dev",
             "cacheVariables": {
@@ -136,7 +136,8 @@
                 "BUILD_BENCHMARKS": false,
                 "BUILD_EXAMPLES": false,
                 "ENABLE_SANITIZER_ADDRESS": true,
-                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto"
+                "Crypto_DIR": "$env{CRYPTO_ROOT}/lib/cmake/Crypto",
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{LLVM_MINGW_TOOLCHAIN_FILE}"
             },
             "environment": {
                 "VCPKG_ROOT": "$penv{QIGAO_VCPKG_ROOT}",

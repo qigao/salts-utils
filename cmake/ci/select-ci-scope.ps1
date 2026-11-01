@@ -30,7 +30,7 @@ $native = $full -or $nativeChanges.Count -gt 0
 
 $profiles = @(
   @{ id='linux-release'; runner='ubuntu-24.04'; family='linux'; rid='linux-x64'; host='linux-x64'; triplet='x64-linux'; host_triplet='x64-linux'; preset='ci-native-release-user' },
-  @{ id='windows-release'; runner='windows-2025'; family='windows'; rid='windows-x64'; host='windows-x64'; triplet=''; host_triplet=''; preset='ci-win-release-user' },
+  @{ id='windows-release'; runner='windows-2025'; family='windows'; rid='windows-x64'; host='windows-x64'; triplet='qigao-x64-windows-llvm-mingw'; host_triplet='qigao-x64-windows-llvm-mingw'; preset='ci-win-release-user' },
   @{ id='macos-release'; runner='macos-15'; family='mac'; rid='macos-arm64'; host='macos-arm64'; triplet='arm64-osx'; host_triplet='arm64-osx'; preset='ci-macos-release-user' },
   @{ id='android-release'; runner='ubuntu-24.04'; family='android'; rid='android-arm64'; host='linux-x64'; triplet='arm64-android'; host_triplet='x64-linux'; preset='ci-android-sdk-release-user' }
 )

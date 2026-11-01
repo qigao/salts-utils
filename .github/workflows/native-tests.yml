@@ -29,6 +29,14 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Set up Windows LLVM-MinGW runtime toolchain
+        if: matrix.family == 'windows'
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        with:
+          target: x64
+          version: '20261020'
+          build-type: toolchain-only
+          obfuscator: 'false'
       - uses: ./.github/actions/setup-native-ci
         with:
           re2c: 'false'
@@ -56,12 +64,11 @@ jobs:
         run: ctest --preset '${{ matrix.preset }}' --no-tests=error --output-on-failure --timeout 180 --parallel 2
       - name: Run complete Windows CTest graph
         if: matrix.family == 'windows'
-        shell: cmd
+        shell: pwsh
         run: |
-          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-          if errorlevel 1 exit /b 1
-          ctest --preset "${{ matrix.preset }}" --no-tests=error --output-on-failure --timeout 180 --parallel 2
-          if errorlevel 1 exit /b 1
+          $ErrorActionPreference = 'Stop'
+          & ctest --preset '${{ matrix.preset }}' --no-tests=error --output-on-failure --timeout 180 --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
