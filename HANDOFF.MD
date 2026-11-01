@@ -22,7 +22,10 @@
   roots. CMeta-owned targets use `CMeta::`; Core-owned targets use `Salts::`.
 - llvm-mingw can set `CMAKE_CROSSCOMPILING=TRUE` even for a host-runnable
   Windows target. Host tools such as lemon must compare host and target system
-  name/processor before demanding a separately supplied executable.
+  name/processor before demanding a separately supplied executable. The shared
+  native LLVM toolchain also sets `CMAKE_SYSTEM_NAME` without setting
+  `CMAKE_SYSTEM_PROCESSOR`; an empty target processor is an unknown field, not
+  evidence of a different ABI, when the system names already match.
 - C++ header tests built by llvm-mingw require its `bin` directory on runtime
   `PATH` for `libc++.dll`. Without it, direct launch exits with loader error and
   CTest may appear to hang; this is not a compiler or TinyTest deadlock.

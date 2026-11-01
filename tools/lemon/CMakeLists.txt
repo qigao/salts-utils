@@ -5,9 +5,11 @@ endif()
 
 set(_salts_utils_target_runs_on_host FALSE)
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL CMAKE_SYSTEM_NAME AND
-   CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL CMAKE_SYSTEM_PROCESSOR)
-  # llvm-mingw deliberately sets CMAKE_SYSTEM_NAME, so CMake reports a cross
-  # build even when the produced Windows executable matches the host ABI.
+   (NOT CMAKE_SYSTEM_PROCESSOR OR
+    CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL CMAKE_SYSTEM_PROCESSOR))
+  # The shared native LLVM toolchain deliberately sets CMAKE_SYSTEM_NAME but
+  # leaves CMAKE_SYSTEM_PROCESSOR unset. llvm-mingw sets both. In either case
+  # the generated executable is host-runnable when the known fields match.
   set(_salts_utils_target_runs_on_host TRUE)
 endif()
 
