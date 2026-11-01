@@ -160,8 +160,8 @@ class PackageTests(unittest.TestCase):
     def test_exact_split_sdks_and_re2c_environment_are_fail_closed(self):
         self.feed.add("SaltsCore.Native", "0.1.0",
                       saltscore_files(("linux-x64",)))
-        self.feed.add("CMeta.Native", "0.1.1",
-                      cmeta_files(("linux-x64",), "0.1.1"))
+        self.feed.add("CMeta.Native", "0.1.2",
+                      cmeta_files(("linux-x64",), "0.1.2"))
         self.feed.add("Qigao.Re2c.Binary", "1.0.0", {
             "tools/linux-x64/bin/re2c": "#!/bin/sh\nexit 0\n",
             "tools/linux-x64/share/re2c/stdlib/unicode_categories.re": "",
@@ -181,7 +181,7 @@ class PackageTests(unittest.TestCase):
             restore_native_sdk(args, self.packages)
         values = env.read_text()
         self.assertIn("SALTSCORE_VERSION=0.1.0", values)
-        self.assertIn("CMETA_VERSION=0.1.1", values)
+        self.assertIn("CMETA_VERSION=0.1.2", values)
         self.assertIn("SALTSCORE_ROOT=", values)
         self.assertIn("CMETA_ROOT=", values)
         self.assertIn("RE2C_ROOT=", values)
@@ -233,12 +233,12 @@ class PackageTests(unittest.TestCase):
         version = "0.1.0"
         self.feed.add("SaltsCore.Native", version, saltscore_files(
             ("linux-x64",), missing_target="Salts::Crypto"))
-        self.feed.add("CMeta.Native", "0.1.1",
-                      cmeta_files(("linux-x64",), "0.1.1"))
+        self.feed.add("CMeta.Native", "0.1.2",
+                      cmeta_files(("linux-x64",), "0.1.2"))
         args = argparse.Namespace(
             packages=self.root / "missing-crypto", salts_rid="linux-x64",
             host_rid="linux-x64", with_turbowasm=False,
-            saltscore_version=version, cmeta_version="0.1.1",
+            saltscore_version=version, cmeta_version="0.1.2",
             require_component_runtime=False, result=None)
         with self.assertRaisesRegex(ValueError, "missing target Salts::Crypto"):
             restore_native_sdk(args, self.packages)

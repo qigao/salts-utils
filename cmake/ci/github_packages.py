@@ -20,7 +20,7 @@ import zipfile
 
 FEED = "https://nuget.pkg.github.com/qigao/index.json"
 SALTSCORE_NATIVE_VERSION = "0.1.0"
-CMETA_NATIVE_VERSION = "0.1.1"
+CMETA_NATIVE_VERSION = "0.1.2"
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.-]+$")
 VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$")
 RID = re.compile(

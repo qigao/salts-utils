@@ -26,13 +26,13 @@ Consumers restore `SaltsUtils.Native`, `SaltsCore.Native`, and `CMeta.Native`
 explicitly, then set all three exact SDK roots:
 
     export SALTSCORE_ROOT=<nuget>/saltscore.native/0.1.0/sdk/linux-x64
-    export CMETA_ROOT=<nuget>/cmeta.native/0.1.1/sdk/linux-x64
+    export CMETA_ROOT=<nuget>/cmeta.native/0.1.2/sdk/linux-x64
     export SALTS_UTILS_ROOT=<nuget>/saltsutils.native/<resolved>/sdk/linux-x64
 
 Use the matching RID on Linux arm64:
 
     export SALTSCORE_ROOT=<nuget>/saltscore.native/0.1.0/sdk/linux-arm64
-    export CMETA_ROOT=<nuget>/cmeta.native/0.1.1/sdk/linux-arm64
+    export CMETA_ROOT=<nuget>/cmeta.native/0.1.2/sdk/linux-arm64
     export SALTS_UTILS_ROOT=<nuget>/saltsutils.native/<resolved>/sdk/linux-arm64
 
     find_package(SaltsUtils CONFIG REQUIRED PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)

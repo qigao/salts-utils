@@ -18,7 +18,7 @@
   SaltsUtils directories, Capture-only presets/features, and Capture TSAN
   workflow were removed. SaltsUtils packaging must not assert that their
   headers or libraries are part of the SaltsUtils payload.
-- Restore `SaltsCore.Native` at `0.1.0` and `CMeta.Native` at `0.1.1`.
+- Restore `SaltsCore.Native` at `0.1.0` and `CMeta.Native` at `0.1.2`.
   The restore result exports target and host forms of both
   roots. CMeta-owned targets use `CMeta::`; Core-owned targets use `Salts::`.
 - llvm-mingw can set `CMAKE_CROSSCOMPILING=TRUE` even for a host-runnable
@@ -71,3 +71,7 @@
   SaltsUtils CI. Besides violating the sole-owner contract, the archived
   merge script selects MSVC `lib.exe` flags from host `WIN32` and fails under
   LLVM-MinGW `ar`; downstreams must consume the published Core owner.
+- CMeta.Native `0.1.2` admits UUID data providers by stable semantic identity
+  instead of callback address. Keep this exact pin: Unix shared-module graphs
+  can materialize equivalent callback addresses separately, while `0.1.1`
+  rejects the valid DataBind UUID runtime descriptor on Linux and macOS.

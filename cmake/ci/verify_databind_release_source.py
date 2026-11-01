@@ -114,8 +114,8 @@ def violations(source: dict[str, str]) -> list[str]:
         errors.append("Jinja must depend on SaltsCore Unicode and CMeta CSTL owners")
     if 'SALTSCORE_NATIVE_VERSION = "0.1.0"' not in github_packages:
         errors.append("curl SDK restore must pin SaltsCore.Native 0.1.0")
-    if 'CMETA_NATIVE_VERSION = "0.1.1"' not in github_packages:
-        errors.append("curl SDK restore must pin CMeta.Native 0.1.1")
+    if 'CMETA_NATIVE_VERSION = "0.1.2"' not in github_packages:
+        errors.append("curl SDK restore must pin CMeta.Native 0.1.2")
     if ("Salts::Unicode" not in github_packages
             or "CMeta::CMeta" not in github_packages
             or "cmeta-sdk-manifest.txt" not in github_packages):
