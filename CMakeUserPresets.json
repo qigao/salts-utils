@@ -560,24 +560,15 @@
         },
         {
             "name": "ci-native-minimal-release-user",
-            "displayName": "LLVM native C11 split-package tests",
-            "inherits": [
-                "ci-native-paths",
-                "release-mode"
-            ],
-            "binaryDir": "${sourceDir}/build/ci-native-minimal-release",
+            "displayName": "Native C11 split-package SDK",
+            "inherits": "ci-sdk-release-user",
             "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/stage/salts-utils-native-minimal",
                 "SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET": true,
                 "BUILD_TESTS": true,
-                "BUILD_BENCHMARKS": false,
-                "BUILD_EXAMPLES": false,
                 "CMAKE_SUPPRESS_REGENERATION": true
             },
             "environment": {
-                "SALTSCORE_ROOT": "$penv{SALTSCORE_ROOT}",
-                "CMETA_ROOT": "$penv{CMETA_ROOT}",
-                "PATH": "${sourceDir}/build/ci-native-minimal-release/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "$env{SALTS_UTILS_CI_BUILD_ROOT}/bin${pathListSep}$env{CMETA_ROOT}/bin${pathListSep}$env{SALTSCORE_ROOT}/bin${pathListSep}$penv{PATH}"
             }
         }
     ],

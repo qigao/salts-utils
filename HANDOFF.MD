@@ -82,3 +82,9 @@
   every version of the former `SaltsUtils.Native` package were deleted before
   this restart. Do not infer an available legacy package from old documentation
   or cached package metadata.
+- Every release RID, including the reduced Linux arm64 graph, must inherit the
+  canonical `ci-sdk-release-user` build and install layout. A standalone
+  `build/ci-native-minimal-release` / `stage/salts-utils-native-minimal` preset
+  can compile successfully but leaves the release workflow looking for
+  provenance under `build/ci-sdk/<RID>` and `stage/sdk/<RID>`, so packaging
+  fails only after installation.
