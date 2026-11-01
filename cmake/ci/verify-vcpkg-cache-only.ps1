@@ -1,7 +1,4 @@
-param(
-  [switch]$Capture,
-  [string]$ManifestRoot = ""
-)
+param([string]$ManifestRoot = "")
 
 $ErrorActionPreference = "Stop"
 
@@ -48,15 +45,10 @@ $args = @(
     "--host-triplet=$env:QIGAO_VCPKG_WINDOWS_HOST_TRIPLET",
   "--only-binarycaching"
 )
-if ($Capture) {
-  $args += "--x-feature=capture"
-}
-
 Write-Host "Verifying Windows dependencies are fully restorable from qigao/vcpkg-cache"
 Write-Host "Manifest root: $ManifestRoot"
 Write-Host "Canonical target triplet: $env:QIGAO_VCPKG_WINDOWS_TRIPLET"
 Write-Host "Canonical host triplet: $env:QIGAO_VCPKG_WINDOWS_HOST_TRIPLET"
-Write-Host "Capture feature: $($Capture.IsPresent)"
 
 & $vcpkg @args
 if ($LASTEXITCODE -ne 0) {

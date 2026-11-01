@@ -1,4 +1,4 @@
-#include <salts/plugin.h>
+#include <cmeta/plugin.h>
 #include <cmeta/data.h>
 #include <cmeta/declared_type.h>
 #include <cmeta/struct.h>

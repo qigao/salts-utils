@@ -1,4 +1,4 @@
-#include <salts/process.h>
+#include <cflow/process.h>
 
 #include <cflow/io_native_adapter.h>
 #include <cflow/io_pipe.h>
@@ -44,7 +44,7 @@ struct cflow_process_impl {
   cflow_process_slot *slots;
   size_t slot_capacity;
   cmeta_mutex_t gate;
-  cmeta_process_t *native_process;
+  salts_process_t *native_process;
   cflow_io_pipe_endpoint stdin_endpoint;
   cflow_io_pipe_endpoint stdout_endpoint;
   cflow_io_pipe_endpoint stderr_endpoint;
@@ -292,13 +292,13 @@ static void process_start_cleanup(cflow_process_impl *impl, bool adapter_initial
     (void)cflow_executor_shutdown(&impl->executor);
     cflow_executor_destroy(&impl->executor);
   }
-  if (impl->native_process != NULL) cmeta_process_destroy(impl->native_process);
+  if (impl->native_process != NULL) salts_process_destroy(impl->native_process);
   cmeta_mutex_destroy(&impl->gate);
   free(impl->slots);
   free(impl);
 }
 
-int cflow_process_start(cflow_process *process, const cmeta_process_options_t *options,
+int cflow_process_start(cflow_process *process, const salts_process_options_t *options,
                         const cflow_process_config *config) {
   const unsigned int conflicting_flags =
       SALTS_PROCESS_PIPE_STDIN | SALTS_PROCESS_CAPTURE_STDOUT | SALTS_PROCESS_CAPTURE_STDERR;
@@ -306,7 +306,7 @@ int cflow_process_start(cflow_process *process, const cmeta_process_options_t *o
   cflow_process_pipe_pair stdin_pair;
   cflow_process_pipe_pair stdout_pair;
   cflow_process_pipe_pair stderr_pair;
-  cmeta_process_stdio_bindings_t bindings;
+  salts_process_stdio_bindings_t bindings;
   cflow_io_native_adapter_config adapter_config;
   cflow_io_actor_config actor_config;
   native_io_backend_kind native_backend_kind;
@@ -400,7 +400,7 @@ int cflow_process_start(cflow_process *process, const cmeta_process_options_t *o
   bindings.stdin_handle = stdin_pair.child;
   bindings.stdout_handle = stdout_pair.child;
   bindings.stderr_handle = stderr_pair.child;
-  status = cmeta_process_spawn_with_stdio(options, &bindings, &impl->native_process);
+  status = salts_process_spawn_with_stdio(options, &bindings, &impl->native_process);
   process_child_close(&stdin_pair.child);
   process_child_close(&stdout_pair.child);
   process_child_close(&stderr_pair.child);
@@ -543,14 +543,14 @@ int cflow_process_close_stdin(cflow_process *process) {
   return cleanup_error;
 }
 
-int cflow_process_poll(const cflow_process *process, cmeta_process_result_t *out_result) {
+int cflow_process_poll(const cflow_process *process, salts_process_result_t *out_result) {
   const cflow_process_impl *impl = process_const_impl(process);
-  return impl != NULL ? cmeta_process_poll(impl->native_process, out_result) : SALTS_EINVAL;
+  return impl != NULL ? salts_process_poll(impl->native_process, out_result) : SALTS_EINVAL;
 }
 
 int cflow_process_terminate(cflow_process *process) {
   cflow_process_impl *impl = process_impl(process);
-  return impl != NULL ? cmeta_process_terminate(impl->native_process) : SALTS_EINVAL;
+  return impl != NULL ? salts_process_terminate(impl->native_process) : SALTS_EINVAL;
 }
 
 static cflow_io_request_id process_delivered_request(cflow_process_impl *impl) {
@@ -672,7 +672,7 @@ int cflow_process_close(cflow_process *process) {
   cmeta_mutex_lock(&impl->gate);
   impl->close_requested = true;
   cmeta_mutex_unlock(&impl->gate);
-  process_status = cmeta_process_terminate(impl->native_process);
+  process_status = salts_process_terminate(impl->native_process);
   if (actor_status != SALTS_OK && actor_status != SALTS_EALREADY)
     return actor_status;
   return process_status == SALTS_OK ? SALTS_OK : process_status;
@@ -713,7 +713,7 @@ int cflow_process_shutdown_step(cflow_process *process, size_t max_steps,
 
 bool cflow_process_is_quiescent(const cflow_process *process) {
   cflow_process_impl *impl = process != NULL ? (cflow_process_impl *)process->impl : NULL;
-  cmeta_process_result_t result;
+  salts_process_result_t result;
   bool close_requested, driver_active, stdin_open, stdout_open, stderr_open;
   if (impl == NULL) return false;
   cmeta_mutex_lock(&impl->gate);
@@ -726,7 +726,7 @@ bool cflow_process_is_quiescent(const cflow_process *process) {
   if (!close_requested || driver_active || stdin_open || stdout_open || stderr_open ||
       !cflow_io_actor_is_quiescent(&impl->actor))
     return false;
-  return cmeta_process_poll(impl->native_process, &result) == SALTS_OK;
+  return salts_process_poll(impl->native_process, &result) == SALTS_OK;
 }
 
 int cflow_process_destroy(cflow_process *process) {
@@ -767,7 +767,7 @@ int cflow_process_destroy(cflow_process *process) {
   status = cflow_io_actor_destroy(&impl->actor);
   if (status != SALTS_OK) return status;
   cflow_executor_destroy(&impl->executor);
-  cmeta_process_destroy(impl->native_process);
+  salts_process_destroy(impl->native_process);
   cmeta_mutex_destroy(&impl->gate);
   free(impl->slots);
   free(impl);

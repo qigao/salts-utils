@@ -21,7 +21,7 @@ int nested_native_generics_cpp_generic_owners(void) {
     return METADATA_ERROR;
   const auto *shape = static_cast<const cmeta_data_struct_shape *>(data->shape);
   cmeta_type_desc value_type = cmeta_type_uint32;
-  cmeta_type_desc key_type = *SALTS_TSTR_CMETA_TYPE_REF;
+  cmeta_type_desc key_type = *CMETA_TSTR_TYPE_REF;
   const cmeta_type_desc *value_arguments[] = {&value_type};
   const cmeta_type_desc *map_arguments[] = {&key_type, &value_type};
   struct Operation {
@@ -77,7 +77,7 @@ int nested_native_generics_cpp_recursive_identity(void) {
   cmeta_generic_desc vec = stl_vec_generic_desc;
   cmeta_generic_desc map = stl_map_generic_desc;
   const cmeta_type_identity integer = *cmeta_type_identity_of(&cmeta_type_int32);
-  const cmeta_type_identity text = *cmeta_type_identity_of(SALTS_TSTR_CMETA_TYPE_REF);
+  const cmeta_type_identity text = *cmeta_type_identity_of(CMETA_TSTR_TYPE_REF);
   const cmeta_type_identity record = *cmeta_type_identity_of(user->storage_type);
   const cmeta_type_identity *integers[] = {&integer};
   const cmeta_type_identity *records[] = {&record};

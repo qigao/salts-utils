@@ -2,7 +2,7 @@
 
 #include "csv_grammar_gen.h"
 #include "csv_lexer.h"
-#include <cmeta_fs.h>
+#include <salts/fs.h>
 #include <cmeta_mmap.h>
 #include <tstr.h>
 #include <cstl/hash_map.h>
@@ -240,7 +240,7 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
     int lexer_rc;
     size_t file_size;
     char *file_data = NULL;
-    cmeta_fs_buf_t file_buffer;
+    salts_fs_buf_t file_buffer;
     dsv_index_file_header_t header;
     tstr temporary_path = NULL;
     int rc = -1;
@@ -357,11 +357,11 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
         dsv_index_fail(index, "out of memory creating temporary index path");
         goto cleanup;
     }
-    if (cmeta_fs_write_file(temporary_path, &file_buffer) != 0) {
+    if (salts_fs_write_file(temporary_path, &file_buffer) != 0) {
         dsv_index_fail(index, "failed writing DSV sidecar index");
         goto cleanup;
     }
-    if (cmeta_fs_rename(temporary_path, index_path) != 0) {
+    if (salts_fs_rename(temporary_path, index_path) != 0) {
         dsv_index_fail(index, "failed replacing DSV sidecar index");
         goto cleanup;
     }
@@ -369,7 +369,7 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
     rc = 0;
 
 cleanup:
-    if (rc != 0 && temporary_path) (void)cmeta_fs_unlink(temporary_path);
+    if (rc != 0 && temporary_path) (void)salts_fs_unlink(temporary_path);
     tstr_free(temporary_path);
     free(file_data);
     vec_destroy(&entries);
@@ -413,11 +413,11 @@ int dsv_index_build_memory(dsv_index_t *index, const char *index_path,
 int dsv_index_build_file(dsv_index_t *index, const char *csv_path,
                          const char *index_path, const dsv_index_config_t *config) {
     cmeta_mmap_t source;
-    cmeta_fs_stat_t stat;
+    salts_fs_stat_t stat;
     int rc;
     if (!index || !csv_path || !index_path || !config)
         return dsv_index_fail(index, "invalid DSV index file build arguments");
-    if (cmeta_fs_stat(csv_path, &stat) != 0 || !stat.is_file)
+    if (salts_fs_stat(csv_path, &stat) != 0 || !stat.is_file)
         return dsv_index_fail(index, "failed to stat source CSV");
     cmeta_mmap_init(&source);
     if (cmeta_mmap_open(&source, csv_path, SALTS_MMAP_READ) != 0)
@@ -495,11 +495,11 @@ int dsv_index_open_memory(dsv_index_t *index, const char *index_path,
 
 int dsv_index_open_file(dsv_index_t *index, const char *csv_path,
                         const char *index_path) {
-    cmeta_fs_stat_t stat;
+    salts_fs_stat_t stat;
     if (!index || !csv_path || !index_path)
         return dsv_index_fail(index, "invalid DSV index file open arguments");
     dsv_index_close(index);
-    if (cmeta_fs_stat(csv_path, &stat) != 0 || !stat.is_file)
+    if (salts_fs_stat(csv_path, &stat) != 0 || !stat.is_file)
         return dsv_index_fail(index, "failed to stat source CSV");
     if (cmeta_mmap_open(&index->source_mapping, csv_path, SALTS_MMAP_READ) != 0)
         return dsv_index_fail(index, "failed to map source CSV");

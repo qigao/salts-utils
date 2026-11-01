@@ -1,6 +1,6 @@
 #include "data_bind.h"
 #include "tinytest.h"
-#include <cmeta_thread.h>
+#include <salts/thread.h>
 
 #include <stdio.h>
 #include <stdatomic.h>

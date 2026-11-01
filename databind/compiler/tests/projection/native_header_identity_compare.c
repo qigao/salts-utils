@@ -1,4 +1,4 @@
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 
 const cmeta_type_desc *native_identity_alpha(void);
 const cmeta_type_desc *native_identity_alpha_copy(void);

@@ -4,7 +4,7 @@
 #include "tinytest.h"
 
 #include <cmeta/data_reflect.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -27,7 +27,7 @@ cmeta_reflect_value(NativeBenchOrder, "benchmark.native.Order.data",
     cmeta_data_field_id(uint32_t, id, "benchmark.native.Order.id",
         &cmeta_data_uint32, &cmeta_type_uint32)
     cmeta_data_field_id(tstr, symbol, "benchmark.native.Order.symbol",
-        SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+        CMETA_TSTR_DATA_REF, CMETA_TSTR_TYPE_REF)
     cmeta_data_field_id(double, price, "benchmark.native.Order.price",
         &cmeta_data_double, &cmeta_type_double)
 );

@@ -1,7 +1,7 @@
 #include "data_bind_native.h"
 #include "data_bind_native_internal.h"
 
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 
 #include <float.h>
 #include <limits.h>

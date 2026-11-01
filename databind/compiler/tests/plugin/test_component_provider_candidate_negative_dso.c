@@ -1,7 +1,7 @@
 #include "contract_plugin.component.h"
 
-#include <salts/component_provider_abi.h>
-#include <salts/service_host.h>
+#include <cmeta/service_host_provider_abi.h>
+#include <cmeta/service_host.h>
 
 #include <stdint.h>
 #include <stdio.h>

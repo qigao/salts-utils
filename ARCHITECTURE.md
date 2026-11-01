@@ -2,21 +2,21 @@
 
 ## 依赖方向
 
-Salts 是基础能力的唯一事实源，安装并导出 Core、CSTL、CMeta、CSerde、CFlow、Platform
-以及低层 `Salts::UriParser`。SaltsUtils 只通过已安装 Salts SDK 的公共头文件和 CMake targets
-使用这些基础能力，同时自己拥有 QueryVM 与各格式/协议 parser：
+SaltsCore 是原生基础能力的唯一事实源；独立 CMeta SDK 拥有 CMeta、CSTL、CFlow、ACE
+以及 Plugin。SaltsUtils 只通过两个已安装 SDK 的公共头文件和 CMake targets 使用这些能力，
+同时自己拥有 QueryVM 与各格式/协议 parser：
 
 ```text
 application -> SaltsUtils parser/query/utility capability -> installed Salts foundation
             \---------------------------------------------> SaltsUtils DataBind
 
-Salts::CNet -> Salts::UriParser
+Salts::CNet -> Salts::URI
 Salts -/-> SaltsUtils
 ```
 
 SaltsUtils 不访问 Salts 源码目录或私有头，也不提供聚合 `Parser` target。消费方按能力直接链接
 `Salts::JsonParser`、`Salts::XmlParser`、`Salts::CmdParser` 等本包导出的 component targets。
-`Salts::UriParser` 不在本包复制；需要 URI primitive 的 TLV/LTV/SOA 等 parser 通过已安装 Salts
+`Salts::URI` 不在本包复制；需要 URI primitive 的 TLV/LTV/SOA 等 parser 通过已安装 SaltsCore
 package 消费它。
 
 ## 包与 targets
@@ -24,9 +24,9 @@ package 消费它。
 `find_package(SaltsUtils CONFIG REQUIRED)` 导出 SaltsUtils 的高层能力，包括：
 
 - `Salts::Crypto`（仅由独立 qigao/crypto 的已安装静态 SDK 提供，SaltsUtils 不导出）
-- `Salts::PluginABI`、`Salts::Plugin`（由 installed Salts 1.8 提供）
-- `Salts::FS`
-- `Salts::Process`
+- `CMeta::PluginABI`、`CMeta::Plugin`（由 installed CMeta SDK 提供）
+- `Salts::CFlowFS`
+- `Salts::CFlowProcess`
 - `Salts::QueryVM`
 - `Salts::IniParser`
 - `Salts::JsonParser`、`Salts::JsonCSerdeAdapter`
@@ -44,41 +44,37 @@ package 消费它。
 - `Salts::Schema`（Data-only shape/CMeta projection）
 - `Salts::DataBind`（包含格式 providers、CMeta 与 CFlow 适配）
 - `Salts::BindingsCpp`、可选 `Salts::Lua` / `Salts::QuickJS`
-- `Salts::Serial`
-- `Salts::Playback`
-- 可选的 `Salts::Capture`、`Salts::CFlowUSB`
 
 基础 Salts 包拥有并导出：
 
-- `Salts::Core`、`Salts::CSTL`、`Salts::CMeta`
-- `Salts::CFlow`、`Salts::Platform`
+- `Salts::Core`、`Salts::FS`、`Salts::Process`、`Salts::USB`、`Salts::Serial`、
+  `Salts::Playback`、`Salts::Capture`、`Salts::Platform`
+- `CMeta::CSTL`、`CMeta::CMeta`、`CMeta::CFlow`
 - `Salts::CSerde`
-- `Salts::UriParser`
+- `Salts::URI`
 
-`Salts::PluginABI` / `Salts::Plugin` 由 Salts 1.8 拥有。SaltsUtils 只消费其 manifest/export、loader/registry/lease/lifecycle 能力；Plugin 与 CFlow 无直接依赖，历史 `PluginCFlow` public subsystem 在 4.1 中删除。
+`CMeta::PluginABI` / `CMeta::Plugin` 由 CMeta SDK 拥有。SaltsUtils 只消费其 manifest/export、loader/registry/lease/lifecycle 能力；Plugin 与 CFlow 无直接依赖。
 
 
-`Salts::FS` 组合文件系统能力与 CFlow bounded execution；`Salts::Process`
-组合原生 Process 与 CFlow native byte-pipe execution；两者的 CFlow 包装层由 SaltsUtils 管理。
-`Salts::Crypto` 则完全由独立 qigao/crypto 静态 SDK 导入，其 GmSSL、SHA256、Ed448、SM3、TLS、X.509 均不在 SaltsUtils 编译。
-旧的
-`Salts::CFlowFS` 与 `Salts::CFlowProcess` 不提供兼容 alias。
+`Salts::FS` 与 `Salts::Process` 是 SaltsCore 原生能力；`Salts::CFlowFS` 与
+`Salts::CFlowProcess` 是 SaltsUtils 的 CFlow 适配层。`Salts::USB` 已完整迁入
+SaltsCore，SaltsUtils 不再保留第二份 `cflow_usb_*` 源码或 target。
+`Salts::Crypto` 同样由 SaltsCore SDK 的静态 target 提供。
 
-QueryVM 与 moved parser targets 也只由 SaltsUtils 导出。两个包共享 `Salts::` target namespace，
-但每个 target 只有一个 owner。SaltsUtils 的 package config 先精确加载同 profile 的 Salts package，
-再加载自己的 targets。如果所选 Salts package 仍导出已迁移给其他源仓库的 `Salts::Crypto`、`Salts::CFlowFS`、
-`Salts::CFlowProcess`、`Salts::QueryVM` 或任何 moved parser target，配置立即失败，不尝试 fallback；
-`Salts::UriParser` 则必须存在于 Salts package。
+QueryVM 与 moved parser targets 只由 SaltsUtils 导出。SaltsCore 使用 `Salts::`
+namespace，CMeta 使用 `CMeta::` namespace；SaltsUtils 的适配器和高层能力继续使用
+`Salts::`，每个 target 只有一个 owner。Package config 先精确加载同 profile 的
+SaltsCore 与 CMeta，再加载自己的 targets，不搜索旧单体 package 或源码 fallback。
 
 ## Parser 与 CSerde 边界
 
 格式 parser 与 CSerde composition 仍保持显式：
 
 ```text
-Salts::JsonParser -> Salts::Core + Salts::QueryVM + Salts::CSTL
+Salts::JsonParser -> Salts::Core + Salts::QueryVM + CMeta::CSTL
 Salts::JsonCSerdeAdapter -> Salts::JsonParser + installed Salts::CSerde
 
-Salts::TLVParser / LtvParser / SoaParser -> installed Salts::UriParser
+Salts::TLVParser / LtvParser / SoaParser -> installed Salts::URI
 ```
 
 `Salts::JsonParser` 不因为存在 CSerde adapter 就新增 CSerde 依赖。UriParser 也不因上层 parser
@@ -137,43 +133,30 @@ DataBind 编译工具的源码统一归入 `databind/compiler/`：根目录拥�
 Parser capability migration 只改变 repository/package ownership，不改变 parser state machine、
 输入输出语义、公开 C headers、diagnostics、error codes 或 runtime ownership contract。
 
-本次 package 迁移也不改变 Cron、Mustache、Serial 和 Capture 运行时所有权契约。
+本次 package 迁移不改变 Cron、Mustache 运行时所有权契约。Serial、Playback 与 Capture
+已经迁入 SaltsCore；SaltsUtils 不再编译、安装或导出这些能力的第二份实现。
 Capture frame 仍是仅在同步 callback 返回前有效的 borrowed view；Serial handle 仍拥有 RX/TX
 SPSC buffer，producer/consumer 拓扑与可用容量 `configured_size - 1` 不变。
 
-Playback 与 Capture 同属 SaltsUtils Media I/O 边界。`Salts::Playback` 只拥有 native
+Playback 与 Capture 同属 SaltsCore Media I/O 边界。`Salts::Playback` 只拥有 native
 output device 与有界 PCM SPSC ring；文件 demux、decode、clock 和 playlist 由媒体层拥有。
 PCM 写入在返回前完成复制，短写是显式背压，destroy 在释放前同步静止 native callback。
 
-CFlowUSB 由一个内部线程独占 libusb native events，使用固定 transfer slots 与 bounded hotplug
-queue，并只由 `cflow_usb_run_ready()` 交付用户 callback。borrowed transfer buffer、exactly-once
-terminal completion 与 quiescent destroy 是其公开生命周期契约。
+USB 的固定 transfer slots、bounded hotplug queue、borrowed transfer buffer、exactly-once
+terminal completion 与 quiescent destroy 契约由 SaltsCore `Salts::USB` 维护。
 
 `Salts::IDL`、`Salts::Schema`、DataBind 与当前 compiler tooling 位于 SaltsUtils；TBE 仅是 format/backend。编译器只在构建、CI 和代码生成阶段运行；数据库
 DDL 生成不会成为部署后二进制的运行时依赖。
 
 ## 构建与发布
 
-配置时必须设置与 profile 对应的 `SALTS_ROOT`。根构建和安装后的
-`SaltsUtilsConfig.cmake` 都只在该根下执行 `find_package(Salts CONFIG REQUIRED ... NO_DEFAULT_PATH)`，
-避免 Debug/Release 或不同安装树被隐式混用。缺失/无效的 `SALTS_ROOT`，或缺失
-`Salts::Platform` / `Salts::Core` / `Salts::CFlow` / `Salts::CSTL` / `Salts::CSerde` /
-`Salts::UriParser` 都直接 `FATAL_ERROR`。
+配置时必须设置与 profile 对应的 `SALTSCORE_ROOT` 和 `CMETA_ROOT`。根构建和安装后的
+`SaltsUtilsConfig.cmake` 分别只在这两个根下执行 `find_package(SaltsCore 0.1 ...)` 与
+`find_package(CMeta 0.1 ...)`，避免旧单体 SDK 或其他安装树被隐式选中。
 
-同样，如果 Salts package 仍导出已迁移 owner targets（Crypto、旧 CFlowFS/Process、QueryVM 或
-任一 moved parser），SaltsUtils 立即 fail-fast，避免同一个 `Salts::` target 出现两个 owner。
-
-Windows Debug/Release 分别安装到 `salts-utils/debug` 与 `salts-utils/release`，并分别使用
-`salts/debug` 与 `salts/release`。构建系统不把外部 Salts DLL 复制进 SaltsUtils。
-
-Serial 默认构建并导出 `Salts::Serial`。Windows 构建始终启用 Capture，所有标准
-Windows preset 统一选择 vcpkg `capture` feature；因此常规 `install` target 会与其他库
-一起导出 `Salts::Capture`，无需独立 install preset。非 Windows profile 仅在显式
-启用 Capture 时导出该 target。
-
-CFlowUSB 默认关闭；只有同时选择 vcpkg `usb` feature 并设置
-`SALTS_UTILS_ENABLE_CFLOW_USB=ON` 时才构建、安装和导出 `Salts::CFlowUSB`。libusb 保持
-PRIVATE 依赖，不进入公共头或消费方链接契约。
+Windows Debug/Release 分别安装到 `salts-utils/debug` 与 `salts-utils/release`，并消费
+对应 profile 的 SaltsCore 与 CMeta SDK。构建系统不把外部 SDK DLL 复制进 SaltsUtils，
+也不再提供 Capture 专用 feature、preset 或 install graph。
 
 Windows 测试进程通过 preset 的 `PATH` 查找 Salts DLL；构建系统不复制外部 DLL。
 Linux preset 对应设置 `LD_LIBRARY_PATH`。
@@ -198,7 +181,7 @@ config 生成和 export set 仍是产品能力。
 独立为低层模块并删除其余 parser/query owner；CI pin 到 exact Salts cutover；两个仓库分别通过
 正常 build/CTest/package export 验证后再合并。
 
-发布前确认 Salts package 仅保留 `Salts::UriParser`，SaltsUtils package 拥有 moved parser/query
-目标，并且 source/build graph 不包含旧 owner、source-tree fallback 或 install-verification hook。
+发布前确认 SaltsCore、CMeta 与 SaltsUtils 各自只导出所属 targets，并且 source/build graph
+不包含旧 owner、source-tree fallback 或 install-verification hook。
 若迁移出现阻断，应回滚整组产物；不得通过重新引入 Salts parser 源码、复制实现、默认搜索路径
 或 compatibility alias 绕过 package 依赖。

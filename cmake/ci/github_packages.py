@@ -19,13 +19,15 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 FEED = "https://nuget.pkg.github.com/qigao/index.json"
-SALTS_NATIVE_VERSION = "2.3.0-rc.17"
+SALTSCORE_NATIVE_VERSION = "0.1.0"
+CMETA_NATIVE_VERSION = "0.1.1"
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.-]+$")
 VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$")
-RID = re.compile(r"^(linux-(?:x64|arm64)|windows-x64|macos-arm64|android-arm64-v8a|ios-arm64)$")
+RID = re.compile(
+    r"^(linux|windows|macos|android)-(x64|arm64)$")
 PUBLISHED_RIDS = (
-    "linux-x64", "linux-arm64", "windows-x64",
-    "macos-arm64", "android-arm64-v8a", "ios-arm64",
+    "linux-x64", "linux-arm64", "windows-x64", "windows-arm64",
+    "macos-x64", "macos-arm64", "android-x64", "android-arm64",
 )
 
 
@@ -204,42 +206,49 @@ def read_manifest(path):
     return values
 
 
-def validate_salts(root, rid, expected_version=SALTS_NATIVE_VERSION):
+def validate_saltscore(root, rid):
     root = Path(root)
     required = [
-        root / "lib/cmake/Salts/SaltsConfig.cmake",
-        root / "lib/cmake/Salts/SaltsTargets.cmake",
-        root / "include/cmeta/function.h",
+        root / "lib/cmake/SaltsCore/SaltsCoreConfig.cmake",
+        root / "lib/cmake/SaltsCore/SaltsCoreTargets.cmake",
+        root / "include/salts/core.h",
+        root / "include/salts/fs.h",
+        root / "include/salts/process.h",
+        root / "include/cflow/usb.h",
         root / "include/unicode/salts_unicode.h",
-        root / "salts-sdk-manifest.txt",
     ]
     for path in required:
         if not path.is_file():
-            raise ValueError(f"incomplete Salts.Native SDK for {rid}: {path}")
-    targets = (root / "lib/cmake/Salts/SaltsTargets.cmake").read_text(
+            raise ValueError(f"incomplete SaltsCore.Native SDK for {rid}: {path}")
+    targets = required[1].read_text(
         encoding="utf-8", errors="replace")
-    if "Salts::Unicode" not in targets:
-        raise ValueError("published Salts.Native must export canonical Salts::Unicode")
-    if read_manifest(root / "salts-sdk-manifest.txt").get("version") != expected_version:
-        raise ValueError("Salts.Native manifest version/provenance mismatch")
+    for target in ("Salts::Core", "Salts::FS", "Salts::Process",
+                   "Salts::USB", "Salts::Crypto", "Salts::Unicode"):
+        if target not in targets:
+            raise ValueError(f"SaltsCore.Native SDK is missing target {target}")
 
 
-def validate_component_runtime(root, rid):
+def validate_cmeta(root, rid, expected_version=CMETA_NATIVE_VERSION):
     root = Path(root)
     required = [
-        root / "include/salts/component_provider_abi.h",
-        root / "include/salts/component_runtime_abi.h",
-        root / "include/salts/configurator.h",
-        root / "include/salts/service_host.h",
-        root / "lib/cmake/Salts/SaltsTargets.cmake",
+        root / "lib/cmake/CMeta/CMetaConfig.cmake",
+        root / "lib/cmake/CMeta/CMetaTargets.cmake",
+        root / "include/cmeta/cmeta.h",
+        root / "include/cflow/cflow.h",
+        root / "cmeta-sdk-manifest.txt",
     ]
     for path in required:
         if not path.is_file():
-            raise ValueError(f"incomplete published Component Runtime SDK for {rid}: {path}")
-    targets = required[-1].read_text(encoding="utf-8", errors="replace")
-    for target in ("Salts::ComponentProviderABI", "Salts::Configurator", "Salts::ServiceHost"):
+            raise ValueError(f"incomplete CMeta.Native SDK for {rid}: {path}")
+    targets = required[1].read_text(encoding="utf-8", errors="replace")
+    for target in ("CMeta::CMeta", "CMeta::CSTL", "CMeta::CFlow",
+                   "CMeta::PluginABI", "CMeta::Plugin",
+                   "CMeta::Configurator", "CMeta::ServiceHost"):
         if target not in targets:
-            raise ValueError(f"published Salts.Native SDK is missing target {target}")
+            raise ValueError(f"CMeta.Native SDK is missing target {target}")
+    manifest = read_manifest(required[-1])
+    if manifest.get("package") != expected_version or manifest.get("rid") != rid:
+        raise ValueError("CMeta.Native manifest version/RID mismatch")
 
 
 def restore_re2c_for_rid(packages, package_root, rid):
@@ -262,29 +271,41 @@ def restore_re2c_for_rid(packages, package_root, rid):
 def restore_native_sdk(args, packages):
     if not RID.fullmatch(args.salts_rid) or not RID.fullmatch(args.host_rid):
         raise ValueError("unsupported target/host RID")
-    requested_version = args.salts_version or SALTS_NATIVE_VERSION
-    if not VERSION.fullmatch(requested_version):
-        raise ValueError("an exact Salts.Native semantic version is required")
-    version = packages.select("Salts.Native", exact=requested_version)
-    if version != requested_version:
-        raise ValueError("wrong canonical Salts.Native release: " + version)
-    package = packages.extract("Salts.Native", version, args.packages)
-    salts_root = package / "sdk" / args.salts_rid
-    salts_host_root = package / "sdk" / args.host_rid
-    validate_salts(salts_root, args.salts_rid, version)
-    validate_salts(salts_host_root, args.host_rid, version)
+    saltscore_version = (getattr(args, "saltscore_version", None)
+                         or SALTSCORE_NATIVE_VERSION)
+    cmeta_version = getattr(args, "cmeta_version", None) or CMETA_NATIVE_VERSION
+    for package_id, version in (("SaltsCore.Native", saltscore_version),
+                                ("CMeta.Native", cmeta_version)):
+        if not VERSION.fullmatch(version):
+            raise ValueError(f"an exact {package_id} semantic version is required")
+        selected = packages.select(package_id, exact=version)
+        if selected != version:
+            raise ValueError(f"wrong canonical {package_id} release: {selected}")
+    core_package = packages.extract(
+        "SaltsCore.Native", saltscore_version, args.packages)
+    cmeta_package = packages.extract("CMeta.Native", cmeta_version, args.packages)
+    saltscore_root = core_package / "sdk" / args.salts_rid
+    saltscore_host_root = core_package / "sdk" / args.host_rid
+    cmeta_root = cmeta_package / "sdk" / args.salts_rid
+    cmeta_host_root = cmeta_package / "sdk" / args.host_rid
+    validate_saltscore(saltscore_root, args.salts_rid)
+    validate_saltscore(saltscore_host_root, args.host_rid)
+    validate_cmeta(cmeta_root, args.salts_rid, cmeta_version)
+    validate_cmeta(cmeta_host_root, args.host_rid, cmeta_version)
     if args.require_component_runtime:
-        # A published package is one immutable six-RID contract. Validate all
-        # payloads on every native host before compiling any consumer.
+        # A release is one immutable eight-RID contract. Validate every payload
+        # before compiling a consumer which depends on component runtime APIs.
         for rid in PUBLISHED_RIDS:
-            rid_root = package / "sdk" / rid
-            validate_salts(rid_root, rid, version)
-            validate_component_runtime(rid_root, rid)
+            validate_saltscore(core_package / "sdk" / rid, rid)
+            validate_cmeta(cmeta_package / "sdk" / rid, rid, cmeta_version)
     re2c_version, re2c_root = restore_re2c_for_rid(packages, args.packages, args.host_rid)
     values = {
-        "SALTS_ROOT": salts_root.resolve(),
-        "SALTS_HOST_ROOT": salts_host_root.resolve(),
-        "SALTS_VERSION": version,
+        "SALTSCORE_ROOT": saltscore_root.resolve(),
+        "SALTSCORE_HOST_ROOT": saltscore_host_root.resolve(),
+        "SALTSCORE_VERSION": saltscore_version,
+        "CMETA_ROOT": cmeta_root.resolve(),
+        "CMETA_HOST_ROOT": cmeta_host_root.resolve(),
+        "CMETA_VERSION": cmeta_version,
         "RE2C_ROOT": re2c_root,
         "RE2C_PACKAGE_VERSION": re2c_version,
         "QIGAO_NUGET_PACKAGES": args.packages.resolve(),
@@ -441,7 +462,8 @@ def main():
     native.add_argument("--salts-rid", required=True)
     native.add_argument("--host-rid", required=True)
     native.add_argument("--with-turbowasm", action="store_true")
-    native.add_argument("--salts-version")
+    native.add_argument("--saltscore-version")
+    native.add_argument("--cmeta-version")
     native.add_argument("--require-component-runtime", action="store_true")
     native.add_argument("--result", type=Path)
 

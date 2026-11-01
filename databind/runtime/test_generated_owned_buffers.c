@@ -7,7 +7,7 @@
 
 #include <cmeta/data.h>
 #include <cstl/byte_buffer.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <tstr.h>
 
 #include <stdio.h>
@@ -620,7 +620,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         check_equal(declared->arity, (size_t)2u);
         check_true(cmeta_type_equal(
             cmeta_declared_type_argument(declared, 0u),
-            SALTS_TSTR_CMETA_TYPE_REF));
+            CMETA_TSTR_TYPE_REF));
         check_true(cmeta_type_equal(
             cmeta_declared_type_argument(declared, 1u),
             &NativeHeader_CMETA_TYPE));
@@ -638,7 +638,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         map_data, &NativeHeaderMap_headers_map_t_map_data));
     key_data = cmeta_data_map_key_data(map_data);
     value_data = cmeta_data_map_value_data(map_data);
-    check_true(cmeta_data_desc_equal(key_data, SALTS_TSTR_CMETA_DATA_REF));
+    check_true(cmeta_data_desc_equal(key_data, CMETA_TSTR_DATA_REF));
     check_true(value_data == &NativeHeader_CMETA_DATA);
     check_true(value_data->storage_type == &NativeHeader_CMETA_TYPE);
     check_not_null(cmeta_data_construct_ops_of(map_data));
@@ -654,7 +654,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(provider_value.name);
     check_not_null(provider_value.value);
     check_true(cmeta_type_equal(
-        provider_probe.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF));
+        provider_probe.raw.key_type, CMETA_TSTR_TYPE_REF));
     check_true(cmeta_type_equal(
         provider_probe.raw.value_type, &NativeHeader_CMETA_TYPE));
     check_equal(
@@ -820,7 +820,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
      */
     check_not_null(value.headers.cmeta.descriptor);
     check_true(cmeta_type_equal(
-        value.headers.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF));
+        value.headers.raw.key_type, CMETA_TSTR_TYPE_REF));
     check_true(cmeta_type_equal(
         value.headers.raw.value_type, &NativeHeader_CMETA_TYPE));
     check_null(value.headers.raw.impl);

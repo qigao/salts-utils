@@ -6,7 +6,7 @@
 
 #include <cstl/byte_buffer.h>
 #include <cstl/typed.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <tinytest.h>
 #include <stddef.h>
 #include <stdint.h>

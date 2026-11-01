@@ -1,6 +1,6 @@
 /* Canonical native storage admission. */
 #include "data_bind_native.h"
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <tinytest.h>
 
 #include <stdbool.h>

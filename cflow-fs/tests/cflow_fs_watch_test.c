@@ -1,7 +1,7 @@
-#include <salts/fs_watch.h>
+#include <cflow/fs_watch.h>
 #include <salts/error_codes.h>
+#include <salts/fs.h>
 #include <salts/thread.h>
-#include <cmeta_fs.h>
 #include <tinytest.h>
 
 #include <stdlib.h>
@@ -113,9 +113,9 @@ spec("CFlow filesystem watch") {
         cflow_fs_watch_config config = watch_config(&probe, 8u);
 
         check_not_null(root);
-        check_equal(cmeta_fs_path_join(first, sizeof(first), root,
+        check_equal(salts_fs_path_join(first, sizeof(first), root,
                                        "first.txt"), SALTS_OK);
-        check_equal(cmeta_fs_path_join(second, sizeof(second), root,
+        check_equal(salts_fs_path_join(second, sizeof(second), root,
                                        "second.txt"), SALTS_OK);
         check_equal(cflow_fs_watch_open(NULL, root, &config), SALTS_EINVAL);
         check_equal(cflow_fs_watch_open(&watch, root, &config), SALTS_OK);
@@ -124,7 +124,7 @@ spec("CFlow filesystem watch") {
         check_true(probe_saw(&probe, CFLOW_FS_WATCH_CREATED, "first.txt") ||
                    probe_saw(&probe, CFLOW_FS_WATCH_MODIFIED, "first.txt"));
 
-        check_equal(cmeta_fs_rename(first, second), SALTS_OK);
+        check_equal(salts_fs_rename(first, second), SALTS_OK);
         check_equal(watch_drive_until(&watch, &probe, 2u), SALTS_OK);
 #if defined(_WIN32) || defined(__linux__)
         {
@@ -207,11 +207,11 @@ spec("CFlow filesystem watch") {
         size_t attempts = 0u;
 
         check_not_null(root);
-        check_equal(cmeta_fs_path_join(first, sizeof(first), root,
+        check_equal(salts_fs_path_join(first, sizeof(first), root,
                                        "one.txt"), SALTS_OK);
-        check_equal(cmeta_fs_path_join(second, sizeof(second), root,
+        check_equal(salts_fs_path_join(second, sizeof(second), root,
                                        "two.txt"), SALTS_OK);
-        check_equal(cmeta_fs_path_join(during_rescan, sizeof(during_rescan),
+        check_equal(salts_fs_path_join(during_rescan, sizeof(during_rescan),
                                        root, "during-rescan.txt"), SALTS_OK);
         check_equal(cflow_fs_watch_open(&watch, root, &config), SALTS_OK);
         check_equal(tt_write_file(first, "1", 1u), SALTS_OK);
@@ -326,13 +326,13 @@ spec("CFlow filesystem watch") {
         config.recursive = true;
         config.watch_capacity = 8u;
         check_not_null(root);
-        check_equal(cmeta_fs_path_join(nested, sizeof(nested), root,
+        check_equal(salts_fs_path_join(nested, sizeof(nested), root,
                                        "nested"), SALTS_OK);
-        check_equal(cmeta_fs_path_join(child, sizeof(child), nested,
+        check_equal(salts_fs_path_join(child, sizeof(child), nested,
                                        "child.txt"), SALTS_OK);
-        check_equal(cmeta_fs_path_join(dynamic, sizeof(dynamic), root,
+        check_equal(salts_fs_path_join(dynamic, sizeof(dynamic), root,
                                        "dynamic"), SALTS_OK);
-        check_equal(cmeta_fs_path_join(dynamic_child, sizeof(dynamic_child),
+        check_equal(salts_fs_path_join(dynamic_child, sizeof(dynamic_child),
                                        dynamic, "later.txt"), SALTS_OK);
         check_equal(tt_make_dir(nested), SALTS_OK);
         check_equal(cflow_fs_watch_open(&watch, root, &config), SALTS_OK);

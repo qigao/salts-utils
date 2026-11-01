@@ -1,7 +1,7 @@
 #include "data_bind_native.h"
 #include "native_test_alignment.h"
 #include "reader_probe.h"
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <tinytest.h>
 #include <string.h>
 

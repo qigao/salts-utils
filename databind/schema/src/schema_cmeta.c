@@ -1,6 +1,6 @@
 #include "schema_cmeta.h"
 
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <cmeta/data.h>
 #include <cmeta/pp.h>
 

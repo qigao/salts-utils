@@ -109,7 +109,7 @@ int databind_component_provider_candidate_render(
       "#ifndef %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#define %s__COMPONENT_PROVIDER_CANDIDATE_H\n"
       "#include \"%s\"\n"
-      "#include <salts/component_provider_abi.h>\n"
+      "#include <cmeta/service_host_provider_abi.h>\n"
       "#include <cmeta/object_interface.h>\n\n",
       sym, sym, native_service_header) < 0) return -1;
 
@@ -147,7 +147,7 @@ int databind_component_provider_candidate_render(
 
   if (fprintf(source,
       "#include \"%s\"\n"
-      "#include <salts/plugin_decl.h>\n"
+      "#include <cmeta/plugin_decl.h>\n"
       "#include <string.h>\n\n",
       component_header) < 0) return -1;
 

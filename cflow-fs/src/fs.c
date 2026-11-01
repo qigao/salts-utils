@@ -1,4 +1,4 @@
-#include <salts/fs.h>
+#include <cflow/fs.h>
 
 #include <cflow/executor.h>
 #include <salts/error_codes.h>
@@ -28,7 +28,7 @@ typedef struct cflow_fs_slot {
     uint64_t request_id;
     cflow_fs_operation_kind operation;
     union {
-        cmeta_fs_stat_t *stat_out;
+        salts_fs_stat_t *stat_out;
         cflow_fs_dir_buffer *directory_out;
         int mode;
     } arguments;
@@ -99,20 +99,20 @@ static void fs_slot_reset(cflow_fs_slot *slot) {
 
 static int fs_read_directory(cflow_fs_slot *slot) {
     cflow_fs_dir_buffer *out = slot->arguments.directory_out;
-    cmeta_fs_dir_t *directory = NULL;
-    cmeta_fs_dirent_t entry;
+    salts_fs_dir_t *directory = NULL;
+    salts_fs_dirent_t entry;
     size_t entry_count = 0u;
     size_t names_used = 0u;
     int status;
 
     out->entry_count = 0u;
     out->names_used = 0u;
-    status = cmeta_fs_opendir(slot->path, &directory);
+    status = salts_fs_opendir(slot->path, &directory);
     if (status != SALTS_OK)
         return status;
     for (;;) {
         size_t name_length;
-        status = cmeta_fs_readdir(directory, &entry);
+        status = salts_fs_readdir(directory, &entry);
         if (status <= 0)
             break;
         name_length = strlen(entry.name) + 1u;
@@ -128,7 +128,7 @@ static int fs_read_directory(cflow_fs_slot *slot) {
         ++entry_count;
     }
     {
-        const int close_status = cmeta_fs_closedir(directory);
+        const int close_status = salts_fs_closedir(directory);
         if (status == SALTS_OK && close_status != SALTS_OK)
             status = close_status;
     }
@@ -145,19 +145,19 @@ static int fs_read_directory(cflow_fs_slot *slot) {
 static int fs_execute(cflow_fs_slot *slot) {
     switch (slot->operation) {
         case CFLOW_FS_STAT:
-            return cmeta_fs_stat(slot->path, slot->arguments.stat_out);
+            return salts_fs_stat(slot->path, slot->arguments.stat_out);
         case CFLOW_FS_LSTAT:
-            return cmeta_fs_lstat(slot->path, slot->arguments.stat_out);
+            return salts_fs_lstat(slot->path, slot->arguments.stat_out);
         case CFLOW_FS_READ_DIRECTORY:
             return fs_read_directory(slot);
         case CFLOW_FS_MKDIR:
-            return cmeta_fs_mkdir(slot->path, slot->arguments.mode);
+            return salts_fs_mkdir(slot->path, slot->arguments.mode);
         case CFLOW_FS_RMDIR:
-            return cmeta_fs_rmdir(slot->path);
+            return salts_fs_rmdir(slot->path);
         case CFLOW_FS_RENAME:
-            return cmeta_fs_rename(slot->path, slot->second_path);
+            return salts_fs_rename(slot->path, slot->second_path);
         case CFLOW_FS_UNLINK:
-            return cmeta_fs_unlink(slot->path);
+            return salts_fs_unlink(slot->path);
         default:
             return SALTS_EINVAL;
     }
@@ -246,7 +246,7 @@ static cflow_fs_submit_result fs_submit(
     switch (operation) {
         case CFLOW_FS_STAT:
         case CFLOW_FS_LSTAT:
-            slot->arguments.stat_out = (cmeta_fs_stat_t *)output;
+            slot->arguments.stat_out = (salts_fs_stat_t *)output;
             break;
         case CFLOW_FS_READ_DIRECTORY:
             slot->arguments.directory_out = (cflow_fs_dir_buffer *)output;
@@ -364,14 +364,14 @@ int cflow_fs_service_init(cflow_fs_service *service,
 }
 
 cflow_fs_submit_result cflow_fs_try_stat(
-    cflow_fs_service *service, const char *path, cmeta_fs_stat_t *out) {
+    cflow_fs_service *service, const char *path, salts_fs_stat_t *out) {
     if (out == NULL)
         return fs_submit_result(CFLOW_FS_SUBMIT_INVALID_ARGUMENT, 0u);
     return fs_submit(service, CFLOW_FS_STAT, path, NULL, out, 0);
 }
 
 cflow_fs_submit_result cflow_fs_try_lstat(
-    cflow_fs_service *service, const char *path, cmeta_fs_stat_t *out) {
+    cflow_fs_service *service, const char *path, salts_fs_stat_t *out) {
     if (out == NULL)
         return fs_submit_result(CFLOW_FS_SUBMIT_INVALID_ARGUMENT, 0u);
     return fs_submit(service, CFLOW_FS_LSTAT, path, NULL, out, 0);

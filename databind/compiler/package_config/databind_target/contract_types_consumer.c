@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* This binary links ONLY against installed Salts::CSTL via the public
+/* This binary links ONLY against installed CMeta::CSTL via the public
  * salts_idl_target(TYPES) target. No generated Binary wire source is present. */
 int main(void) {
     NativeBatch original, copy;

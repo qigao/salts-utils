@@ -87,11 +87,11 @@ target_include_directories(
 # Jinja borrows the sole Unicode 17 owner from the imported Salts SDK.
 # Reject a missing local-build dependency instead of synthesizing any fallback.
 if(NOT TARGET Salts::Unicode)
-  message(FATAL_ERROR "Jinja requires canonical Salts::Unicode from Salts.Native")
+  message(FATAL_ERROR "Jinja requires canonical Salts::Unicode from SaltsCore.Native")
 endif()
 target_link_libraries(jinja_cmeta
-  PUBLIC Salts::CMeta Salts::Core
-  PRIVATE Salts::Unicode Salts::CSTL)
+  PUBLIC CMeta::CMeta Salts::Core
+  PRIVATE Salts::Unicode CMeta::CSTL)
 if(NOT WIN32)
   target_link_libraries(jinja_cmeta PRIVATE m)
 endif()

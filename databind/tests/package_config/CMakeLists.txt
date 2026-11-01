@@ -6,6 +6,7 @@ set(_databind_package_test_args
   "-DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}"
   "-DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}"
   "-DVCPKG_HOST_TRIPLET=${VCPKG_HOST_TRIPLET}"
+  "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
   "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
   "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
   "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
@@ -13,10 +14,26 @@ set(_databind_package_test_args
   "-DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}"
   "-DCMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS} ${_databind_package_sanitizer_link_flags}")
 
+set(_databind_package_test_environment
+  "SALTSCORE_ROOT=${SALTSCORE_ROOT_PATH}"
+  "CMETA_ROOT=${CMETA_ROOT_PATH}")
+foreach(_environment_name IN ITEMS
+    VCPKG_ROOT
+    LLVM_MINGW_TOOLCHAIN_FILE
+    LLVM_MINGW_DEPENDENCY_TOOLCHAIN_FILE
+    LLVM_MINGW_HOST_DEPENDENCY_TOOLCHAIN_FILE
+    QIGAO_VCPKG_WINDOWS_HOST_TRIPLET)
+  if(DEFINED ENV{${_environment_name}} AND
+     NOT "$ENV{${_environment_name}}" STREQUAL "")
+    list(APPEND _databind_package_test_environment
+      "${_environment_name}=$ENV{${_environment_name}}")
+  endif()
+endforeach()
+
 add_test(
   NAME databind_package_config_repeated_find
   COMMAND
-    "${CMAKE_COMMAND}" -E env "SALTS_ROOT=${SALTS_ROOT_PATH}"
+    "${CMAKE_COMMAND}" -E env ${_databind_package_test_environment}
     "${CMAKE_COMMAND}" --fresh
     -S "${CMAKE_CURRENT_SOURCE_DIR}/databind_repeated_find"
     -B "${CMAKE_CURRENT_BINARY_DIR}/databind_repeated_find_build"
@@ -31,8 +48,7 @@ set_tests_properties(
 add_test(
   NAME databind_package_config_adapters
   COMMAND
-    "${CMAKE_COMMAND}" -E env
-      "SALTS_ROOT=${SALTS_ROOT_PATH}"
+    "${CMAKE_COMMAND}" -E env ${_databind_package_test_environment}
     "${CMAKE_COMMAND}" --fresh
     -S "${CMAKE_CURRENT_SOURCE_DIR}/databind_adapters"
     -B "${CMAKE_CURRENT_BINARY_DIR}/databind_adapters_build"

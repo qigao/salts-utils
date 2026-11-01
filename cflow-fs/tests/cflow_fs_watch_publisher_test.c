@@ -1,8 +1,8 @@
-#include <salts/fs_watch_publisher.h>
+#include <cflow/fs_watch_publisher.h>
 #include <tinytest.h>
 #include <salts/error_codes.h>
+#include <salts/fs.h>
 #include <salts/thread.h>
-#include <cmeta_fs.h>
 
 #include <stdatomic.h>
 #include <stdlib.h>
@@ -233,7 +233,7 @@ spec("CFlow filesystem watch Publisher") {
 
     atomic_init(&wake.count, 0u);
     check_not_null(root);
-    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "one.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(path, sizeof(path), root, "one.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
 
     /* Native backends may enqueue their initial snapshot before the first
@@ -298,7 +298,7 @@ spec("CFlow filesystem watch Publisher") {
 
     atomic_init(&wake.count, 0u);
     check_not_null(root);
-    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "early.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(path, sizeof(path), root, "early.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     step = resume_until_wait(&source, &owner, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
@@ -393,7 +393,7 @@ spec("CFlow filesystem watch Publisher") {
     check_not_null(wake.lock);
     check_not_null(wake.changed);
     check_not_null(root);
-    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "blocked.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(path, sizeof(path), root, "blocked.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     step = resume_until_wait(&source, &owner, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
@@ -449,7 +449,7 @@ spec("CFlow filesystem watch Publisher") {
     probe.owner = &owner;
     atomic_init(&probe.completed, false);
     check_not_null(root);
-    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "reentrant.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(path, sizeof(path), root, "reentrant.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     step = resume_until_wait(&source, &owner, &resume, &value);
     check_equal(step.kind, CFLOW_STEP_WAIT);
@@ -480,7 +480,7 @@ spec("CFlow filesystem watch Publisher") {
 
     config.encode = reject_watch_value;
     check_not_null(root);
-    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "bad.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(path, sizeof(path), root, "bad.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     check_equal(tt_write_file(path, "x", 1u), SALTS_OK);
     do {
@@ -516,7 +516,7 @@ spec("CFlow filesystem watch Publisher") {
     size_t attempts = 0u;
 
     check_not_null(root);
-    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "run.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(path, sizeof(path), root, "run.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     cflow_graph_init(&graph, &watch_value_type);
     check_true(cflow_scheduler_test_init(&scheduler));
@@ -562,7 +562,7 @@ spec("CFlow filesystem watch Publisher") {
 
     config.encode = reject_watch_value;
     check_not_null(root);
-    check_equal(cmeta_fs_path_join(path, sizeof(path), root, "run-error.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(path, sizeof(path), root, "run-error.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     cflow_graph_init(&graph, &watch_value_type);
     check_true(cflow_scheduler_test_init(&scheduler));
@@ -601,8 +601,8 @@ spec("CFlow filesystem watch Publisher") {
 
     config.event_capacity = 1u;
     check_not_null(root);
-    check_equal(cmeta_fs_path_join(first, sizeof(first), root, "one.txt"), SALTS_OK);
-    check_equal(cmeta_fs_path_join(second, sizeof(second), root, "two.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(first, sizeof(first), root, "one.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(second, sizeof(second), root, "two.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     check_equal(tt_write_file(first, "1", 1u), SALTS_OK);
     check_equal(tt_write_file(second, "2", 1u), SALTS_OK);
@@ -646,9 +646,9 @@ spec("CFlow filesystem watch Publisher") {
     atomic_init(&wake.count, 0u);
     config.event_capacity = 1u;
     check_not_null(root);
-    check_equal(cmeta_fs_path_join(first, sizeof(first), root, "one.txt"), SALTS_OK);
-    check_equal(cmeta_fs_path_join(second, sizeof(second), root, "two.txt"), SALTS_OK);
-    check_equal(cmeta_fs_path_join(third, sizeof(third), root, "three.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(first, sizeof(first), root, "one.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(second, sizeof(second), root, "two.txt"), SALTS_OK);
+    check_equal(salts_fs_path_join(third, sizeof(third), root, "three.txt"), SALTS_OK);
     check_equal(cflow_fs_watch_publisher_open(&source, &owner, root, &config), SALTS_OK);
     check_equal(tt_write_file(first, "1", 1u), SALTS_OK);
     check_equal(tt_write_file(second, "2", 1u), SALTS_OK);

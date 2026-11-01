@@ -32,7 +32,7 @@ cmake_add_test(test_databind_nullable_codegen
     "${DATABIND_NULLABLE_GENERATED_C}"
   LIBS
     Salts::DataBind
-    Salts::CFlow
+    CMeta::CFlow
     Salts::TinyTest
   INCLUDES
     "${DATABIND_NULLABLE_GENERATED_DIR}"

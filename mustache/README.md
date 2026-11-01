@@ -29,8 +29,9 @@ target_link_libraries(xml_app PRIVATE
   Salts::XmlParser)
 ```
 
-Installed consumers obtain the exported Salts targets through SaltsUtils' package
-dependency. Set `SALTS_ROOT` to the matching installed profile, then:
+Installed consumers obtain Core and CMeta targets through SaltsUtils' package
+dependencies. Set `SALTSCORE_ROOT` and `CMETA_ROOT` to matching installed
+profiles, then:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED)

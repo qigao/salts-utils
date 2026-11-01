@@ -1,7 +1,7 @@
 #ifndef MUSTACHE4C_H
 #define MUSTACHE4C_H
 
-#include "platform.h"
+#include <salts/platform.h>
 #include "vstr.h"
 #include <stdlib.h>
 

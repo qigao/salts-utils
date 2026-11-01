@@ -1,12 +1,12 @@
 #include "projection_frontend.h"
 
-#include "cmeta_fs.h"
+#include "salts/fs.h"
 #include "tinytest.h"
 
 #include <string.h>
 
 static const char *path_base(const char *path, char out[SALTS_FS_MAX_PATH]) {
-  if (cmeta_fs_path_basename(path, out, SALTS_FS_MAX_PATH) != 0)
+  if (salts_fs_path_basename(path, out, SALTS_FS_MAX_PATH) != 0)
     return NULL;
   return out;
 }
@@ -526,7 +526,7 @@ spec("DataBind public typed generation frontend") {
     databind_compiler_projection_frontend_plan plan;
     char error[256];
 
-    check_equal(cmeta_fs_path_join(
+    check_equal(salts_fs_path_join(
                     collision, sizeof(collision),
                     "generated", "image.plugin.c"),
                 0);
@@ -608,7 +608,7 @@ spec("DataBind public typed generation frontend") {
     check_equal(plan.output_count, (size_t)0u);
 
 #ifdef _WIN32
-    /* Windows cmeta_fs_path_join uses backslash while the caller may use
+    /* Windows salts_fs_path_join uses backslash while the caller may use
      * forward slash; both must name the same output and be rejected.
      * Filename comparisons on Windows are ordinarily case-insensitive. */
     input.guest_output_path = "generated\\image.plugin_client.h";

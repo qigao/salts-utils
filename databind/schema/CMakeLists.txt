@@ -15,7 +15,7 @@ target_include_directories(
     $<INSTALL_INTERFACE:include>
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(${SCHEMA_TARGET} PUBLIC Salts::Core)
+target_link_libraries(${SCHEMA_TARGET} PUBLIC CMeta::CMeta)
 
 cmake_config_target(
   ${SCHEMA_TARGET}
@@ -98,7 +98,7 @@ set(ENUM_ENHANCED_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_enum_enhanced.sch
 set(ENUM_ENHANCED_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced.h)
 add_custom_command(
   OUTPUT ${ENUM_ENHANCED_HEADER}
-  COMMAND salts_idlc ${ENUM_ENHANCED_SCHEMA}
+  COMMAND $<TARGET_FILE:salts_idlc> ${ENUM_ENHANCED_SCHEMA}
           --template ${C_STRUCT_TEMPLATE} --lang c --binary-codec --output ${ENUM_ENHANCED_HEADER}
   WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
   DEPENDS salts_idlc ${ENUM_ENHANCED_SCHEMA} ${C_STRUCT_TEMPLATE}
@@ -109,7 +109,7 @@ set(ENUM_ENHANCED_SIMPLE_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_enum_enhan
 set(ENUM_ENHANCED_SIMPLE_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced_simple.h)
 add_custom_command(
   OUTPUT ${ENUM_ENHANCED_SIMPLE_HEADER}
-  COMMAND salts_idlc ${ENUM_ENHANCED_SIMPLE_SCHEMA}
+  COMMAND $<TARGET_FILE:salts_idlc> ${ENUM_ENHANCED_SIMPLE_SCHEMA}
           --template ${C_STRUCT_TEMPLATE} --lang c --binary-codec --output ${ENUM_ENHANCED_SIMPLE_HEADER}
   WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
   DEPENDS salts_idlc ${ENUM_ENHANCED_SIMPLE_SCHEMA} ${C_STRUCT_TEMPLATE}
@@ -134,7 +134,7 @@ set(UNION_TYPES_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_union_types.schema)
 set(UNION_TYPES_HEADER ${CMAKE_BINARY_DIR}/bin/test_union_types.h)
 add_custom_command(
   OUTPUT ${UNION_TYPES_HEADER}
-  COMMAND salts_idlc ${UNION_TYPES_SCHEMA}
+  COMMAND $<TARGET_FILE:salts_idlc> ${UNION_TYPES_SCHEMA}
           --template ${C_STRUCT_TEMPLATE} --lang c --binary-codec --output ${UNION_TYPES_HEADER}
   WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
   DEPENDS salts_idlc ${UNION_TYPES_SCHEMA} ${C_STRUCT_TEMPLATE}
@@ -177,7 +177,7 @@ set(C_STRUCT_TEMPLATE
 
 add_custom_command(
   OUTPUT ${BENCH_HEADER}
-  COMMAND salts_idlc ${BENCH_SCHEMA} --template ${C_STRUCT_TEMPLATE}
+  COMMAND $<TARGET_FILE:salts_idlc> ${BENCH_SCHEMA} --template ${C_STRUCT_TEMPLATE}
           --lang c --binary-codec --output ${BENCH_HEADER}
   DEPENDS salts_idlc ${BENCH_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating benchmark headers with salts_idlc"

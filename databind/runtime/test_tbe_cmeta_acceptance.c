@@ -1,7 +1,7 @@
 #include "cmeta_graph_generated.h"
 #include "schema_cmeta.h"
 #include "tinytest.h"
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <cstl/byte_buffer.h>
 #include <string.h>
 

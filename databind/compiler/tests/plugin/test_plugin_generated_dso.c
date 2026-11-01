@@ -1,4 +1,4 @@
-#include <salts/plugin.h>
+#include <cmeta/plugin.h>
 #include <tinytest.h>
 
 #include "data_bind_binding_plan.h"

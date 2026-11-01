@@ -17,10 +17,10 @@
 #include "native_source_ir.h"
 #include "binary_layout_lowering.h"
 #include "schema_cmeta.h"
-#include <cmeta_cmeta_data.h>
-#include <cmeta_cmeta_fixed_width.h>
+#include <cmeta/core_data.h>
+#include <cmeta/core_fixed_width.h>
 #include "tbe_error.h"
-#include "cmeta_fs.h"
+#include "salts/fs.h"
 #include "cmeta_uuid.h"
 #include <tstr.h>
 #include <cmeta/scope.h>
@@ -79,20 +79,32 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
                                                 FILE **out_file) {
   static const char temporary_prefix[] = ".tbe.";
   static const char temporary_suffix[] = ".tmp";
-  const size_t output_length = strlen(output_path);
+  size_t output_length;
+  size_t directory_length = 0u;
   const size_t prefix_length = sizeof(temporary_prefix) - 1u;
   const size_t suffix_length = sizeof(temporary_suffix);
   const size_t uuid_length = SALTS_UUID_STRING_LENGTH;
   size_t path_length;
   unsigned attempt;
 
-  if (!out_temporary_path || !out_file || output_length >
+  if (!output_path || !out_temporary_path || !out_file) return -1;
+  output_length = strlen(output_path);
+  for (size_t index = 0u; index < output_length; ++index)
+    if (output_path[index] == '/' || output_path[index] == '\\')
+      directory_length = index + 1u;
+
+  /* Keep the temporary file in the destination directory so rename remains
+   * atomic, but do not append another unique suffix to the full destination
+   * name. Transaction staging already uses such a suffix; nesting the two
+   * names can cross the legacy Windows path limit even when the final output
+   * itself is valid. O_EXCL and the UUID retain collision safety. */
+  if (directory_length >
       SIZE_MAX - prefix_length - uuid_length - suffix_length) {
     return -1;
   }
   *out_temporary_path = NULL;
   *out_file = NULL;
-  path_length = output_length + prefix_length + uuid_length + suffix_length;
+  path_length = directory_length + prefix_length + uuid_length + suffix_length;
 
   for (attempt = 0; attempt < TBE_COMPILER_TEMP_OUTPUT_ATTEMPTS; ++attempt) {
     cmeta_uuid_t uuid;
@@ -107,10 +119,10 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
     }
     temporary_path = (char *)malloc(path_length);
     if (!temporary_path) return -1;
-    memcpy(temporary_path, output_path, output_length);
-    memcpy(temporary_path + output_length, temporary_prefix, prefix_length);
-    memcpy(temporary_path + output_length + prefix_length, uuid_text, uuid_length);
-    memcpy(temporary_path + output_length + prefix_length + uuid_length, temporary_suffix,
+    memcpy(temporary_path, output_path, directory_length);
+    memcpy(temporary_path + directory_length, temporary_prefix, prefix_length);
+    memcpy(temporary_path + directory_length + prefix_length, uuid_text, uuid_length);
+    memcpy(temporary_path + directory_length + prefix_length + uuid_length, temporary_suffix,
            suffix_length);
 
     descriptor = tbe_compiler_open(temporary_path, TBE_COMPILER_TEMP_OPEN_FLAGS,
@@ -127,7 +139,7 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
 #else
       close(descriptor);
 #endif
-      cmeta_fs_unlink(temporary_path);
+      salts_fs_unlink(temporary_path);
       free(temporary_path);
       return -1;
     }
@@ -689,9 +701,9 @@ static int databind_compiler_annotate_named_native_refs(
 
   if (strcmp(type_name, "string") == 0)
     return tbe_compiler_set_string(target_node, type_ref_key,
-                                   "SALTS_TSTR_CMETA_TYPE_REF") == 0 &&
+                                   "CMETA_TSTR_TYPE_REF") == 0 &&
                    tbe_compiler_set_string(target_node, data_ref_key,
-                                           "SALTS_TSTR_CMETA_DATA_REF") == 0
+                                           "CMETA_TSTR_DATA_REF") == 0
                ? 0
                : -1;
 
@@ -878,7 +890,7 @@ static int databind_generic_lower(databind_generic_lower_context *context,
       tbe_compiler_set_string(node, "value_type_symbol", value.type_symbol) != 0 ||
       tbe_compiler_set_string(node, "value_data_symbol", value.data_symbol) != 0 ||
       tbe_compiler_set_string(node, "arg0", is_map
-          ? "SALTS_TSTR_CMETA_TYPE_REF" : value.type_ref) != 0 ||
+          ? "CMETA_TSTR_TYPE_REF" : value.type_ref) != 0 ||
       (is_map && tbe_compiler_set_string(node, "arg1", value.type_ref) != 0) ||
       list_add(context->types, node) != 0) {
     node_free(node);
@@ -909,7 +921,7 @@ static tstr databind_generic_declarations(Node *types) {
         strcmp(kind, "Map") == 0 ? "tstr, " : "", value,
         kind, name, strcmp(kind, "Map") == 0 ? "tstr, " : "", value,
         strcmp(kind, "Map") == 0
-            ? "SALTS_TSTR_CMETA_TYPE_REF, SALTS_TSTR_CMETA_DATA_REF, " : "",
+            ? "CMETA_TSTR_TYPE_REF, CMETA_TSTR_DATA_REF, " : "",
         value_type, value_data, identity);
     if (appended == NULL) { tstr_free(result); return NULL; }
     result = appended;
@@ -974,8 +986,8 @@ static int databind_compiler_annotate_nested_generic(Node *root, Node *field) {
           tbe_compiler_string_value(outer, "value_type_ref")) != 0 ||
       tbe_compiler_set_string(field, "native_element_data_ref",
           tbe_compiler_string_value(outer, "value_data_ref")) != 0 ||
-      (is_map && (tbe_compiler_set_string(field, "native_map_key_type_ref", "SALTS_TSTR_CMETA_TYPE_REF") != 0 ||
-                  tbe_compiler_set_string(field, "native_map_key_data_ref", "SALTS_TSTR_CMETA_DATA_REF") != 0 ||
+      (is_map && (tbe_compiler_set_string(field, "native_map_key_type_ref", "CMETA_TSTR_TYPE_REF") != 0 ||
+                  tbe_compiler_set_string(field, "native_map_key_data_ref", "CMETA_TSTR_DATA_REF") != 0 ||
                   tbe_compiler_set_string(field, "native_map_value_type_ref",
                       tbe_compiler_string_value(outer, "value_type_ref")) != 0 ||
                   tbe_compiler_set_string(field, "native_map_value_data_ref",
@@ -3305,7 +3317,7 @@ static const char *tbe_compiler_resolve_resource(const tbe_compiler_options_t *o
     fprintf(stderr, "Built-in template resource directory is unavailable\n");
     return NULL;
   }
-  if (cmeta_fs_path_join(path, path_size, resource_dir, relative_path) != 0) {
+  if (salts_fs_path_join(path, path_size, resource_dir, relative_path) != 0) {
     fprintf(stderr, "Built-in template path is too long: %s\n", relative_path);
     return NULL;
   }
@@ -3560,7 +3572,7 @@ static int tbe_compiler_render_owned(tbe_compiler_render_t *render,
       goto cleanup;
     }
 #endif
-    if (cmeta_fs_rename(render->temporary_output_path, output_path) != 0) {
+    if (salts_fs_rename(render->temporary_output_path, output_path) != 0) {
       fprintf(stderr, "Failed to replace output file: %s\n", output_path);
       goto cleanup;
     }
@@ -3576,7 +3588,7 @@ cleanup:
     fprintf(stderr, "Failed to close abandoned temporary output: %s\n", output_path);
     res = 1;
   }
-  if (render->temporary_output_path != NULL && cmeta_fs_unlink(render->temporary_output_path) != 0) {
+  if (render->temporary_output_path != NULL && salts_fs_unlink(render->temporary_output_path) != 0) {
     fprintf(stderr, "Failed to remove temporary output file: %s\n", render->temporary_output_path);
     res = 1;
   }
@@ -4646,8 +4658,8 @@ typedef struct tbe_compiler_output_transaction {
 
 static int tbe_compiler_txn_unlink(const char *path) {
   if (path == NULL) return 0;
-  if (cmeta_fs_access(path, SALTS_FS_ACCESS_EXISTS) != 0) return 0;
-  if (cmeta_fs_unlink(path) == SALTS_OK) return 0;
+  if (salts_fs_access(path, SALTS_FS_ACCESS_EXISTS) != 0) return 0;
+  if (salts_fs_unlink(path) == SALTS_OK) return 0;
   fprintf(stderr, "Failed to remove compiler transaction file: %s\n", path);
   return -1;
 }
@@ -4721,7 +4733,7 @@ static int tbe_compiler_txn_abort(
         tbe_compiler_txn_unlink(item->final_path) != 0)
       failed = 1;
     if (item->original_moved) {
-      if (cmeta_fs_rename(item->backup_path, item->final_path) != SALTS_OK) {
+      if (salts_fs_rename(item->backup_path, item->final_path) != SALTS_OK) {
         fprintf(stderr,
                 "Failed restoring original %s; recover from %s\n",
                 item->final_path, item->backup_path);
@@ -4811,7 +4823,7 @@ static int tbe_compiler_txn_commit(
   for (i = 0u; i < txn->count; ++i) {
     tbe_compiler_staged_output *item = &txn->items[i];
     if (item->had_original) {
-      if (cmeta_fs_rename(item->final_path,
+      if (salts_fs_rename(item->final_path,
                           item->backup_path) != SALTS_OK) {
         fprintf(stderr, "Failed to back up output: %s\n", item->final_path);
         goto rollback;
@@ -4822,7 +4834,7 @@ static int tbe_compiler_txn_commit(
 
   for (i = 0u; i < txn->count; ++i) {
     tbe_compiler_staged_output *item = &txn->items[i];
-    if (cmeta_fs_rename(item->staging_path,
+    if (salts_fs_rename(item->staging_path,
                         item->final_path) != SALTS_OK) {
       fprintf(stderr, "Failed to publish output: %s\n", item->final_path);
       goto rollback;
@@ -5440,7 +5452,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
         native_config = (const databind_compiler_native_service_config *)request->config;
         if (seen_native || native_config == NULL ||
             native_config->header_output == NULL ||
-            native_config->header_output[0] == '\\0') {
+            native_config->header_output[0] == '\0') {
           qualified = 0;
         }
         seen_native = 1;
@@ -5467,7 +5479,7 @@ static int tbe_compiler_run_owned(tbe_compiler_task_t *task,
           qualified = 0;
         seen_wasm = 1;
       } else if (backend->output_policy != DATABIND_COMPILER_OUTPUT_STAGED_SINGLE ||
-                 request->output == NULL || request->output[0] == '\\0') {
+                 request->output == NULL || request->output[0] == '\0') {
         qualified = 0;
         continue;
       }

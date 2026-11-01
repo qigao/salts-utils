@@ -133,7 +133,8 @@ jobs:
           $commit = git rev-parse HEAD
           if ($LASTEXITCODE -ne 0) { throw 'Could not read source commit' }
           @("version=$env:PACKAGE_VERSION", "commit=$commit", "rid=$env:QIGAO_SDK_RID",
-            "triplet=$env:QIGAO_TARGET_TRIPLET", 'profile=release', "salts_version=$env:SALTS_VERSION") |
+            "triplet=$env:QIGAO_TARGET_TRIPLET", 'profile=release',
+            "saltscore_version=$env:SALTSCORE_VERSION", "cmeta_version=$env:CMETA_VERSION") |
             Set-Content "$prefix/salts-utils-sdk-manifest.txt"
       - uses: actions/upload-artifact@v4
         if: matrix.package
@@ -149,7 +150,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $paths = [ordered]@{}
-          foreach ($name in @('SALTS_ROOT', 'SALTS_HOST_ROOT', 'RE2C_ROOT', 'CRYPTO_ROOT', 'CRYPTO_HOST_ROOT')) {
+          foreach ($name in @('SALTSCORE_ROOT', 'SALTSCORE_HOST_ROOT', 'CMETA_ROOT', 'CMETA_HOST_ROOT', 'RE2C_ROOT', 'CRYPTO_ROOT', 'CRYPTO_HOST_ROOT')) {
             $value = [Environment]::GetEnvironmentVariable($name)
             if (-not $value -or -not (Test-Path -LiteralPath $value -PathType Container)) { throw "Missing $name" }
             $paths[$name] = $value

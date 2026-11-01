@@ -147,7 +147,7 @@ int main() {
                     stl_map_generic_desc.stable_id) != 0 ||
         declared->arity != 2u ||
         !cmeta_type_equal(cmeta_declared_type_argument(declared, 0u),
-                          SALTS_TSTR_CMETA_TYPE_REF) ||
+                          CMETA_TSTR_TYPE_REF) ||
         !cmeta_type_equal(cmeta_declared_type_argument(declared, 1u),
                           &NativeHeader_CMETA_TYPE))
       return 11;
@@ -171,7 +171,7 @@ int main() {
       map_owner.headers.raw.key_type == nullptr ||
       map_owner.headers.raw.value_type == nullptr ||
       !cmeta_type_equal(
-          map_owner.headers.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF) ||
+          map_owner.headers.raw.key_type, CMETA_TSTR_TYPE_REF) ||
       !cmeta_type_equal(
           map_owner.headers.raw.value_type, &NativeHeader_CMETA_TYPE)) {
     NativeHeaderMap_clear(&map_owner);

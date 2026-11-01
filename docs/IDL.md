@@ -263,7 +263,7 @@ Salts::Lua       # optional
 Salts::QuickJS   # optional
 ```
 
-`Salts::PluginABI` and `Salts::Plugin` come from Salts 1.8.
+`CMeta::PluginABI` and `CMeta::Plugin` come from the exact CMeta SDK.
 
 There is no `Salts::DataBindSchema`, `Salts::CBind`,
-`Salts::PluginCFlow`, or `Salts::PluginCFlowABI` compatibility target.
+`CMeta::PluginCFlow`, or `CMeta::PluginCFlowABI` compatibility target.

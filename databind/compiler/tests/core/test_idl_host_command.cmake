@@ -12,21 +12,24 @@ include("${_saltsutils_root}/cmake/IDL.cmake")
 # Deliberately use directories with spaces. This command must survive the
 # native Windows environment's semicolon-separated PATH in the MSBuild case.
 set(_runtime_root "${CMAKE_CURRENT_LIST_DIR}/host runtime with spaces")
-set(_salts_root "${CMAKE_CURRENT_LIST_DIR}/salts runtime with spaces")
+set(_saltscore_root "${CMAKE_CURRENT_LIST_DIR}/saltscore runtime with spaces")
+set(_cmeta_root "${CMAKE_CURRENT_LIST_DIR}/cmeta runtime with spaces")
 _saltsutils_idl_host_command(
-  _host_command "${CMAKE_COMMAND}" "${_runtime_root}" "${_salts_root}")
+  _host_command "${CMAKE_COMMAND}" "${_runtime_root}"
+  "${_saltscore_root}" "${_cmeta_root}")
 
 if(WIN32)
   list(LENGTH _host_command _argc)
-  if(NOT _argc EQUAL 11)
+  if(NOT _argc EQUAL 13)
     message(FATAL_ERROR
-      "Windows host command has ${_argc} args; expected 11, not split PATH")
+      "Windows host command has ${_argc} args; expected 13, not split PATH")
   endif()
   foreach(_required IN ITEMS
       "--modify"
       "PATH=path_list_prepend:${_runtime_root}/bin"
       "PATH=path_list_prepend:${_runtime_root}/lib"
-      "PATH=path_list_prepend:${_salts_root}/bin"
+      "PATH=path_list_prepend:${_saltscore_root}/bin"
+      "PATH=path_list_prepend:${_cmeta_root}/bin"
       "--")
     if(NOT _required IN_LIST _host_command)
       message(FATAL_ERROR "Missing Windows environment argument: ${_required}")

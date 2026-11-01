@@ -1,8 +1,8 @@
-# Media playback ownership
+# Media playback ownership in SaltsCore
 
 ## Decision
 
-SaltsUtils owns native media-device I/O. `Salts::Playback` is the sole audio
+SaltsCore owns native media-device I/O. `Salts::Playback` is the sole audio
 output provider and accepts already-decoded PCM. TurboMedia owns demuxing,
 decoding, clocking, file semantics, and playlists; it does not own an audio
 device backend.
@@ -18,7 +18,7 @@ with device I/O and have no production caller outside their own tests.
 | --- | --- |
 | Keep playback in TurboMedia | Rejected: capture and playback would retain different owners and platform matrices. |
 | Move the complete legacy object | Rejected: it moves file decoding, playlists, a hand-written ring, and unsafe callback state into the device layer. |
-| Add a bounded PCM sink to SaltsUtils | Selected: one device owner, one explicit data plane, and a small cross-platform contract. |
+| Add a bounded PCM sink to SaltsCore | Selected: one foundation owner, one explicit data plane, and a small cross-platform contract. |
 
 ## Ownership and threading
 
@@ -76,20 +76,13 @@ while the device can consume data and returns a bounded timeout error.
 
 ## Platform and packaging
 
-`Salts::Playback` is exported on Windows, Linux, macOS, Android, and iOS.
+`Salts::Playback` is exported by SaltsCore on Windows, Linux, macOS, Android, and iOS.
 miniaudio is a private backend detail. Package consumers link only
 `Salts::Playback`; backend include paths and target names do not enter the
 installed interface.
 
-## Migration and rollback
+## Completed migration
 
-1. Publish `Salts::Playback` with unit, lifecycle, and installed-package tests.
-2. Change TurboMedia's player to consume `salts_playback.h` and
-   `Salts::Playback`.
-3. Remove TurboMedia's playback implementation and direct miniaudio dependency.
-4. Separate TurboMedia client/server build profiles after device ownership is
-   no longer local.
-
-Before step 3, rollback is a TurboMedia dependency switch. After step 3,
-rollback requires reverting the removal commit and is verified by the same
-player and package-consumer tests.
+The implementation, public header, lifecycle tests, and package target now live
+in SaltsCore. SaltsUtils contains no compatibility target or duplicate backend;
+downstream media projects consume `Salts::Playback` from the exact SaltsCore SDK.

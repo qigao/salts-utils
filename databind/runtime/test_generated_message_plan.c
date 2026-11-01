@@ -3,7 +3,7 @@
 #include "../tests/native_storage/reader_probe.h"
 #include "tinytest.h"
 
-#include <cmeta_thread.h>
+#include <salts/thread.h>
 #include <tstr.h>
 
 #include <stdatomic.h>

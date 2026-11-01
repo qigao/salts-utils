@@ -3,7 +3,7 @@
 
 #include <cmeta/object.h>
 #include <cmeta/struct.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 
 #include <stdio.h>
 #include <string.h>

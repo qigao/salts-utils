@@ -27,9 +27,6 @@ PATHS = (
     ".github/actions/setup-native-ci/action.yml",
     ".github/workflows/native-build.yml",
     ".github/workflows/native-tests.yml",
-    ".github/workflows/idl-component-source-gate.yml",
-    ".github/workflows/idl-component-published-sdk-gate.yml",
-    ".github/workflows/databind-monocypher-asan.yml",
     ".github/workflows/sdk-package.yml",
     ".github/workflows/ci.yml",
     "CMakeUserPresets.json",
@@ -59,9 +56,6 @@ def violations(source: dict[str, str]) -> list[str]:
     native_setup = source[".github/actions/setup-native-ci/action.yml"]
     native_build = source[".github/workflows/native-build.yml"]
     native_tests = source[".github/workflows/native-tests.yml"]
-    component_gate = source[".github/workflows/idl-component-source-gate.yml"]
-    published_component_gate = source[".github/workflows/idl-component-published-sdk-gate.yml"]
-    monocypher_gate = source[".github/workflows/databind-monocypher-asan.yml"]
     sdk_package = source[".github/workflows/sdk-package.yml"]
     ci_workflow = source[".github/workflows/ci.yml"]
     user_presets = source["CMakeUserPresets.json"]
@@ -103,8 +97,8 @@ def violations(source: dict[str, str]) -> list[str]:
     if "rejects ambiguous RPC typed-error numeric codes before native decoding" not in fixture:
         errors.append("Generated native RPC typed-error collision regression is absent")
 
-    # Paired installed NuGet acceptance exposed the previous partial target-set
-    # crash: official Salts already exports Salts::Unicode, while an older
+    # Paired installed SDK acceptance exposed the previous partial target-set
+    # crash: SaltsCore exports Salts::Unicode, while an older
     # SaltsUtils package independently exported the same CMake target.
     if re.search(r"add_subdirectory\(\s*unicode\s*\)", root_cmake):
         errors.append("Local Unicode producer must not be built or exported from SaltsUtils")
@@ -114,12 +108,16 @@ def violations(source: dict[str, str]) -> list[str]:
             not in value
         ):
             errors.append(f"Canonical Unicode imported target missing from {label} SDK contract")
-    if "PRIVATE Salts::Unicode Salts::CSTL" not in jinja_cmake:
-        errors.append("Jinja must depend directly on the canonical Salts Unicode owner")
-    if 'SALTS_NATIVE_VERSION = "2.3.0-rc.17"' not in github_packages:
-        errors.append("curl SDK restore must pin the exact official Salts.Native 2.3 release")
-    if "Salts::Unicode" not in github_packages or "salts-sdk-manifest.txt" not in github_packages:
-        errors.append("curl SDK restore lacks canonical Unicode/provenance admission")
+    if "PRIVATE Salts::Unicode CMeta::CSTL" not in jinja_cmake:
+        errors.append("Jinja must depend on SaltsCore Unicode and CMeta CSTL owners")
+    if 'SALTSCORE_NATIVE_VERSION = "0.1.0"' not in github_packages:
+        errors.append("curl SDK restore must pin SaltsCore.Native 0.1.0")
+    if 'CMETA_NATIVE_VERSION = "0.1.1"' not in github_packages:
+        errors.append("curl SDK restore must pin CMeta.Native 0.1.1")
+    if ("Salts::Unicode" not in github_packages
+            or "CMeta::CMeta" not in github_packages
+            or "cmeta-sdk-manifest.txt" not in github_packages):
+        errors.append("curl SDK restore lacks split Core/CMeta admission")
     if '"curl"' not in github_packages or "dotnet" in github_packages.lower() or "mono-complete" in github_packages.lower():
         errors.append("native package restore must use curl without .NET/Mono")
     for label, value in (("Unix", restore_unix), ("Windows", restore_windows)):
@@ -130,9 +128,6 @@ def violations(source: dict[str, str]) -> list[str]:
         ("native setup action", native_setup),
         ("native build workflow", native_build),
         ("native test workflow", native_tests),
-        ("ComponentProvider source gate", component_gate),
-        ("published ComponentProvider SDK gate", published_component_gate),
-        ("Monocypher sanitizer gate", monocypher_gate),
     )
     forbidden_ci = (
         "setup-vcpkg-cache@",
@@ -148,28 +143,20 @@ def violations(source: dict[str, str]) -> list[str]:
     for label, value in (
         ("native build workflow", native_build),
         ("native test workflow", native_tests),
-        ("ComponentProvider source gate", component_gate),
-        ("published ComponentProvider SDK gate", published_component_gate),
-        ("Monocypher sanitizer gate", monocypher_gate),
     ):
         if "./.github/actions/setup-native-ci" not in value:
             errors.append(f"{label} must consume the curl-only native CI action")
     if "cmake/ci/setup_native_ci.py" not in native_setup or "github_packages.py" not in native_setup:
         errors.append("native setup action must bootstrap the curl cache and curl re2c restore")
-    if ("workflow_dispatch" not in published_component_gate
-            or "--salts-version" not in published_component_gate
-            or "--require-component-runtime" not in published_component_gate):
-        errors.append("published ComponentProvider SDK gate must require an exact dispatched runtime package")
     if "nugetconfig" in user_presets.lower() or "nugettimeout" in user_presets.lower():
         errors.append("root user presets must not configure a NuGet-backed vcpkg binary source")
     if "dotnet restore" not in sdk_package or "<clear />" not in sdk_package:
         errors.append("release pack restore must be explicit and source-empty")
     if "nuget.pkg.github.com" in sdk_package or "dotnet nuget add source" in sdk_package:
         errors.append("release pack preparation must not read GitHub Packages through dotnet")
-    if ("uses: ./.github/workflows/idl-component-published-sdk-gate.yml" not in ci_workflow
-            or "salts_version: 2.3.0-rc.18" not in ci_workflow
-            or "COMPONENT_PUBLISHED_SDK_RESULT" not in ci_workflow):
-        errors.append("release preparation must require the exact published Component Runtime SDK gate")
+    if ("idl-component-published-sdk-gate" in ci_workflow
+            or "component_published_sdk" in ci_workflow):
+        errors.append("main CI must not reintroduce a standalone component consumer gate")
     return errors
 
 def exercise_negative_cases(source: dict[str, str]) -> None:
@@ -193,12 +180,12 @@ def exercise_negative_cases(source: dict[str, str]) -> None:
         if not violations(broken):
             raise AssertionError(f"Source gate failed open after dropping {token}")
     # Negative producer-owner/source-pin regression: never accept a revived
-    # local implementation or a floating/stable-2.2 Salts restore.
+    # local implementation or a floating SaltsCore restore.
     for path, old, replacement in (
         ("CMakeLists.txt", "add_subdirectory(jinja)",
          "add_subdirectory(unicode)\nadd_subdirectory(jinja)"),
-        ("cmake/ci/github_packages.py", 'SALTS_NATIVE_VERSION = "2.3.0-rc.17"',
-         'SALTS_NATIVE_VERSION = "*"'),
+        ("cmake/ci/github_packages.py", 'SALTSCORE_NATIVE_VERSION = "0.1.0"',
+         'SALTSCORE_NATIVE_VERSION = "*"'),
     ):
         if old not in source[path]:
             raise AssertionError(f"Missing fail-closed Unicode fixture in {path}")

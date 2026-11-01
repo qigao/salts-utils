@@ -1,7 +1,7 @@
 #ifndef CFLOW_FS_WATCH_INTERNAL_H
 #define CFLOW_FS_WATCH_INTERNAL_H
 
-#include <salts/fs_watch.h>
+#include <cflow/fs_watch.h>
 
 typedef struct cflow_fs_watch_impl cflow_fs_watch_impl;
 typedef void (*cflow_fs_watch_ready_fn)(void *user);

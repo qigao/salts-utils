@@ -39,10 +39,13 @@ import json, pathlib, sys
 print(json.loads(pathlib.Path(sys.argv[1]).read_text())[sys.argv[2]])
 PY
   }
-  salts_root="$(read_json SALTS_ROOT)"
-  salts_host_root="$(read_json SALTS_HOST_ROOT)"
+  saltscore_root="$(read_json SALTSCORE_ROOT)"
+  saltscore_host_root="$(read_json SALTSCORE_HOST_ROOT)"
+  cmeta_root="$(read_json CMETA_ROOT)"
+  cmeta_host_root="$(read_json CMETA_HOST_ROOT)"
   re2c_root="$(read_json RE2C_ROOT)"
-  salts_version="$(read_json SALTS_VERSION)"
+  saltscore_version="$(read_json SALTSCORE_VERSION)"
+  cmeta_version="$(read_json CMETA_VERSION)"
   local_link() {
     local link="$repository_root/stage/dependencies/$1" target="$2"
     mkdir -p "$(dirname "$link")"
@@ -53,17 +56,22 @@ PY
     ln -sfn "$target" "$link"
     printf '%s\n' "$link"
   }
-  salts_root="$(local_link "salts/$salts_rid" "$salts_root")"
-  salts_host_root="$(local_link "salts/$host_rid" "$salts_host_root")"
+  saltscore_root="$(local_link "saltscore/$salts_rid" "$saltscore_root")"
+  saltscore_host_root="$(local_link "saltscore/$host_rid" "$saltscore_host_root")"
+  cmeta_root="$(local_link "cmeta/$salts_rid" "$cmeta_root")"
+  cmeta_host_root="$(local_link "cmeta/$host_rid" "$cmeta_host_root")"
   re2c_root="$(local_link "re2c/$host_rid" "$re2c_root")"
   {
-    printf 'export SALTS_ROOT=%q\n' "$salts_root"
-    printf 'export SALTS_HOST_ROOT=%q\n' "$salts_host_root"
+    printf 'export SALTSCORE_ROOT=%q\n' "$saltscore_root"
+    printf 'export SALTSCORE_HOST_ROOT=%q\n' "$saltscore_host_root"
+    printf 'export CMETA_ROOT=%q\n' "$cmeta_root"
+    printf 'export CMETA_HOST_ROOT=%q\n' "$cmeta_host_root"
     printf 'export RE2C_ROOT=%q\n' "$re2c_root"
     printf 'export QIGAO_NUGET_PACKAGES=%q\n' "$packages"
     if [ "$with_turbowasm" = 1 ]; then
       printf 'export TURBOWASM_ROOT=%q\n' "$(read_json TURBOWASM_ROOT)"
     fi
   } > "$restore_root/env.sh"
-  printf 'restored Salts.Native %s with curl; source %s/env.sh\n' "$salts_version" "$restore_root"
+  printf 'restored SaltsCore.Native %s and CMeta.Native %s with curl; source %s/env.sh\n' \
+    "$saltscore_version" "$cmeta_version" "$restore_root"
 fi

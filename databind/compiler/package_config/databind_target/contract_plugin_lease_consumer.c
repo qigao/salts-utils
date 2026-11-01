@@ -1,5 +1,5 @@
 #include "contract_plugin.plugin_client.h"
-#include <salts/plugin.h>
+#include <cmeta/plugin.h>
 
 #include <stddef.h>
 #include <stdint.h>

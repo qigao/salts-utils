@@ -9,7 +9,7 @@
 
 #include <cmeta/type_traits.h>
 #include <cstl/typed.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <vstr.h>
 
 #include <errno.h>

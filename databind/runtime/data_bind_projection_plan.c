@@ -3,7 +3,7 @@
 
 #include <vstr.h>
 #include <cstl/typed.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <cmeta/data_reflect.h>
 
 #include <stdio.h>
@@ -21,9 +21,9 @@ typedef struct DataBindFormatNameMap {
 #define PLAN_NAME_STABLE_ID "salts-utils.databind.format-name"
 cmeta_reflect_value(DataBindFormatNameMap, PLAN_NAME_STABLE_ID,
     cmeta_data_field_id(tstr, external_name, PLAN_NAME_STABLE_ID ".external",
-        SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+        CMETA_TSTR_DATA_REF, CMETA_TSTR_TYPE_REF)
     cmeta_data_field_id(tstr, canonical_name, PLAN_NAME_STABLE_ID ".canonical",
-        SALTS_TSTR_CMETA_DATA_REF, SALTS_TSTR_CMETA_TYPE_REF)
+        CMETA_TSTR_DATA_REF, CMETA_TSTR_TYPE_REF)
 );
 CMETA_DEFINE_DATA_TRAITS(DataBindFormatNameMap, cmeta_reflected_data(DataBindFormatNameMap));
 /* CSTL needs a trait-bearing storage descriptor. Its lifecycle delegates to

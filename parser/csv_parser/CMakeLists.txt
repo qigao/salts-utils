@@ -46,7 +46,7 @@ find_path(SIMDE_INCLUDE_DIRS "simde/arm/neon.h")
 target_include_directories(${TARGET_NAME} PRIVATE ${SIMDE_INCLUDE_DIRS})
 
 target_link_libraries(${TARGET_NAME}
-  PRIVATE Salts::CSTL
+  PRIVATE CMeta::CSTL
   PUBLIC Salts::Core)
 
 target_link_libraries(${TARGET_NAME} PUBLIC Salts::QueryVM)

@@ -43,8 +43,8 @@ endforeach()
 
 foreach(_forbidden IN ITEMS
     "CMETA_PLUGIN_EXPORT_FUNCTION"
-    "Salts::ServiceHost"
-    "Salts::Configurator"
+    "CMeta::ServiceHost"
+    "CMeta::Configurator"
     "dlopen("
     "LoadLibrary("
     "fallback")

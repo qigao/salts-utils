@@ -2,11 +2,11 @@
 
 **Higher-level utilities for the Salts C11 ecosystem.**
 
-SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared semantics with parsers, QueryVM, filesystem/process adapters, templates, Unicode support, media helpers, IDL/Schema tooling, language bindings, and DataBind.
+SaltsUtils builds on installed SaltsCore and CMeta SDKs and extends their shared semantics with parsers, QueryVM, filesystem/process adapters, templates, media helpers, IDL/Schema tooling, language bindings, and DataBind.
 
 **IDL, Schema and DataBind are distinct SaltsUtils capabilities.** IDL defines contracts, Schema defines Data shape, and DataBind owns logical/native binding. They are not separate packages.
 
-SaltsUtils does not create a second runtime. CMeta remains the semantic type foundation, CFlow remains the execution/dataflow foundation, CSTL remains the concrete container layer, and Platform/Core remain owned by Salts.
+SaltsUtils does not create a second runtime. CMeta/CFlow/CSTL remain owned by the CMeta SDK; Platform/Core and native FS/Process/USB remain owned by SaltsCore.
 
 **Tags:** C11 · utilities · parsers · query-engine · crypto · filesystem · process · templates · unicode · data-binding · code-generation
 
@@ -37,36 +37,38 @@ Salts
 
 SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). `Salts::IDL` owns transport-neutral contracts, `Salts::Schema` owns the Data subset, and `Salts::DataBind` owns binding. Binary is a format/backend, not the owner of IDL or Schema.
 
-**Crypto ownership:** `qigao/crypto` is the exclusive SHA256, Ed448, SM3, TLS and X.509 source. Install its static SDK and use `find_package(Crypto CONFIG REQUIRED)`; SaltsUtils contains no implementation, copy or fallback.
+**Crypto ownership:** the imported static `Salts::Crypto` target comes from the exact SaltsCore SDK. SaltsUtils contains no implementation, copy or fallback.
 
 ## Main capabilities
 
 | Area | Public capability |
 | --- | --- |
-| Crypto (external dependency) | `Salts::Crypto` from [qigao/crypto](https://github.com/qigao/crypto); never compiled/exported by SaltsUtils |
-| Plugin | `Salts::PluginABI` / `Salts::Plugin` are consumed from Salts 1.8 |
-| Filesystem | `Salts::FS` |
-| Process adapters | `Salts::Process` |
+| Crypto (external dependency) | imported static `Salts::Crypto` from SaltsCore |
+| Plugin | `CMeta::PluginABI` / `CMeta::Plugin` from the CMeta SDK |
+| Filesystem adapter | `Salts::CFlowFS` over SaltsCore `Salts::FS` |
+| Process adapter | `Salts::CFlowProcess` over SaltsCore `Salts::Process` |
 | Query | `Salts::QueryVM` |
 | Parsers | JSON, XML, YAML, CSV, INI, TLV/LTV, Modbus, SOA, DotEnv, Cmd, TOON, TOML, DateTime, and related component targets |
 | Templates | Mustache and Jinja CMeta |
 | Unicode | generated Unicode property/scalar support |
-| Media/helpers | Playback, Capture, Serial, Cron, and related utilities |
+| Helpers | Cron and related higher-level utilities |
 | IDL / Schema | `Salts::IDL`, `Salts::Schema`, `salts-idlc` |
 | DataBind | `Salts::DataBind`; native/dynamic binding, immutable plans, rollback |
 | Language bindings | `Salts::BindingsCpp`, `Salts::Lua`, `Salts::QuickJS` (QuickJS-NG) |
 
 Parser capabilities remain independent component targets rather than a single aggregate parser facade.
 
-Capture and Playback are enabled together by `SALTS_UTILS_ENABLE_CAPTURE`. When disabled, neither component's libraries, headers, or tests are added to the build/install graph. The `salts-idlc` compiler is always built and installed with DataBind.
+Playback, Capture, Serial, and USB are SaltsCore capabilities and are not
+rebuilt or re-exported by SaltsUtils. The `salts-idlc` compiler is always built
+and installed with DataBind.
 
 ## Ownership boundaries
 
 ```text
-CMeta    native type/function/interface truth                 (Salts)
+CMeta    native type/function/interface truth                 (CMeta SDK)
 CSerde   canonical token truth                               (Salts)
-CFlow    execution truth                                     (Salts)
-Plugin   module/loading/lease/lifecycle truth                 (Salts)
+CFlow    execution truth                                     (CMeta SDK)
+Plugin   module/loading/lease/lifecycle truth                 (CMeta SDK)
 
 IDL      Data + Service + Channel + Component contract truth (SaltsUtils)
 Schema   Data-only logical shape -> CMeta projection          (SaltsUtils)
@@ -82,7 +84,9 @@ execution.
 
 ## CMake
 
-Build SaltsUtils against the latest published Salts SDK with a matching build profile through `SALTS_ROOT`. Generated fixed arrays use its canonical CMeta array provider and element lifecycle traits. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
+Build SaltsUtils against exact matching SaltsCore and CMeta SDK profiles through
+`SALTSCORE_ROOT` and `CMETA_ROOT`. Consumers explicitly select the SaltsUtils
+installation through `SALTS_UTILS_ROOT`:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED
@@ -92,10 +96,9 @@ target_link_libraries(app PRIVATE
   Salts::JsonParser
   Salts::XmlParser
   Salts::Crypto # installed static Crypto package, not a SaltsUtils export
-  Salts::Plugin
-  Salts::FS
-  Salts::Process
-  Salts::Playback
+  CMeta::Plugin
+  Salts::CFlowFS
+  Salts::CFlowProcess
   Salts::Mustache
   Salts::JinjaCMeta
   Salts::Unicode
@@ -135,7 +138,7 @@ cmake --build --preset linux-release-user
 ctest --preset linux-release-user --output-on-failure
 ```
 
-Both restore paths use authenticated `curl` against GitHub Packages NuGet v3 metadata. Salts.Native is fail-closed at the reviewed immutable `2.3.0-rc.17` baseline for this branch; re2c resolves the latest stable published tool package. No NuGet client, Mono, or `dotnet restore` participates in native dependency restore. Run restore before configure when updating dependencies; configure consumes the resolved SDK and does not download packages. An incompatible release must fail rather than select an older SDK. `-WithTurboWasm` (PowerShell) or the third argument `1` (Bash) also restores TurboWasm. The default local package directory is `stage/nuget`; `QIGAO_NUGET_PACKAGES` selects another cache. Package paths come from NuGet's resolved assets, so older cached versions do not affect selection. Local Windows/Linux Release presets use version-independent links at `stage/dependencies/salts/<RID>` and `stage/dependencies/re2c/<host-RID>`. Restore updates these links from NuGet's resolved assets (Windows junctions, Unix symbolic links), so an already running IDE can configure without inheriting new SDK environment variables. Existing non-link directories at these paths are rejected instead of overwritten. CI, Debug, and cross-compilation presets retain their explicit environment-root contract. The published Salts SDK contains Release libraries; use Release presets with it. Debug profiles require a matching Debug SDK. For Android, restore `android-arm64-v8a` as the target RID and the native host RID as the re2c RID before using the Android preset.
+Both restore paths use authenticated `curl` against GitHub Packages NuGet v3 metadata. `SaltsCore.Native` is fail-closed at exact `0.1.0` and `CMeta.Native` at exact `0.1.1`; re2c resolves the latest stable published tool package. No NuGet client, Mono, or `dotnet restore` participates in native dependency restore. Run restore before configure when updating dependencies; configure consumes the resolved SDKs and does not download packages. An incompatible release fails instead of selecting an older SDK. `-WithTurboWasm` (PowerShell) or the third Bash argument also restores TurboWasm. Local restore exposes version-independent `stage/dependencies/saltscore/<RID>` and `stage/dependencies/cmeta/<RID>` links plus the re2c host link. Existing non-link directories at these paths are rejected instead of overwritten. The published SDKs contain Release libraries; use matching Release profiles.
 
 ### Migrating from Salts 1.x
 
@@ -159,17 +162,17 @@ SaltsUtils exports the actual runtime and owns its internal dependency closure. 
 
 ### Plugin
 
-Plugin runtime ownership moved to Salts 1.8. SaltsUtils consumes
-`Salts::PluginABI` / `Salts::Plugin` for generated Plugin artifacts. Plugin
+Plugin runtime ownership is in the CMeta SDK. SaltsUtils consumes
+`CMeta::PluginABI` / `CMeta::Plugin` for generated Plugin artifacts. Plugin
 and CFlow remain independent; there is no public PluginCFlow subsystem.
 
 ### Filesystem
 
-`Salts::FS` provides bounded filesystem services, native watch support, and typed watch publishers. Public headers include `<salts/fs.h>`, `<salts/fs_watch.h>`, and `<salts/fs_watch_publisher.h>`.
+`Salts::CFlowFS` provides bounded filesystem services, native watch support, and typed watch publishers over SaltsCore `Salts::FS`. Public adapter headers are `<cflow/fs.h>`, `<cflow/fs_watch.h>`, and `<cflow/fs_watch_publisher.h>`.
 
 ### Process
 
-`Salts::Process` adapts Salts process ownership and CFlow-native pipes into bounded asynchronous standard-stream handling.
+`Salts::CFlowProcess` adapts SaltsCore process ownership and CFlow-native pipes into bounded asynchronous standard-stream handling through `<cflow/process.h>`.
 
 ### Mustache and Jinja CMeta
 
@@ -255,7 +258,7 @@ The eight CTest entries exercise installed generated messages, services and
 FlowMQ projections. The Binary consumer checks literal wire bytes, bounded
 output and decoded byte-buffer ownership after input reuse and codec destruction.
 The Producer, Plugin and public CMeta consumer projects also expose these presets.
-These consumer projects use `ci-native-release-user` with explicit `SALTS_ROOT`, `SALTS_UTILS_ROOT`,
+These consumer projects use `ci-native-release-user` with explicit `SALTSCORE_ROOT`, `CMETA_ROOT`, `SALTS_UTILS_ROOT`,
 `QIGAO_TARGET_TRIPLET` and `VCPKG_CACHE_REPOSITORY_ROOT` inputs. Each consumer selects
 that exact SDK; a cached package directory cannot select another installation.
 

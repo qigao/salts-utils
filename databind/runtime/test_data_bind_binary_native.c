@@ -5,7 +5,7 @@
 #include "tinytest.h"
 
 #include <cmeta/data.h>
-#include <cmeta_cmeta_data.h>
+#include <cmeta/core_data.h>
 #include <tstr.h>
 
 #include <stddef.h>

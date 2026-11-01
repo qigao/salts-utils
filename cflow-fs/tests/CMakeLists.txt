@@ -1,6 +1,6 @@
 cmake_add_test(cflow_fs_test
   SOURCES cflow_fs_test.c cflow_fs_init_failure_test.c
-  LIBS Salts::FS Salts::Platform
+  LIBS Salts::CFlowFS Salts::Platform
        Salts::TinyTest
   FOLDER "cflow-fs/tests")
 
@@ -11,7 +11,7 @@ set_target_properties(cflow_fs_test PROPERTIES
 
 cmake_add_test(cflow_fs_header_cpp_test
   SOURCES cflow_fs_header_cpp_test.cpp
-  LIBS Salts::FS Salts::TinyTest
+  LIBS Salts::CFlowFS Salts::TinyTest
   FOLDER "cflow-fs/tests")
 
 set_target_properties(cflow_fs_header_cpp_test PROPERTIES
@@ -21,7 +21,7 @@ set_target_properties(cflow_fs_header_cpp_test PROPERTIES
 
 cmake_add_test(cflow_fs_watch_test
   SOURCES cflow_fs_watch_test.c
-  LIBS Salts::FS Salts::Platform Salts::TinyTest
+  LIBS Salts::CFlowFS Salts::Platform Salts::TinyTest
   FOLDER "cflow-fs/tests")
 
 set_target_properties(cflow_fs_watch_test PROPERTIES
@@ -31,7 +31,7 @@ set_target_properties(cflow_fs_watch_test PROPERTIES
 
 cmake_add_test(cflow_fs_watch_publisher_test
   SOURCES cflow_fs_watch_publisher_test.c
-  LIBS Salts::FS Salts::Platform Salts::TinyTest
+  LIBS Salts::CFlowFS Salts::Platform Salts::TinyTest
   FOLDER "cflow-fs/tests")
 
 set_target_properties(cflow_fs_watch_publisher_test PROPERTIES

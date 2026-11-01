@@ -1,13 +1,13 @@
 # CFlowFS
 
-`Salts::FS` is the filesystem control-plane adapter between the
-synchronous `cmeta_fs` implementation and CFlow's bounded execution model. It
+`Salts::CFlowFS` is the filesystem control-plane adapter between SaltsCore's
+synchronous `Salts::FS` implementation and CFlow's bounded execution model. It
 is separate from `Salts::CFlow` so the portable kernel has no reverse
 dependency on filesystem policy or native watcher backends.
 
 The distinction is intentional:
 
-- `cmeta_fs_*` calls are synchronous and run on their caller;
+- `salts_fs_*` calls are synchronous and run on their caller;
 - `cflow_io_file` offset reads/writes use explicitly selected native IOCP or
   io_uring data-plane backends;
 - `cflow_fs_service` runs pathname operations on an explicitly bounded worker
@@ -16,7 +16,7 @@ The distinction is intentional:
 ## Example
 
 ```c
-#include <salts/fs.h>
+#include <cflow/fs.h>
 #include <salts/error_codes.h>
 #include <salts/thread.h>
 
@@ -28,7 +28,7 @@ static void completed(void *user, uint64_t id,
     *done = result == SALTS_OK ? 1 : -1;
 }
 
-int inspect_path(const char *path, cmeta_fs_stat_t *out) {
+int inspect_path(const char *path, salts_fs_stat_t *out) {
     cflow_fs_service service = {0};
     int done = 0;
     cflow_fs_config config = {1u, 8u, 1024u, completed, &done};
@@ -64,7 +64,7 @@ the service is quiescent before destruction.
 
 ## Filesystem watch
 
-`<salts/fs_watch.h>` exposes a native event source with fixed event, watch,
+`<cflow/fs_watch.h>` exposes a native event source with fixed event, watch,
 path, and kernel-buffer capacities. Windows uses overlapped
 `ReadDirectoryChangesW`, Linux uses one bounded inotify registration per
 directory for recursive mode, and macOS uses per-item FSEvents on a private
@@ -84,7 +84,7 @@ request a rescan rather than fabricating a precise rename or removal event.
 
 ## Typed watch Publisher
 
-`<salts/fs_watch_publisher.h>` adapts the same bounded native watcher directly to
+`<cflow/fs_watch_publisher.h>` adapts the same bounded native watcher directly to
 a `cflow_publisher`. Publication wakes an armed CFlow waitable from the backend
 thread; no polling loop and no per-watch helper thread are introduced. The
 Publisher can therefore be moved into `cflow_subscribe()` and used by identity or
@@ -95,7 +95,7 @@ does not need a second filesystem-specific input implementation.
 The output type and encoder are application-defined:
 
 ```c
-#include <salts/fs_watch_publisher.h>
+#include <cflow/fs_watch_publisher.h>
 #include <stdio.h>
 
 typedef struct file_change {

@@ -20,24 +20,13 @@ if (-not $full) {
   if ($LASTEXITCODE -ne 0) { throw 'Could not determine changed files' }
 }
 
-# Package-only work is safe to split only for this explicit, narrow allowlist.
-# CI scope selection, CMake/build files, headers/sources and unknown paths must
-# continue to select the full native graph. Release preparation always selects
-# the full six-RID matrix, regardless of which files changed.
-$packagingOnlyPath = '^(packaging/nuget/|cmake/ci/github_packages(_test)?\.py$|\.github/scripts/(test-release-asset-identity|verify-release-asset-identity)\.sh$|\.github/workflows/(sdk-package|native-sdk-release|release-from-actions)\.yml$)'
-$nonDocChanges = @($changed | Where-Object {
-  $_ -notmatch '^(docs/|.*\.md$|LICENSE$|NOTICE$|\.gitignore$|\.editorconfig$)'
-})
-$packagingOnly = $false
-if (-not $full -and $EventName -ne 'workflow_dispatch' -and $nonDocChanges.Count -gt 0) {
-  $packagingOnly = @($nonDocChanges | Where-Object {
-    $_ -notmatch $packagingOnlyPath
-  }).Count -eq 0
-}
-$native = $full -or ($nonDocChanges.Count -gt 0 -and -not $packagingOnly)
-$runPackagingContract = $packagingOnly -or @($changed | Where-Object {
-  $_ -match $packagingOnlyPath -or $_ -in @('cmake/ci/select-ci-scope.ps1', '.github/workflows/ci.yml')
-}).Count -gt 0
+# Documentation and release-packaging-only changes do not compile product
+# code. CMake/build files, headers/sources and unknown paths remain
+# conservative and select the full native graph. Manual release preparation
+# always selects every release RID.
+$nonNativePath = '^(docs/|.*\.md$|LICENSE$|NOTICE$|\.gitignore$|\.editorconfig$|packaging/nuget/|cmake/ci/github_packages(_test)?\.py$|\.github/scripts/(test-release-asset-identity|verify-release-asset-identity)\.sh$|\.github/workflows/(sdk-package|native-sdk-release)\.yml$)'
+$nativeChanges = @($changed | Where-Object { $_ -notmatch $nonNativePath })
+$native = $full -or $nativeChanges.Count -gt 0
 
 $profiles = @(
   @{ id='linux-release'; runner='ubuntu-24.04'; family='linux'; rid='linux-x64'; host='linux-x64'; triplet='x64-linux'; host_triplet='x64-linux'; preset='ci-native-release-user' },
@@ -70,8 +59,6 @@ $outputs = [ordered]@{
   tests = ConvertTo-Json -Depth 5 -Compress -InputObject @{ include = @($tests) }
   has_builds = ($builds.Count -gt 0).ToString().ToLowerInvariant()
   has_tests = ($tests.Count -gt 0).ToString().ToLowerInvariant()
-  packaging_only = $packagingOnly.ToString().ToLowerInvariant()
-  run_packaging_contract = $runPackagingContract.ToString().ToLowerInvariant()
 }
 foreach ($key in $outputs.Keys) {
   Write-Output "$key=$($outputs[$key])"

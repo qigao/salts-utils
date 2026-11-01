@@ -4,7 +4,7 @@
 #include "service_native.h"
 #include "native_service_projection.h"
 
-#include <cmeta_fs.h>
+#include <salts/fs.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -1412,16 +1412,16 @@ cleanup:
     if (stages != NULL) {
       size_t k;
       for (k = 0u; k < 4u; ++k)
-        if (stages[k] != NULL) (void)cmeta_fs_unlink(stages[k]);
+        if (stages[k] != NULL) (void)salts_fs_unlink(stages[k]);
     } else if (request != NULL && request->output != NULL)
-      (void)cmeta_fs_unlink(request->output);
+      (void)salts_fs_unlink(request->output);
     if (stages == NULL && config != NULL) {
       if (config->host_header_output != NULL)
-        (void)cmeta_fs_unlink(config->host_header_output);
+        (void)salts_fs_unlink(config->host_header_output);
       if (config->host_source_output != NULL)
-        (void)cmeta_fs_unlink(config->host_source_output);
+        (void)salts_fs_unlink(config->host_source_output);
       if (config->guest_header_output != NULL)
-        (void)cmeta_fs_unlink(config->guest_header_output);
+        (void)salts_fs_unlink(config->guest_header_output);
     }
   }
   wasm_buffer_destroy(&component_binary);

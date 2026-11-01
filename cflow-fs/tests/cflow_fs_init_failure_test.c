@@ -1,4 +1,4 @@
-#include <salts/fs.h>
+#include <cflow/fs.h>
 
 #include <cflow/executor.h>
 #define TINYTEST_NO_MAIN

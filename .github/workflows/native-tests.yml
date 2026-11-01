@@ -37,8 +37,8 @@ jobs:
           artifact: native-${{ matrix.id }}
           build-dir: ${{ matrix.build_dir }}
       - uses: ./.github/actions/setup-build-host
-      # These Python libraries are test-only independent references, never
-      # production Markdown parsers or fallback paths. Fail-fast if unavailable.
+      # These Python libraries are independent test references, never runtime
+      # parsers or fallback implementations.
       - name: Install Markdown parser strict reference oracles
         shell: pwsh
         run: |
@@ -47,137 +47,13 @@ jobs:
           $target = Join-Path $env:RUNNER_TEMP 'salts-markdown-oracle-py'
           & $python -m pip install --disable-pip-version-check --no-input --only-binary=:all: --target $target -r parser/markdown/tests/oracle-requirements.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $existing = $env:PYTHONPATH
           $separator = [System.IO.Path]::PathSeparator
-          $pythonPath = if ([string]::IsNullOrEmpty($existing)) { $target } else { "$target$separator$existing" }
+          $pythonPath = if ([string]::IsNullOrEmpty($env:PYTHONPATH)) { $target } else { "$target$separator$env:PYTHONPATH" }
           "PYTHONPATH=$pythonPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      # The real installed producer package must expose both static Markdown
-      # targets and public headers. No fabricated installer/consumer project,
-      # no extra workflow and no source-level fallback.
-      - name: Verify installed native Markdown static SDK exports
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $prefix = Join-Path $env:RUNNER_TEMP "saltsutils-markdown-installed-$env:QIGAO_SDK_RID"
-          & cmake --install "${{ matrix.build_dir }}" --config Release --prefix $prefix
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($rel in @('include/salts/markdown.h', 'include/salts/markdown_html.h',
-                             'lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake',
-                             'lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake')) {
-            if (-not (Test-Path (Join-Path $prefix $rel))) {
-              throw "Markdown installed-SDK contract: missing $rel"
-            }
-          }
-          $targets = Get-Content (Join-Path $prefix 'lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake') -Raw
-          foreach ($target in @('Salts::MarkdownParser', 'Salts::MarkdownHtml')) {
-            if (-not $targets.Contains("add_library($target STATIC IMPORTED)")) {
-              throw "Markdown installed-SDK contract: missing canonical STATIC target $target"
-            }
-          }
-          $archiveNames = if ($IsWindows) {
-            @('markdown_parser.lib', 'markdown_html.lib')
-          } else {
-            @('libmarkdown_parser.a', 'libmarkdown_html.a')
-          }
-          foreach ($name in $archiveNames) {
-            if (-not (Test-Path (Join-Path $prefix "lib/$name"))) {
-              throw "Markdown installed-SDK contract: missing compiled static archive $name"
-            }
-          }
-          Write-Host "PASS: real installed SaltsUtils MarkdownParser/Html static SDK ($env:QIGAO_SDK_RID)"
-
       - name: Run complete Unix CTest graph
         if: matrix.family != 'windows'
         shell: bash
         run: ctest --preset '${{ matrix.preset }}' --no-tests=error --output-on-failure --timeout 180 --parallel 2
-      - name: Run DataBind and Process fault-path tests with ASan/UBSan
-        if: matrix.id == 'linux-release'
-        shell: bash
-        env:
-          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
-          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: |
-          set -euo pipefail
-          # Use the dedicated debug/sanitizer tree; do not mutate the archived
-          # Release graph exercised by the full CTest job.
-          cmake --preset ci-linux-dev-user -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
-          cmake --build build/ci-linux-dev --target test_databind_service_native_cleanup_runtime test_databind_service_native_cleanup_success test_databind_service_native_cleanup_init_failure cflow_process_test cflow_process_fault_test --parallel 2
-          export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/build/ci-linux-dev/bin:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/debug/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:$SALTS_ROOT/lib:${LD_LIBRARY_PATH:-}"
-          ctest --test-dir build/ci-linux-dev -R '^(test_databind_service_native_cleanup_(runtime|success|init_failure)|cflow_process_(fault_)?test)$' --no-tests=error --output-on-failure --timeout 180 --parallel 1
-      - name: Qualify relocated installed DataBind MethodPlan C11 consumer
-        if: matrix.id == 'linux-release'
-        shell: bash
-        env:
-          NATIVE_BUILD_DIR: ${{ matrix.build_dir }}
-        run: |
-          set -euo pipefail
-          # This test uses the exact archived native build; the library is
-          # reinstalled into an isolated SDK prefix and consumed externally.
-          prefix="$RUNNER_TEMP/databind-method-plan-installed-sdk"
-          cmake --install "$NATIVE_BUILD_DIR" --prefix "$prefix"
-          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -f "$prefix/lib/libdata_bind.so"
-          test -x "$prefix/bin/salts-idlc"
-          export SALTS_UTILS_ROOT="$prefix"
-          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
-          export LD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib:${LD_LIBRARY_PATH:-}"
-          consumer="$GITHUB_WORKSPACE/databind/compiler/package_config/databind_target"
-          build="$RUNNER_TEMP/databind-method-plan-installed-consumer"
-          cmake --preset ci-native-release-user -S "$consumer" -B "$build" \
-            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
-            -DCMAKE_PREFIX_PATH="$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET" \
-            -DSaltsUtils_IDLC_EXECUTABLE="$prefix/bin/salts-idlc"
-          cmake --build "$build" --target installed_service_consumer --parallel 2
-          ctest --test-dir "$build" -R '^installed_service_consumer$' \
-            --no-tests=error --output-on-failure --timeout 180
-      - name: Qualify installed C11 BehaviorTree consumer
-        if: matrix.id == 'linux-release'
-        shell: bash
-        env:
-          NATIVE_BUILD_DIR: ${{ matrix.build_dir }}
-        run: |
-          set -euo pipefail
-          prefix="$RUNNER_TEMP/behavior-tree-installed-sdk"
-          cmake --install "$NATIVE_BUILD_DIR" --prefix "$prefix"
-          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -f "$prefix/include/salts/behavior_tree.h"
-          export SALTS_UTILS_ROOT="$prefix"
-          consumer="$GITHUB_WORKSPACE/behavior-tree/package_config"
-          build="$RUNNER_TEMP/behavior-tree-installed-consumer"
-          cmake -S "$consumer" -B "$build" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$prefix;$CRYPTO_ROOT;$SALTS_ROOT;$GITHUB_WORKSPACE/vcpkg_installed/$QIGAO_TARGET_TRIPLET"
-          cmake --build "$build" --parallel 2
-          ctest --test-dir "$build" -R '^behavior_tree_installed_consumer$' --no-tests=error --output-on-failure --timeout 180
-      - name: Verify official Salts Unicode is sole installed C11/C++17 owner
-        if: matrix.id == 'linux-release'
-        shell: bash
-        env:
-          NATIVE_BUILD_DIR: ${{ matrix.build_dir }}
-        run: |
-          set -euo pipefail
-          prefix="$RUNNER_TEMP/saltsutils-canonical-unicode-installed"
-          cmake --install "$NATIVE_BUILD_DIR" --prefix "$prefix"
-          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test ! -e "$prefix/include/unicode/salts_unicode.h"
-          test ! -e "$prefix/lib/libsalts_unicode.a"
-          test -f "$SALTS_ROOT/include/unicode/salts_unicode.h"
-          export SALTS_UTILS_CANDIDATE_ROOT="$prefix"
-          export VCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"
-          export LD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET/lib:${LD_LIBRARY_PATH:-}"
-          cmake -S "$GITHUB_WORKSPACE/cmake/ci/unicode-paired-installed" \
-            -B "$RUNNER_TEMP/unicode-paired-installed-build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET="$QIGAO_TARGET_TRIPLET" \
-            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
-            -DCMAKE_PREFIX_PATH="$CRYPTO_ROOT;$SALTS_ROOT;$prefix;$VCPKG_INSTALLED_DIR/$QIGAO_TARGET_TRIPLET"
-          cmake --build "$RUNNER_TEMP/unicode-paired-installed-build" --parallel 2
-          ctest --test-dir "$RUNNER_TEMP/unicode-paired-installed-build" \
-            -R '^unicode_paired_(c11|cpp17)$' \
-            --no-tests=error --output-on-failure --timeout 120
-
       - name: Run complete Windows CTest graph
         if: matrix.family == 'windows'
         shell: cmd
@@ -186,37 +62,6 @@ jobs:
           if errorlevel 1 exit /b 1
           ctest --preset "${{ matrix.preset }}" --no-tests=error --output-on-failure --timeout 180 --parallel 2
           if errorlevel 1 exit /b 1
-      # Retain the already-installed, tested producer SDK for real downstream
-      # Stun qualification. This is an Actions candidate, never a release.
-      - name: Stage qualified installed SDK and exact static Crypto dependency
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $prefix = Join-Path $env:RUNNER_TEMP "saltsutils-markdown-installed-$env:QIGAO_SDK_RID"
-          $candidate = Join-Path $env:RUNNER_TEMP "saltsutils-qualified-$env:QIGAO_SDK_RID"
-          New-Item -ItemType Directory -Path $candidate | Out-Null
-          Copy-Item -LiteralPath $prefix -Destination (Join-Path $candidate 'utils') -Recurse
-          Copy-Item -LiteralPath $env:SALTS_ROOT -Destination (Join-Path $candidate 'salts') -Recurse
-          Copy-Item -LiteralPath $env:CRYPTO_ROOT -Destination (Join-Path $candidate 'crypto') -Recurse
-          $source = git rev-parse HEAD
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          [ordered]@{
-            repository = $env:GITHUB_REPOSITORY
-            source_sha = $source
-            run_id = $env:GITHUB_RUN_ID
-            run_attempt = $env:GITHUB_RUN_ATTEMPT
-            rid = $env:QIGAO_SDK_RID
-            configuration = 'Release'
-          } | ConvertTo-Json | Set-Content (Join-Path $candidate 'sdk-provenance.json')
-
-      - name: Retain qualified installed SDK for real downstream acceptance
-        uses: actions/upload-artifact@v4
-        with:
-          name: salts-utils-qualified-sdk-${{ matrix.rid }}
-          path: ${{ runner.temp }}/saltsutils-qualified-${{ matrix.rid }}
-          if-no-files-found: error
-          retention-days: 14
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:

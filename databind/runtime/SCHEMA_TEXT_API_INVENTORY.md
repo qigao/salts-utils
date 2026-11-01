@@ -37,7 +37,6 @@ The source searches for both `data_bind_create` and `data_bind_create_from_text`
 ### Generated/public source path
 
 - `databind/compiler/templates/c/c_typed_source.mustache`: generated `*_codec_create()` embeds schema text and calls `data_bind_create_from_text`. This is the primary generated-code contract to replace with compiled/embedded metadata; otherwise every generated consumer still asks runtime to parse IDL.
-- `databind/compiler/package_config/databind_public/main.c`: installed public API smoke.
 - `cmake/ci/probe_monocypher_odr.c`: runtime symbol/DSO admission probe; it checks that the public API symbol is present.
 
 ### Runtime benchmarks and tests

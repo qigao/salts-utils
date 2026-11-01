@@ -3,9 +3,8 @@
 This source graph is a **selection of canonical implementations**, not a
 fallback, fork, second provider or compatibility implementation.
 
-Configure `-DSALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET=ON` with one installed
-Salts 3 / SaltsCore and the canonical Crypto package. Only these targets are
-built and installed:
+Configure `-DSALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET=ON` with exact installed
+SaltsCore and CMeta SDKs. The selected graph exposes these capabilities:
 
 - `Salts::QueryVM`
 - `Salts::JsonParser`, `Salts::JsonCSerdeAdapter`
@@ -14,12 +13,13 @@ built and installed:
 - `Salts::Process`
 
 The application CFlow executor and CMeta type/Configurator/Interceptor are
-owned exclusively by the imported Salts package. The OS Process/NativeIO
-owners remain SaltsCore/SaltsUtils as declared by those packages.
+owned exclusively by the imported CMeta package. OS Process/NativeIO owners
+remain in SaltsCore; SaltsUtils only adds the selected higher-level adapters.
 
 The JSON object-key hash is a parser-private exact implementation of its own
 key-index fingerprint, replacing the previous incidental `hash_bytes`
-link against removed `Salts::CSTL`. No generic hash map is built or exported.
+link against CSTL (whose canonical target is now `CMeta::CSTL`). No generic
+hash map is built or exported.
 The full SaltsUtils graph is unchanged when the native subset is disabled.
 
 No legacy C++ WorkflowExecutor, script bindings, DataBind, Capture, Serial,
