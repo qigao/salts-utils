@@ -82,3 +82,9 @@
   every version of the former `SaltsUtils.Native` package were deleted before
   this restart. Do not infer an available legacy package from old documentation
   or cached package metadata.
+- Every release RID must use the full canonical `ci-native-release-user` SDK
+  graph and its `build/ci-sdk/<RID>` / `stage/sdk/<RID>` layout. The reduced
+  C11 preset can compile and install successfully, but it omits public DataBind
+  headers such as `data_bind_binding_plan.h`; it is a local subset gate, not a
+  publishable RID. A standalone reduced layout also makes provenance fail only
+  after installation, so do not weaken either the path or payload checks.

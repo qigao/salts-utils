@@ -41,7 +41,8 @@ Ninja 状态、vcpkg 安装目录或还原的 Native SDK。
 
 普通 CI 覆盖 Linux x64、Windows x64、macOS arm64 Release 构建与测试，
 以及 Android arm64-v8a 交叉构建。
-发布准备额外加入 Linux arm64 Release；该平台只执行安装 SDK 门禁。
+发布准备额外加入 Linux arm64 Release；该平台构建并安装完整公开 SDK 图，但不重复
+执行 CTest。
 交叉编译成功不代表移动设备运行测试通过。Release 与 sanitizer 使用独立构建树。
 Windows 使用共享 `setup-llvm-mingw` action 提供的 LLVM-MinGW UCRT 工具链，且
 obfuscator 固定关闭；macOS 使用 Apple Clang。构建与测试使用同一 ABI 工具链。

@@ -71,6 +71,10 @@ try {
   if (@($releaseBuilds | Where-Object { $_.family -eq 'ios' }).Count -ne 0) {
     throw 'release selector must not emit iOS without matching dependency SDKs'
   }
+  $linuxArm64 = @($releaseBuilds | Where-Object { $_.rid -eq 'linux-arm64' })
+  if ($linuxArm64.Count -ne 1 -or $linuxArm64[0].preset -ne 'ci-native-release-user') {
+    throw 'Linux arm64 release must install the full public SDK graph'
+  }
   $windows = @($releaseBuilds | Where-Object { $_.family -eq 'windows' })
   if ($windows.Count -ne 1 -or
       $windows[0].triplet -ne 'qigao-x64-windows-llvm-mingw' -or

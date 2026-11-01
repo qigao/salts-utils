@@ -35,7 +35,7 @@ $profiles = @(
   @{ id='android-release'; runner='ubuntu-24.04'; family='android'; rid='android-arm64'; host='linux-x64'; triplet='arm64-android'; host_triplet='x64-linux'; preset='ci-android-sdk-release-user' }
 )
 if ($releaseQualification) {
-  $profiles += @{ id='linux-arm64-release'; runner='ubuntu-24.04-arm'; family='linux'; rid='linux-arm64'; host='linux-arm64'; triplet='arm64-linux'; host_triplet='arm64-linux'; preset='ci-native-minimal-release-user' }
+  $profiles += @{ id='linux-arm64-release'; runner='ubuntu-24.04-arm'; family='linux'; rid='linux-arm64'; host='linux-arm64'; triplet='arm64-linux'; host_triplet='arm64-linux'; preset='ci-native-release-user' }
 }
 $builds = @()
 $tests = @()
@@ -49,7 +49,7 @@ if ($native) {
     }
     if (-not $profile.ContainsKey('sysroot')) { $profile.sysroot = '' }
     $builds += $profile
-    # Native CTests remain Linux x64, Windows x64 and macOS; Linux arm64 is an installed SDK gate.
+    # Native CTests remain Linux x64, Windows x64 and macOS; Linux arm64 is a full installed SDK gate.
     if (-not $profile.cross -and $profile.id -ne 'linux-arm64-release') { $tests += $profile }
   }
 }
