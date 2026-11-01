@@ -33,9 +33,9 @@
 #include <xml_parser/xml_parser.h>
 #include <xml_parser/xml_sax.h>
 #include <query_vm.h>
-#include <salts/fs.h>
+#include <fs.h>
 #include <tstr.h>
-#include <salts/thread.h>
+#include <thread.h>
 #include <cmeta_uuid.h>
 #include <cstl.h>
 #include <cstl/typed.h>

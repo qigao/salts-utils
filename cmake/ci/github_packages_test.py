@@ -21,7 +21,7 @@ from github_packages import (
 )
 
 
-def saltscore_files(rids, missing_target=None):
+def saltscore_files(rids, missing_target=None, extra_target=None):
     files = {}
     targets = ["Salts::Core", "Salts::FS", "Salts::Process",
                "Salts::USB", "Salts::Unicode"]
@@ -30,6 +30,8 @@ def saltscore_files(rids, missing_target=None):
         targets.remove(missing_target)
     if missing_target in crypto_targets:
         crypto_targets.remove(missing_target)
+    if extra_target:
+        targets.append(extra_target)
     for rid in rids:
         prefix = f"sdk/{rid}/"
         files.update({
@@ -38,11 +40,11 @@ def saltscore_files(rids, missing_target=None):
                 " ".join(targets),
             prefix + "lib/cmake/Crypto/CryptoTargets.cmake":
                 " ".join(crypto_targets),
-            prefix + "include/salts_core/runtime_abi.h": "",
-            prefix + "include/salts/fs.h": "",
-            prefix + "include/salts/process.h": "",
+            prefix + "include/runtime_abi.h": "",
+            prefix + "include/fs.h": "",
+            prefix + "include/process.h": "",
             prefix + "include/cflow/usb.h": "",
-            prefix + "include/salts_unicode.h": "",
+            prefix + "include/unicode.h": "",
         })
     return files
 
@@ -158,10 +160,10 @@ class PackageTests(unittest.TestCase):
         self.assertFalse((self.root / "outside").exists())
 
     def test_exact_split_sdks_and_re2c_environment_are_fail_closed(self):
-        self.feed.add("SaltsCore.Native", "0.1.0",
+        self.feed.add("SaltsCore.Native", "0.1.2",
                       saltscore_files(("linux-x64",)))
-        self.feed.add("CMeta.Native", "0.1.2",
-                      cmeta_files(("linux-x64",), "0.1.2"))
+        self.feed.add("CMeta.Native", "0.1.3",
+                      cmeta_files(("linux-x64",), "0.1.3"))
         self.feed.add("Qigao.Re2c.Binary", "1.0.0", {
             "tools/linux-x64/bin/re2c": "#!/bin/sh\nexit 0\n",
             "tools/linux-x64/share/re2c/stdlib/unicode_categories.re": "",
@@ -180,8 +182,8 @@ class PackageTests(unittest.TestCase):
                       return_value=("1.0.0", self.root / "re2c")):
             restore_native_sdk(args, self.packages)
         values = env.read_text()
-        self.assertIn("SALTSCORE_VERSION=0.1.0", values)
-        self.assertIn("CMETA_VERSION=0.1.2", values)
+        self.assertIn("SALTSCORE_VERSION=0.1.2", values)
+        self.assertIn("CMETA_VERSION=0.1.3", values)
         self.assertIn("SALTSCORE_ROOT=", values)
         self.assertIn("CMETA_ROOT=", values)
         self.assertIn("RE2C_ROOT=", values)
@@ -233,14 +235,28 @@ class PackageTests(unittest.TestCase):
         version = "0.1.0"
         self.feed.add("SaltsCore.Native", version, saltscore_files(
             ("linux-x64",), missing_target="Salts::Crypto"))
-        self.feed.add("CMeta.Native", "0.1.2",
-                      cmeta_files(("linux-x64",), "0.1.2"))
+        self.feed.add("CMeta.Native", "0.1.3",
+                      cmeta_files(("linux-x64",), "0.1.3"))
         args = argparse.Namespace(
             packages=self.root / "missing-crypto", salts_rid="linux-x64",
             host_rid="linux-x64", with_turbowasm=False,
-            saltscore_version=version, cmeta_version="0.1.2",
+            saltscore_version=version, cmeta_version="0.1.3",
             require_component_runtime=False, result=None)
         with self.assertRaisesRegex(ValueError, "missing target Salts::Crypto"):
+            restore_native_sdk(args, self.packages)
+
+    def test_split_saltscore_rejects_migrated_simd_export(self):
+        version = "0.1.2"
+        self.feed.add("SaltsCore.Native", version, saltscore_files(
+            ("linux-x64",), extra_target="Salts::SIMD"))
+        self.feed.add("CMeta.Native", "0.1.3",
+                      cmeta_files(("linux-x64",), "0.1.3"))
+        args = argparse.Namespace(
+            packages=self.root / "duplicate-simd", salts_rid="linux-x64",
+            host_rid="linux-x64", with_turbowasm=False,
+            saltscore_version=version, cmeta_version="0.1.3",
+            require_component_runtime=False, result=None)
+        with self.assertRaisesRegex(ValueError, "still exports migrated target Salts::SIMD"):
             restore_native_sdk(args, self.packages)
 
     def test_exact_abi_cache_conversion_and_prefix(self):

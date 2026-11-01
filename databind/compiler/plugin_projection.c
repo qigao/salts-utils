@@ -2,7 +2,7 @@
 
 #include "service_native.h"
 #include "native_service_projection.h"
-#include "salts/fs.h"
+#include "fs.h"
 
 #include <cmeta/plugin.h>
 

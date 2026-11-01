@@ -1,7 +1,7 @@
 /* #181 bounded root blockquote lazy-continuation conformance.
  * Official example IDs remain independently gated against spec.txt. */
-#include <salts/markdown.h>
-#include <salts/markdown_html.h>
+#include <markdown.h>
+#include <markdown_html.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

@@ -11,7 +11,7 @@ add_custom_command(
   VERBATIM)
 
 set(CRON_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/salts_cron.c ${CRON_LEXER_GEN})
-set(CRON_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include/salts_cron.h)
+set(CRON_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include/cron.h)
 
 add_library(${TARGET_NAME} STATIC  ${CRON_SOURCES} ${CRON_HEADERS})
 

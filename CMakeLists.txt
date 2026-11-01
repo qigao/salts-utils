@@ -10,7 +10,7 @@ endif()
 # graph does not configure the unrelated legacy data/UI/serial systems, and
 # does not provide alternate sources for any selected module.
 option(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET
-       "Build only the native C11 QueryVM/JsonParser/CYaml/BehaviorTree/Process providers"
+       "Build only the native C11 QueryVM/JsonParser/CYaml/BehaviorTree providers"
        OFF)
 if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
   set(_salts_utils_languages C)
@@ -59,6 +59,12 @@ endif()
 
 if(BUILD_TESTS)
   enable_testing()
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(
+    NAME saltsutils.github_packages_contract
+    COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ci/github_packages_test.py")
+  set_tests_properties(saltsutils.github_packages_contract PROPERTIES TIMEOUT 60)
 endif()
 include(Sanitizers)
 include(CmakeUtils)
@@ -112,6 +118,15 @@ unset(_crypto_imported)
 
 add_subdirectory(tools)
 include(FindTools)
+
+# TinyTest remains owned by SaltsCore and CMeta metadata remains owned by the
+# independent CMeta SDK. SaltsUtils owns only the reflected mock and SIMD
+# execution layers built on those canonical dependencies.
+if(NOT TARGET Salts::TinyTest)
+  message(FATAL_ERROR "Canonical SaltsCore Salts::TinyTest owner is required")
+endif()
+add_subdirectory(tinymock)
+add_subdirectory(simd)
 if(NOT SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
   add_subdirectory(vendor)
 endif()
@@ -121,15 +136,11 @@ if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
   add_subdirectory(parser/query_vm)
   add_subdirectory(parser/json_parser)
   add_subdirectory(parser/cyaml)
-  add_subdirectory(cflow-fs)
-  add_subdirectory(cflow-process)
   add_subdirectory(behavior-tree)
 else()
   add_subdirectory(parser)
   add_subdirectory(bindings)
   add_subdirectory(tools/junit_to_html)
-  add_subdirectory(cflow-fs)
-  add_subdirectory(cflow-process)
   add_subdirectory(behavior-tree)
   add_subdirectory(cron)
   add_subdirectory(mustache)

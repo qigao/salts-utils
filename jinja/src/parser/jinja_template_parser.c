@@ -8,7 +8,7 @@ typedef struct JINJA_TEMPLATE_NODE JINJA_TEMPLATE_NODE;
 #include <cstl/vec_alloc.h>
 #include "jinja_template_lexer.h"
 #include "jinja_expression_grammar_gen.h"
-#include <salts_unicode.h>
+#include <unicode.h>
 #include <stdlib.h>
 #include <string.h>
 #include <cstl/typed.h>

@@ -20,7 +20,7 @@
 #include <cmeta/core_data.h>
 #include <cmeta/core_fixed_width.h>
 #include "tbe_error.h"
-#include "salts/fs.h"
+#include "fs.h"
 #include "cmeta_uuid.h"
 #include <tstr.h>
 #include <cmeta/scope.h>

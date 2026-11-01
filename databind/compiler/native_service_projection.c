@@ -2,7 +2,7 @@
 
 #include "service_native.h"
 #include "native_source_ir.h"
-#include "salts/fs.h"
+#include "fs.h"
 
 #include <ctype.h>
 #include <stdio.h>

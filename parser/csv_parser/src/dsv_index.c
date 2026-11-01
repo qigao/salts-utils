@@ -2,7 +2,7 @@
 
 #include "csv_grammar_gen.h"
 #include "csv_lexer.h"
-#include <salts/fs.h>
+#include <fs.h>
 #include <cmeta_mmap.h>
 #include <tstr.h>
 #include <cstl/hash_map.h>

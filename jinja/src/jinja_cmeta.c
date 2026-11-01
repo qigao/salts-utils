@@ -13,7 +13,7 @@ typedef struct JINJA_BLOCK_NAME JINJA_BLOCK_NAME;
 #include "jinja_cmeta_internal.h"
 #include "jinja_cmeta_artifact.h"
 #include "jinja_cmeta_environment.h"
-#include <salts_unicode.h>
+#include <unicode.h>
 #include "jinja_expression_parser.h"
 #include "jinja_expression_grammar_gen.h"
 #include "jinja_template_lexer.h"

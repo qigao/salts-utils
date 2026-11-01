@@ -1,5 +1,5 @@
-#include "salts_cron.h"
-#include "salts/thread.h"
+#include "cron.h"
+#include "thread.h"
 
 #include <stdio.h>
 

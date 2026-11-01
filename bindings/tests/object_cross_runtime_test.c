@@ -1,5 +1,5 @@
-#include <salts/bindings/lua/cmeta.h>
-#include <salts/bindings/quickjs/cmeta.h>
+#include <bindings/lua/cmeta.h>
+#include <bindings/quickjs/cmeta.h>
 
 #include <cmeta/invokable.h>
 #include <cmeta/object.h>

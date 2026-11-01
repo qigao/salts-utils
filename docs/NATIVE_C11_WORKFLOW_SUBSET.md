@@ -10,11 +10,10 @@ SaltsCore and CMeta SDKs. The selected graph exposes these capabilities:
 - `Salts::JsonParser`, `Salts::JsonCSerdeAdapter`
 - `Salts::CYaml`, `Salts::CYamlJsonAdapter`
 - `Salts::BehaviorTree`
-- `Salts::Process`
 
 The application CFlow executor and CMeta type/Configurator/Interceptor are
 owned exclusively by the imported CMeta package. OS Process/NativeIO owners
-remain in SaltsCore; SaltsUtils only adds the selected higher-level adapters.
+remain in SaltsCore; their former SaltsUtils adapters are not part of this subset.
 
 The JSON object-key hash is a parser-private exact implementation of its own
 key-index fingerprint, replacing the previous incidental `hash_bytes`

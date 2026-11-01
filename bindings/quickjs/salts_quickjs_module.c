@@ -1,4 +1,4 @@
-#include <salts/bindings/quickjs/module.h>
+#include <bindings/quickjs/module.h>
 #include <limits.h>
 #include <stdlib.h>
 

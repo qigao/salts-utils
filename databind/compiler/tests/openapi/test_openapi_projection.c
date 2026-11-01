@@ -3,7 +3,7 @@
 #include "projection.h"
 
 #include "json_parser.h"
-#include "salts/fs.h"
+#include "fs.h"
 #include "tinytest.h"
 
 #include <stdlib.h>

@@ -32,7 +32,7 @@ cmake_config_target(${TARGET_NAME}
 install(TARGETS ${TARGET_NAME}
   EXPORT SaltsUtilsTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/salts_selector.h DESTINATION include/selector)
+install(FILES include/selector.h DESTINATION include/selector)
 
 if(BUILD_TESTS)
   cmake_add_test(test_salts_selector

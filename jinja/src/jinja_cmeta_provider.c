@@ -13,7 +13,7 @@
 #include <cmeta/core_data.h>
 #include <cmeta/object_scope.h>
 #include <cmeta/scope.h>
-#include <salts_unicode.h>
+#include <unicode.h>
 #include <tstr.h>
 
 #include <errno.h>

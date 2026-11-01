@@ -3,7 +3,7 @@
  * It verifies every node and source/metadata byte, not just parse success.
  * It is NOT a full CommonMark/GFM HTML conformance runner.
  */
-#include <salts/markdown.h>
+#include <markdown.h>
 
 #include <stdint.h>
 #include <stdio.h>

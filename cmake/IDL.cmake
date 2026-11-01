@@ -16,10 +16,11 @@ function(_saltsutils_idl_resolve_compiler
          out_saltscore_root out_cmeta_root)
   set(_idlc_requires_host_tool ${CMAKE_CROSSCOMPILING})
   if(CMAKE_HOST_SYSTEM_NAME STREQUAL CMAKE_SYSTEM_NAME AND
-     CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL CMAKE_SYSTEM_PROCESSOR)
-    # llvm-mingw reports cross-compiling because it selects a Windows
-    # toolchain explicitly, even when the generated executable matches the
-    # Windows host architecture and is directly runnable.
+     (NOT CMAKE_SYSTEM_PROCESSOR OR
+      CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL CMAKE_SYSTEM_PROCESSOR))
+    # The shared native LLVM toolchain leaves CMAKE_SYSTEM_PROCESSOR unset;
+    # llvm-mingw provides it. Matching every known target field is sufficient
+    # to establish that the generated compiler can run on this host.
     set(_idlc_requires_host_tool FALSE)
   endif()
   if(SaltsUtils_IDLC_EXECUTABLE)

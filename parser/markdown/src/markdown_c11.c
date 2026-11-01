@@ -1,5 +1,5 @@
-#include <salts/markdown.h>
-#include <salts_unicode.h>
+#include <markdown.h>
+#include <unicode.h>
 #include <vstr.h>
 #include "markdown_entities.h"
 

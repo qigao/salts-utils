@@ -1,4 +1,4 @@
-#include <salts/bindings/lua/cmeta.h>
+#include <bindings/lua/cmeta.h>
 
 #include <cmeta/cmeta.h>
 #include <cmeta/data.h>

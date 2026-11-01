@@ -3,8 +3,8 @@
 #include <cmeta/service_host_abi.h>
 #include <cmeta/plugin.h>
 #include <cmeta/service_host.h>
-#include <salts/thread.h>
-#include <salts/clock.h>
+#include <thread.h>
+#include <clock.h>
 
 #include <stdio.h>
 #include <stdint.h>

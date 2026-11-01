@@ -5,7 +5,7 @@
 #include "message_native.h"
 #include "opaque_plan_codegen.h"
 
-#include "salts/fs.h"
+#include "fs.h"
 #include "cmeta_uuid.h"
 
 #include <stdint.h>

@@ -1,5 +1,5 @@
-#include <salts/behavior_tree.h>
-#include <salts/clock.h>
+#include <behavior_tree.h>
+#include <clock.h>
 
 #include <stdint.h>
 #include <stdlib.h>

@@ -74,7 +74,7 @@
 | 类型化格式化与字符串格式化追加 | 项目 [`fmt.h`](../salts/utils/include/fmt.h)；复用其 `tstr`/`vstr` 集成，不另写格式化器或固定临时缓冲区拼接链 |
 | 诊断日志 | [`tlog.h`](../salts/utils/include/tlog.h) + `logging-guide`；不另建日志系统，不用 `printf`/`fprintf` 代替业务诊断日志 |
 | 有限泛型、Reflection、traits、接口与类型化调用 | [CMeta](../salts/cmeta/README.md) + `cmeta`；链接 `Salts::CMeta`，复用统一声明和描述符，不另建反射或类型系统 |
-| RAII 与结构化资源清理 | CMeta 的 [scope](../salts/cmeta/include/cmeta/scope.h)、[ObjectRef scope](../salts/cmeta/include/cmeta/object_scope.h) 和 Plugin 的 [lease scope](../salts/plugin/include/salts/plugin_scope.h)；按资源归属选入口 |
+| RAII 与结构化资源清理 | CMeta 的 [scope](../salts/cmeta/include/cmeta/scope.h)、[ObjectRef scope](../salts/cmeta/include/cmeta/object_scope.h) 和 Plugin 的 [lease scope](../salts/plugin/include/plugin_scope.h)；按资源归属选入口 |
 | 动态模块发布、发现、契约校验与生命周期 | [Plugin](../salts/plugin/README.md) + `plugin-system`；发布方用 `Salts::PluginABI`，宿主运行时用 `Salts::Plugin` |
 | 标准容器与 Stream facade | `cstl`；通过公开 typed/raw 入口复用，不手写已有动态数组、哈希表或双端队列 |
 | buffer、arena/slab/object pool、ring/queue | `memory-design-protocols`；按生命周期、线程拓扑与消费语义选已有原语 |
@@ -102,9 +102,9 @@
 
 ### Plugin：声明发布与模块生命周期
 
-- **声明和发布分层**：[`cmeta/plugin.h`](../salts/cmeta/include/cmeta/plugin.h) 的 `cmeta_plugin`、`cmeta_provides`、`cmeta_requires` 描述接口能力关系，属于静态反射元数据，不自动加载模块或解析依赖。真正发布 Function/Interface export 使用 [`salts/plugin_decl.h`](../salts/plugin/include/salts/plugin_decl.h) 的显式声明，复用 CMeta 精确签名和 Interface carrier。
-- **导出聚合**：默认使用显式 export 表；需要跨 TU 分片时评估 [`plugin_linker.h`](../salts/plugin/include/salts/plugin_linker.h)，遵守平台支持、实际链接、预期数量及按 ID 查找的契约，不另建 constructor 驱动的全局注册表。
-- **宿主运行时**：[`salts/plugin.h`](../salts/plugin/include/salts/plugin.h) 提供 manifest/ABI/contract 校验、动态加载、registry、启动、lease 获取释放、停止、quiescence 检查和卸载。registry 是模块与 lease 状态的事实源；只有满足终止与无在途使用条件才可卸载。
+- **声明和发布分层**：[`cmeta/plugin.h`](../salts/cmeta/include/cmeta/plugin.h) 的 `cmeta_plugin`、`cmeta_provides`、`cmeta_requires` 描述接口能力关系，属于静态反射元数据，不自动加载模块或解析依赖。真正发布 Function/Interface export 使用 [`salts/plugin_decl.h`](../salts/plugin/include/plugin_decl.h) 的显式声明，复用 CMeta 精确签名和 Interface carrier。
+- **导出聚合**：默认使用显式 export 表；需要跨 TU 分片时评估 [`plugin_linker.h`](../salts/plugin/include/plugin_linker.h)，遵守平台支持、实际链接、预期数量及按 ID 查找的契约，不另建 constructor 驱动的全局注册表。
+- **宿主运行时**：[`salts/plugin.h`](../salts/plugin/include/plugin.h) 提供 manifest/ABI/contract 校验、动态加载、registry、启动、lease 获取释放、停止、quiescence 检查和卸载。registry 是模块与 lease 状态的事实源；只有满足终止与无在途使用条件才可卸载。
 - **能力边界**：Plugin 复用 CMeta，但独立于 CFlow；反射查询和描述符复制不持有模块 lease。依赖求解、隔离、热重载及状态迁移须按当前实现核实并单独设计，不能把 skill 的通用方案当作现成运行时功能。
 
 ## 检索与结构理解
@@ -173,3 +173,10 @@
 - API 文档包含参数、返回值、错误、所有权和示例；外部资料附链接。具体 API 用法以公开头文件为准，避免在此维护第二份 API 手册。
 - first-party 源码、测试、构建文件不添加 `SPDX-License-Identifier` 或逐文件许可证模板；许可信息仅维护在根目录 `LICENSE`、`NOTICE`、`THIRD_PARTY_NOTICES.md`。
 - vendored/third-party 文件保留上游版权、许可证与 SPDX 标识，不为统一格式删除或改写。
+
+## TinyMock / SIMD 源码归属
+
+`tinymock/` 与 `simd/` 是 `Salts::TinyMock` 和 `Salts::SIMD` 的唯一源码与导出 owner。
+它们消费 CMeta 元数据和 Core TinyTest；Core/CMeta 不得反向依赖 SaltsUtils 来构造生产运行时。
+不要恢复重复实现，也不要接受仍导出同名 targets 的旧 SDK。原始测试必须保留在 native
+CMake/CTest graph 中。

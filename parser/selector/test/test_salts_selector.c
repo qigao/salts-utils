@@ -1,5 +1,5 @@
 #include "tinytest.h"
-#include "salts_selector.h"
+#include "selector.h"
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,4 +1,4 @@
-#include <salts/behavior_tree.h>
+#include <behavior_tree.h>
 
 int main() {
   salts_bt_tree tree{};

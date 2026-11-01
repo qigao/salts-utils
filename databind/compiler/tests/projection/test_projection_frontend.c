@@ -1,6 +1,6 @@
 #include "projection_frontend.h"
 
-#include "salts/fs.h"
+#include "fs.h"
 #include "tinytest.h"
 
 #include <string.h>
