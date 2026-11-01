@@ -19,7 +19,7 @@ else()
 endif()
 project(
   SaltsUtils
-  VERSION 4.3.0
+  VERSION 0.1.0
   DESCRIPTION "Higher-level utilities built on Salts"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES ${_salts_utils_languages})

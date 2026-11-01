@@ -45,6 +45,7 @@ try {
   $script:base = Invoke-Git @('rev-parse','HEAD')
 
   Test-Scope 'packaging-only script' @('packaging/nuget/preserve_nupkg_permissions.py') 'false'
+  Test-Scope 'release tag script' @('.github/scripts/release-tag.sh') 'false'
   Test-Scope 'packaging workflow' @('.github/workflows/sdk-package.yml') 'false'
   Test-Scope 'documentation-only' @('docs/example.md') 'false'
   Test-Scope 'native source' @('databind/runtime/data_bind.c') 'true'
@@ -77,6 +78,20 @@ try {
     throw 'Windows release must use LLVM-MinGW for target and host dependencies'
   }
   Write-Output 'PASS release RID contract'
+
+  Push-Location $temp
+  try {
+    $rcOutput = & $selector -EventName push -BaseRef $script:base `
+      -HeadRef $script:base -HeadBranch 'release/salts-utils-0.1-rc'
+    if ($LASTEXITCODE -ne 0) { throw "RC selector exited $LASTEXITCODE" }
+  } finally { Pop-Location }
+  $rcBuildLine = @($rcOutput | Where-Object { $_ -like 'builds=*' })
+  if ($rcBuildLine.Count -ne 1) { throw 'RC selector did not emit one builds value' }
+  $rcBuilds = ($rcBuildLine[0].Substring('builds='.Length) | ConvertFrom-Json).include
+  if (@($rcBuilds).Count -ne 5 -or @($rcBuilds | Where-Object { -not $_.package }).Count -ne 0) {
+    throw '0.1 RC push must package all five release RIDs'
+  }
+  Write-Output 'PASS 0.1 RC branch contract'
 } finally {
   Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }

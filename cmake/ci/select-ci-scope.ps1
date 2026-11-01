@@ -10,7 +10,7 @@ if ($PrepareRelease -and $EventName -ne 'workflow_dispatch') {
   throw 'Release preparation requires a manual CI run'
 }
 
-$rcPush = $EventName -eq 'push' -and $HeadBranch -match '^release/salts-utils-4\.3-[^/]+$'
+$rcPush = $EventName -eq 'push' -and $HeadBranch -match '^release/salts-utils-0\.1-[^/]+$'
 $releaseQualification = $PrepareRelease -or $rcPush
 $full = $EventName -eq 'workflow_dispatch' -or $BaseRef -match '^0+$' -or $rcPush
 $changed = @()
@@ -24,7 +24,7 @@ if (-not $full) {
 # code. CMake/build files, headers/sources and unknown paths remain
 # conservative and select the full native graph. Manual release preparation
 # always selects every release RID.
-$nonNativePath = '^(docs/|.*\.md$|LICENSE$|NOTICE$|\.gitignore$|\.editorconfig$|packaging/nuget/|cmake/ci/github_packages(_test)?\.py$|\.github/scripts/(test-release-asset-identity|verify-release-asset-identity)\.sh$|\.github/workflows/(sdk-package|native-sdk-release)\.yml$)'
+$nonNativePath = '^(docs/|.*\.md$|LICENSE$|NOTICE$|\.gitignore$|\.editorconfig$|packaging/nuget/|cmake/ci/github_packages(_test)?\.py$|\.github/scripts/(release-tag|test-release-asset-identity|verify-release-asset-identity)\.sh$|\.github/workflows/(sdk-package|native-sdk-release)\.yml$)'
 $nativeChanges = @($changed | Where-Object { $_ -notmatch $nonNativePath })
 $native = $full -or $nativeChanges.Count -gt 0
 

@@ -6,7 +6,7 @@ helper="$repo_root/.github/scripts/verify-release-asset-identity.sh"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/bin" "$tmp/dist" "$tmp/runner"
-package="$tmp/dist/SaltsUtils.Native.4.3.0.nupkg"
+package="$tmp/dist/SaltsUtils.Native.0.1.0.nupkg"
 printf 'prepared package bytes\n' > "$package"
 printf 'different package bytes\n' > "$tmp/different.nupkg"
 
@@ -25,8 +25,8 @@ if [[ "$1" == release && "$2" == view ]]; then
   if [[ " $* " == *" --json assets "* ]]; then
     case "${MOCK_ASSET_COUNT:-1}" in
       0) printf '{"assets":[]}\n' ;;
-      1) printf '{"assets":[{"name":"SaltsUtils.Native.4.3.0.nupkg"}]}\n' ;;
-      2) printf '{"assets":[{"name":"SaltsUtils.Native.4.3.0.nupkg"},{"name":"SaltsUtils.Native.4.3.0.nupkg"}]}\n' ;;
+      1) printf '{"assets":[{"name":"SaltsUtils.Native.0.1.0.nupkg"}]}\n' ;;
+      2) printf '{"assets":[{"name":"SaltsUtils.Native.0.1.0.nupkg"},{"name":"SaltsUtils.Native.0.1.0.nupkg"}]}\n' ;;
       *) exit 3 ;;
     esac
   fi
@@ -56,7 +56,7 @@ export GITHUB_REPOSITORY="qigao/salts-utils"
 export MOCK_RELEASE_PACKAGE="$package"
 
 run_guard() {
-  bash "$helper" "v4.3.0" "4.3.0" "$package" "$GITHUB_REPOSITORY" "$tmp/runner"
+  bash "$helper" "v0.1.000" "0.1.0" "$package" "$GITHUB_REPOSITORY" "$tmp/runner"
 }
 expect_success() {
   expected_state="$1"
@@ -97,3 +97,16 @@ export MOCK_RELEASE_PACKAGE="$tmp/different.nupkg"
 expect_failure "SHA-256 mismatch"
 
 echo "release asset identity cases passed: new, identical, missing, duplicate, mismatch"
+
+tag_helper="$repo_root/.github/scripts/release-tag.sh"
+test "$(bash "$tag_helper" 0.1.0)" = "v0.1.000"
+test "$(bash "$tag_helper" 0.1.12)" = "v0.1.012"
+if bash "$tag_helper" 0.1.1000; then
+  echo "expected an oversized release patch to fail" >&2
+  exit 1
+fi
+if bash "$tag_helper" 0.1.0-rc.1; then
+  echo "expected a prerelease package version to fail stable tag mapping" >&2
+  exit 1
+fi
+echo "release tag mapping cases passed: padded stable tags and invalid versions"

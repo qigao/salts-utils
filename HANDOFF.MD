@@ -75,3 +75,10 @@
   instead of callback address. Keep this exact pin: Unix shared-module graphs
   can materialize equivalent callback addresses separately, while `0.1.1`
   rejects the valid DataBind UUID runtime descriptor on Linux and macOS.
+- The SaltsUtils publication line was intentionally restarted at package
+  version `0.1.0`. Stable release tags use a three-digit patch field, so the
+  first tag is `v0.1.000`; keep `.github/scripts/release-tag.sh` as the single
+  checked mapping used by the publisher. GitHub Releases, repository tags, and
+  every version of the former `SaltsUtils.Native` package were deleted before
+  this restart. Do not infer an available legacy package from old documentation
+  or cached package metadata.
