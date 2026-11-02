@@ -2,6 +2,7 @@
 """Offline curl/package/cache regressions for the SaltsUtils native CI helper."""
 import argparse
 import base64
+import email
 import hashlib
 import io
 import json
@@ -16,9 +17,11 @@ from unittest.mock import patch
 import zipfile
 
 from github_packages import (
-    BinaryCache, LoopbackServer, PackageMissing, Packages,
+    BinaryCache, Curl, LoopbackServer, PackageMissing, Packages,
     cache_server, restore_native_sdk, version_key,
 )
+from github_files import Artifacts
+from pack_native_sdk import pack, RIDS
 
 
 def saltscore_files(rids, missing_target=None):
@@ -68,21 +71,28 @@ def cmeta_files(rids, version="0.1.0", missing_target=None):
 
 
 class Feed:
-    def __init__(self):
+    def __init__(self, auth="Basic " + base64.b64encode(b"qigao:test-token").decode()):
         self.documents = {}
         self.requests = []
+        self.auth = auth
+        self.uploads = []
+        self.publish_status = 201
         feed = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 feed.requests.append(self.path)
-                expected = "Basic " + base64.b64encode(b"qigao:test-token").decode()
-                if self.headers.get("Authorization") != expected:
+                if self.headers.get("Authorization") != feed.auth:
                     self.send_error(401)
                     return
                 data = feed.documents.get(self.path)
                 if data is None:
                     self.send_error(404)
+                    return
+                if isinstance(data, tuple):
+                    self.send_response(302)
+                    self.send_header("Location", data[1])
+                    self.end_headers()
                     return
                 if not isinstance(data, bytes):
                     data = json.dumps(data).encode()
@@ -90,6 +100,19 @@ class Feed:
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
+
+            def do_PUT(self):
+                if (self.headers.get("Authorization") != feed.auth
+                        or self.headers.get("X-NuGet-ApiKey") != "test-token"):
+                    self.send_error(401)
+                    return
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                message = email.message_from_bytes(
+                    ("Content-Type: " + self.headers["Content-Type"] + "\r\n\r\n").encode() + body)
+                feed.uploads.append(message.get_payload()[0].get_payload(decode=True))
+                self.send_response(feed.publish_status)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
 
             def log_message(self, *_):
                 pass
@@ -102,7 +125,7 @@ class Feed:
             "resources": [{
                 "@id": self.base + "/flat/",
                 "@type": "PackageBaseAddress/3.0.0",
-            }]
+            }, {"@id": self.base + "/publish", "@type": "PackagePublish/2.0.0"}]
         }
 
     def close(self):
@@ -278,9 +301,134 @@ class PackageTests(unittest.TestCase):
             server.server_close()
 
     def test_authentication_failure_does_not_expose_token(self):
-        with self.assertRaises(PackageMissing) as error:
+        with self.assertRaisesRegex(RuntimeError, "HTTP 401") as error:
             Packages(self.feed.base + "/index.json", "wrong-secret")
         self.assertNotIn("wrong-secret", str(error.exception))
+
+    def test_curl_publication_and_immutable_duplicate(self):
+        self.feed.add("SDK.Native", "1.0.0", {"sdk/file": "original"})
+        source = self.feed.documents["/flat/sdk.native/1.0.0/sdk.native.1.0.0.nupkg"]
+        package = self.root / "package with space.nupkg"
+        package.write_bytes(source)
+        self.packages.publish("SDK.Native", "1.0.0", package)
+        self.assertEqual(self.feed.uploads, [source])
+        self.feed.publish_status = 409
+        self.packages.publish("SDK.Native", "1.0.0", package)
+        self.feed.add("SDK.Native", "1.0.0", {"sdk/file": "changed"})
+        with self.assertRaisesRegex(ValueError, "immutable package differs"):
+            self.packages.publish("SDK.Native", "1.0.0", package)
+
+    def test_bearer_token_is_not_forwarded_to_artifact_storage(self):
+        storage = Feed(auth=None)
+        try:
+            storage.documents["/payload"] = b"artifact"
+            self.feed.auth = "Bearer test-token"
+            self.feed.documents["/redirect"] = (302, storage.base + "/payload")
+            Curl("test-token", self.feed.base, bearer=True).download(
+                self.feed.base + "/redirect", self.root / "payload")
+            self.assertEqual((self.root / "payload").read_bytes(), b"artifact")
+        finally:
+            storage.close()
+
+
+class ArtifactTests(unittest.TestCase):
+    def setUp(self):
+        self.feed = Feed(auth="Bearer test-token")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.commit = "a" * 40
+        self.client = Artifacts("qigao/salts-utils", "test-token", api=self.feed.base)
+        self.run = "/repos/qigao/salts-utils/actions/runs/7"
+        self.feed.documents[self.run] = {"head_sha": self.commit,
+                                         "head_repository": {"full_name": "qigao/salts-utils"}}
+        self.catalog = {"artifacts": []}
+        self.feed.documents[self.run + "/artifacts?per_page=100&page=1"] = self.catalog
+
+    def tearDown(self):
+        self.feed.close()
+        self.tmp.cleanup()
+
+    def artifact(self, name="native-linux-release", files=None):
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, "w") as archive:
+            for key, value in (files or {"native-build.tar": b"compiled graph"}).items():
+                archive.writestr(key, value)
+        payload = data.getvalue()
+        number = len(self.catalog["artifacts"]) + 1
+        item = {"id": number, "name": name, "expired": False,
+                "digest": "sha256:" + hashlib.sha256(payload).hexdigest()}
+        self.catalog["artifacts"].append(item)
+        self.feed.documents[f"/repos/qigao/salts-utils/actions/artifacts/{number}/zip"] = payload
+        return item
+
+    def test_downloaded_digest_and_source_are_verified(self):
+        self.artifact()
+        self.client.download(7, "native-linux-release", self.commit, self.root / "compiled")
+        self.assertEqual((self.root / "compiled/native-build.tar").read_bytes(), b"compiled graph")
+        with self.assertRaisesRegex(ValueError, "commit mismatch"):
+            self.client.download(7, "native-linux-release", "b" * 40, self.root / "wrong")
+
+    def test_bad_digest_or_payload_does_not_publish_partial_files(self):
+        item = self.artifact()
+        item["digest"] = "sha256:" + "0" * 64
+        with self.assertRaisesRegex(ValueError, "SHA256 mismatch"):
+            self.client.download(7, "native-*", self.commit, self.root / "bad")
+        self.assertFalse((self.root / "bad").exists())
+        self.catalog["artifacts"].clear()
+        self.artifact(files={"../escape": b"invalid"})
+        with self.assertRaisesRegex(ValueError, "unsafe"):
+            self.client.download(7, "native-*", self.commit, self.root / "unsafe")
+        self.assertFalse((self.root / "escape").exists())
+
+    def test_overlapping_or_missing_artifacts_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "missing"):
+            self.client.download(7, "missing-*", self.commit, self.root / "missing")
+        self.artifact("sdk-linux", {"shared/file": b"first"})
+        self.artifact("sdk-macos", {"shared/file": b"second"})
+        with self.assertRaisesRegex(ValueError, "overlapping"):
+            self.client.download(7, "sdk-*", self.commit, self.root / "overlap")
+        self.assertFalse((self.root / "overlap").exists())
+
+
+class NativePackageTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.commit = "c" * 40
+        for rid in RIDS:
+            prefix = self.root / "payload/sdk" / rid
+            for name in ("lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake", "lib/cmake/SaltsUtils/IDL.cmake",
+                         "include/data_bind_binding_plan.h", "include/data_bind_native.h",
+                         "salts-utils-sdk-manifest.txt"):
+                path = prefix / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("SDK bytes")
+            (prefix / "salts-utils-sdk-manifest.txt").write_text(
+                f"version=0.1.0\ncommit={self.commit}\nrid={rid}\nprofile=release\n")
+            if not rid.startswith("android-"):
+                tool = prefix / "bin" / ("salts-idlc.exe" if rid.startswith("windows-") else "salts-idlc")
+                tool.parent.mkdir()
+                tool.write_bytes(b"host IDL compiler")
+                tool.chmod(0o644)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_offline_package_is_reproducible_and_preserves_tool_permissions(self):
+        first = pack(self.root / "payload", self.root / "first.nupkg", "0.1.0", self.commit)
+        second = pack(self.root / "payload", self.root / "second.nupkg", "0.1.0", self.commit)
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+        with zipfile.ZipFile(first) as archive:
+            for rid in ("linux-x64", "linux-arm64", "macos-arm64"):
+                self.assertEqual(archive.getinfo(f"sdk/{rid}/bin/salts-idlc").external_attr >> 16 & 0o111, 0o111)
+            self.assertNotIn(b"<dependencies", archive.read("SaltsUtils.Native.nuspec"))
+
+    def test_bad_provenance_does_not_replace_existing_package(self):
+        output = self.root / "existing.nupkg"
+        output.write_bytes(b"previous immutable package")
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            pack(self.root / "payload", output, "0.1.0", "d" * 40)
+        self.assertEqual(output.read_bytes(), b"previous immutable package")
 
 
 if __name__ == "__main__":

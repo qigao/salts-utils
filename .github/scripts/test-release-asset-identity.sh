@@ -32,18 +32,8 @@ if [[ "$1" == release && "$2" == view ]]; then
   fi
   exit 0
 fi
-if [[ "$1" == release && "$2" == download ]]; then
-  pattern=""
-  dir=""
-  while (($#)); do
-    case "$1" in
-      --pattern) pattern="$2"; shift 2 ;;
-      --dir) dir="$2"; shift 2 ;;
-      *) shift ;;
-    esac
-  done
-  test -n "$pattern" && test -n "$dir"
-  cp "$MOCK_RELEASE_PACKAGE" "$dir/$pattern"
+if [[ "$1" == api ]]; then
+  printf 'https://api.github.com/repos/qigao/salts-utils/releases/assets/7\n'
   exit 0
 fi
 echo "unexpected gh invocation: $*" >&2
@@ -51,8 +41,25 @@ exit 4
 MOCK_GH
 chmod +x "$tmp/bin/gh"
 
+cat > "$tmp/bin/curl" <<'MOCK_CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+output=""
+while (($#)); do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+test -n "$output"
+cp "$MOCK_RELEASE_PACKAGE" "$output"
+MOCK_CURL
+chmod +x "$tmp/bin/curl"
+
 export PATH="$tmp/bin:$PATH"
 export GITHUB_REPOSITORY="qigao/salts-utils"
+export GITHUB_TOKEN=test-token
 export MOCK_RELEASE_PACKAGE="$package"
 
 run_guard() {

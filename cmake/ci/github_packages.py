@@ -47,13 +47,14 @@ def version_key(version):
 
 
 class Curl:
-    def __init__(self, token=None, feed=FEED):
+    def __init__(self, token=None, feed=FEED, bearer=False):
         self.token = token if token is not None else os.environ.get("GITHUB_TOKEN", "")
         self.feed = feed
+        self.bearer = bearer
         if not self.token or any(c in self.token for c in '\r\n"\\'):
             raise ValueError("GITHUB_TOKEN with read:packages permission is required")
 
-    def download(self, url, destination):
+    def download(self, url, destination, headers=()):
         parsed = urlsplit(url)
         origin = urlsplit(self.feed)
         if (parsed.scheme, parsed.netloc) != (origin.scheme, origin.netloc):
@@ -62,17 +63,25 @@ class Curl:
             raise ValueError("package feed requires HTTPS")
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        config = f'user = "qigao:{self.token}"\n'
+        config = (f'header = "Authorization: Bearer {self.token}"\n' if self.bearer
+                  else f'user = "qigao:{self.token}"\n')
+        for header in headers:
+            if any(c in header for c in '\r\n"\\'):
+                raise ValueError("invalid curl header")
+            config += f'header = "{header}"\n'
         protocols = "=http,https" if parsed.hostname == "127.0.0.1" else "=https"
         result = subprocess.run([
             "curl", "--disable", "--config", "-", "--fail", "--silent", "--show-error",
             "--location", "--proto", protocols, "--proto-redir", protocols,
             "--retry", "3", "--connect-timeout", "20", "--max-time", "600",
+            "--write-out", "%{http_code}",
             "--output", str(destination), url,
         ], input=config, text=True, capture_output=True)
         if result.returncode == 22:
             destination.unlink(missing_ok=True)
-            raise PackageMissing("package request failed: " + parsed.path)
+            if result.stdout == "404":
+                raise PackageMissing("package request failed: " + parsed.path)
+            raise RuntimeError("curl request rejected: HTTP " + result.stdout)
         if result.returncode:
             destination.unlink(missing_ok=True)
             raise RuntimeError("curl package download failed with exit " + str(result.returncode))
@@ -82,6 +91,27 @@ class Curl:
             path = Path(temporary) / "response.json"
             self.download(url, path)
             return json.loads(path.read_text(encoding="utf-8-sig"))
+
+    def publish(self, url, package):
+        parsed, origin = urlsplit(url), urlsplit(self.feed)
+        owner = str(PurePosixPath(origin.path).parent).rstrip("/")
+        if ((parsed.scheme, parsed.netloc) != (origin.scheme, origin.netloc)
+                or (parsed.scheme != "https" and parsed.hostname != "127.0.0.1")
+                or not (parsed.path == owner or parsed.path.startswith(owner + "/"))
+                or parsed.query or parsed.fragment):
+            raise ValueError("untrusted package publication endpoint")
+        path = str(Path(package).resolve()).replace('\\', '/').replace('"', '\\"')
+        config = (f'user = "qigao:{self.token}"\n'
+                  f'header = "X-NuGet-ApiKey: {self.token}"\n')
+        result = subprocess.run([
+            "curl", "--disable", "--config", "-", "--silent", "--show-error",
+            "--request", "PUT", "--form", f'package=@"{path}";type=application/octet-stream',
+            "--connect-timeout", "20", "--max-time", "600",
+            "--output", os.devnull, "--write-out", "%{http_code}", url,
+        ], input=config, text=True, capture_output=True)
+        if result.returncode:
+            raise RuntimeError("curl package publication failed with exit " + str(result.returncode))
+        return int(result.stdout)
 
 
 def archive_members(archive):
@@ -115,6 +145,8 @@ class Packages:
         self.feed = feed
         self.curl = Curl(token, feed)
         resources = self.curl.json(feed)["resources"]
+        self.publish_urls = [item["@id"] for item in resources
+                             if item.get("@type") == "PackagePublish/2.0.0"]
         bases = [item["@id"] for item in resources
                  if item.get("@type") == "PackageBaseAddress/3.0.0"]
         if len(bases) != 1:
@@ -180,6 +212,26 @@ class Packages:
             unpacked.rename(target)
         print(f"curl restored {package_id}/{version}", flush=True)
         return target
+
+    def publish(self, package_id, version, package):
+        if not IDENTIFIER.fullmatch(package_id) or not VERSION.fullmatch(version):
+            raise ValueError("invalid package identity")
+        package = Path(package)
+        with zipfile.ZipFile(package) as archive:
+            list(archive_members(archive))
+            package_metadata(archive, package_id, version)
+        if len(self.publish_urls) != 1:
+            raise ValueError("feed must advertise one PackagePublish/2.0.0 endpoint")
+        status = self.curl.publish(self.publish_urls[0], package)
+        if status == 409:
+            with tempfile.TemporaryDirectory() as temporary:
+                existing = self.package(package_id, version, Path(temporary) / "existing.nupkg")
+                with existing.open("rb") as old, package.open("rb") as new:
+                    if hashlib.file_digest(old, "sha256").digest() != hashlib.file_digest(new, "sha256").digest():
+                        raise ValueError("existing immutable package differs; bump the package version")
+        elif status not in (201, 202):
+            raise RuntimeError(f"GitHub Packages rejected publication: HTTP {status}")
+        print(f"curl published {package_id}/{version}", flush=True)
 
 
 def export(values, path=None):
@@ -481,7 +533,15 @@ def main():
     server.add_argument("--packages", type=Path, required=True)
     server.add_argument("--ready", type=Path, required=True)
 
+    publish = commands.add_parser("publish")
+    publish.add_argument("--package", type=Path, required=True)
+    publish.add_argument("--id", required=True)
+    publish.add_argument("--version", required=True)
+
     args = parser.parse_args()
+    if args.command == "publish":
+        Packages().publish(args.id, args.version, args.package)
+        return
     args.packages = args.packages.resolve()
     packages = Packages()
     if args.command == "native-sdk":

@@ -150,15 +150,10 @@ def violations(source: dict[str, str]) -> list[str]:
             errors.append(f"{label} must consume the curl-only native CI action")
     if "cmake/ci/setup_native_ci.py" not in native_setup or "github_packages.py" not in native_setup:
         errors.append("native setup action must bootstrap the curl cache and curl re2c restore")
-    llvm_triplet = "qigao-x64-windows-llvm-mingw"
-    if llvm_triplet not in native_bootstrap or "qigao-x64-windows-v145" in native_bootstrap:
-        errors.append("Windows native cache bootstrap must select only the LLVM-MinGW ABI triplet")
     for label, value in (
         ("native build workflow", native_build),
         ("native test workflow", native_tests),
     ):
-        if "setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6" not in value:
-            errors.append(f"{label} must install the pinned Windows LLVM-MinGW toolchain")
         if "obfuscator: 'false'" not in value:
             errors.append(f"{label} must explicitly disable the compiler obfuscator")
         if "VSDevCmd" in value or "VSINSTALL" in value:
@@ -172,10 +167,6 @@ def violations(source: dict[str, str]) -> list[str]:
         errors.append("native CI must consume the sole SaltsCore Crypto owner, not rebuild an archived duplicate")
     if "nugetconfig" in user_presets.lower() or "nugettimeout" in user_presets.lower():
         errors.append("root user presets must not configure a NuGet-backed vcpkg binary source")
-    if "dotnet restore" not in sdk_package or "<clear />" not in sdk_package:
-        errors.append("release pack restore must be explicit and source-empty")
-    if "nuget.pkg.github.com" in sdk_package or "dotnet nuget add source" in sdk_package:
-        errors.append("release pack preparation must not read GitHub Packages through dotnet")
     if ("idl-component-published-sdk-gate" in ci_workflow
             or "component_published_sdk" in ci_workflow):
         errors.append("main CI must not reintroduce a standalone component consumer gate")

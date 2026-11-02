@@ -122,6 +122,11 @@ The binding targets and their runtime link dependencies remain available.
 
 Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain/overlays as Salts, but keep binary artifacts in vcpkg's local default cache and do not invoke NuGet or Mono. CI materializes the same immutable cache contract and exposes GitHub Packages as a read-only curl-backed HTTP source, with a writable local L1 cache.
 
+All CI file downloads, including SDKs, build artifacts and release attachments,
+use curl. Native packages are assembled offline with Python and published through
+the feed's HTTP API with curl; CI does not install Mono or a managed package client.
+Artifact downloads verify the exact source run and SHA-256 before extraction.
+
 Before configuring, provide `PROJECT_ROOT`, `VCPKG_ROOT`, and a `GITHUB_TOKEN` with `read:packages` in the parent environment. `PROJECT_ROOT/external/pkgs` is the SaltsUtils install location; dependency SDKs are restored separately. Credentials are passed only to the curl package helper at runtime; no tracked NuGet credentials/configuration is used by native dependency restore.
 
 The restore commands require Python 3 and curl. Windows also requires PowerShell 7 and the Visual Studio developer environment:
