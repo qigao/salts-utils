@@ -9,7 +9,7 @@ cmake_add_grammar(TOML
   FOLDER "parser/${TARGET_NAME}/grammar")
 
 # =============================================================================
-# Library (respects BUILD_SHARED_LIBS)
+# Static library (independent of BUILD_SHARED_LIBS)
 # =============================================================================
 
 cmake_add_source(SOURCE_FILES RECURSE DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src

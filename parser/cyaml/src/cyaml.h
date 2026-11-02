@@ -11,21 +11,8 @@
 extern "C" {
 #endif
 
-// #region Platform
-
-#if defined(_WIN32) || defined(__CYGWIN__)
-#ifdef CYAML_BUILDING_DLL
-#define CYAML_API __declspec(dllexport)
-#elif defined(CYAML_DLL)
-#define CYAML_API __declspec(dllimport)
-#else
+/* CYaml is built and consumed as a static library on every platform. */
 #define CYAML_API
-#endif
-#else
-#define CYAML_API __attribute__((visibility("default")))
-#endif
-
-// #endregion
 
 // #region Types
 

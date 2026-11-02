@@ -13,15 +13,13 @@ add_custom_command(
 set(CRON_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/salts_cron.c ${CRON_LEXER_GEN})
 set(CRON_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include/salts_cron.h)
 
-add_library(${TARGET_NAME} STATIC  ${CRON_SOURCES} ${CRON_HEADERS})
+add_library(${TARGET_NAME} STATIC ${CRON_SOURCES} ${CRON_HEADERS})
 
 cmake_config_target(
   ${TARGET_NAME}
   ALIAS Salts::Cron
   FOLDER "cron"
   EXPORT_NAME Cron)
-
-target_compile_definitions(${TARGET_NAME} PRIVATE SALTS_CRON_BUILD_DLL)
 
 target_include_directories(
   ${TARGET_NAME}
@@ -35,9 +33,7 @@ target_link_libraries(${TARGET_NAME} PUBLIC Salts::Core)
 install(
   TARGETS ${TARGET_NAME}
   EXPORT SaltsUtilsTargets
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 install(FILES ${CRON_HEADERS} DESTINATION include/cron)
 
