@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   packages: read
+  actions: read
 jobs:
   test:
     name: ${{ matrix.id }}

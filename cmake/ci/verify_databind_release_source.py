@@ -172,10 +172,6 @@ def violations(source: dict[str, str]) -> list[str]:
         errors.append("native CI must consume the sole SaltsCore Crypto owner, not rebuild an archived duplicate")
     if "nugetconfig" in user_presets.lower() or "nugettimeout" in user_presets.lower():
         errors.append("root user presets must not configure a NuGet-backed vcpkg binary source")
-    if "dotnet restore" not in sdk_package or "<clear />" not in sdk_package:
-        errors.append("release pack restore must be explicit and source-empty")
-    if "nuget.pkg.github.com" in sdk_package or "dotnet nuget add source" in sdk_package:
-        errors.append("release pack preparation must not read GitHub Packages through dotnet")
     if ("idl-component-published-sdk-gate" in ci_workflow
             or "component_published_sdk" in ci_workflow):
         errors.append("main CI must not reintroduce a standalone component consumer gate")

@@ -125,12 +125,16 @@ jobs:
       with:
         ref: ${{ needs.metadata.outputs.release_sha }}
         persist-credentials: false
-    - uses: actions/download-artifact@v4
-      with:
-        name: salts-utils-native-nuget
-        path: dist
-        run-id: ${{ inputs.ci_run_id }}
-        github-token: ${{ github.token }}
+    - name: Download the qualified release package with curl
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        CI_RUN_ID: ${{ inputs.ci_run_id }}
+        RELEASE_SHA: ${{ needs.metadata.outputs.release_sha }}
+      run: |
+        set -euo pipefail
+        python3 cmake/ci/github_files.py artifacts --run-id "$CI_RUN_ID" \
+          --pattern salts-utils-native-nuget --commit "$RELEASE_SHA" --destination dist
     - name: Verify downloaded package identity
       shell: bash
       env:
@@ -166,9 +170,6 @@ jobs:
                     if values.get(key) != expected:
                         raise SystemExit(f'{name}: {key} mismatch')
         PY
-    - uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
     - name: Enforce immutable release identity
       shell: bash
       env:
@@ -209,10 +210,11 @@ jobs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PACKAGE_VERSION: ${{ needs.metadata.outputs.version }}
       run: |
         set -euo pipefail
-        dotnet nuget add source --username qigao --password "$GITHUB_TOKEN" --store-password-in-clear-text --name github https://nuget.pkg.github.com/qigao/index.json
-        dotnet nuget push "dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg" --api-key "$GITHUB_TOKEN" --source github --skip-duplicate
+        python3 cmake/ci/github_packages.py publish --id SaltsUtils.Native \
+          --version "$PACKAGE_VERSION" --package "dist/SaltsUtils.Native.$PACKAGE_VERSION.nupkg"
     - name: Create GitHub Release
       shell: bash
       env:

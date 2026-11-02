@@ -8,6 +8,7 @@ name: Prepare SaltsUtils release package
 permissions:
   contents: read
   packages: read
+  actions: read
 jobs:
   pack:
     name: Pack SaltsUtils.Native
@@ -17,11 +18,15 @@ jobs:
       with:
         ref: ${{ github.sha }}
         persist-credentials: false
-    - uses: actions/download-artifact@v4
-      with:
-        pattern: salts-utils-sdk-*
-        path: package/sdk
-        merge-multiple: true
+    - name: Download qualified SDK artifacts with curl
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        python3 cmake/ci/github_files.py artifacts --pattern 'salts-utils-sdk-*' \
+          --commit "$SOURCE_COMMIT" --destination package/sdk
     - name: Verify package payload
       shell: bash
       run: |
@@ -49,25 +54,17 @@ jobs:
         test -f package/sdk/android-arm64/include/data_bind_binding_plan.h
         test -f package/sdk/android-arm64/include/data_bind_cmeta_adapter_plan.h
         test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 5
-    - uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
-    - name: Configure offline NuGet pack restore
+    - name: Create native package offline
       shell: bash
+      env:
+        PACKAGE_VERSION: ${{ inputs.version }}
+        SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
       run: |
         set -euo pipefail
-        config="$RUNNER_TEMP/nuget.config"
-        printf '<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear /></packageSources></configuration>\n' > "$config"
-        echo "NUGET_CONFIG=$config" >> "$GITHUB_ENV"
-    - name: Create NuGet package
-      shell: bash
-      run: |
-        set -euo pipefail
-        dotnet restore packaging/nuget/SaltsUtils.Native.csproj --configfile "$NUGET_CONFIG" --packages "$RUNNER_TEMP/pack-nuget"
-        dotnet pack packaging/nuget/SaltsUtils.Native.csproj --no-restore --configuration Release --output dist -p:PackageVersion=${{ inputs.version }} -p:PackageRoot="$GITHUB_WORKSPACE/package" -p:RestorePackagesPath="$RUNNER_TEMP/pack-nuget"
-        nupkg="dist/SaltsUtils.Native.${{ inputs.version }}.nupkg"
+        nupkg="dist/SaltsUtils.Native.$PACKAGE_VERSION.nupkg"
+        python3 cmake/ci/pack_native_sdk.py --root package --output "$nupkg" \
+          --version "$PACKAGE_VERSION" --commit "$SOURCE_COMMIT"
         test -f "$nupkg"
-        python3 packaging/nuget/preserve_nupkg_permissions.py "$nupkg"
         python3 - "$nupkg" <<'PY'
         import sys, zipfile
         package = sys.argv[1]

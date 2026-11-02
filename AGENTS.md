@@ -150,6 +150,7 @@
 
 使用 `cmake-presets` 执行构建、测试与安装，使用 `tinytest` 编写或修改测试/benchmark/Mock。准确的 preset、target、测试名及 helper 签名以当前 checkout 为准。
 
+- 所有 CI（包括构建、测试、打包、发布及调用的共享脚本）禁止安装或调用 Mono、NuGet 客户端及用于包恢复的 .NET 工具。外部依赖文件、GitHub Packages、SDK、构建产物和发布附件只能通过 curl 下载；包格式不是客户端依赖。保留精确版本、来源、摘要、ABI 和发布身份校验，不得增加另一种下载器或隐藏 fallback。原生包离线生成，GitHub Packages 使用 curl 访问。
 - 复用正式测试覆盖行为、ownership、ABI、状态和失败路径；先最小相关测试，再相邻回归，按风险决定是否扩大。
 - CI 的 configure 决定完整 build graph；`cmake --build` 构建该 graph，不在 workflow 中用 `--target` 或点名 target 缩减范围。
 - CI 的测试和 benchmark 统一通过 CTest 执行，不直接运行 CMake 生成的 executable；test/benchmark、Debug/Release 用 configure 选项分离。

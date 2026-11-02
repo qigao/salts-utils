@@ -41,9 +41,12 @@ if [ "$release_exists" = true ]; then
   existing_dir="$RUNNER_TEMP/existing-release"
   rm -rf "$existing_dir"
   mkdir -p "$existing_dir"
-  gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-    --pattern "$asset_name" --dir "$existing_dir"
   existing_package="$existing_dir/$asset_name"
+  asset_url="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+    --jq ".assets[] | select(.name == \"$asset_name\") | .url")"
+  repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+  python3 "$repo_root/cmake/ci/github_files.py" asset \
+    --url "$asset_url" --destination "$existing_package"
   test -f "$existing_package"
   existing_sha="$(sha256sum "$existing_package" | awk '{print $1}')"
   if [ "$existing_sha" != "$prepared_sha" ]; then
