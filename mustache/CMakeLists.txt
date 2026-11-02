@@ -18,8 +18,6 @@ cmake_config_target(
   EXPORT_NAME
   Mustache)
 
-target_compile_definitions(mustache PRIVATE MUSTACHE_BUILD_DLL)
-
 target_include_directories(
   mustache
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -66,8 +64,6 @@ endif()
 install(
   TARGETS mustache
   EXPORT SaltsUtilsTargets
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES include/mustache.h include/mustache_json.h include/mustache_xml.h
         DESTINATION include/mustache)

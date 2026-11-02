@@ -1,7 +1,7 @@
 set(TARGET_NAME tlv_parser)
 
 # =============================================================================
-# Main Parser Library (respects BUILD_SHARED_LIBS)
+# Static parser library (independent of BUILD_SHARED_LIBS)
 # =============================================================================
 
 # Find all source files

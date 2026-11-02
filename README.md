@@ -58,6 +58,11 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 
 Parser capabilities remain independent component targets rather than a single aggregate parser facade.
 
+Mustache, Cron, QueryVM, and all parser and parser-adapter targets are always
+static libraries, including when `BUILD_SHARED_LIBS=ON`. Link their existing
+`Salts::` targets to inherit dependencies; no DLL import/export definitions are
+needed. Their installed library artifacts are archives (`.a` or `.lib`).
+
 Playback, Capture, Serial, and USB are SaltsCore capabilities and are not
 rebuilt or re-exported by SaltsUtils. The `salts-idlc` compiler is always built
 and installed with DataBind.
