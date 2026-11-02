@@ -301,7 +301,7 @@ class PackageTests(unittest.TestCase):
             server.server_close()
 
     def test_authentication_failure_does_not_expose_token(self):
-        with self.assertRaises(PackageMissing) as error:
+        with self.assertRaisesRegex(RuntimeError, "HTTP 401") as error:
             Packages(self.feed.base + "/index.json", "wrong-secret")
         self.assertNotIn("wrong-secret", str(error.exception))
 

@@ -4,7 +4,8 @@ inputs:
   contract-ref:
     description: Immutable qigao/vcpkg-cache contract commit.
     required: false
-    default: 2913c530b8f12ae411e3c180e898fb6c7783462f
+    # Candidate from vcpkg-cache PR #270; production requires a versioned release.
+    default: d618d4f3b91fa1112e2b52b0c5761713eaeedc85
   re2c:
     description: Restore the host re2c package in this job.
     required: false

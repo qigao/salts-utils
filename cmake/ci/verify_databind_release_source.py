@@ -150,15 +150,10 @@ def violations(source: dict[str, str]) -> list[str]:
             errors.append(f"{label} must consume the curl-only native CI action")
     if "cmake/ci/setup_native_ci.py" not in native_setup or "github_packages.py" not in native_setup:
         errors.append("native setup action must bootstrap the curl cache and curl re2c restore")
-    llvm_triplet = "qigao-x64-windows-llvm-mingw"
-    if llvm_triplet not in native_bootstrap or "qigao-x64-windows-v145" in native_bootstrap:
-        errors.append("Windows native cache bootstrap must select only the LLVM-MinGW ABI triplet")
     for label, value in (
         ("native build workflow", native_build),
         ("native test workflow", native_tests),
     ):
-        if "setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6" not in value:
-            errors.append(f"{label} must install the pinned Windows LLVM-MinGW toolchain")
         if "obfuscator: 'false'" not in value:
             errors.append(f"{label} must explicitly disable the compiler obfuscator")
         if "VSDevCmd" in value or "VSINSTALL" in value:

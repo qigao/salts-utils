@@ -74,11 +74,14 @@ class Curl:
             "curl", "--disable", "--config", "-", "--fail", "--silent", "--show-error",
             "--location", "--proto", protocols, "--proto-redir", protocols,
             "--retry", "3", "--connect-timeout", "20", "--max-time", "600",
+            "--write-out", "%{http_code}",
             "--output", str(destination), url,
         ], input=config, text=True, capture_output=True)
         if result.returncode == 22:
             destination.unlink(missing_ok=True)
-            raise PackageMissing("package request failed: " + parsed.path)
+            if result.stdout == "404":
+                raise PackageMissing("package request failed: " + parsed.path)
+            raise RuntimeError("curl request rejected: HTTP " + result.stdout)
         if result.returncode:
             destination.unlink(missing_ok=True)
             raise RuntimeError("curl package download failed with exit " + str(result.returncode))
@@ -91,8 +94,11 @@ class Curl:
 
     def publish(self, url, package):
         parsed, origin = urlsplit(url), urlsplit(self.feed)
+        owner = str(PurePosixPath(origin.path).parent).rstrip("/")
         if ((parsed.scheme, parsed.netloc) != (origin.scheme, origin.netloc)
-                or (parsed.scheme != "https" and parsed.hostname != "127.0.0.1")):
+                or (parsed.scheme != "https" and parsed.hostname != "127.0.0.1")
+                or not (parsed.path == owner or parsed.path.startswith(owner + "/"))
+                or parsed.query or parsed.fragment):
             raise ValueError("untrusted package publication endpoint")
         path = str(Path(package).resolve()).replace('\\', '/').replace('"', '\\"')
         config = (f'user = "qigao:{self.token}"\n'
@@ -208,6 +214,8 @@ class Packages:
         return target
 
     def publish(self, package_id, version, package):
+        if not IDENTIFIER.fullmatch(package_id) or not VERSION.fullmatch(version):
+            raise ValueError("invalid package identity")
         package = Path(package)
         with zipfile.ZipFile(package) as archive:
             list(archive_members(archive))
