@@ -4,7 +4,7 @@ inputs:
   contract-ref:
     description: Immutable qigao/vcpkg-cache contract commit.
     required: false
-    default: 529019437597fa71f7d8dcc561d26fc7b0603ae6
+    default: 2913c530b8f12ae411e3c180e898fb6c7783462f
   re2c:
     description: Restore the host re2c package in this job.
     required: false
@@ -22,6 +22,12 @@ runs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
+    - name: Prepare shared native Windows pkg-config without MSYS2
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        python build/ci-vcpkg-contract/scripts/windows_pkgconf.py
+        if ($LASTEXITCODE -ne 0) { throw 'Native Windows pkgconf setup failed' }
     - name: Bootstrap canonical vcpkg and read-only curl cache
       shell: bash
       env:
