@@ -2,7 +2,7 @@
 
 **Higher-level utilities for the Salts C11 ecosystem.**
 
-SaltsUtils builds on installed SaltsCore and CMeta SDKs and extends their shared semantics with parsers, QueryVM, filesystem/process adapters, templates, media helpers, IDL/Schema tooling, language bindings, and DataBind.
+SaltsUtils builds on installed SaltsCore and CMeta SDKs and extends their shared semantics with parsers, QueryVM, templates, media helpers, IDL/Schema tooling, language bindings, and DataBind.
 
 **IDL, Schema and DataBind are distinct SaltsUtils capabilities.** IDL defines contracts, Schema defines Data shape, and DataBind owns logical/native binding. They are not separate packages.
 
@@ -27,7 +27,7 @@ This keeps higher-level utilities compatible with the same explicit ownership, b
 ```text
 Salts
   ├── salts-utils
-  │     ├── parsers / QueryVM / filesystem / process
+  │     ├── parsers / QueryVM
   │     ├── templates / Unicode / media / helpers
   │     ├── IDL / Schema / salts-idlc
   │     ├── DataBind binding / plans / native kernel
@@ -45,8 +45,8 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 | --- | --- |
 | Crypto (external dependency) | imported static `Salts::Crypto` from SaltsCore |
 | Plugin | `CMeta::PluginABI` / `CMeta::Plugin` from the CMeta SDK |
-| Filesystem adapter | `Salts::CFlowFS` over SaltsCore `Salts::FS` |
-| Process adapter | `Salts::CFlowProcess` over SaltsCore `Salts::Process` |
+| Native filesystem (SDK dependency) | `Salts::FS` from SaltsCore |
+| Native process (SDK dependency) | `Salts::Process` from SaltsCore |
 | Query | `Salts::QueryVM` |
 | Parsers | JSON, XML, YAML, CSV, INI, TLV/LTV, Modbus, SOA, DotEnv, Cmd, TOON, TOML, DateTime, and related component targets |
 | Templates | Mustache and Jinja CMeta |
@@ -102,8 +102,8 @@ target_link_libraries(app PRIVATE
   Salts::XmlParser
   Salts::Crypto # installed static Crypto package, not a SaltsUtils export
   CMeta::Plugin
-  Salts::CFlowFS
-  Salts::CFlowProcess
+  Salts::FS # installed SaltsCore target
+  Salts::Process # installed SaltsCore target
   Salts::Mustache
   Salts::JinjaCMeta
   Salts::Unicode
@@ -171,13 +171,13 @@ Plugin runtime ownership is in the CMeta SDK. SaltsUtils consumes
 `CMeta::PluginABI` / `CMeta::Plugin` for generated Plugin artifacts. Plugin
 and CFlow remain independent; there is no public PluginCFlow subsystem.
 
-### Filesystem
+### Filesystem and process dependencies
 
-`Salts::CFlowFS` provides bounded filesystem services, native watch support, and typed watch publishers over SaltsCore `Salts::FS`. Public adapter headers are `<cflow/fs.h>`, `<cflow/fs_watch.h>`, and `<cflow/fs_watch_publisher.h>`.
-
-### Process
-
-`Salts::CFlowProcess` adapts SaltsCore process ownership and CFlow-native pipes into bounded asynchronous standard-stream handling through `<cflow/process.h>`.
+Native filesystem and process APIs come from SaltsCore's `Salts::FS`
+(`<fs.h>`) and `Salts::Process` (`<process.h>`). CFlow I/O primitives belong
+to `CMeta::CFlow`. SaltsUtils no longer builds or exports the removed
+`Salts::CFlowFS` / `Salts::CFlowProcess` adapters or their `<cflow/fs*.h>`
+and `<cflow/process.h>` headers.
 
 ### Mustache and Jinja CMeta
 

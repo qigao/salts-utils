@@ -25,8 +25,6 @@ package 消费它。
 
 - `Salts::Crypto`（仅由独立 qigao/crypto 的已安装静态 SDK 提供，SaltsUtils 不导出）
 - `CMeta::PluginABI`、`CMeta::Plugin`（由 installed CMeta SDK 提供）
-- `Salts::CFlowFS`
-- `Salts::CFlowProcess`
 - `Salts::QueryVM`
 - `Salts::IniParser`
 - `Salts::JsonParser`、`Salts::JsonCSerdeAdapter`
@@ -56,9 +54,11 @@ package 消费它。
 `CMeta::PluginABI` / `CMeta::Plugin` 由 CMeta SDK 拥有。SaltsUtils 只消费其 manifest/export、loader/registry/lease/lifecycle 能力；Plugin 与 CFlow 无直接依赖。
 
 
-`Salts::FS` 与 `Salts::Process` 是 SaltsCore 原生能力；`Salts::CFlowFS` 与
-`Salts::CFlowProcess` 是 SaltsUtils 的 CFlow 适配层。`Salts::USB` 已完整迁入
-SaltsCore，SaltsUtils 不再保留第二份 `cflow_usb_*` 源码或 target。
+`Salts::FS` 与 `Salts::Process` 是 SaltsCore 原生能力，通过 `<fs.h>` 与
+`<process.h>` 使用；CFlow I/O 原语由 `CMeta::CFlow` 提供。SaltsUtils 已删除
+本地 `cflow-fs` / `cflow-process` 适配层，不再构建或导出 `Salts::CFlowFS`、
+`Salts::CFlowProcess` 及其旧头文件。`Salts::USB` 已完整迁入 SaltsCore，
+SaltsUtils 不再保留第二份 `cflow_usb_*` 源码或 target。
 `Salts::Crypto` 同样由 SaltsCore SDK 的静态 target 提供。
 
 QueryVM 与 moved parser targets 只由 SaltsUtils 导出。SaltsCore 使用 `Salts::`

@@ -10,7 +10,7 @@ endif()
 # graph does not configure the unrelated legacy data/UI/serial systems, and
 # does not provide alternate sources for any selected module.
 option(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET
-       "Build only the native C11 QueryVM/JsonParser/CYaml/BehaviorTree/Process providers"
+       "Build only the native C11 QueryVM/JsonParser/CYaml/BehaviorTree providers"
        OFF)
 if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
   set(_salts_utils_languages C)
@@ -115,21 +115,19 @@ include(FindTools)
 if(NOT SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
   add_subdirectory(vendor)
 endif()
+# Native FS/Process come from SaltsCore; the removed local CFlow adapters
+# are no longer part of either SaltsUtils build profile.
 if(SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET)
   # Exact native source owners only, without a second parser, provider or C++
   # compatibility adapter. Keep the C11 dependency DAG explicit.
   add_subdirectory(parser/query_vm)
   add_subdirectory(parser/json_parser)
   add_subdirectory(parser/cyaml)
-  add_subdirectory(cflow-fs)
-  add_subdirectory(cflow-process)
   add_subdirectory(behavior-tree)
 else()
   add_subdirectory(parser)
   add_subdirectory(bindings)
   add_subdirectory(tools/junit_to_html)
-  add_subdirectory(cflow-fs)
-  add_subdirectory(cflow-process)
   add_subdirectory(behavior-tree)
   add_subdirectory(cron)
   add_subdirectory(mustache)
