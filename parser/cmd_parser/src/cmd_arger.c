@@ -433,13 +433,16 @@ static CmdArgerDesc *find_desc(CmdArgerDesc *descs, uint32_t count, cmd_token_ki
 /**
  * @brief Parses and validates a raw string value into the appropriate type for a descriptor.
  */
-static CmdArgerBool apply_value(CmdArgerDesc *desc, const char *value_str, CmdArgerBool colors) {
+static CmdArgerBool apply_value(CmdArgerDesc *desc, const char *value_str,
+                                CmdArgerBool colors, CmdArgerBool emit_errors) {
   if (desc->validator) {
     const char *err_msg = NULL;
     if (!desc->validator(value_str, &err_msg)) {
-      cmd_arger_printf(colors,
-                       "{{error}}error:{{reset}} invalid value '%s' for option '%s': %s\n\n",
-                       value_str, desc->name, err_msg ? err_msg : "validation failed");
+      if (emit_errors)
+        cmd_arger_printf(colors,
+                         "{{error}}error:{{reset}} invalid value '%s' for option '%s': %s\n\n",
+                         value_str, desc->name,
+                         err_msg ? err_msg : "validation failed");
       return cmd_arger_false;
     }
   }
@@ -455,14 +458,16 @@ static CmdArgerBool apply_value(CmdArgerDesc *desc, const char *value_str, CmdAr
         }
       }
       if (!match) {
-        cmd_arger_printf(colors,
-                         "{{error}}error:{{reset}} invalid value '%s' for option '%s'. Allowed: ",
-                         value_str, desc->name);
-        for (uint32_t i = 0; i < desc->spec.choices.count; i++) {
-          printf("%s%s", desc->spec.choices.items[i],
-                 (i < desc->spec.choices.count - 1) ? ", " : "");
+        if (emit_errors) {
+          cmd_arger_printf(colors,
+                           "{{error}}error:{{reset}} invalid value '%s' for option '%s'. Allowed: ",
+                           value_str, desc->name);
+          for (uint32_t i = 0; i < desc->spec.choices.count; i++) {
+            printf("%s%s", desc->spec.choices.items[i],
+                   (i < desc->spec.choices.count - 1) ? ", " : "");
+          }
+          printf("\n\n");
         }
-        printf("\n\n");
         return cmd_arger_false;
       }
     }
@@ -473,8 +478,10 @@ static CmdArgerBool apply_value(CmdArgerDesc *desc, const char *value_str, CmdAr
     char *end;
     long v = strtol(value_str, &end, 10);
     if (*end != '\0') {
-      cmd_arger_printf(colors, "{{error}}error:{{reset}} expected integer for '%s', got '%s'\n\n",
-                       desc->name, value_str);
+      if (emit_errors)
+        cmd_arger_printf(colors,
+                         "{{error}}error:{{reset}} expected integer for '%s', got '%s'\n\n",
+                         desc->name, value_str);
       return cmd_arger_false;
     }
     *(int64_t *)desc->value_out = (int64_t)v;
@@ -484,8 +491,10 @@ static CmdArgerBool apply_value(CmdArgerDesc *desc, const char *value_str, CmdAr
     char *end;
     double v = strtod(value_str, &end);
     if (*end != '\0') {
-      cmd_arger_printf(colors, "{{error}}error:{{reset}} expected float for '%s', got '%s'\n\n",
-                       desc->name, value_str);
+      if (emit_errors)
+        cmd_arger_printf(colors,
+                         "{{error}}error:{{reset}} expected float for '%s', got '%s'\n\n",
+                         desc->name, value_str);
       return cmd_arger_false;
     }
     *(double *)desc->value_out = v;
@@ -501,14 +510,16 @@ static CmdArgerBool apply_value(CmdArgerDesc *desc, const char *value_str, CmdAr
       }
     }
     if (!found) {
-      cmd_arger_printf(colors,
-                       "{{error}}error:{{reset}} invalid choice '%s' for option '%s'. Allowed: ",
-                       value_str, desc->name);
-      for (uint32_t i = 0; i < desc->spec.enums.count; i++) {
-        printf("%s%s", desc->spec.enums.descs[i].name,
-               (i < desc->spec.enums.count - 1) ? ", " : "");
+      if (emit_errors) {
+        cmd_arger_printf(colors,
+                         "{{error}}error:{{reset}} invalid choice '%s' for option '%s'. Allowed: ",
+                         value_str, desc->name);
+        for (uint32_t i = 0; i < desc->spec.enums.count; i++) {
+          printf("%s%s", desc->spec.enums.descs[i].name,
+                 (i < desc->spec.enums.count - 1) ? ", " : "");
+        }
+        printf("\n\n");
       }
-      printf("\n\n");
       return cmd_arger_false;
     }
     break;
@@ -530,12 +541,14 @@ static CmdArgerBool apply_value(CmdArgerDesc *desc, const char *value_str, CmdAr
 /**
  * @brief Internal unified parsing logic shared between parse and parse_subcommand.
  */
-static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
-                                     uint32_t global_optional_args_count,
-                                     CmdArgerDesc *required_args, uint32_t required_args_count,
-                                     CmdArgerSubCommand *subcommands, uint32_t subcommands_count,
-                                     int *selected_subcommand_idx, int argc, char **argv,
-                                     const char *app_name_and_version, CmdArgerBool colors) {
+static CmdArgerParseStatus cmd_arger_parse_internal(
+    CmdArgerDesc *global_optional_args, uint32_t global_optional_args_count,
+    CmdArgerDesc *required_args, uint32_t required_args_count,
+    CmdArgerSubCommand *subcommands, uint32_t subcommands_count,
+    int *selected_subcommand_idx, int argc, char **argv,
+    const char *app_name_and_version, CmdArgerBool colors,
+    CmdArgerBool exit_on_error) {
+  CmdArgerParseStatus parse_status = CMD_ARGER_PARSE_STATUS_INVALID;
   // Load .env if it exists, don't overwrite existing environment variables
   dotenv_load_default(false);
 
@@ -579,6 +592,10 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
   uint8_t *seen_global = NULL;
   if (global_optional_args_count > 0) {
     seen_global = (uint8_t *)calloc(global_optional_args_count, sizeof(uint8_t));
+    if (!seen_global) {
+      parse_status = CMD_ARGER_PARSE_STATUS_NO_MEMORY;
+      goto PRINT_HELP;
+    }
   }
   uint8_t *seen_subcommand = NULL;
 
@@ -596,8 +613,10 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
       goto next_arg;
     }
 
-    if (!stop_options && kind == CMD_TOKEN_HELP)
+    if (!stop_options && kind == CMD_TOKEN_HELP) {
+      parse_status = CMD_ARGER_PARSE_STATUS_HELP;
       goto PRINT_HELP;
+    }
 
     CmdArgerDesc *desc = NULL;
     const char *value_str = NULL;
@@ -618,7 +637,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
           }
 
           if (!desc) {
-            cmd_arger_printf(
+            if (exit_on_error) cmd_arger_printf(
                 colors,
                 "{{error}}error:{{reset}} unsupported short option '-%c' in bundle '%s'\n\n",
                 key_start[k], current_str);
@@ -629,19 +648,19 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
             *(CmdArgerBool *)desc->value_out = cmd_arger_true;
           } else {
             if (k < key_len - 1) {
-              cmd_arger_printf(colors,
+              if (exit_on_error) cmd_arger_printf(colors,
                                "{{error}}error:{{reset}} short option '-%c' in bundle '%s' "
                                "requires a value and must be at the end\n\n",
                                key_start[k], current_str);
               goto PRINT_HELP;
             }
             if (++arg_idx >= active_argc) {
-              cmd_arger_printf(colors, "{{error}}error:{{reset}} option '-%c' requires a value\n\n",
+              if (exit_on_error) cmd_arger_printf(colors, "{{error}}error:{{reset}} option '-%c' requires a value\n\n",
                                key_start[k]);
               goto PRINT_HELP;
             }
             value_str = active_argv[arg_idx];
-            if (!apply_value(desc, value_str, colors))
+            if (!apply_value(desc, value_str, colors, exit_on_error))
               goto PRINT_HELP;
           }
         }
@@ -663,7 +682,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
 
       if (!desc) {
         const char *prefix = (kind == CMD_TOKEN_SHORT_OPTION) ? "-" : "--";
-        cmd_arger_printf(colors, "{{error}}error:{{reset}} unsupported option '%s%.*s'\n\n", prefix,
+        if (exit_on_error) cmd_arger_printf(colors, "{{error}}error:{{reset}} unsupported option '%s%.*s'\n\n", prefix,
                          (int)key_len, key_start);
         goto PRINT_HELP;
       }
@@ -671,7 +690,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
       if (desc->kind == CmdArgerDescKind_flag) {
         if (kind == CMD_TOKEN_OPTION_WITH_VALUE) {
           const char *prefix = (kind == CMD_TOKEN_SHORT_OPTION) ? "-" : "--";
-          cmd_arger_printf(colors, "{{error}}error:{{reset}} flag '%s%s' cannot take a value\n\n",
+          if (exit_on_error) cmd_arger_printf(colors, "{{error}}error:{{reset}} flag '%s%s' cannot take a value\n\n",
                            prefix, desc->name);
           goto PRINT_HELP;
         }
@@ -682,7 +701,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
         } else {
           if (++arg_idx >= active_argc) {
             const char *prefix = (kind == CMD_TOKEN_SHORT_OPTION) ? "-" : "--";
-            cmd_arger_printf(colors,
+            if (exit_on_error) cmd_arger_printf(colors,
                              "{{error}}error:{{reset}} option '%s%.*s' requires a value\n\n",
                              prefix, (int)key_len, key_start);
             goto PRINT_HELP;
@@ -704,17 +723,21 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
             required_args_idx = 0;
             if (active_optional_cnt > 0) {
               seen_subcommand = (uint8_t *)calloc(active_optional_cnt, sizeof(uint8_t));
+              if (!seen_subcommand) {
+                parse_status = CMD_ARGER_PARSE_STATUS_NO_MEMORY;
+                goto PRINT_HELP;
+              }
             }
             if (active_optional)
               cmd_arger_apply_env_vars(active_optional, active_optional_cnt);
             goto next_arg;
           }
         }
-        cmd_arger_printf(colors, "{{error}}error:{{reset}} unknown command '%s'\n\n", current_str);
+        if (exit_on_error) cmd_arger_printf(colors, "{{error}}error:{{reset}} unknown command '%s'\n\n", current_str);
         goto PRINT_HELP;
       } else {
         if (required_args_idx >= active_required_cnt) {
-          cmd_arger_printf(colors,
+          if (exit_on_error) cmd_arger_printf(colors,
                            "{{error}}error:{{reset}} unexpected positional argument '%s'\n\n",
                            current_str);
           goto PRINT_HELP;
@@ -726,7 +749,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
           if (count >= desc->spec.list.max_count) {
             required_args_idx++;
             if (required_args_idx >= active_required_cnt) {
-              cmd_arger_printf(colors,
+              if (exit_on_error) cmd_arger_printf(colors,
                                "{{error}}error:{{reset}} unexpected positional argument '%s'\n\n",
                                current_str);
               goto PRINT_HELP;
@@ -742,7 +765,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
       }
     }
 
-    if (desc && value_str && !apply_value(desc, value_str, colors))
+    if (desc && value_str && !apply_value(desc, value_str, colors, exit_on_error))
       goto PRINT_HELP;
 
   next_arg:
@@ -757,7 +780,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
     }
 
     if (required_args_idx < active_required_cnt) {
-      cmd_arger_printf(colors, "{{error}}error:{{reset}} missing required argument '%s'\n\n",
+      if (exit_on_error) cmd_arger_printf(colors, "{{error}}error:{{reset}} missing required argument '%s'\n\n",
                        active_required[required_args_idx].name);
       goto PRINT_HELP;
     }
@@ -765,7 +788,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
 
   for (uint32_t i = 0; i < global_optional_args_count; i++) {
     if (global_optional_args[i].is_required && !seen_global[i]) {
-      cmd_arger_printf(colors, "{{error}}error:{{reset}} missing required option '--%s'\n\n",
+      if (exit_on_error) cmd_arger_printf(colors, "{{error}}error:{{reset}} missing required option '--%s'\n\n",
                        global_optional_args[i].name);
       goto PRINT_HELP;
     }
@@ -773,7 +796,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
   if (current_subcommand != -1) {
     for (uint32_t i = 0; i < active_optional_cnt; i++) {
       if (active_optional[i].is_required && !seen_subcommand[i]) {
-        cmd_arger_printf(colors, "{{error}}error:{{reset}} missing required option '--%s'\n\n",
+        if (exit_on_error) cmd_arger_printf(colors, "{{error}}error:{{reset}} missing required option '--%s'\n\n",
                          active_optional[i].name);
         goto PRINT_HELP;
       }
@@ -781,7 +804,7 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
   }
 
   if (subcommands_count > 0 && current_subcommand == -1) {
-    cmd_arger_printf(colors, "{{error}}error:{{reset}} missing subcommand\n\n");
+    if (exit_on_error) cmd_arger_printf(colors, "{{error}}error:{{reset}} missing subcommand\n\n");
     goto PRINT_HELP;
   }
 
@@ -789,23 +812,26 @@ static void cmd_arger_parse_internal(CmdArgerDesc *global_optional_args,
     free(seen_global);
   if (seen_subcommand)
     free(seen_subcommand);
-  return;
+  return CMD_ARGER_PARSE_STATUS_OK;
 
 PRINT_HELP:
   if (seen_global)
     free(seen_global);
   if (seen_subcommand)
     free(seen_subcommand);
-  if (current_subcommand != -1) {
-    cmd_arger_show_subcommand_help_and_exit(
-        global_optional_args, global_optional_args_count, active_optional, active_optional_cnt,
-        active_required, active_required_cnt, subcommands, subcommands_count,
-        subcommands[current_subcommand].name, argv[0], app_name_and_version, colors);
-  } else {
-    cmd_arger_show_subcommand_help_and_exit(global_optional_args, global_optional_args_count, NULL,
-                                            0, NULL, 0, subcommands, subcommands_count, NULL,
-                                            argv[0], app_name_and_version, colors);
+  if (exit_on_error) {
+    if (current_subcommand != -1) {
+      cmd_arger_show_subcommand_help_and_exit(
+          global_optional_args, global_optional_args_count, active_optional, active_optional_cnt,
+          active_required, active_required_cnt, subcommands, subcommands_count,
+          subcommands[current_subcommand].name, argv[0], app_name_and_version, colors);
+    } else {
+      cmd_arger_show_subcommand_help_and_exit(global_optional_args, global_optional_args_count, NULL,
+                                              0, NULL, 0, subcommands, subcommands_count, NULL,
+                                              argv[0], app_name_and_version, colors);
+    }
   }
+  return parse_status;
 }
 
 /**
@@ -814,8 +840,9 @@ PRINT_HELP:
 void cmd_arger_parse(CmdArgerDesc *optional_args, uint32_t optional_args_count,
                      CmdArgerDesc *required_args, uint32_t required_args_count, int argc,
                      char **argv, const char *app_name_and_version, CmdArgerBool colors) {
-  cmd_arger_parse_internal(optional_args, optional_args_count, required_args, required_args_count,
-                           NULL, 0, NULL, argc, argv, app_name_and_version, colors);
+  (void)cmd_arger_parse_internal(
+      optional_args, optional_args_count, required_args, required_args_count,
+      NULL, 0, NULL, argc, argv, app_name_and_version, colors, cmd_arger_true);
 }
 
 /**
@@ -826,9 +853,29 @@ void cmd_arger_parse_subcommand(CmdArgerDesc *global_optional_args,
                                 CmdArgerSubCommand *subcommands, uint32_t subcommands_count,
                                 int *selected_subcommand_idx, int argc, char **argv,
                                 const char *app_name_and_version, CmdArgerBool colors) {
-  cmd_arger_parse_internal(global_optional_args, global_optional_args_count, NULL, 0, subcommands,
-                           subcommands_count, selected_subcommand_idx, argc, argv,
-                           app_name_and_version, colors);
+  (void)cmd_arger_parse_internal(
+      global_optional_args, global_optional_args_count, NULL, 0, subcommands,
+      subcommands_count, selected_subcommand_idx, argc, argv,
+      app_name_and_version, colors, cmd_arger_true);
+}
+
+CmdArgerParseStatus cmd_arger_parse_noexit(
+    CmdArgerDesc *optional_args, uint32_t optional_args_count,
+    CmdArgerDesc *required_args, uint32_t required_args_count,
+    int argc, char **argv) {
+  return cmd_arger_parse_internal(
+      optional_args, optional_args_count, required_args, required_args_count,
+      NULL, 0, NULL, argc, argv, NULL, cmd_arger_false, cmd_arger_false);
+}
+
+CmdArgerParseStatus cmd_arger_parse_subcommand_noexit(
+    CmdArgerDesc *global_optional_args, uint32_t global_optional_args_count,
+    CmdArgerSubCommand *subcommands, uint32_t subcommands_count,
+    int *selected_subcommand_idx, int argc, char **argv) {
+  return cmd_arger_parse_internal(
+      global_optional_args, global_optional_args_count, NULL, 0, subcommands,
+      subcommands_count, selected_subcommand_idx, argc, argv, NULL,
+      cmd_arger_false, cmd_arger_false);
 }
 
 // ============================================================================
