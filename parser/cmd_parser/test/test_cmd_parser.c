@@ -147,6 +147,71 @@ spec("cmd_parser") {
         }
     }
 
+
+    describe("Non-exiting Parsing") {
+        it("returns success and writes parsed values") {
+            char* name = NULL;
+            int64_t count = 0;
+            CmdArgerDesc optional_args[] = {
+                cmd_arger_required(
+                    cmd_arger_desc_integer(&count, "count", "Item count")),
+            };
+            CmdArgerDesc required_args[] = {
+                cmd_arger_desc_string(&name, "name", "Name"),
+            };
+            char* argv[] = {"app", "alpha", "--count", "7"};
+
+            check_equal(
+                cmd_arger_parse_noexit(optional_args, 1, required_args, 1,
+                                       4, argv),
+                CMD_ARGER_PARSE_STATUS_OK);
+            check_equal(name, "alpha");
+            check_equal(count, 7);
+        }
+
+        it("reports help without terminating the test process") {
+            char* name = NULL;
+            CmdArgerDesc required_args[] = {
+                cmd_arger_desc_string(&name, "name", "Name"),
+            };
+            char* argv[] = {"app", "--help"};
+
+            check_equal(
+                cmd_arger_parse_noexit(NULL, 0, required_args, 1, 2, argv),
+                CMD_ARGER_PARSE_STATUS_HELP);
+            check(name == NULL);
+        }
+
+        it("reports invalid input without terminating the test process") {
+            int64_t count = 0;
+            CmdArgerDesc optional_args[] = {
+                cmd_arger_required(
+                    cmd_arger_desc_integer(&count, "count", "Item count")),
+            };
+            char* argv[] = {"app", "--count", "not-an-integer"};
+
+            check_equal(
+                cmd_arger_parse_noexit(optional_args, 1, NULL, 0, 3, argv),
+                CMD_ARGER_PARSE_STATUS_INVALID);
+        }
+
+        it("tracks bundled short flags in a non-subcommand parser") {
+            CmdArgerBool alpha = cmd_arger_false;
+            CmdArgerBool beta = cmd_arger_false;
+            CmdArgerDesc optional_args[] = {
+                cmd_arger_desc_flag_sh(&alpha, "alpha", "a", "Alpha"),
+                cmd_arger_desc_flag_sh(&beta, "beta", "b", "Beta"),
+            };
+            char* argv[] = {"app", "-ab"};
+
+            check_equal(
+                cmd_arger_parse_noexit(optional_args, 2, NULL, 0, 2, argv),
+                CMD_ARGER_PARSE_STATUS_OK);
+            check(alpha == cmd_arger_true);
+            check(beta == cmd_arger_true);
+        }
+    }
+
     describe("Environment Variables") {
         it("should read the process environment across runtime boundaries") {
             static const char name[] = "TEST_CMD_PROCESS_ENV";
