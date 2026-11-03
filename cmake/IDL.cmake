@@ -98,8 +98,6 @@ function(_saltsutils_idl_resolve_compiler
     list(APPEND _idlc_hints "${SaltsUtils_IDLC_HINT}")
   endif()
 
-  unset(_idlc_program)
-  unset(_idlc_program CACHE)
   if(_idlc_hints)
     find_program(_idlc_program
       NAMES salts-idlc

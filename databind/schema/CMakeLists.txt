@@ -61,26 +61,20 @@ foreach(test_name
 endforeach()
 
 
-if(TARGET test_tbe_robustness)
-  target_link_libraries(test_tbe_robustness PRIVATE databind_binary_format_objects)
-endif()
+target_link_libraries(test_tbe_robustness PRIVATE databind_binary_format_objects)
 
 cmake_add_test(test_schema_cmeta_public_cpp
   SOURCES test/test_schema_cmeta_public_cpp.cpp
   LIBS Salts::Schema
   FOLDER "databind/schema/tests")
-if(TARGET test_schema_cmeta_public_cpp)
-  set_target_properties(test_schema_cmeta_public_cpp PROPERTIES
-    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
-endif()
+set_target_properties(test_schema_cmeta_public_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 
-if(TARGET test_schema_cmeta)
-  target_sources(test_schema_cmeta PRIVATE
-    test/test_schema_cmeta_buffer.c test/test_schema_cmeta_profiles.c)
-  set_source_files_properties(test/test_schema_cmeta_buffer.c
-    test/test_schema_cmeta_profiles.c
-    PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
-endif()
+target_sources(test_schema_cmeta PRIVATE
+  test/test_schema_cmeta_buffer.c test/test_schema_cmeta_profiles.c)
+set_source_files_properties(test/test_schema_cmeta_buffer.c
+  test/test_schema_cmeta_profiles.c
+  PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
 
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c

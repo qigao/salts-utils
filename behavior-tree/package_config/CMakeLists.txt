@@ -7,7 +7,6 @@ if(NOT IS_DIRECTORY "$ENV{SALTS_UTILS_ROOT}")
   message(FATAL_ERROR "SALTS_UTILS_ROOT must name the installed SaltsUtils SDK")
 endif()
 
-unset(SaltsUtils_DIR CACHE)
 find_package(SaltsUtils CONFIG REQUIRED
   PATHS "$ENV{SALTS_UTILS_ROOT}/lib/cmake/SaltsUtils"
   NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)

@@ -6,6 +6,16 @@ if(POLICY CMP0167)
   cmake_policy(SET CMP0167 OLD)
 endif()
 
+include(CMakeOptions.cmake)
+
+foreach(_dependency_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
+  if(NOT DEFINED ENV{${_dependency_root}} OR
+     NOT IS_DIRECTORY "$ENV{${_dependency_root}}")
+    message(FATAL_ERROR
+      "${_dependency_root} must name the restored SDK; run cmake/ci/restore-native-sdk first")
+  endif()
+endforeach()
+
 # Single canonical C source profile for C11 workflow consumers. Its build
 # graph does not configure the unrelated legacy data/UI/serial systems, and
 # does not provide alternate sources for any selected module.
@@ -48,8 +58,6 @@ endif()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "cmake")
 
-include(CMakeOptions.cmake)
-
 # The reduced production graph is C11-only, but its public-header contract
 # tests intentionally compile both C and C++. Enable C++ only for that test
 # surface instead of pulling the full C++ module graph into the subset.
@@ -79,23 +87,9 @@ set_target_properties(run-program PROPERTIES FOLDER "Tools")
 
 find_package(Threads REQUIRED)
 
-foreach(_dependency_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
-  if(NOT DEFINED ENV{${_dependency_root}} OR
-     NOT IS_DIRECTORY "$ENV{${_dependency_root}}")
-    message(FATAL_ERROR
-      "${_dependency_root} must name the restored SDK; run cmake/ci/restore-native-sdk first")
-  endif()
-endforeach()
-# Previous configures must not keep selecting an older or monolithic SDK.
-file(TO_CMAKE_PATH "$ENV{SALTSCORE_ROOT}" SALTSCORE_ROOT_PATH)
-file(TO_CMAKE_PATH "$ENV{CMETA_ROOT}" CMETA_ROOT_PATH)
-unset(SaltsCore_DIR CACHE)
-unset(SaltsCore_DIR)
-unset(CMeta_DIR CACHE)
-unset(CMeta_DIR)
-find_package(SaltsCore 0.1 CONFIG REQUIRED PATHS "${SALTSCORE_ROOT_PATH}"
+find_package(SaltsCore 0.1 CONFIG REQUIRED PATHS "$ENV{SALTSCORE_ROOT}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-find_package(CMeta 0.1 CONFIG REQUIRED PATHS "${CMETA_ROOT_PATH}"
+find_package(CMeta 0.1 CONFIG REQUIRED PATHS "$ENV{CMETA_ROOT}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 # ASN.1, Crypto, native FS/Process and other base utilities come from the one
 # SaltsCore SDK. CMeta/CFlow/CSTL come only from the independent CMeta SDK.
