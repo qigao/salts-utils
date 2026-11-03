@@ -633,7 +633,10 @@ static CmdArgerParseStatus cmd_arger_parse_internal(
               seen_global[desc - global_optional_args] = 1;
             }
           } else if (desc) {
-            seen_subcommand[desc - active_optional] = 1;
+            if (current_subcommand != -1)
+              seen_subcommand[desc - active_optional] = 1;
+            else
+              seen_global[desc - active_optional] = 1;
           }
 
           if (!desc) {
