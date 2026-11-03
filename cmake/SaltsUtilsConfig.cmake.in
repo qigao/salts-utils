@@ -7,18 +7,11 @@ foreach(_dependency_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
     message(FATAL_ERROR "${_dependency_root} must name the restored SDK")
   endif()
 endforeach()
-file(TO_CMAKE_PATH "$ENV{SALTSCORE_ROOT}" _salts_utils_saltscore_root)
-file(TO_CMAKE_PATH "$ENV{CMETA_ROOT}" _salts_utils_cmeta_root)
-unset(SaltsCore_DIR CACHE)
-unset(SaltsCore_DIR)
-unset(CMeta_DIR CACHE)
-unset(CMeta_DIR)
-# Real lookups invalidate an older monolithic package cached by the caller.
 find_package(SaltsCore 0.1 CONFIG REQUIRED
-  PATHS "${_salts_utils_saltscore_root}"
+  PATHS "$ENV{SALTSCORE_ROOT}"
   NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 find_package(CMeta 0.1 CONFIG REQUIRED
-  PATHS "${_salts_utils_cmeta_root}"
+  PATHS "$ENV{CMETA_ROOT}"
   NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 # The sole Unicode implementation and target must come from the installed
@@ -45,10 +38,8 @@ unset(_salts_utils_crypto_imported)
 # Native workflow-only builds do not publish Lua/bindings providers.
 # The full legacy Utils package retains its separate explicit binding graph.
 if(NOT "@SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET@" STREQUAL "ON")
-  if(NOT TARGET Lua::Lua)
-    add_library(Lua::Lua INTERFACE IMPORTED)
-    target_link_libraries(Lua::Lua INTERFACE lua)
-  endif()
+  find_dependency(unofficial-lua CONFIG REQUIRED)
+  find_dependency(qjs CONFIG REQUIRED)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")

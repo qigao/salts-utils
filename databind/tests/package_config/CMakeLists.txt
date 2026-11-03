@@ -15,8 +15,8 @@ set(_databind_package_test_args
   "-DCMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS} ${_databind_package_sanitizer_link_flags}")
 
 set(_databind_package_test_environment
-  "SALTSCORE_ROOT=${SALTSCORE_ROOT_PATH}"
-  "CMETA_ROOT=${CMETA_ROOT_PATH}")
+  "SALTSCORE_ROOT=$ENV{SALTSCORE_ROOT}"
+  "CMETA_ROOT=$ENV{CMETA_ROOT}")
 foreach(_environment_name IN ITEMS
     VCPKG_ROOT
     LLVM_MINGW_TOOLCHAIN_FILE

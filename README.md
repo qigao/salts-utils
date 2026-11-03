@@ -213,6 +213,15 @@ cmake --build --preset install-linux-release-user
 
 Windows uses the corresponding `win-*` presets. The `databind/` subtree is a component, not an alternative standalone configure/install entry point.
 
+Configuration fails on missing SDK roots, dependencies or tools, unsupported
+requested sanitizers, and `BUILD_BENCHMARKS=ON` with `BUILD_TESTS=OFF`.
+Sanitizers use the `ENABLE_SANITIZER_*` options in `CMakeOptions.cmake`;
+the unused `ENABLE_ASAN` option has been removed.
+
+Supply SDK roots with forward slashes. After changing SDK roots or toolchains,
+configure with `cmake --fresh --preset <profile>` (or `FRESH=1` below).
+CMake files do not clear package discovery caches or repair stale configurations.
+
 For local orchestration, the repository also exposes the same Praktor input
 contract used by TurboAgent. The workflow remains repository-local because
 Praktor resolves reusable workflow paths and working directories relative to
