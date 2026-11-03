@@ -5,7 +5,7 @@ import base64
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 import re
 import shutil
 import socketserver
@@ -183,10 +183,14 @@ class Packages:
 
 
 def export(values, path=None):
+    result = {}
     for key, value in values.items():
-        value = str(value)
+        # vcpkg forwards find_package arguments through CMake EVAL, where
+        # native Windows backslashes would be parsed again as escape sequences.
+        value = value.as_posix() if isinstance(value, PurePath) else str(value)
         if "\n" in value or "\r" in value:
             raise ValueError("invalid environment value")
+        result[key] = value
         print(f"{key}={value}", flush=True)
         destination = os.environ.get("GITHUB_ENV")
         if destination:
@@ -194,7 +198,9 @@ def export(values, path=None):
                 output.write(f"{key}={value}\n")
     if path and os.environ.get("GITHUB_PATH"):
         with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as output:
-            output.write(str(path) + "\n")
+            output.write((path.as_posix() if isinstance(path, PurePath)
+                          else str(path)) + "\n")
+    return result
 
 
 def read_manifest(path):
@@ -334,8 +340,7 @@ def restore_native_sdk(args, packages):
             raise ValueError("released TurboWasm package does not export TurboWasm::Component")
         values["TURBOWASM_ROOT"] = tw_root.resolve()
         values["TURBOWASM_VERSION"] = tw_version
-    export(values, re2c_root / "bin")
-    result = {key: str(value) for key, value in values.items()}
+    result = export(values, re2c_root / "bin")
     if args.result:
         args.result.parent.mkdir(parents=True, exist_ok=True)
         args.result.write_text(json.dumps(result, sort_keys=True), encoding="utf-8")

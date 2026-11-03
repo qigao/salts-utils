@@ -218,7 +218,8 @@ requested sanitizers, and `BUILD_BENCHMARKS=ON` with `BUILD_TESTS=OFF`.
 Sanitizers use the `ENABLE_SANITIZER_*` options in `CMakeOptions.cmake`;
 the unused `ENABLE_ASAN` option has been removed.
 
-Supply SDK roots with forward slashes. After changing SDK roots or toolchains,
+Supply SDK roots with forward slashes; the native SDK restore helpers export
+paths in this form for both CI and local use. After changing SDK roots or toolchains,
 configure with `cmake --fresh --preset <profile>` (or `FRESH=1` below).
 CMake files do not clear package discovery caches or repair stale configurations.
 
