@@ -26,15 +26,22 @@ jobs:
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
       QIGAO_IOS_SYSROOT: ${{ matrix.sysroot }}
       QIGAO_NUGET_PACKAGES: ${{ github.workspace }}/stage/nuget
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/build/vcpkg-downloads
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
-      CCACHE_MAXSIZE: 512M
+      CCACHE_MAXSIZE: 512MiB
       CCACHE_COMPILERCHECK: content
-      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-ccache-v1-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-ccache-v2-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Prepare dependency download cache
+        id: cache-paths
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_DOWNLOADS | Out-Null
+          "image=$env:ImageOS-$env:ImageVersion" >> $env:GITHUB_OUTPUT
       - name: Select iOS cache namespace
         if: matrix.family == 'ios'
         shell: bash
@@ -51,7 +58,6 @@ jobs:
       - uses: ./.github/actions/setup-native-ci
         with:
           re2c: 'false'
-      - uses: ./.github/actions/setup-build-host
       - name: Select Windows dependency triplet
         if: matrix.family == 'windows'
         shell: pwsh
@@ -86,6 +92,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
+      - uses: ./.github/actions/setup-build-host
+        id: build-host
+      - name: Restore vcpkg binaries and downloads
+        id: dependency-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.VCPKG_BINARY_CACHE }}
+            ${{ env.VCPKG_DOWNLOADS }}
+          key: vcpkg-v1-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}-${{ env.VCPKG_CACHE_REVISION }}-${{ steps.cache-paths.outputs.image }}-${{ hashFiles('vcpkg*.json', 'CMake*Presets.json', 'presets/**', 'cmake/vcpkg-ports/**', '.github/actions/setup-native-ci/**', 'cmake/ci/setup_native_ci.py', '.github/workflows/native-build.yml') }}
+          restore-keys: |
+            vcpkg-v1-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}-${{ env.VCPKG_CACHE_REVISION }}-
       - name: Build host tools for cross compilation
         if: matrix.cross
         shell: bash
@@ -93,14 +111,13 @@ jobs:
           set -euo pipefail
           cmake --preset ci-host-release-user
           cmake --build --preset ci-host-release-user --parallel 2
-      - name: Configure and build complete Unix graph
+      - name: Configure complete Unix graph
         if: matrix.family != 'windows'
         shell: bash
         run: |
           set -euo pipefail
           cmake --preset '${{ matrix.preset }}'
-          cmake --build --preset '${{ matrix.preset }}' --parallel 2
-      - name: Configure and build complete Windows graph
+      - name: Configure complete Windows graph
         if: matrix.family == 'windows'
         shell: pwsh
         run: |
@@ -108,8 +125,36 @@ jobs:
           $env:VCPKG_ROOT = $env:QIGAO_VCPKG_ROOT
           & cmake --preset '${{ matrix.preset }}'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Save dependency cache after configure
+        if: steps.dependency-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.VCPKG_BINARY_CACHE }}
+            ${{ env.VCPKG_DOWNLOADS }}
+          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
+      - name: Build complete Unix graph
+        if: matrix.family != 'windows'
+        shell: bash
+        run: cmake --build --preset '${{ matrix.preset }}' --parallel 2
+      - name: Build complete Windows graph
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:VCPKG_ROOT = $env:QIGAO_VCPKG_ROOT
           & cmake --build --preset '${{ matrix.preset }}' --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Report compiler cache statistics
+        if: always() && steps.build-host.outcome == 'success'
+        shell: bash
+        run: ccache --show-stats --verbose
+      - name: Save compiler cache before install and tests
+        if: success() && steps.build-host.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.build-host.outputs.cache-key }}
       - name: Install Unix release SDK
         if: matrix.package && matrix.family != 'windows'
         shell: bash

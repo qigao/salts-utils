@@ -21,9 +21,9 @@ jobs:
       QIGAO_TARGET_TRIPLET: ${{ matrix.triplet }}
       QIGAO_HOST_TRIPLET: ${{ matrix.host_triplet }}
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
-      CCACHE_MAXSIZE: 512M
+      CCACHE_MAXSIZE: 512MiB
       CCACHE_COMPILERCHECK: content
-      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-ccache-v1-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}
+      SALTS_UTILS_COMPILER_CACHE_NAMESPACE: salts-utils-ccache-v2-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}
     steps:
       - uses: actions/checkout@v4
         with:

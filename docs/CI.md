@@ -21,23 +21,34 @@
 所属 CMake/preset/模块中修复，不能通过排除对应测试来恢复绿色。
 
 vcpkg 优先读取共享二进制缓存；未命中时按 manifest 和 baseline 正常从源码构建，
-生成的缓存只写入本地目录。CI 不要求所有平台的新依赖事先发布到共享 feed；
+生成的缓存只写入本地目录，并与 `VCPKG_DOWNLOADS` 一起持久保存到 Actions cache。
+依赖缓存按 runner、host、matrix profile、共享契约 revision、镜像及配置摘要隔离；
+旧配置可为同一 profile 提供缓存候选，是否复用仍由 vcpkg ABI 判断。
+configure 成功后立即保存，项目构建或后续测试失败不会丢掉已编译依赖。
+CI 不要求所有平台的新依赖事先发布到共享 feed；
 认证、下载与编译失败仍立即终止构建。
 
 项目 C/C++ 编译通过 [ccache](https://ccache.dev/) 缓存编译结果。CI 使用
-`actions/cache` 恢复 `CCACHE_DIR`，每个矩阵 job 限额 512 MiB。
-Linux 安装发行版 ccache，macOS 使用 Homebrew，Windows 使用 Chocolatey。
+`actions/cache/restore` 恢复 `CCACHE_DIR`，每个矩阵 job 限额 512 MiB。
+各平台通过共享 `setup-ccache` action 安装 SHA256 固定的 ccache 4.14.2，
+工具归档复用共享 curl 下载实现。
 CI CMake User Presets 配置 `CMAKE_C_COMPILER_LAUNCHER` 与
 `CMAKE_CXX_COMPILER_LAUNCHER` 为 ccache；首次执行或未命中时直接编译，
 不会修改 SDK 依赖版本。缓存目录按操作系统、host、目标 matrix profile
-隔离，保持 Release、Sanitizers 和交叉编译隔离。
+隔离，保持 Release、Sanitizers 和交叉编译隔离。保存键包含 ccache 版本、
+共享依赖契约、runner 镜像、构建配置、已解析的 Core/CMeta SDK 版本和源码提交，
+不再用 run ID/attempt 为相同输入反复创建缓存。相同环境可恢复较早提交的编译结果。
+build job 在构建成功后、安装及测试前保存；每轮清零并输出命中统计。
 
 `CCACHE_COMPILERCHECK=content` 避免依赖编译器二进制 mtime，
 源文件、头文件与实际编译参数仍参与 cache key。Windows LLVM-MinGW 构建
 也经过 ccache launcher，若发现当前参数不受支持则由 ccache 委托编译，
 CI 以真实编译和 CTest 结果作为通过条件，不以缓存命中为前提。
-测试 job 恢复缓存以供嵌套 CMake 生成器使用；不缓存 build trees、
+测试 job 只恢复已有编译缓存，不向共享保存键上传测试阶段的缓存；不缓存 build trees、
 Ninja 状态、vcpkg 安装目录或还原的 Native SDK。
+
+SDK restore 每轮仍解析最新发布版本，编译缓存不会替代这一步。PR 写入的
+Actions cache 仅供该 PR 复用；合并后 master 首轮建立供后续 PR 使用的缓存。
 
 普通 CI 覆盖 Linux x64、Windows x64、macOS arm64 Release 构建与测试，
 以及 Android arm64-v8a 交叉构建。
