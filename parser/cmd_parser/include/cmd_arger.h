@@ -81,6 +81,13 @@ typedef uint8_t CmdArgerBool;
  * @brief Supported types of command line arguments.
  */
 typedef enum {
+  CMD_ARGER_PARSE_STATUS_OK = 0,
+  CMD_ARGER_PARSE_STATUS_HELP = 1,
+  CMD_ARGER_PARSE_STATUS_INVALID = 2,
+  CMD_ARGER_PARSE_STATUS_NO_MEMORY = 3
+} CmdArgerParseStatus;
+
+typedef enum {
 	CmdArgerDescKind_flag,        /**< A boolean flag (e.g., --verbose) */
 	CmdArgerDescKind_string,      /**< A string value (e.g., --name "John") */
 	CmdArgerDescKind_integer,     /**< A 64-bit signed integer (e.g., --port 8080) */
@@ -280,6 +287,19 @@ extern CmdArgerDesc cmd_arger_required(CmdArgerDesc desc);
 extern void cmd_arger_parse(CmdArgerDesc* optional_args, uint32_t optional_args_count, CmdArgerDesc* required_args, uint32_t required_args_count, int argc, char** argv, const char* app_name_and_version, CmdArgerBool colors);
 
 /**
+ * Parse arguments without printing help or terminating the process.
+ *
+ * The descriptor output values are populated exactly as with cmd_arger_parse().
+ * CMD_ARGER_PARSE_STATUS_HELP reports an explicit --help token. Invalid input
+ * returns CMD_ARGER_PARSE_STATUS_INVALID. The caller owns diagnostics/help
+ * rendering and may safely use this API from libraries and unit tests.
+ */
+extern CmdArgerParseStatus cmd_arger_parse_noexit(
+    CmdArgerDesc* optional_args, uint32_t optional_args_count,
+    CmdArgerDesc* required_args, uint32_t required_args_count,
+    int argc, char** argv);
+
+/**
  * @brief Parse arguments with subcommand support.
  *
  * @param global_optional_args Options that can appear before or after subcommands.
@@ -297,6 +317,14 @@ extern void cmd_arger_parse_subcommand(
     CmdArgerSubCommand* subcommands, uint32_t subcommands_count,
     int* selected_subcommand_idx,
     int argc, char** argv, const char* app_name_and_version, CmdArgerBool colors);
+
+/**
+ * Subcommand variant of cmd_arger_parse_noexit().
+ */
+extern CmdArgerParseStatus cmd_arger_parse_subcommand_noexit(
+    CmdArgerDesc* global_optional_args, uint32_t global_optional_args_count,
+    CmdArgerSubCommand* subcommands, uint32_t subcommands_count,
+    int* selected_subcommand_idx, int argc, char** argv);
 
 /**
  * @brief Display help and exit program.
