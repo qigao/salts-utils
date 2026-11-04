@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - name: Set up Windows LLVM-MinGW runtime toolchain
         if: matrix.family == 'windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@v0.1.4
         with:
           target: x64
           version: '20261020'
