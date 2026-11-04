@@ -10,7 +10,7 @@ outputs:
 runs:
   using: composite
   steps:
-  - uses: qigao/vcpkg-cache/.github/actions/setup-ccache@77b084421712ed24e1ce6f223d296efb5c3cd273
+  - uses: qigao/vcpkg-cache/.github/actions/setup-ccache@v0.1.4
     id: ccache
   - name: Prepare Linux dependencies
     if: runner.os == 'Linux'
