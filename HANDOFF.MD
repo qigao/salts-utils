@@ -92,3 +92,27 @@
   scripts after downloading the prepared package. Its publish job must check
   out the exact validated `release_sha`; checking out only in the metadata job
   leaves later jobs without those scripts and fails before publication.
+
+### Shared v0.1.1 binary cache adoption (2026-11-09)
+
+- Native setup now delegates to the shared release bootstrap, using its verified
+  standalone Windows pkgconf and files cache. Published exact ABIs restore after
+  the Actions cache and before configure; unlisted ABIs compile and cache normally.
+  The default bootstrap no longer starts a local HTTP adapter. Windows manifests
+  exclude host pkgconf, whose upstream port otherwise acquires MSYS2.
+- Registry baseline is 4ac631f89e07cebfd347848af642f31fe8c4edec. The published
+  v0.1.1 release contains 148 native ABI archives; neither macOS x64 nor Android
+  target ABIs were prewarmed. Missing ABIs are permitted, not integrity/auth/TLS
+  failures. Windows reference producers completed without MSYS2 acquisition.
+- Actual shared bootstrap and live manifest restore ran in C:/t/qu011. The six
+  locally requested ABIs were absent due local toolchain identity; ordinary vcpkg
+  install compiled and cached them. Existing restore-native-sdk.ps1 restored
+  SaltsCore.Native 0.1.0, CMeta.Native 0.1.2 and Re2c 4.6.7, matching current CI.
+  cmake --fresh --preset ci-win-sdk-release-user, complete build and
+  install-ci-win-sdk-release-user passed. No independent validation project.
+- verify_databind_release_source.py --self-test passed, including its existing
+  negative cases. Workflow YAML parsed and git diff --check passed. Runtime
+  suites and other platforms remain CI validation, not local test claims.
+- Using a newly built Core checkout SDK instead of the published SDK exposed a
+  separate Salts::Crypto package-export mismatch. Keep the current published SDK
+  pins in this cache change; do not patch around that contract in the consumer.

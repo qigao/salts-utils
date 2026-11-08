@@ -120,7 +120,7 @@ The binding targets and their runtime link dependencies remain available.
 
 ### Restore the published SDK and shared dependency cache
 
-Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain/overlays as Salts, but keep binary artifacts in vcpkg's local default cache and do not invoke NuGet or Mono. CI materializes the same immutable cache contract and exposes GitHub Packages as a read-only curl-backed HTTP source, with a writable local L1 cache.
+Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain/overlays as Salts, but keep binary artifacts in vcpkg's local default cache and do not invoke NuGet or Mono. CI uses the shared `v0.1.1` setup and restores exact ABI archives from its binary release into a writable local files cache. Missing ABIs are compiled by the ordinary CMake configure and saved by the existing Actions cache; authentication, TLS, archive and digest failures stop the job. No local HTTP adapter is started.
 
 Before configuring, provide `PROJECT_ROOT`, `VCPKG_ROOT`, and a `GITHUB_TOKEN` with `read:packages` in the parent environment. `PROJECT_ROOT/external/pkgs` is the SaltsUtils install location; dependency SDKs are restored separately. Credentials are passed only to the curl package helper at runtime; no tracked NuGet credentials/configuration is used by native dependency restore.
 

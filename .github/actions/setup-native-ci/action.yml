@@ -2,9 +2,9 @@ name: Native CI dependencies with curl
 description: Pinned vcpkg contract and GitHub package downloads without Mono, NuGet or .NET.
 inputs:
   contract-ref:
-    description: Immutable qigao/vcpkg-cache contract commit.
+    description: Immutable qigao/vcpkg-cache source and binary release.
     required: false
-    default: 2913c530b8f12ae411e3c180e898fb6c7783462f
+    default: v0.1.1
   re2c:
     description: Restore the host re2c package in this job.
     required: false
@@ -22,13 +22,7 @@ runs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-    - name: Prepare shared native Windows pkg-config without MSYS2
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        python build/ci-vcpkg-contract/scripts/windows_pkgconf.py
-        if ($LASTEXITCODE -ne 0) { throw 'Native Windows pkgconf setup failed' }
-    - name: Bootstrap canonical vcpkg and read-only curl cache
+    - name: Bootstrap shared vcpkg and local read/write cache
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
