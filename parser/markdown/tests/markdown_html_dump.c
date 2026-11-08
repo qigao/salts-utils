@@ -18,7 +18,8 @@
 enum {
     MD_TEST_INPUT_MAX = 1 << 20,
     MD_TEST_OUTPUT_MAX = 8 << 20,
-    MD_TEST_NODES_MAX = 16384
+    MD_TEST_NODES_MAX = 16384,
+    MD_TEST_MAP_ENTRIES_MAX = 65536
 };
 
 int main(int argc,char **argv) {
@@ -62,8 +63,11 @@ int main(int argc,char **argv) {
     }
 
     salts_md_document *doc=NULL;
-    salts_md_status status=salts_md_parse(
-        source,length,MD_TEST_NODES_MAX,MD_TEST_INPUT_MAX,&doc);
+    /* Run the unchanged strict CommonMark/GFM HTML oracles through the
+     * opt-in provenance path too; UNKNOWN never alters semantic rendering. */
+    salts_md_status status=salts_md_parse_with_source_map(
+        source,length,MD_TEST_NODES_MAX,MD_TEST_INPUT_MAX,
+        MD_TEST_MAP_ENTRIES_MAX,&doc);
     free(source);
     if(status!=SALTS_MD_OK || !doc) {
         fprintf(stderr,"markdown HTML test CLI: parse error %d\n",(int)status);

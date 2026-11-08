@@ -10,6 +10,18 @@
 #define EM_SPACE "\xe2\x80\x83"
 #define NNBSP "\xe2\x80\xaf"
 #define ZWSP "\xe2\x80\x8b"
+
+/* Run the same real grammar/renderer assertions with optional provenance.
+ * This mode must preserve every semantic node, budget and HTML expectation. */
+static bool source_map_enabled=false;
+static salts_md_status parse_fixture(const char *input,size_t length,
+    size_t max_nodes,size_t max_source_bytes,salts_md_document **out) {
+    return source_map_enabled?
+        salts_md_parse_with_source_map(input,length,max_nodes,max_source_bytes,
+                                      65536u,out):
+        salts_md_parse(input,length,max_nodes,max_source_bytes,out);
+}
+#define salts_md_parse parse_fixture
 #define CHECK(expr) do { \
     if (!(expr)) { \
         fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #expr); \
@@ -2234,7 +2246,9 @@ static int test_gfm_forged_nested_row_cell_rejection(void) {
     return 0;
 }
 
-int main(void) {
+int main(int argc,char **argv) {
+    if(argc==2 && !strcmp(argv[1],"--source-map"))source_map_enabled=true;
+    else if(argc!=1)return 2;
     if(test_block_and_inline_baseline()) return 1;
     if(test_setext_unicode_and_crlf()) return 1;
     if(test_unclosed_fence_and_empty()) return 1;
