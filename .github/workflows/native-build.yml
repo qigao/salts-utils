@@ -49,7 +49,7 @@ jobs:
       - name: Set up Windows LLVM-MinGW UCRT toolchain
         id: llvm_mingw
         if: matrix.family == 'windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@v0.1.1
         with:
           target: x64
           version: '20261020'
@@ -104,6 +104,14 @@ jobs:
           key: vcpkg-v1-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}-${{ env.VCPKG_CACHE_REVISION }}-${{ steps.cache-paths.outputs.image }}-${{ hashFiles('vcpkg*.json', 'CMake*Presets.json', 'presets/**', 'cmake/vcpkg-ports/**', '.github/actions/setup-native-ci/**', 'cmake/ci/setup_native_ci.py', '.github/workflows/native-build.yml') }}
           restore-keys: |
             vcpkg-v1-${{ matrix.runner }}-${{ matrix.host }}-${{ matrix.id }}-${{ env.VCPKG_CACHE_REVISION }}-
+      - name: Restore published exact dependency ABIs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python build/ci-vcpkg-contract/scripts/restore-manifest-cache.py --manifest-root "$env:GITHUB_WORKSPACE" --triplet "$env:QIGAO_TARGET_TRIPLET" --host-triplet "$env:QIGAO_HOST_TRIPLET"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build host tools for cross compilation
         if: matrix.cross
         shell: bash
