@@ -6,7 +6,7 @@
 #ifndef MUSTACHE_XML_H
 #define MUSTACHE_XML_H
 
-#include <salts/platform.h>
+#include <core/platform.h>
 #include "mustache.h"
 
 #ifdef __cplusplus
@@ -34,7 +34,7 @@ typedef struct MUSTACHE_XML_PROVIDER {
  * The provider borrows the XML tree; it must remain immutable and valid until
  * rendering completes.
  *
- * @param xml_node Borrowed `salts_xml_node.impl` for the document element
+ * @param xml_node Borrowed `xml_node.impl` for the document element
  * @param template_loader Optional partial lookup. Returned templates remain
  *                        user-owned and valid until rendering completes.
  * @param user_data User data passed to template loader
@@ -61,7 +61,7 @@ int mustache_xml_provider_status(const MUSTACHE_XML_PROVIDER *provider);
 /**
  * Render a mustache template with XML data
  * @param templ Compiled mustache template
- * @param xml_node Borrowed `salts_xml_node.impl` that remains immutable during rendering
+ * @param xml_node Borrowed `xml_node.impl` that remains immutable during rendering
  * @param renderer Output renderer
  * @param renderer_data Data for renderer callbacks
  * @param template_loader Optional partial lookup. Returned templates remain user-owned and must

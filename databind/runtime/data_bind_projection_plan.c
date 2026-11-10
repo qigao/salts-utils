@@ -1,7 +1,7 @@
 #include "data_bind_projection_plan.h"
 #include "data_bind_internal.h"
 
-#include <vstr.h>
+#include <core/vstr.h>
 #include <cstl/typed.h>
 #include <cmeta/core_data.h>
 #include <cmeta/data_reflect.h>

@@ -93,10 +93,10 @@ spec("optional local lifecycle uses canonical CMeta") {
     UuidState_t value;
     memset(&value, 0xa5, sizeof(value));
     UuidState_init(&value);
-    for (size_t i = 0u; i < sizeof(value.optional_value.bytes); ++i) {
-      check_equal(value.optional_value.bytes[i], (uint8_t)0u);
-      check_equal(value.nullable_value.bytes[i], (uint8_t)0u);
-      check_equal(value.tri_value.bytes[i], (uint8_t)0u);
+    for (size_t i = 0u; i < sizeof(value.optional_value); ++i) {
+      check_equal(value.optional_value[i], (uint8_t)0u);
+      check_equal(value.nullable_value[i], (uint8_t)0u);
+      check_equal(value.tri_value[i], (uint8_t)0u);
     }
     check_equal(value._presence[0], 0u);
     check_equal(value._nulls[0], 0u);
@@ -107,10 +107,10 @@ spec("optional local lifecycle uses canonical CMeta") {
     value._presence[0] = 0xffu;
     value._nulls[0] = 0xffu;
     UuidState_clear(&value);
-    for (size_t i = 0u; i < sizeof(value.optional_value.bytes); ++i) {
-      check_equal(value.optional_value.bytes[i], (uint8_t)0u);
-      check_equal(value.nullable_value.bytes[i], (uint8_t)0u);
-      check_equal(value.tri_value.bytes[i], (uint8_t)0u);
+    for (size_t i = 0u; i < sizeof(value.optional_value); ++i) {
+      check_equal(value.optional_value[i], (uint8_t)0u);
+      check_equal(value.nullable_value[i], (uint8_t)0u);
+      check_equal(value.tri_value[i], (uint8_t)0u);
     }
     check_equal(value._presence[0], 0u);
     check_equal(value._nulls[0], 0u);

@@ -8,19 +8,19 @@
 #include <string.h>
 
 static char *render_xml_text(const char *template_text, const char *xml_text) {
-  salts_xml_document document = {0};
+  xml_document document = {0};
   MUSTACHE_TEMPLATE *templ = NULL;
   MUSTACHE_STRING_RENDERER renderer = {0};
   char *result = NULL;
   int renderer_ready = 0;
 
-  if (salts_xml_parse(&document, xml_text, strlen(xml_text), NULL, NULL) != SALTS_XML_OK)
+  if (xml_parse(&document, xml_text, strlen(xml_text), NULL, NULL) != SALTS_XML_OK)
     return NULL;
   templ = mustache_compile(template_text, strlen(template_text), NULL, NULL, 0);
   if (!templ) goto cleanup;
   if (mustache_string_renderer_init(&renderer) != 0) goto cleanup;
   renderer_ready = 1;
-  if (mustache_render_xml(templ, (void *)salts_xml_document_root(&document).impl,
+  if (mustache_render_xml(templ, (void *)xml_document_root(&document).impl,
                           &renderer.base, &renderer, NULL, NULL) != 0)
     goto cleanup;
   result = mustache_string_renderer_get(&renderer);
@@ -28,7 +28,7 @@ static char *render_xml_text(const char *template_text, const char *xml_text) {
 cleanup:
   if (renderer_ready) mustache_string_renderer_free(&renderer);
   mustache_release(templ);
-  salts_xml_document_destroy(&document);
+  xml_document_destroy(&document);
   return result;
 }
 
@@ -69,18 +69,18 @@ spec("mustache XML integration") {
     }
 
     it("should report success after initialization") {
-      salts_xml_document document = {0};
+      xml_document document = {0};
       MUSTACHE_XML_PROVIDER provider;
-      check_equal(salts_xml_parse(&document, "<root/>", strlen("<root/>"), NULL, NULL),
+      check_equal(xml_parse(&document, "<root/>", strlen("<root/>"), NULL, NULL),
                   SALTS_XML_OK);
       if (document.impl) {
         check_equal(mustache_xml_provider_init(
-                        &provider, (void *)salts_xml_document_root(&document).impl,
+                        &provider, (void *)xml_document_root(&document).impl,
                         NULL, NULL),
                     0);
         check_equal(mustache_xml_provider_status(&provider), 0);
         mustache_xml_provider_free(&provider);
-        salts_xml_document_destroy(&document);
+        xml_document_destroy(&document);
       }
     }
   }

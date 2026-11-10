@@ -37,7 +37,7 @@ void data_bind_stream_format_state_cleanup(
     json_path_program_free(state->json_path_program);
   if (state->json_sax != NULL) json_sax_parser_destroy(state->json_sax);
   if (state->yaml_sax != NULL) cyaml_sax_parser_destroy(state->yaml_sax);
-  if (state->xml_sax != NULL) salts_xml_sax_parser_destroy(state->xml_sax);
+  if (state->xml_sax != NULL) xml_sax_parser_destroy(state->xml_sax);
 
   if (state->json_match_value != NULL) {
     json_free(state->json_match_value);

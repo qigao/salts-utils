@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 #include <stdio.h>
-#include <salts/thread.h>
+#include <threads/threads.h>
 #include <stdlib.h>
 #include <string.h>
 #include <cmeta/cleanup.h>
@@ -340,8 +340,8 @@ static void {{schema.schema_name}}_CMETA_INIT_FIELDS_ALL(void) {
 {{/cmeta_records}}}
 
 static void {{schema.schema_name}}_CMETA_INIT_ALL(void) {
-    static cmeta_once_t initialized = SALTS_ONCE_INIT;
-    cmeta_once(&initialized, {{schema.schema_name}}_CMETA_INIT_FIELDS_ALL);
+    static sync_once_t initialized = SALTS_ONCE_INIT;
+    sync_once(&initialized, {{schema.schema_name}}_CMETA_INIT_FIELDS_ALL);
 }
 
 

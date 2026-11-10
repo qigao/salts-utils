@@ -1,5 +1,5 @@
 #include "fixtures/native_math.h"
-#include <salts/bindings/lua/module.h>
+#include <bindings/lua/module.h>
 #include <salts/bindings/quickjs/module.h>
 #include <data_bind_typescript.h>
 #include <cmeta/cmeta.h>

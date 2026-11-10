@@ -8,9 +8,9 @@
 #include "data_bind_contract_fingerprint.h"
 #include "data_bind_temporal_adapter.h"
 #include "data_bind_stream_format_state_internal.h"
-#include "fmt.h"
+#include "core/fmt.h"
 #include "node_tree.h"
-#include "re.h"
+#include "core/re.h"
 #include "binary_scalar_profile.h"
 #include "schema_cmeta.h"
 #include "idl.h"
@@ -33,10 +33,10 @@
 #include <xml_parser/xml_parser.h>
 #include <xml_parser/xml_sax.h>
 #include <query_vm.h>
-#include <salts/fs.h>
-#include <tstr.h>
-#include <salts/thread.h>
-#include <cmeta_uuid.h>
+#include <file/fs.h>
+#include <core/tstr.h>
+#include <threads/threads.h>
+#include <core/uuid.h>
 #include <cstl.h>
 #include <cstl/typed.h>
 
@@ -143,16 +143,16 @@ static uintptr_t g_value_pool_closed_slot_storage;
 
 enum value_pool_state { VALUE_POOL_DISABLED = 0, VALUE_POOL_ENABLED };
 
-static cmeta_mutex_t g_value_pool_control_mutex;
+static sync_mutex_t g_value_pool_control_mutex;
 static atomic_int g_value_pool_state = VALUE_POOL_ENABLED;
 static _Atomic uint64_t g_value_pool_ready_mask;
 static atomic_size_t g_value_pool_allocated_count;
 static atomic_size_t g_value_pool_reused_count;
-static cmeta_once_t g_value_pool_once = SALTS_ONCE_INIT;
+static sync_once_t g_value_pool_once = SALTS_ONCE_INIT;
 static SALTS_THREAD_LOCAL size_t g_value_pool_take_cursor;
 static SALTS_THREAD_LOCAL size_t g_value_pool_put_cursor;
 
-static void value_pool_init_once(void) { cmeta_mutex_init(&g_value_pool_control_mutex); }
+static void value_pool_init_once(void) { sync_mutex_init(&g_value_pool_control_mutex); }
 
 static int value_pool_is_enabled(void) {
   return atomic_load_explicit(&g_value_pool_state, memory_order_acquire) == VALUE_POOL_ENABLED;
@@ -249,7 +249,7 @@ struct DataBind {
   IdlContract *contract;
   Node *schema_root; /* Binary format overlay/render tree; Contract owns semantics. */
   uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
-  cmeta_mutex_t prepared_mutex;
+  sync_mutex_t prepared_mutex;
   db_prepared_message_plan_vec_t prepared_messages;
   size_t prepared_message_count;
   size_t prepared_field_count;
@@ -456,8 +456,8 @@ static const type_meta_t *find_type_meta(const char *type) {
   size_t i;
   if (info == NULL) return NULL;
   if (!atomic_load_explicit(&g_type_metas_ready, memory_order_acquire)) {
-    cmeta_once(&g_value_pool_once, value_pool_init_once);
-    cmeta_mutex_lock(&g_value_pool_control_mutex);
+    sync_once(&g_value_pool_once, value_pool_init_once);
+    sync_mutex_lock(&g_value_pool_control_mutex);
     if (!atomic_load_explicit(&g_type_metas_ready, memory_order_relaxed)) {
       for (i = 0; i < TYPE_META_COUNT; ++i) {
         const databind_binary_scalar_profile_t *src = &DATABIND_BINARY_SCALAR_PROFILES[i];
@@ -470,7 +470,7 @@ static const type_meta_t *find_type_meta(const char *type) {
       }
       atomic_store_explicit(&g_type_metas_ready, 1, memory_order_release);
     }
-    cmeta_mutex_unlock(&g_value_pool_control_mutex);
+    sync_mutex_unlock(&g_value_pool_control_mutex);
   }
   index = (size_t)(info - DATABIND_BINARY_SCALAR_PROFILES);
   return &g_type_metas[index];
@@ -786,8 +786,8 @@ static bool dbv_semantic_equal_depth(const DataBindValue *left,
              memcmp(left->data.bytes_val.ptr, right->data.bytes_val.ptr,
                     left->data.bytes_val.len) == 0));
   case DATA_BIND_VALUE_UUID:
-    return memcmp(left->data.uuid_val.bytes, right->data.uuid_val.bytes,
-                  sizeof(left->data.uuid_val.bytes)) == 0;
+    return memcmp(left->data.uuid_val, right->data.uuid_val,
+                  sizeof(left->data.uuid_val)) == 0;
   case DATA_BIND_VALUE_DATETIME:
     return left->data.datetime_val.year == right->data.datetime_val.year &&
            left->data.datetime_val.month == right->data.datetime_val.month &&
@@ -884,8 +884,8 @@ static uint64_t dbv_semantic_hash_depth(const DataBindValue *value,
     return dbv_hash_mix(hash, dbv_hash_bytes(value->data.bytes_val.ptr,
                                              value->data.bytes_val.len));
   case DATA_BIND_VALUE_UUID:
-    return dbv_hash_mix(hash, dbv_hash_bytes(value->data.uuid_val.bytes,
-                                             sizeof(value->data.uuid_val.bytes)));
+    return dbv_hash_mix(hash, dbv_hash_bytes(value->data.uuid_val,
+                                             sizeof(value->data.uuid_val)));
   case DATA_BIND_VALUE_DATETIME: {
     const DataBindDateTime *datetime = &value->data.datetime_val;
     hash = dbv_hash_mix(hash, (uint64_t)(uint32_t)datetime->year);
@@ -1540,14 +1540,14 @@ static DataBindValue *dbv_uuid_bytes(const uint8_t *data) {
     data_bind_value_free(v);
     return NULL;
   }
-  memcpy(v->data.uuid_val.bytes, data, sizeof(v->data.uuid_val.bytes));
+  memcpy(v->data.uuid_val, data, sizeof(v->data.uuid_val));
   return v;
 }
 
 static DataBindValue *dbv_uuid_text(const char *text) {
-  cmeta_uuid_t uuid;
-  if (text == NULL || cmeta_uuid_parse(text, &uuid) != SALTS_OK) return NULL;
-  return dbv_uuid_bytes(uuid.bytes);
+  uuid_t uuid;
+  if (text == NULL || uuid_parse_text(text, uuid) != SALTS_OK) return NULL;
+  return dbv_uuid_bytes(uuid);
 }
 
 static DataBindValue *dbv_datetime(DataBindDateTime value) {
@@ -2115,7 +2115,7 @@ static DataBindStatus dbv_clone_tree(const DataBindValue *source, size_t depth,
     copy = dbv_bytes(source->data.bytes_val.ptr, source->data.bytes_val.len);
     break;
   case DATA_BIND_VALUE_UUID:
-    copy = dbv_uuid_bytes(source->data.uuid_val.bytes);
+    copy = dbv_uuid_bytes(source->data.uuid_val);
     break;
   case DATA_BIND_VALUE_DATETIME:
     copy = dbv_datetime(source->data.datetime_val);
@@ -3883,36 +3883,36 @@ static int xml_children_path(char *out, size_t out_size, const char *prefix) {
   return written > 0 && (size_t)written < out_size;
 }
 
-static int xml_path_exists(const salts_xml_document *doc, const char *path) {
-  salts_xml_node_list nodes = {0};
+static int xml_path_exists(const xml_document *doc, const char *path) {
+  xml_node_list nodes = {0};
   int found;
   if (!doc || !path) return 0;
-  if (salts_xml_document_xpath_query(doc, path, &nodes, NULL, NULL) != QVM_STATUS_OK) {
-    salts_xml_node_list_destroy(&nodes);
+  if (xml_document_xpath_query(doc, path, &nodes, NULL, NULL) != QVM_STATUS_OK) {
+    xml_node_list_destroy(&nodes);
     return 0;
   }
-  found = salts_xml_node_list_size(&nodes) != 0;
-  salts_xml_node_list_destroy(&nodes);
+  found = xml_node_list_size(&nodes) != 0;
+  xml_node_list_destroy(&nodes);
   return found;
 }
 
-static const char *xml_path_text(const salts_xml_document *doc, const char *path) {
-  salts_xml_node_list nodes = {0};
+static const char *xml_path_text(const xml_document *doc, const char *path) {
+  xml_node_list nodes = {0};
   const char *text = NULL;
   if (!doc || !path) return NULL;
-  if (salts_xml_document_xpath_query(doc, path, &nodes, NULL, NULL) == QVM_STATUS_OK &&
-      salts_xml_node_list_size(&nodes) != 0) {
-    salts_xml_node node = salts_xml_node_list_at(&nodes, 0);
-    text = salts_xml_node_text_view(node).data;
+  if (xml_document_xpath_query(doc, path, &nodes, NULL, NULL) == QVM_STATUS_OK &&
+      xml_node_list_size(&nodes) != 0) {
+    xml_node node = xml_node_list_at(&nodes, 0);
+    text = xml_node_text_view(node).data;
     /* An existing empty element binds as an empty string, not a missing field. */
-    if (!text && salts_xml_node_type(node) == SALTS_XML_ELEMENT) text = "";
+    if (!text && xml_node_type(node) == SALTS_XML_ELEMENT) text = "";
   }
   /* The selected list owns no node/text; text remains borrowed from doc. */
-  salts_xml_node_list_destroy(&nodes);
+  xml_node_list_destroy(&nodes);
   return text;
 }
 
-static int xml_field_path(const salts_xml_document *doc, const char *prefix, const char *name, char *out,
+static int xml_field_path(const xml_document *doc, const char *prefix, const char *name, char *out,
                           size_t out_size) {
   char child[256], attr[256];
   if (!xml_join_path(child, sizeof(child), prefix, name)) return 0;
@@ -3928,7 +3928,7 @@ static int xml_field_path(const salts_xml_document *doc, const char *prefix, con
   return 0;
 }
 
-static int xml_field_binding_path(Node *field, const salts_xml_document *doc, const char *prefix, char *out,
+static int xml_field_binding_path(Node *field, const xml_document *doc, const char *prefix, char *out,
                                   size_t out_size) {
   size_t i;
   for (i = 0; i < field_input_name_count(field); ++i) {
@@ -3940,10 +3940,10 @@ static int xml_field_binding_path(Node *field, const salts_xml_document *doc, co
 }
 
 static DataBindValue *bind_xml_typed_value(Node *schema_root, const char *type_name,
-                                           const salts_xml_document *doc, const char *path);
+                                           const xml_document *doc, const char *path);
 
 static DataBindValue *bind_xml_scalar_at_path(Node *schema_root, const char *type_name,
-                                              data_bind_text_kind_t kind, const salts_xml_document *doc,
+                                              data_bind_text_kind_t kind, const xml_document *doc,
                                               const char *path) {
   const char *text;
   if (doc == NULL || path == NULL || kind == DB_TEXT_UNSUPPORTED) return NULL;
@@ -3952,28 +3952,28 @@ static DataBindValue *bind_xml_scalar_at_path(Node *schema_root, const char *typ
   return bind_text_scalar(schema_root, type_name, kind, text);
 }
 
-static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, const salts_xml_document *doc,
+static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, const xml_document *doc,
                                             const char *path, DataBindValueKind list_kind) {
   const char *inner_type = get_string_val(find_child(field, "inner_type"));
   data_bind_text_kind_t scalar_kind = bind_type_kind(schema_root, inner_type);
   DataBindValue *list;
-  salts_xml_node_list nodes = {0};
+  xml_node_list nodes = {0};
   size_t count = 0;
   int fixed_count;
   if (schema_root == NULL || field == NULL || doc == NULL || path == NULL || inner_type == NULL)
     return NULL;
   fixed_count = parse_size_value(get_string_val(find_child(field, "length_field")), &count);
-  if (salts_xml_document_xpath_query(doc, path, &nodes, NULL, NULL) != QVM_STATUS_OK) {
-    salts_xml_node_list_destroy(&nodes);
+  if (xml_document_xpath_query(doc, path, &nodes, NULL, NULL) != QVM_STATUS_OK) {
+    xml_node_list_destroy(&nodes);
     return NULL;
   }
   if (fixed_count && (size_t)nodes.size != count) {
-    salts_xml_node_list_destroy(&nodes);
+    xml_node_list_destroy(&nodes);
     return NULL;
   }
   list = dbv_new(list_kind);
   if (list == NULL) {
-    salts_xml_node_list_destroy(&nodes);
+    xml_node_list_destroy(&nodes);
     return NULL;
   }
   for (size_t i = 0; i < nodes.size; i++) {
@@ -3981,7 +3981,7 @@ static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, cons
     DataBindValue *item;
     if (snprintf(item_path, sizeof(item_path), "%s[%zu]", path, i + 1) >= (int)sizeof(item_path)) {
       data_bind_value_free(list);
-      salts_xml_node_list_destroy(&nodes);
+      xml_node_list_destroy(&nodes);
       return NULL;
     }
     if (field_flag(field, "collection_element_is_composite") ||
@@ -3992,11 +3992,11 @@ static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, cons
     if (item == NULL || dbv_collection_push(list, item) != DATA_BIND_OK) {
       data_bind_value_free(item);
       data_bind_value_free(list);
-      salts_xml_node_list_destroy(&nodes);
+      xml_node_list_destroy(&nodes);
       return NULL;
     }
   }
-  salts_xml_node_list_destroy(&nodes);
+  xml_node_list_destroy(&nodes);
   if (data_bind_value_count(list) == 0) {
     data_bind_value_free(list);
     return NULL;
@@ -4004,35 +4004,35 @@ static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, cons
   return list;
 }
 
-static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, const salts_xml_document *doc,
+static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, const xml_document *doc,
                                            const char *path) {
   const char *key_type = get_string_val(find_child(field, "key_type"));
   const char *value_type = get_string_val(find_child(field, "value_type"));
   DataBindValue *map;
-  salts_xml_node_list nodes = {0};
+  xml_node_list nodes = {0};
   char children[256];
   if (schema_root == NULL || field == NULL || doc == NULL || path == NULL ||
       key_type == NULL || strcmp(key_type, "string") != 0 || value_type == NULL)
     return NULL;
   if (!xml_children_path(children, sizeof(children), path)) return NULL;
-  if (salts_xml_document_xpath_query(doc, children, &nodes, NULL, NULL) != QVM_STATUS_OK) {
-    salts_xml_node_list_destroy(&nodes);
+  if (xml_document_xpath_query(doc, children, &nodes, NULL, NULL) != QVM_STATUS_OK) {
+    xml_node_list_destroy(&nodes);
     return NULL;
   }
   map = dbv_new(DATA_BIND_VALUE_MAP);
   if (map == NULL) {
-    salts_xml_node_list_destroy(&nodes);
+    xml_node_list_destroy(&nodes);
     return NULL;
   }
-  for (size_t i = 0; i < salts_xml_node_list_size(&nodes); ++i) {
-    salts_xml_node node = salts_xml_node_list_at(&nodes, i);
-    const char *key = salts_xml_node_display_name(node).data;
+  for (size_t i = 0; i < xml_node_list_size(&nodes); ++i) {
+    xml_node node = xml_node_list_at(&nodes, i);
+    const char *key = xml_node_display_name(node).data;
     DataBindValue *item;
     char item_path[320];
     if (key == NULL || dbv_map_has_key(map, key)) continue;
     if (!xml_join_path(item_path, sizeof(item_path), path, key)) {
       data_bind_value_free(map);
-      salts_xml_node_list_destroy(&nodes);
+      xml_node_list_destroy(&nodes);
       return NULL;
     }
     if (find_data_record(schema_root, value_type) != NULL ||
@@ -4045,16 +4045,16 @@ static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, const
       if (!dbv_string_map_set(map, key, item)) {
         data_bind_value_free(item);
         data_bind_value_free(map);
-        salts_xml_node_list_destroy(&nodes);
+        xml_node_list_destroy(&nodes);
         return NULL;
       }
-    } else if (!db_text_is_empty(salts_xml_node_text_view(node).data)) {
+    } else if (!db_text_is_empty(xml_node_text_view(node).data)) {
       data_bind_value_free(map);
-      salts_xml_node_list_destroy(&nodes);
+      xml_node_list_destroy(&nodes);
       return NULL;
     }
   }
-  salts_xml_node_list_destroy(&nodes);
+  xml_node_list_destroy(&nodes);
   if (data_bind_value_count(map) == 0) {
     data_bind_value_free(map);
     return NULL;
@@ -4063,7 +4063,7 @@ static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, const
 }
 
 static DataBindValue *bind_xml_union_at_path(Node *schema_root, Node *union_node,
-                                             const salts_xml_document *doc, const char *path) {
+                                             const xml_document *doc, const char *path) {
   Node *fields = fields_node_for_record(union_node);
   DataBindValue *result;
   int matches = 0;
@@ -4101,7 +4101,7 @@ static DataBindValue *bind_xml_union_at_path(Node *schema_root, Node *union_node
   return result;
 }
 
-static DataBindValue *bind_xml_record_at_path(Node *schema_root, Node *record, const salts_xml_document *doc,
+static DataBindValue *bind_xml_record_at_path(Node *schema_root, Node *record, const xml_document *doc,
                                               const char *path) {
   Node *fields = fields_node_for_record(record);
   DataBindValue *result;
@@ -4156,7 +4156,7 @@ static DataBindValue *bind_xml_record_at_path(Node *schema_root, Node *record, c
 }
 
 static DataBindValue *bind_xml_typed_value(Node *schema_root, const char *type_name,
-                                           const salts_xml_document *doc, const char *path) {
+                                           const xml_document *doc, const char *path) {
   Node *record = find_data_record(schema_root, type_name);
   Node *union_node = find_union_record(schema_root, type_name);
   data_bind_text_kind_t kind = bind_type_kind(schema_root, type_name);
@@ -5711,7 +5711,7 @@ static DataBindStatus data_bind_create_from_root(
     return db_error_set(error, status, NULL, -1, -1,
                         "Could not initialize codec MessagePlan storage");
   }
-  cmeta_mutex_init(&codec->prepared_mutex);
+  sync_mutex_init(&codec->prepared_mutex);
   if (codec->prepared_mutex == NULL) {
     db_prepared_message_plan_vec_t_destroy(&codec->prepared_messages);
     node_free(schema_root);
@@ -5729,7 +5729,7 @@ static DataBindStatus data_bind_create_from_root(
 DataBindStatus data_bind_create(
     const char *schema_path, DataBind **out_codec,
     DataBindError *error) {
-  salts_fs_buf_t schema = {NULL, 0};
+  fs_buf_t schema = {NULL, 0};
   Node *schema_root;
   IdlContract *contract = NULL;
   DataBindStatus status;
@@ -5740,7 +5740,7 @@ DataBindStatus data_bind_create(
         error, DATA_BIND_ERR_INVALID_ARG, schema_path, -1, -1,
         "Invalid codec create arguments");
 
-  if (salts_fs_read_file(schema_path, &schema) != 0)
+  if (fs_read_file(schema_path, &schema) != 0)
     return db_error_set(
         error, DATA_BIND_ERR_IO, schema_path, -1, -1,
         "Cannot read schema: %s", schema_path);
@@ -5748,7 +5748,7 @@ DataBindStatus data_bind_create(
   schema_root = parse_schema_text_to_root(
       schema.base, schema.len, schema_path, NULL, 0, error);
   if (schema_root == NULL) {
-    salts_fs_buf_free(&schema);
+    fs_buf_free(&schema);
     return db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
   }
 
@@ -5756,13 +5756,13 @@ DataBindStatus data_bind_create(
       schema.base, schema.len, schema_path, &contract, error);
   if (status != DATA_BIND_OK) {
     node_free(schema_root);
-    salts_fs_buf_free(&schema);
+    fs_buf_free(&schema);
     return status;
   }
 
   status = data_bind_create_from_root(
       schema_root, contract, out_codec, error);
-  salts_fs_buf_free(&schema);
+  fs_buf_free(&schema);
   return status;
 }
 
@@ -5802,7 +5802,7 @@ void data_bind_free(DataBind *codec) {
     data_bind_message_plan_free(
         db_prepared_message_plan_vec_t_at(&codec->prepared_messages, i)->plan);
   db_prepared_message_plan_vec_t_destroy(&codec->prepared_messages);
-  cmeta_mutex_destroy(&codec->prepared_mutex);
+  sync_mutex_destroy(&codec->prepared_mutex);
   node_free(codec->schema_root);
   idl_contract_destroy(codec->contract);
   free(codec);
@@ -5841,13 +5841,13 @@ DataBindStatus data_bind_message_plan_acquire_generated(
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
                         "Invalid generated MessagePlan artifact");
 
-  cmeta_mutex_lock(&codec->prepared_mutex);
+  sync_mutex_lock(&codec->prepared_mutex);
   existing = db_prepared_message_find_locked(codec, artifact);
   reserve_table = db_prepared_message_plan_vec_t_capacity(&codec->prepared_messages) == 0u;
   status = codec->prepared_message_count >=
                DATA_BIND_MESSAGE_PLAN_MAX_PREPARED ?
                DATA_BIND_ERR_LIMIT : DATA_BIND_OK;
-  cmeta_mutex_unlock(&codec->prepared_mutex);
+  sync_mutex_unlock(&codec->prepared_mutex);
   if (existing != NULL) {
     *out_plan = existing;
     return DATA_BIND_OK;
@@ -5892,7 +5892,7 @@ DataBindStatus data_bind_message_plan_acquire_generated(
     }
   }
 
-  cmeta_mutex_lock(&codec->prepared_mutex);
+  sync_mutex_lock(&codec->prepared_mutex);
   existing = db_prepared_message_find_locked(codec, artifact);
   if (existing != NULL) {
     *out_plan = existing;
@@ -5916,7 +5916,7 @@ DataBindStatus data_bind_message_plan_acquire_generated(
     *out_plan = plan;
     plan = NULL;
   }
-  cmeta_mutex_unlock(&codec->prepared_mutex);
+  sync_mutex_unlock(&codec->prepared_mutex);
 
 cleanup:
   data_bind_message_plan_free(plan);
@@ -5931,8 +5931,8 @@ void data_bind_set_value_pool_enabled(int enabled) {
   DataBindValue *nodes[VALUE_POOL_SIZE];
   size_t node_count = 0;
   size_t i;
-  cmeta_once(&g_value_pool_once, value_pool_init_once);
-  cmeta_mutex_lock(&g_value_pool_control_mutex);
+  sync_once(&g_value_pool_once, value_pool_init_once);
+  sync_mutex_lock(&g_value_pool_control_mutex);
 
   if (enabled) {
     int state = atomic_load_explicit(&g_value_pool_state, memory_order_relaxed);
@@ -5954,7 +5954,7 @@ void data_bind_set_value_pool_enabled(int enabled) {
     }
     atomic_store_explicit(&g_value_pool_ready_mask, 0, memory_order_relaxed);
   }
-  cmeta_mutex_unlock(&g_value_pool_control_mutex);
+  sync_mutex_unlock(&g_value_pool_control_mutex);
 
   for (i = 0; i < node_count; ++i)
     free(nodes[i]);
@@ -6817,16 +6817,16 @@ static int data_bind_stream_xml_close_start(data_bind_stream_t *parser) {
 }
 
 static int data_bind_stream_xml_bind_capture(data_bind_stream_t *parser) {
-  salts_xml_document doc = {0};
+  xml_document doc = {0};
   DataBindValue *item;
   if (parser == NULL || data_bind_stream_provider_state(parser)->xml_capture == NULL) return -1;
-  if (salts_xml_parse(&doc, data_bind_stream_provider_state(parser)->xml_capture, tstr_len(data_bind_stream_provider_state(parser)->xml_capture),
+  if (xml_parse(&doc, data_bind_stream_provider_state(parser)->xml_capture, tstr_len(data_bind_stream_provider_state(parser)->xml_capture),
                       NULL, NULL) != SALTS_XML_OK) {
     data_bind_stream_error_msg(parser, "XML stream item parse failed");
     return -1;
   }
   item = bind_xml_typed_value(parser->codec->schema_root, parser->type_name, &doc, "/*");
-  salts_xml_document_destroy(&doc);
+  xml_document_destroy(&doc);
   if (item == NULL) {
     data_bind_stream_error_msg(parser, "XML stream item bind failed");
     return -1;
@@ -6947,7 +6947,7 @@ static const json_path_stream_handler_t DATA_BIND_JSON_PATH_STREAM_HANDLER = {
      data_bind_stream_json_path_on_array_start,
      data_bind_stream_json_path_on_array_end}};
 
-static const salts_xml_sax_handler_t DATA_BIND_XML_STREAM_HANDLER = {
+static const xml_sax_handler_t DATA_BIND_XML_STREAM_HANDLER = {
     NULL,
     NULL,
     data_bind_stream_xml_on_element_start,
@@ -6961,7 +6961,7 @@ static const salts_xml_sax_handler_t DATA_BIND_XML_STREAM_HANDLER = {
 
 static const json_sax_handler_t DATA_BIND_JSON_SAX_VALIDATE_HANDLER = {0};
 static const cyaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};
-static const salts_xml_sax_handler_t DATA_BIND_XML_SAX_VALIDATE_HANDLER = {0};
+static const xml_sax_handler_t DATA_BIND_XML_SAX_VALIDATE_HANDLER = {0};
 
 static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, DataBindError *error,
                                                  const char *operation) {
@@ -6981,7 +6981,7 @@ static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, Dat
       message = native_error ? native_error->msg : NULL;
       path = "yaml";
     } else if (data_bind_stream_provider_state(parser)->xml_sax != NULL) {
-      message = salts_xml_sax_parser_error(data_bind_stream_provider_state(parser)->xml_sax);
+      message = xml_sax_parser_error(data_bind_stream_provider_state(parser)->xml_sax);
       path = "xml";
     }
     data_bind_stream_provider_state(parser)->sax_failed = 1;
@@ -7018,7 +7018,7 @@ static DataBindStatus data_bind_stream_sax_feed(data_bind_stream_t *parser, cons
       return data_bind_stream_sax_error(parser, error, "YAML stream feed");
     }
   } else if (data_bind_stream_provider_state(parser)->xml_sax != NULL) {
-    if (salts_xml_sax_parser_feed(data_bind_stream_provider_state(parser)->xml_sax, data, len) != 0) {
+    if (xml_sax_parser_feed(data_bind_stream_provider_state(parser)->xml_sax, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "XML stream feed");
     }
   }
@@ -7043,7 +7043,7 @@ static DataBindStatus data_bind_stream_sax_finish(data_bind_stream_t *parser,
       return data_bind_stream_sax_error(parser, error, "YAML stream finish");
     }
   } else if (data_bind_stream_provider_state(parser)->xml_sax != NULL) {
-    if (salts_xml_sax_parser_finish(data_bind_stream_provider_state(parser)->xml_sax) != 0) {
+    if (xml_sax_parser_finish(data_bind_stream_provider_state(parser)->xml_sax) != 0) {
       return data_bind_stream_sax_error(parser, error, "XML stream finish");
     }
   }
@@ -7705,7 +7705,7 @@ static data_bind_stream_t *data_bind_stream_create_common(
         return NULL;
       }
     }
-    data_bind_stream_provider_state(parser)->xml_sax = salts_xml_sax_parser_create(data_bind_stream_provider_state(parser)->xml_stream_candidate
+    data_bind_stream_provider_state(parser)->xml_sax = xml_sax_parser_create(data_bind_stream_provider_state(parser)->xml_stream_candidate
                                                       ? &DATA_BIND_XML_STREAM_HANDLER
                                                       : &DATA_BIND_XML_SAX_VALIDATE_HANDLER,
                                                   parser, parser->limits.max_input_bytes);
@@ -8214,7 +8214,7 @@ DataBindStatus data_bind_stream_set_limits(data_bind_stream_t *stream,
                         "Valid stream limits must be set before first feed");
   }
   if (data_bind_stream_provider_state(parser)->xml_sax != NULL &&
-      salts_xml_sax_parser_set_buffer_limit(data_bind_stream_provider_state(parser)->xml_sax, limits->max_input_bytes) != 0) {
+      xml_sax_parser_set_buffer_limit(data_bind_stream_provider_state(parser)->xml_sax, limits->max_input_bytes) != 0) {
     return db_error_set(parser->error, DATA_BIND_ERR_INVALID_ARG,
                         "data_bind_stream_set_limits", -1, -1,
                         "XML parser limits cannot change after parsing starts");
@@ -8412,7 +8412,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
   data_bind_stream_t *parser = (data_bind_stream_t *)stream;
   DataBindError *error = parser ? parser->error : NULL;
   char *chunk = NULL;
-  salts_file_t fd;
+  file_t fd;
   DataBindStatus status;
   int close_rc;
 
@@ -8420,7 +8420,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_feed_file", -1, -1,
                         "Invalid stream file feed arguments");
   }
-  fd = salts_fs_open(file_path, SALTS_FS_O_RDONLY, 0);
+  fd = fs_open(file_path, SALTS_FS_O_RDONLY, 0);
   if (fd == SALTS_INVALID_FILE) {
     return db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                         "Failed to open stream input file");
@@ -8428,14 +8428,14 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
 
   chunk = (char *)malloc(DATA_BIND_FILE_STREAM_CHUNK_SIZE);
   if (chunk == NULL) {
-    salts_fs_close(fd);
+    fs_close(fd);
     return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed_file", -1, -1,
                         "Out of memory allocating stream file chunk");
   }
 
   status = DATA_BIND_OK;
   for (;;) {
-    int nread = salts_fs_read(fd, chunk, DATA_BIND_FILE_STREAM_CHUNK_SIZE);
+    int nread = fs_read(fd, chunk, DATA_BIND_FILE_STREAM_CHUNK_SIZE);
     if (nread < 0) {
       status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                             "Failed to read stream input file");
@@ -8447,7 +8447,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
   }
 
   free(chunk);
-  close_rc = salts_fs_close(fd);
+  close_rc = fs_close(fd);
   if (status == DATA_BIND_OK && close_rc != 0) {
     status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                           "Failed to close stream input file");
@@ -9365,7 +9365,7 @@ DataBindStatus data_bind_parse_csv_path(DataBind *codec, const char *type_name,
 
 DataBindStatus data_bind_parse_xml(DataBind *codec, const char *type_name, const char *xml,
                                    size_t len, DataBindValue **out_value, DataBindError *error) {
-  salts_xml_document doc = {0};
+  xml_document doc = {0};
   DataBindValue *result = NULL;
   char error_path[128];
   if (out_value != NULL) *out_value = NULL;
@@ -9377,12 +9377,12 @@ DataBindStatus data_bind_parse_xml(DataBind *codec, const char *type_name, const
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (salts_xml_parse(&doc, xml, len, NULL, NULL) != SALTS_XML_OK) {
+  if (xml_parse(&doc, xml, len, NULL, NULL) != SALTS_XML_OK) {
     db_error_format_path(error_path, sizeof(error_path), "xml", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "XML parse failed");
   }
   result = bind_xml_typed_value(codec->schema_root, type_name, &doc, "/*");
-  salts_xml_document_destroy(&doc);
+  xml_document_destroy(&doc);
   if (result == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "xml", "/*");
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
@@ -9399,7 +9399,7 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
     DataBindError *error) {
   qvm_limits_t native_limits = db_query_native_limits(query_limits);
   qvm_diagnostic_t native_diagnostic = {0};
-  salts_xml_document doc = {0};
+  xml_document doc = {0};
   DataBindValue *list = NULL;
   char error_path[256];
   if (out_value != NULL) *out_value = NULL;
@@ -9412,7 +9412,7 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (salts_xml_parse(&doc, xml, len, NULL, NULL) != SALTS_XML_OK) {
+  if (xml_parse(&doc, xml, len, NULL, NULL) != SALTS_XML_OK) {
     db_error_format_path(error_path, sizeof(error_path), "xml", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "XML parse failed");
   }
@@ -9426,15 +9426,15 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
         list = NULL;
       }
     } else {
-      salts_xml_node_list nodes = {0};
+      xml_node_list nodes = {0};
       size_t index = 0;
-      qvm_status_t query_status = salts_xml_document_xpath_query(
+      qvm_status_t query_status = xml_document_xpath_query(
           &doc, xmlpath, &nodes, &native_limits, &native_diagnostic);
       db_query_diagnostic_copy(query_diagnostic, &native_diagnostic);
       if (query_status != QVM_STATUS_OK) {
-        salts_xml_node_list_destroy(&nodes);
+        xml_node_list_destroy(&nodes);
         data_bind_value_free(list);
-        salts_xml_document_destroy(&doc);
+        xml_document_destroy(&doc);
         db_error_format_path(error_path, sizeof(error_path), "xml", xmlpath);
         return db_error_set(error, data_bind_query_failure_status(query_diagnostic),
                             error_path, -1, -1, "XPath query failed: %s",
@@ -9464,10 +9464,10 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
           break;
         }
       }
-      salts_xml_node_list_destroy(&nodes);
+      xml_node_list_destroy(&nodes);
     }
   }
-  salts_xml_document_destroy(&doc);
+  xml_document_destroy(&doc);
   if (list == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "xml",
                          xmlpath != NULL && xmlpath[0] != '\0' ? xmlpath : "/*");
@@ -9607,7 +9607,7 @@ DataBindStatus data_bind_validate_csv_path(DataBind *codec, const char *type_nam
 
 DataBindStatus data_bind_validate_xml_path(DataBind *codec, const char *type_name, const char *xml,
                                            size_t len, const char *xmlpath, DataBindError *error) {
-  salts_xml_document doc = {0};
+  xml_document doc = {0};
   if (codec == NULL || codec->schema_root == NULL || type_name == NULL || xml == NULL)
     return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG,
                           "Invalid XML validate arguments");
@@ -9615,23 +9615,23 @@ DataBindStatus data_bind_validate_xml_path(DataBind *codec, const char *type_nam
     return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_NOT_FOUND, "Type not found: %s",
                           type_name);
   }
-  if (salts_xml_parse(&doc, xml, len, NULL, NULL) != SALTS_XML_OK) {
+  if (xml_parse(&doc, xml, len, NULL, NULL) != SALTS_XML_OK) {
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "XML parse failed");
   }
   if (xmlpath == NULL || xmlpath[0] == '\0') {
     DataBindValue *item = bind_xml_typed_value(codec->schema_root, type_name, &doc, "/*");
     if (item == NULL) {
-      salts_xml_document_destroy(&doc);
+      xml_document_destroy(&doc);
       return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                             "XML validation failed for type: %s", type_name);
     }
     data_bind_value_free(item);
   } else {
-    salts_xml_node_list nodes = {0};
+    xml_node_list nodes = {0};
     size_t index;
-    if (salts_xml_document_xpath_query(&doc, xmlpath, &nodes, NULL, NULL) != QVM_STATUS_OK) {
-      salts_xml_node_list_destroy(&nodes);
-      salts_xml_document_destroy(&doc);
+    if (xml_document_xpath_query(&doc, xmlpath, &nodes, NULL, NULL) != QVM_STATUS_OK) {
+      xml_node_list_destroy(&nodes);
+      xml_document_destroy(&doc);
       return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "Invalid XMLPath expression");
     }
     for (index = 0; index < nodes.size; index++) {
@@ -9639,23 +9639,23 @@ DataBindStatus data_bind_validate_xml_path(DataBind *codec, const char *type_nam
       DataBindValue *item;
       if (snprintf(item_path, sizeof(item_path), "%s[%zu]", xmlpath, index + 1) >=
           (int)sizeof(item_path)) {
-        salts_xml_node_list_destroy(&nodes);
-        salts_xml_document_destroy(&doc);
+        xml_node_list_destroy(&nodes);
+        xml_document_destroy(&doc);
         return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                               "XML validation path is too long");
       }
       item = bind_xml_typed_value(codec->schema_root, type_name, &doc, item_path);
       if (item == NULL) {
-        salts_xml_node_list_destroy(&nodes);
-        salts_xml_document_destroy(&doc);
+        xml_node_list_destroy(&nodes);
+        xml_document_destroy(&doc);
         return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                               "XML validation failed for type: %s", type_name);
       }
       data_bind_value_free(item);
     }
-    salts_xml_node_list_destroy(&nodes);
+    xml_node_list_destroy(&nodes);
   }
-  salts_xml_document_destroy(&doc);
+  xml_document_destroy(&doc);
   db_error_clear(error);
   return DATA_BIND_OK;
 }
@@ -10274,7 +10274,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
                                       value->data.bytes_val.len);
     break;
   case DATA_BIND_VALUE_UUID:
-    if (cmeta_uuid_format(&value->data.uuid_val, text, sizeof(text)) != SALTS_OK) {
+    if (uuid_format(value->data.uuid_val, text, sizeof(text)) != SALTS_OK) {
       *status = DATA_BIND_ERR_RUNTIME;
       return NULL;
     }
@@ -10472,7 +10472,7 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
   case DATA_BIND_VALUE_BOOL:
     return snprintf(text, size, "%s", value->data.bool_val ? "true" : "false") > 0;
   case DATA_BIND_VALUE_UUID:
-    return cmeta_uuid_format(&value->data.uuid_val, text, size) == SALTS_OK;
+    return uuid_format(value->data.uuid_val, text, size) == SALTS_OK;
   case DATA_BIND_VALUE_DATETIME:
     return data_bind_temporal_format_rfc822(
                &value->data.datetime_val, text, size) == DATA_BIND_OK;
@@ -10493,7 +10493,7 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
   }
 }
 
-static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node node,
+static int data_bind_value_to_xml(const DataBindValue *value, xml_node node,
                                   unsigned depth) {
   char text[128];
   if (!value || !node.impl || depth > DATA_BIND_JSON_MAX_DEPTH) return 0;
@@ -10503,16 +10503,16 @@ static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node nod
            memchr(value->data.string_val.ptr, '\0', value->data.string_val.len) == NULL &&
            vstr_utf8_valid(
                vstr_from_buf(value->data.string_val.ptr, value->data.string_val.len)) &&
-           salts_xml_node_set_text(node, value->data.string_val.ptr) == 0;
+           xml_node_set_text(node, value->data.string_val.ptr) == 0;
   case DATA_BIND_VALUE_BYTES:
     if (memchr(value->data.bytes_val.ptr, '\0', value->data.bytes_val.len)) return 0;
     if (value->data.bytes_val.len >= sizeof(text)) return 0;
     memcpy(text, value->data.bytes_val.ptr, value->data.bytes_val.len);
     text[value->data.bytes_val.len] = '\0';
     return vstr_utf8_valid(vstr_from_buf(text, value->data.bytes_val.len)) &&
-           salts_xml_node_set_text(node, text) == 0;
+           xml_node_set_text(node, text) == 0;
   case DATA_BIND_VALUE_BIGINT:
-    return value->data.bigint_val.ptr && salts_xml_node_set_text(node, value->data.bigint_val.ptr) == 0;
+    return value->data.bigint_val.ptr && xml_node_set_text(node, value->data.bigint_val.ptr) == 0;
   case DATA_BIND_VALUE_OBJECT:
   case DATA_BIND_VALUE_LIST:
   case DATA_BIND_VALUE_SET:
@@ -10532,15 +10532,15 @@ static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node nod
         if (db_text_children_init(field.value, &elements) != DATA_BIND_OK) return 0;
         /* Record sequence fields repeat their field name; standalone sequences use item. */
         while ((element_next = db_text_children_next(&elements, &element)) > 0) {
-          salts_xml_node child = {0};
-          if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK ||
+          xml_node child = {0};
+          if (xml_node_add_element(node, name, &child) != SALTS_XML_OK ||
               !child.impl || !data_bind_value_to_xml(element.value, child, depth + 1))
             return 0;
         }
         if (element_next < 0) return 0;
       } else {
-        salts_xml_node child = {0};
-        if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK ||
+        xml_node child = {0};
+        if (xml_node_add_element(node, name, &child) != SALTS_XML_OK ||
             !child.impl || !data_bind_value_to_xml(field.value, child, depth + 1))
           return 0;
       }
@@ -10551,32 +10551,32 @@ static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node nod
     return 0;
   default:
     return data_bind_standard_scalar_text(value, text, sizeof(text)) &&
-           salts_xml_node_set_text(node, text) == 0;
+           xml_node_set_text(node, text) == 0;
   }
 }
 
 static DataBindStatus data_bind_object_serialize_xml_canonical(
     const DataBindObject *object, char **out_xml, size_t *out_len, DataBindError *error) {
-  salts_xml_document xml = {0};
-  salts_xml_node root = {0};
+  xml_document xml = {0};
+  xml_node root = {0};
   if (out_xml != NULL) *out_xml = NULL;
   if (out_len != NULL) *out_len = 0;
   if (!object || !object->value || !object->type_name || !out_xml ||
       !data_bind_xml_name_valid(object->type_name))
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
                         "Invalid XML serialize arguments");
-  if (salts_xml_document_create(&xml, object->type_name) != SALTS_XML_OK) {
+  if (xml_document_create(&xml, object->type_name) != SALTS_XML_OK) {
     return db_error_set(error, DATA_BIND_ERR_OOM, "xml", -1, -1,
                         "Unable to create XML document");
   }
-  root = salts_xml_document_root(&xml);
+  root = xml_document_root(&xml);
   if (!root.impl || !data_bind_value_to_xml(object->value, root, 0)) {
-    salts_xml_document_destroy(&xml);
+    xml_document_destroy(&xml);
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, "xml", -1, -1,
                         "DataBind value cannot be represented as XML");
   }
-  *out_xml = salts_xml_document_serialize(&xml, out_len);
-  salts_xml_document_destroy(&xml);
+  *out_xml = xml_document_serialize(&xml, out_len);
+  xml_document_destroy(&xml);
   if (!*out_xml)
     return db_error_set(error, DATA_BIND_ERR_OOM, "xml", -1, -1,
                         "Failed to serialize XML document");
@@ -11125,7 +11125,7 @@ const uint8_t *data_bind_value_as_bytes(const DataBindValue *value, size_t *len)
 
 int data_bind_value_as_uuid(const DataBindValue *value, uint8_t out[DATA_BIND_UUID_SIZE]) {
   if (value == NULL || value->kind != DATA_BIND_VALUE_UUID || out == NULL) return 0;
-  memcpy(out, value->data.uuid_val.bytes, DATA_BIND_UUID_SIZE);
+  memcpy(out, value->data.uuid_val, DATA_BIND_UUID_SIZE);
   return 1;
 }
 
@@ -11133,7 +11133,7 @@ const char *data_bind_value_as_uuid_string(const DataBindValue *value, char *out
   if (value == NULL || value->kind != DATA_BIND_VALUE_UUID || out == NULL ||
       len < SALTS_UUID_STRING_SIZE)
     return NULL;
-  return cmeta_uuid_format(&value->data.uuid_val, out, len) == SALTS_OK ? out : NULL;
+  return uuid_format(value->data.uuid_val, out, len) == SALTS_OK ? out : NULL;
 }
 
 int data_bind_value_as_datetime(const DataBindValue *value, DataBindDateTime *out) {
@@ -11366,7 +11366,7 @@ DataBindStatus data_bind_value_get_uuid(const DataBindValue *value,
   if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
   if (value == NULL) return DATA_BIND_ERR_INVALID_ARG;
   if (value->kind != DATA_BIND_VALUE_UUID) return DATA_BIND_ERR_TYPE_MISMATCH;
-  memcpy(out, value->data.uuid_val.bytes, DATA_BIND_UUID_SIZE);
+  memcpy(out, value->data.uuid_val, DATA_BIND_UUID_SIZE);
   return DATA_BIND_OK;
 }
 

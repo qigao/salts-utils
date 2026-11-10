@@ -1,6 +1,6 @@
 cmake_add_grammar(SCHEMA
   RE2C_EXECUTABLE "${RE2C_EXECUTABLE}"
-  LEMON_TARGET lemon
+  LEMON_TARGET Lemon::Lemon
   LEMON_TEMPLATE "${LEMPAR}"
   LEXER_RE schema_lexer.re
   GRAMMAR_Y schema_grammar.y

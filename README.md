@@ -1,155 +1,120 @@
 # SaltsUtils
 
-**Higher-level utilities for the Salts C11 ecosystem.**
+## Upstream dependency versions
 
-SaltsUtils builds on installed SaltsCore and CMeta SDKs and extends their shared semantics with parsers, QueryVM, templates, media helpers, IDL/Schema tooling, language bindings, and DataBind.
+Select the upstream SDK release through `VCPKG_CACHE_VERSION` in the parent
+environment (for example, by loading the local `.env`). Use the same version
+for the `VCPKG_CACHE_REPOSITORY_ROOT` checkout. Values contain the version
+without the `v` prefix; missing variables fail rather than choosing `latest`.
+The shared `resolve-release` entry point is required (not present in v0.1.2).
 
-**IDL, Schema and DataBind are distinct SaltsUtils capabilities.** IDL defines contracts, Schema defines Data shape, and DataBind owns logical/native binding. They are not separate packages.
+The per-triplet files in `cmake/dependencies/` are release descriptors. Their
+historical `.lock.json` suffix is retained; `source.kind=github-release`
+distinguishes them from generated literal URL/hash locks. Resolve the selected
+release into the build directory before restoring it:
 
-SaltsUtils does not create a second runtime. CMeta/CFlow/CSTL remain owned by the CMeta SDK; Platform/Core and native FS/Process/USB remain owned by SaltsCore.
-
-**Tags:** C11 · utilities · parsers · query-engine · crypto · filesystem · process · templates · unicode · data-binding · code-generation
-
-## Built on Salts
-
-SaltsUtils reuses Salts instead of reimplementing its low-level contracts:
-
-- **CMeta** for type identity, metadata, traits, ranges, interfaces, and shared semantic descriptors.
-- **CFlow** for typed stream/reactive composition and bounded asynchronous adapters.
-- **CSTL** for concrete typed container storage.
-- **CSerde** for the canonical format-neutral token contract.
-- **Platform / Core** for operating-system primitives, memory, strings, files, processes, and common runtime facilities.
-
-This keeps higher-level utilities compatible with the same explicit ownership, bounded state, lifecycle, and error model used across the wider Salts ecosystem.
-
-## Role in the ecosystem
-
-```text
-Salts
-  ├── salts-utils
-  │     ├── parsers / QueryVM
-  │     ├── templates / Unicode / media / helpers
-  │     ├── IDL / Schema / salts-idlc
-  │     ├── DataBind binding / plans / native kernel
-  │     └── C++ / Lua / QuickJS bindings
-  └── salts-net: protocol and network tooling
+```sh
+python "$VCPKG_CACHE_REPOSITORY_ROOT/scripts/restore-native-dependency.py" resolve-release \
+  "cmake/dependencies/$VCPKG_TARGET_TRIPLET.lock.json" \
+  --output-lock "build/dependencies/$VCPKG_TARGET_TRIPLET.lock.json"
+python "$VCPKG_CACHE_REPOSITORY_ROOT/scripts/restore-native-dependency.py" locked \
+  "build/dependencies/$VCPKG_TARGET_TRIPLET.lock.json" \
+  --destination "build/dependencies/$VCPKG_TARGET_TRIPLET-$VCPKG_CACHE_VERSION" \
+  --payload vcpkg_installed
 ```
 
-SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). `Salts::IDL` owns transport-neutral contracts, `Salts::Schema` owns the Data subset, and `Salts::DataBind` owns binding. Binary is a format/backend, not the owner of IDL or Schema.
+Set `VCPKG_INSTALLED_DIR` to the reported root for the selected preset. The
+resolver requires the published asset's SHA-256 digest; the existing restore
+checks downloaded bytes and preserves immutable installations. Changing a
+version never overwrites an old SDK. CMake does not load `.env` or download
+the dependency SDK implicitly. Existing host-tool package locks remain exact.
 
-**Crypto ownership:** the imported static `Salts::Crypto` target comes from the exact SaltsCore SDK. SaltsUtils contains no implementation, copy or fallback.
+CI uses the same named repository Actions variables and selects local shared
+actions from the chosen infrastructure checkout. SaltsBase and SaltsCore
+prepare jobs resolve once, then distribute generated locks and verified blobs
+to all matrix workers. Set the CI variables before enabling these changes;
+the selected infrastructure release must contain `resolve-release`.
 
-## Main capabilities
+This keeps consumer version policy in the environment, asset digests in the
+upstream release, and generated restore locks in build inputs. Updating a
+release no longer requires editing a digest table for every platform. SDK
+manifests, compiler/ABI selection and product tests remain mandatory. To roll
+back, choose the previous exact release and restore into its own directory.
 
-| Area | Public capability |
-| --- | --- |
-| Crypto (external dependency) | imported static `Salts::Crypto` from SaltsCore |
-| Plugin | `CMeta::PluginABI` / `CMeta::Plugin` from the CMeta SDK |
-| Native filesystem (SDK dependency) | `Salts::FS` from SaltsCore |
-| Native process (SDK dependency) | `Salts::Process` from SaltsCore |
-| Query | `Salts::QueryVM` |
-| Parsers | JSON, XML, YAML, CSV, INI, TLV/LTV, Modbus, SOA, DotEnv, Cmd, TOON, TOML, DateTime, and related component targets |
-| Templates | Mustache and Jinja CMeta |
-| Unicode | generated Unicode property/scalar support |
-| Helpers | Cron and related higher-level utilities |
-| IDL / Schema | `Salts::IDL`, `Salts::Schema`, `salts-idlc` |
-| DataBind | `Salts::DataBind`; native/dynamic binding, immutable plans, rollback |
-| Language bindings | `Salts::BindingsCpp`, `Salts::Lua`, `Salts::QuickJS` (QuickJS-NG) |
+`SALTS_BASE_VERSION` selects the exact installed SDK at `SALTS_BASE_ROOT`;
+`CMETA_VERSION` selects the installed SDK at `CMETA_ROOT`. CMeta must itself be
+built against the same Base version. Native platform/FS/process/parser/Unicode
+facilities come from Base. CMeta, CFlow, CSTL and Plugin come from CMeta. The
+product does not depend on the old monorepo SaltsCore SDK.
 
-Parser capabilities remain independent component targets rather than a single aggregate parser facade.
+## Repository ownership
 
-Mustache, Cron, QueryVM, and all parser and parser-adapter targets are always
-static libraries, including when `BUILD_SHARED_LIBS=ON`. Link their existing
-`Salts::` targets to inherit dependencies; no DLL import/export definitions are
-needed. Their installed library artifacts are archives (`.a` or `.lib`).
+This split repository owns Mustache, Jinja, IDL/Schema, the `salts-idlc` compiler,
+DataBind and its format/native adapters, and the C++/Lua/QuickJS bindings.
+Parsers, QueryVM, Unicode, Cron, operating-system primitives and media are Base
+capabilities and are consumed through Base's existing targets. Networking and
+TLS remain SaltsCore capabilities; SaltsUtils does not duplicate their runtime.
 
-Playback, Capture, Serial, and USB are SaltsCore capabilities and are not
-rebuilt or re-exported by SaltsUtils. The `salts-idlc` compiler is always built
-and installed with DataBind.
+IDL defines transport-neutral contracts, Schema defines data shape and
+DataBind owns binding and serialization. They share one SaltsUtils package.
+DataBind's binary format and fingerprint algorithm remain unchanged. The
+existing namespaced Monocypher fingerprint source stays in `vendor/`; it is
+not replaced by another hash algorithm during the migration.
 
-## Ownership boundaries
+Native UUID fields use Base's `uuid_t` byte array. Generated C codecs and
+metadata retain the existing 16-byte wire representation. Regenerate outputs
+with the matching compiler and rebuild consumers after switching SDK headers.
 
-```text
-CMeta    native type/function/interface truth                 (CMeta SDK)
-CSerde   canonical token truth                               (Salts)
-CFlow    execution truth                                     (CMeta SDK)
-Plugin   module/loading/lease/lifecycle truth                 (CMeta SDK)
+## Restore and build
 
-IDL      Data + Service + Channel + Component contract truth (SaltsUtils)
-Schema   Data-only logical shape -> CMeta projection          (SaltsUtils)
-DataBind logical/native binding + BindingPlan runtime         (SaltsUtils)
+Load the local ignored `.env` into the parent shell before invoking presets.
+Use `.env.example` for nonsecret fields; keep existing machine settings and
+credentials local. CMake consumes explicit installation roots and does not
+run vcpkg or load dotenv files. The shared restoration commands above first
+resolve the selected cache release and then restore its URL/hash lock.
+Set `VCPKG_INSTALLED_DIR` to the returned root, not an inferred path.
+`ci-*-user` presets also use `SALTS_CI_VCPKG_INSTALLED_DIR`.
+
+Base 0.1.4 provides the public thread-pool callback query required by the
+current CMeta/CFlow SDK. To prepare CMeta from its current checkout, use its
+normal product configure/build/install preset; point `CMETA_ROOT` at the
+resulting `build/<preset>/stage`. The historical CMeta 0.1.003 monorepo SDK is
+not interchangeable with this split SDK despite its CMake version of 0.1.3.
+
+For Windows LLVM-MinGW, with the environment already loaded:
+
+```sh
+cmake --fresh --preset native-release-user
+cmake --build --preset native-release-user
+ctest --preset native-release-user --output-on-failure --no-tests=error
+cmake --build --preset install-native-release-user
 ```
 
-Compiler projections consume one typed `IdlContract`. Binary wire facts
-live in `databind_binary_format_plan` and lower through BinaryLayoutIR;
-transport state remains in transport runtimes.
-DataBind does not own parser syntax, network sessions, Plugin loading or CFlow
-execution.
+Use `gcc-release-user`, `llvm-native-release-user` or `msvc-release-user` with
+matching compiler/ABI SDKs. Cross builds require a host `salts-idlc` and its
+explicit Base/CMeta runtime roots through the existing `SaltsUtils_IDLC_*`
+inputs. Tests belong to their owning modules. Runtime behavior is checked by
+the formal executable suites; SDK configuration and installation use the
+normal build graph, without nested consumer verification projects.
 
+### Host generators
 
-## CMake
+Re2c and Lemon are separate host tools. Their immutable package IDs, versions
+and hashes are locked in `cmake/re2c.lock.json` and `cmake/lemon.lock.json`.
+An authenticated feed can restore them through the existing shared helper.
+Alternatively, select the original digest-qualified NuGet archives published
+as assets of the chosen vcpkg-cache release, and explicitly set
+`RE2C_ARCHIVE_FILE` and `LEMON_ARCHIVE_FILE`. The same helper validates package
+identity and hashes; Lemon's executable, template and source receipt remain
+paired. This is an explicit archive input, not an automatic retry or alternate
+parser. Authentication, integrity and missing-input failures stop the build.
 
-Build SaltsUtils against exact matching SaltsCore and CMeta SDK profiles through
-`SALTSCORE_ROOT` and `CMETA_ROOT`. Consumers explicitly select the SaltsUtils
-installation through `SALTS_UTILS_ROOT`:
+### Package consumption
 
-```cmake
-find_package(SaltsUtils CONFIG REQUIRED
-  PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
-
-target_link_libraries(app PRIVATE
-  Salts::JsonParser
-  Salts::XmlParser
-  Salts::Crypto # installed static Crypto package, not a SaltsUtils export
-  CMeta::Plugin
-  Salts::FS # installed SaltsCore target
-  Salts::Process # installed SaltsCore target
-  Salts::Mustache
-  Salts::JinjaCMeta
-  Salts::Unicode
-  Salts::Cron)
-```
-
-The package is fail-fast by design. It does not silently search unrelated prefixes, source trees, compatibility shims, or fallback implementations when the required installed Salts profile is missing.
-
-SaltsUtils does not discover Lua or QuickJS for consumers of unrelated modules.
-Applications linking `Salts::Lua` must explicitly call
-`find_package(unofficial-lua CONFIG REQUIRED)`; applications linking
-`Salts::QuickJS` must call `find_package(qjs CONFIG REQUIRED)`.
-The binding targets and their runtime link dependencies remain available.
-
-### Restore the published SDK and shared dependency cache
-
-Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain/overlays as Salts, but keep binary artifacts in vcpkg's local default cache and do not invoke NuGet or Mono. CI uses the shared `v0.1.1` setup and restores exact ABI archives from its binary release into a writable local files cache. Missing ABIs are compiled by the ordinary CMake configure and saved by the existing Actions cache; authentication, TLS, archive and digest failures stop the job. No local HTTP adapter is started.
-
-Before configuring, provide `PROJECT_ROOT`, `VCPKG_ROOT`, and a `GITHUB_TOKEN` with `read:packages` in the parent environment. `PROJECT_ROOT/external/pkgs` is the SaltsUtils install location; dependency SDKs are restored separately. Credentials are passed only to the curl package helper at runtime; no tracked NuGet credentials/configuration is used by native dependency restore.
-
-The restore commands require Python 3 and curl. Windows also requires PowerShell 7 and the Visual Studio developer environment:
-
-```powershell
-./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64 -Local
-cmake --preset win-release-user
-cmake --build --preset win-release-user
-ctest --preset win-release-user --output-on-failure
-```
-
-On Linux, install Python 3 and curl; native SDK/package restore does not require Mono, a NuGet client, or .NET:
-
-```bash
-bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64 0 local
-source build/native-sdk/env.sh
-cmake --preset linux-release-user
-cmake --build --preset linux-release-user
-ctest --preset linux-release-user --output-on-failure
-```
-
-Both restore paths use authenticated `curl` against GitHub Packages NuGet v3 metadata. `SaltsCore.Native` is fail-closed at exact `0.1.0` and `CMeta.Native` at exact `0.1.2`; re2c resolves the latest stable published tool package. No NuGet client, Mono, or `dotnet restore` participates in native dependency restore. Run restore before configure when updating dependencies; configure consumes the resolved SDKs and does not download packages. An incompatible release fails instead of selecting an older SDK. `-WithTurboWasm` (PowerShell) or the third Bash argument also restores TurboWasm. Local restore exposes version-independent `stage/dependencies/saltscore/<RID>` and `stage/dependencies/cmeta/<RID>` links plus the re2c host link. Existing non-link directories at these paths are rejected instead of overwritten. The published SDKs contain Release libraries; use matching Release profiles.
-
-### Migrating from Salts 1.x
-
-Rebuild SaltsUtils and its consumers against the same Salts 2.x SDK, and regenerate IDL artifacts with the updated `salts-idlc`. Salts Core and Plugin symbols now use `cmeta_*` / `CMETA_PLUGIN_*`; coroutine symbols use `coro_*`. SaltsUtils-owned `salts_*` names and Lua/QuickJS method calls retain their names.
-
-Native receiver metadata uses `cmeta_receiver_operation` and references the canonical `cmeta_function_abi_desc`; the function descriptor is obtained through `operation->abi->function`. Object providers use `cmeta_object_operation_provider`. Update consumer-authored metadata to this layout instead of retaining a separate function descriptor in each receiver entry. This migration changes the native API/ABI and requires recompilation; it does not change DataBind wire formats.
+The installed package requires the matching Base and CMeta roots and its
+preinstalled dependency prefix. Lua and QuickJS are unconditional modules in
+the complete graph; their existing `unofficial-lua` and `qjs` packages are
+required when importing the exported target set.
 
 ### DataBind consumption
 
@@ -173,8 +138,8 @@ and CFlow remain independent; there is no public PluginCFlow subsystem.
 
 ### Filesystem and process dependencies
 
-Native filesystem and process APIs come from SaltsCore's `Salts::FS`
-(`<fs.h>`) and `Salts::Process` (`<process.h>`). CFlow I/O primitives belong
+Native filesystem and process APIs come from SaltsBase's `Salts::Core`
+(`<file/fs.h>` and `<file/process.h>`). CFlow I/O primitives belong
 to `CMeta::CFlow`. SaltsUtils no longer builds or exports the removed
 `Salts::CFlowFS` / `Salts::CFlowProcess` adapters or their `<cflow/fs*.h>`
 and `<cflow/process.h>` headers.
@@ -205,105 +170,38 @@ Detailed documentation:
 Use the repository root presets with the same profile as the installed Salts SDK. Build and install the complete SaltsUtils package, including DataBind and its compiler:
 
 ```sh
-cmake --preset linux-release-user
-cmake --build --preset linux-release-user
-ctest --preset linux-release-user
-cmake --build --preset install-linux-release-user
+cmake --preset gcc-release-user
+cmake --build --preset gcc-release-user
+ctest --preset gcc-release-user
+cmake --build --preset install-gcc-release-user
 ```
 
-Windows uses the corresponding `win-*` presets. The `databind/` subtree is a component, not an alternative standalone configure/install entry point.
+Windows can use `msvc-release-user` from a Visual Studio developer environment. The `databind/` subtree is a component, not an alternative standalone configure/install entry point.
 
-Configuration fails on missing SDK roots, dependencies or tools, unsupported
-requested sanitizers, and `BUILD_BENCHMARKS=ON` with `BUILD_TESTS=OFF`.
-Sanitizers use the `ENABLE_SANITIZER_*` options in `CMakeOptions.cmake`;
-the unused `ENABLE_ASAN` option has been removed.
-
-Supply SDK roots with forward slashes; the native SDK restore helpers export
-paths in this form for both CI and local use. After changing SDK roots or toolchains,
-configure with `cmake --fresh --preset <profile>` (or `FRESH=1` below).
-CMake files do not clear package discovery caches or repair stale configurations.
-
-For local orchestration, the repository also exposes the same Praktor input
-contract used by TurboAgent. The workflow remains repository-local because
-Praktor resolves reusable workflow paths and working directories relative to
-the file that declares them; SaltsUtils therefore keeps its own thin adapter
-while CMake presets remain the build configuration source of truth.
-
-Copy `.env.example` to the ignored `.env` and adjust its absolute paths. Its
-`VCPKG_CACHE_REPOSITORY_ROOT` deliberately matches TurboAgent's user-level
-checkout, so `CACHE_ACTION=clone|sync`, overlay ports, and local vcpkg artifacts
-share that cache instead of creating a repository-specific copy.
-
-```powershell
-# Configure, build the complete graph, and run CTest.
-praktor -f build.yml
-
-# Build one test target, then run its registered CTest entry.
-praktor -f build.yml -i TASK=test -i TARGET=test_jinja_cmeta_attributes -i 'TEST_REGEX=^test_jinja_cmeta_attributes$'
-
-# Reconfigure from a fresh CMake cache without deleting dependencies.
-praktor -f build.yml -i FRESH=1
-```
-
-Use `HOST=unix PRESET=linux-release-user` on Unix. `TASK` accepts `all`,
-`configure`, `refresh`, `build`, `test`, `install`, and `run`; `INSTALL=1` is
-opt-in for the default `all` task. `TARGET` selects one build target,
-`TEST_REGEX` is passed to CTest, and `RUN_ARGS` is a JSON array passed directly
-as argv. Windows requires `VSDEVCMD_BAT`; dependency roots and cache settings
-come from the parent environment or the ignored `.env`, as described above.
-
-### Installed consumer validation
-
-The existing package consumers have their own configure/build/test presets and
-vcpkg manifests. On Windows, run these commands from a Visual Studio developer
-PowerShell at the repository root:
-
-```powershell
-cmake --preset win-sdk-package-user
-cmake --build --preset install-win-sdk-package-user
-$env:SALTS_UTILS_ROOT = "$PWD/stage/sdk/windows-x64"
-Push-Location databind/compiler/package_config/databind_target
-cmake --preset win-release-user
-cmake --build --preset win-release-user
-ctest --preset win-release-user
-Pop-Location
-```
-
-The eight CTest entries exercise installed generated messages, services and
-FlowMQ projections. The Binary consumer checks literal wire bytes, bounded
-output and decoded byte-buffer ownership after input reuse and codec destruction.
-The Producer, Plugin and public CMeta consumer projects also expose these presets.
-These consumer projects use `ci-native-release-user` with explicit `SALTSCORE_ROOT`, `CMETA_ROOT`, `SALTS_UTILS_ROOT`,
-`QIGAO_TARGET_TRIPLET` and `VCPKG_CACHE_REPOSITORY_ROOT` inputs. Each consumer selects
-that exact SDK; a cached package directory cannot select another installation.
-
-### Cross-compilation host tools
-
-Cross-compilation requires an existing host Lemon executable through
-`SALTS_UTILS_HOST_LEMON_EXECUTABLE`. The build fails immediately when that input is
-missing; it does not create a separate host build or select another compiler.
-Before configuring a local Windows-hosted Android preset, prepare the host tool:
-
-```sh
-cmake --preset win-release-user
-cmake --build --preset win-release-user --target lemon
-cmake --preset android-arm64-v8a-release-win
-cmake --build --preset android-arm64-v8a-release-win
-```
-
-The Android Windows presets reference `build/Msvc-Release/bin/lemon.exe` explicitly.
-Android/iOS CI builds the host graph with `ci-host-release-user` before
-configuring the target SDK, which uses the completed host `lemon` executable.
-This removes the former implicit host-build path; callers
-of other cross-compilation profiles must supply the completed host executable.
+Configuration fails on missing SDK roots, dependencies, generators and
+unsupported sanitizer profiles. `CMakeOptions.cmake` declares `BUILD_TESTS`,
+`BUILD_BENCHMARK`, `BUILD_EXAMPLES` and the existing `SALTSCORE_ENABLE_*`
+sanitizer inputs. SDK versions and paths come from the parent environment;
+use `--fresh` after changing them. The normal build graph and module CTests
+cover generated messages, services, Binary wire values, Plugin leases and
+public CMeta adapters; no nested consumer verification project is required.
 
 ### CI and releases
 
-CI follows the Salts workflow layout: select affected work, compile each profile once,
-restore its immutable build for CTest, and package only during manual release preparation.
-Publication accepts the exact successful preparation run, commit SHA and existing version tag;
-it neither rebuilds nor repacks. See [CI and release workflow](docs/CI.md) for profiles,
-artifact ownership, validation boundaries and release commands.
+CI resolves exact Base/cache releases once and shares verified inputs across
+the ten published Base profiles, including native ARM64, MSVC and TSan.
+`CMETA_REF` explicitly selects the source-built CMeta product SDK while
+`CMETA_VERSION` validates its installed package version. This is a declared
+source SDK input during the split migration, not a fallback after failed
+restoration. Android uses an explicitly built native IDL compiler with its
+separate Base/CMeta runtime closure. Native lanes run the full CTest suite;
+Android lanes cross-build and install without claiming device execution.
+
+Each qualified SDK TAR records source, upstream versions/refs and Base producer
+provenance. The historical NuGet publisher remains for historical immutable
+release inputs; this migration does not republish old package versions. A new
+SaltsUtils release must use a new version and the split SDK artifact contract.
+See [CI details](docs/CI.md).
 
 ## Design rules
 

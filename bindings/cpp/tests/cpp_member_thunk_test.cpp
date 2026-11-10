@@ -1,5 +1,5 @@
 #include <salts/bindings/member.hpp>
-#include <salts/bindings/lua/module.h>
+#include <bindings/lua/module.h>
 #include <salts/bindings/quickjs/module.h>
 #include <data_bind_typescript.h>
 

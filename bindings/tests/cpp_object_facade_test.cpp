@@ -1,4 +1,4 @@
-#include <salts/bindings/lua.hpp>
+#include <bindings/lua.hpp>
 #include <salts/bindings/quickjs.hpp>
 #include <data_bind_typescript.h>
 

@@ -1,7 +1,7 @@
 // re2c --lang c
 #include "jinja_template_lexer.h"
 #include <string.h>
-#include <salts_unicode.h>
+#include <unicode.h>
 
 const JINJA_TEMPLATE_DELIMITERS JINJA_TEMPLATE_DEFAULT_DELIMITERS = {.tokens = {
     {.data = "{{", .len = 2u}, {.data = "}}", .len = 2u},
@@ -11,8 +11,8 @@ const JINJA_TEMPLATE_DELIMITERS JINJA_TEMPLATE_DEFAULT_DELIMITERS = {.tokens = {
 static size_t jinja_template_prefix_rank(vstr prefix) {
   size_t cursor = 0u, count = 0u;
   while (cursor < prefix.len) {
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(prefix, &cursor, &scalar) != SALTS_UNICODE_OK) return SIZE_MAX;
+    unicode_scalar scalar;
+    if (unicode_utf8_next(prefix, &cursor, &scalar) != SALTS_UNICODE_OK) return SIZE_MAX;
     ++count;
   }
   return count;
@@ -63,7 +63,7 @@ typedef enum JINJA_TEMPLATE_SCAN_MODE {
   JINJA_TEMPLATE_SCAN_ALL, JINJA_TEMPLATE_SCAN_OPEN, JINJA_TEMPLATE_SCAN_RAW
 } JINJA_TEMPLATE_SCAN_MODE;
 
-static int jinja_template_lex_space(salts_unicode_scalar scalar) {
+static int jinja_template_lex_space(unicode_scalar scalar) {
   enum { SEPARATOR_FIRST = 0x1c, SEPARATOR_LAST = 0x1f };
   return (scalar.properties & SALTS_UNICODE_PROPERTY_WHITE_SPACE) != 0u ||
       (scalar.value >= SEPARATOR_FIRST && scalar.value <= SEPARATOR_LAST);
@@ -80,8 +80,8 @@ static int jinja_template_line_context(JINJA_TEMPLATE_LEXER *lexer, size_t offse
   }
   while (lexer->line_scan < offset) {
     size_t next = lexer->line_scan;
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK || next > offset) return 0;
+    unicode_scalar scalar;
+    if (unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK || next > offset) return 0;
     lexer->line_scan = next;
     lexer->line_start = scalar.value == '\n' || scalar.value == '\r';
     lexer->previous_nonspace = !jinja_template_lex_space(scalar);
@@ -100,8 +100,8 @@ static size_t jinja_template_line_prefix(JINJA_TEMPLATE_LEXER *lexer, size_t off
     if (end != SIZE_MAX) match = end - offset;
     if (cursor == source.len) break;
     size_t next = cursor;
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK) return SIZE_MAX;
+    unicode_scalar scalar;
+    if (unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK) return SIZE_MAX;
     if (statement ? (scalar.value != ' ' && scalar.value != '\t' && scalar.value != '\v') :
         (!jinja_template_lex_space(scalar) || scalar.value == '\r' || scalar.value == '\n')) break;
     cursor = next;

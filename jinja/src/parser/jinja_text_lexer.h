@@ -1,7 +1,7 @@
 #ifndef JINJA_TEXT_LEXER_H
 #define JINJA_TEXT_LEXER_H
 
-#include <vstr.h>
+#include <core/vstr.h>
 
 /* Borrowed UTF-8. Returns one on success, zero for invalid UTF-8.
  * Counts Unicode17 (L|N|_)+ runs in O(bytes) time and constant space. */

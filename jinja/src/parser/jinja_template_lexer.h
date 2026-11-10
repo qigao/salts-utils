@@ -2,7 +2,7 @@
 #define JINJA_TEMPLATE_LEXER_H
 
 #include <stddef.h>
-#include <vstr.h>
+#include <core/vstr.h>
 
 typedef enum JINJA_TEMPLATE_TOKEN_KIND {
   JINJA_TEMPLATE_TOKEN_EOF = 0,

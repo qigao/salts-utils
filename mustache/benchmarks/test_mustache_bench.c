@@ -5,8 +5,8 @@
 
 #include "tinytest.h"
 #include "mustache.h"
-#include "vstr.h"
-#include "tstr.h"
+#include "core/vstr.h"
+#include "core/tstr.h"
 #include <stdint.h>
 #include <string.h>
 

@@ -9,8 +9,8 @@
 #include <json_parser.h>
 #include <xml_parser/xml_sax.h>
 
-#include <tstr.h>
-#include <vstr.h>
+#include <core/tstr.h>
+#include <core/vstr.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -82,7 +82,7 @@ typedef struct data_bind_stream_format_state {
   json_path_stream_t *json_path_stream;
   json_value_t *json_match_value;
   cyaml_sax_parser_t *yaml_sax;
-  salts_xml_sax_parser_t *xml_sax;
+  xml_sax_parser_t *xml_sax;
 
   data_bind_json_stream_frame_t *json_frames;
   size_t json_frame_count;

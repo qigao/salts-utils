@@ -2,8 +2,8 @@
 #include "binary_layout_ir.h"
 #include "opaque_plan_codegen.h"
 
-#include "salts/fs.h"
-#include "cmeta_uuid.h"
+#include "file/fs.h"
+#include "core/uuid.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,7 +85,7 @@ static int projection_c_string(FILE *file, const char *text) {
 
 static int projection_open_atomic(
     const char *output, char **out_temp, FILE **out_file) {
-  cmeta_uuid_t uuid;
+  uuid_t uuid;
   char uuid_text[SALTS_UUID_STRING_SIZE];
   size_t length;
   char *temp;
@@ -95,8 +95,8 @@ static int projection_open_atomic(
     return -1;
   *out_temp = NULL;
   *out_file = NULL;
-  if (cmeta_uuid_v4_generate(&uuid) != SALTS_OK ||
-      cmeta_uuid_format(&uuid, uuid_text, sizeof(uuid_text)) != SALTS_OK)
+  if (uuid_v4_generate(uuid) != SALTS_OK ||
+      uuid_format(uuid, uuid_text, sizeof(uuid_text)) != SALTS_OK)
     return -1;
   length = strlen(output);
   if (length > SIZE_MAX - strlen(uuid_text) - 7u) return -1;
@@ -118,8 +118,8 @@ static int projection_commit_atomic(
     const char *output, char *temp, FILE *file, int success) {
   int result = -1;
   if (file != NULL && fclose(file) != 0) success = 0;
-  if (success && salts_fs_rename(temp, output) == SALTS_OK) result = 0;
-  if (result != 0 && temp != NULL) (void)salts_fs_unlink(temp);
+  if (success && fs_rename(temp, output) == SALTS_OK) result = 0;
+  if (result != 0 && temp != NULL) (void)fs_unlink(temp);
   free(temp);
   return result;
 }

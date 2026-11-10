@@ -1,8 +1,8 @@
 #include "mustache.h"
-#include "cmeta_buffer.h"
-#include "tstr.h"
+#include "memory/buffer.h"
+#include "core/tstr.h"
 #include <errno.h>
-#include <fmt.h>
+#include <core/fmt.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

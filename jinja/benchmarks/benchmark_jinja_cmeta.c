@@ -2,7 +2,7 @@
 #include "tinytest.h"
 
 #include <cmeta/struct.h>
-#include <vstr.h>
+#include <core/vstr.h>
 
 #include <stddef.h>
 

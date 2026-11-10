@@ -4,7 +4,7 @@
 #include "tinytest.h"
 #include <stdlib.h>
 #include <string.h>
-#include <tstr.h>
+#include <core/tstr.h>
 
 typedef struct TEST_SOURCE {
   const char *name, *text;

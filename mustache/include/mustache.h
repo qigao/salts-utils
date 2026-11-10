@@ -1,8 +1,8 @@
 #ifndef MUSTACHE4C_H
 #define MUSTACHE4C_H
 
-#include <salts/platform.h>
-#include "vstr.h"
+#include <core/platform.h>
+#include "core/vstr.h"
 #include <stdlib.h>
 
 #ifdef __cplusplus

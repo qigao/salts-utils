@@ -30,12 +30,12 @@ static MUSTACHE_TEMPLATE *xml_get_partial(const char *name, size_t size,
                                           void *provider_data);
 static int xml_provider_failed(const MUSTACHE_XML_PROVIDER *provider);
 
-static salts_xml_node xml_node_from_raw(const void *impl) {
-    const salts_xml_node node = {impl};
+static xml_node xml_node_from_raw(const void *impl) {
+    const xml_node node = {impl};
     return node;
 }
 
-static int xml_view_eq(salts_xml_string_view candidate, const char *expected,
+static int xml_view_eq(xml_string_view candidate, const char *expected,
                        size_t expected_size) {
     return candidate.size == expected_size &&
            (expected_size == 0u ||
@@ -132,8 +132,8 @@ static int is_surrogate(void *node) {
 static int xml_dump(void *raw_node,
                     int (*out_fn)(const char *, size_t, void *),
                     void *renderer_data, void *provider_data) {
-    salts_xml_node node;
-    salts_xml_node_kind type;
+    xml_node node;
+    xml_node_kind type;
     size_t child_count;
     size_t index;
     int result;
@@ -143,23 +143,23 @@ static int xml_dump(void *raw_node,
     if (is_surrogate(raw_node)) return out_fn("[list]", 6u, renderer_data);
 
     node = xml_node_from_raw(raw_node);
-    type = salts_xml_node_type(node);
+    type = xml_node_type(node);
     if (type == SALTS_XML_ATTRIBUTE || type == SALTS_XML_TEXT) {
-        const salts_xml_string_view value = salts_xml_node_text_view(node);
+        const xml_string_view value = xml_node_text_view(node);
         return value.data != NULL ? out_fn(value.data, value.size, renderer_data) : 0;
     }
     if (type != SALTS_XML_ELEMENT) return 0;
 
-    child_count = salts_xml_node_child_count(node);
+    child_count = xml_node_child_count(node);
     for (index = 0u; index < child_count; ++index) {
-        if (salts_xml_node_type(salts_xml_node_child_at(node, index)) ==
+        if (xml_node_type(xml_node_child_at(node, index)) ==
             SALTS_XML_ELEMENT)
             return out_fn("[object]", 8u, renderer_data);
     }
     for (index = 0u; index < child_count; ++index) {
-        const salts_xml_node child = salts_xml_node_child_at(node, index);
-        if (salts_xml_node_type(child) == SALTS_XML_TEXT) {
-            const salts_xml_string_view value = salts_xml_node_text_view(child);
+        const xml_node child = xml_node_child_at(node, index);
+        if (xml_node_type(child) == SALTS_XML_TEXT) {
+            const xml_string_view value = xml_node_text_view(child);
             if (value.data != NULL) {
                 result = out_fn(value.data, value.size, renderer_data);
                 if (result != 0) return result;
@@ -177,7 +177,7 @@ static void *xml_get_root(void *provider_data) {
 static void *xml_get_child_by_name(void *raw_node, const char *name, size_t size,
                                    void *provider_data) {
     MUSTACHE_XML_PROVIDER *provider = (MUSTACHE_XML_PROVIDER *)provider_data;
-    salts_xml_node node;
+    xml_node node;
     size_t index;
     size_t child_count;
     size_t match_count = 0u;
@@ -186,28 +186,28 @@ static void *xml_get_child_by_name(void *raw_node, const char *name, size_t size
         xml_provider_failed(provider))
         return NULL;
     node = xml_node_from_raw(raw_node);
-    if (salts_xml_node_type(node) != SALTS_XML_ELEMENT &&
-        salts_xml_node_type(node) != SALTS_XML_DOCUMENT)
+    if (xml_node_type(node) != SALTS_XML_ELEMENT &&
+        xml_node_type(node) != SALTS_XML_DOCUMENT)
         return NULL;
 
-    for (index = 0u; index < salts_xml_node_attribute_count(node); ++index) {
-        const salts_xml_attribute attribute = salts_xml_node_attribute_at(node, index);
-        if (xml_view_eq(salts_xml_attribute_qualified_name(attribute), name, size))
+    for (index = 0u; index < xml_node_attribute_count(node); ++index) {
+        const xml_attribute attribute = xml_node_attribute_at(node, index);
+        if (xml_view_eq(xml_attribute_qualified_name(attribute), name, size))
             return (void *)attribute.impl;
     }
 
-    child_count = salts_xml_node_child_count(node);
+    child_count = xml_node_child_count(node);
     for (index = 0u; index < child_count; ++index) {
-        const salts_xml_node child = salts_xml_node_child_at(node, index);
-        if (salts_xml_node_type(child) == SALTS_XML_ELEMENT &&
-            xml_view_eq(salts_xml_node_qualified_name(child), name, size))
+        const xml_node child = xml_node_child_at(node, index);
+        if (xml_node_type(child) == SALTS_XML_ELEMENT &&
+            xml_view_eq(xml_node_qualified_name(child), name, size))
             ++match_count;
     }
     if (match_count == 1u) {
         for (index = 0u; index < child_count; ++index) {
-            const salts_xml_node child = salts_xml_node_child_at(node, index);
-            if (salts_xml_node_type(child) == SALTS_XML_ELEMENT &&
-                xml_view_eq(salts_xml_node_qualified_name(child), name, size))
+            const xml_node child = xml_node_child_at(node, index);
+            if (xml_node_type(child) == SALTS_XML_ELEMENT &&
+                xml_view_eq(xml_node_qualified_name(child), name, size))
                 return (void *)child.impl;
         }
     } else if (match_count > 1u) {
@@ -215,9 +215,9 @@ static void *xml_get_child_by_name(void *raw_node, const char *name, size_t size
         size_t match_index = 0u;
         if (list == NULL) return NULL;
         for (index = 0u; index < child_count; ++index) {
-            const salts_xml_node child = salts_xml_node_child_at(node, index);
-            if (salts_xml_node_type(child) == SALTS_XML_ELEMENT &&
-                xml_view_eq(salts_xml_node_qualified_name(child), name, size))
+            const xml_node child = xml_node_child_at(node, index);
+            if (xml_node_type(child) == SALTS_XML_ELEMENT &&
+                xml_view_eq(xml_node_qualified_name(child), name, size))
                 list->items[match_index++] = (void *)child.impl;
         }
         return list;

@@ -3,7 +3,7 @@
 #include "data_bind_binary_layout.h"
 #include "tinytest.h"
 
-#include <tstr.h>
+#include <core/tstr.h>
 
 #include <stdint.h>
 #include <string.h>

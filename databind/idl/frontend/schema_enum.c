@@ -1,7 +1,7 @@
 #include "schema_enum.h"
 #include "schema_cmeta.h"
 
-#include <fmt.h>
+#include <core/fmt.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>

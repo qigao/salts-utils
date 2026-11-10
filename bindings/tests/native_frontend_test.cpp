@@ -1,6 +1,6 @@
 #include "fixtures/native_math.h"
 #include "fixtures/native_counter.hpp"
-#include <salts/bindings/lua/native.hpp>
+#include <bindings/lua/native.hpp>
 #include <salts/bindings/quickjs/native.hpp>
 #include <data_bind_typescript.h>
 extern "C" {

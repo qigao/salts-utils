@@ -2,7 +2,7 @@
 #include "jinja_parser_memory.h"
 #include "jinja_expression_grammar_gen.h"
 #include "jinja_float.h"
-#include <salts_unicode.h>
+#include <unicode.h>
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -126,11 +126,11 @@ int jinja_expression_parse_integer_token(JINJA_EXPRESSION_TOKEN token, int64_t *
     } else if (token.text[cursor] >= 'A' && token.text[cursor] <= 'F') {
       digit = UINT64_C(10) + (uint64_t)(token.text[cursor] - 'A');
     } else {
-      salts_unicode_scalar scalar;
+      unicode_scalar scalar;
       uint32_t decimal;
       size_t next = cursor;
-      if (salts_unicode_utf8_next(vstr_from_buf(token.text, token.length), &next, &scalar) != SALTS_UNICODE_OK ||
-          salts_unicode_decimal_value(scalar.value, &decimal) != SALTS_UNICODE_OK)
+      if (unicode_utf8_next(vstr_from_buf(token.text, token.length), &next, &scalar) != SALTS_UNICODE_OK ||
+          unicode_decimal_value(scalar.value, &decimal) != SALTS_UNICODE_OK)
         return 0;
       digit = decimal;
       cursor = next - 1u;

@@ -2,7 +2,7 @@
 
 #include "service_native.h"
 #include "native_service_projection.h"
-#include "salts/fs.h"
+#include "file/fs.h"
 
 #include <cmeta/plugin.h>
 
@@ -251,8 +251,8 @@ static char *plugin_suffixed_path(
 
 static void plugin_unlink_if_exists(const char *path) {
   if (path != NULL &&
-      salts_fs_access(path, SALTS_FS_ACCESS_EXISTS) == 0)
-    (void)salts_fs_unlink(path);
+      fs_access(path, SALTS_FS_ACCESS_EXISTS) == 0)
+    (void)fs_unlink(path);
 }
 
 static FILE *plugin_open_staging(
@@ -307,9 +307,9 @@ static int plugin_prepare_output_backup(
 
   plugin_unlink_if_exists(output->backup_path);
 
-  if (salts_fs_access(
+  if (fs_access(
           output->final_path, SALTS_FS_ACCESS_EXISTS) == 0) {
-    if (salts_fs_rename(
+    if (fs_rename(
             output->final_path, output->backup_path) != 0)
       return 0;
     output->had_original = 1;
@@ -326,7 +326,7 @@ static void plugin_rollback_output(
     plugin_unlink_if_exists(output->final_path);
 
   if (output->had_original && output->backup_path != NULL)
-    (void)salts_fs_rename(
+    (void)fs_rename(
         output->backup_path, output->final_path);
   else if (output->backup_path != NULL)
     plugin_unlink_if_exists(output->backup_path);
@@ -362,7 +362,7 @@ static int plugin_commit_output_set(
       goto rollback;
 
   for (i = 0u; i < output_count; ++i) {
-    if (salts_fs_rename(
+    if (fs_rename(
             outputs[i].staging_path,
             outputs[i].final_path) != 0)
       goto rollback;

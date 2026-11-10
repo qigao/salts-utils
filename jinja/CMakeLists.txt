@@ -7,7 +7,7 @@ cmake_add_grammar(JINJA_TEMPLATE
   FOLDER "jinja/grammar")
 cmake_add_grammar(JINJA_EXPRESSION
   RE2C_EXECUTABLE "${RE2C_EXECUTABLE}"
-  LEMON_TARGET lemon
+  LEMON_TARGET Lemon::Lemon
   LEMON_TEMPLATE "${LEMPAR}"
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_expression_lexer.re
   GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_expression_grammar.y
@@ -109,6 +109,6 @@ if(BUILD_TESTS)
   add_subdirectory(test)
 endif()
 
-if(BUILD_BENCHMARKS)
+if(BUILD_BENCHMARK)
   add_subdirectory(benchmarks)
 endif()

@@ -148,7 +148,7 @@ endif()
 # Benchmarks
 # =============================================================================
 
-if(BUILD_BENCHMARKS)
+if(BUILD_BENCHMARK)
 
 cmake_add_benchmark(benchmark_tbe_simple
   SOURCES test/benchmark_tbe_simple.c

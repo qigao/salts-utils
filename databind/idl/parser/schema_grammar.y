@@ -21,7 +21,7 @@
 #include "schema_size.h"
 #include "schema_types.h"
 #include "idl_contract.h"
-#include <tstr.h>
+#include <core/tstr.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>

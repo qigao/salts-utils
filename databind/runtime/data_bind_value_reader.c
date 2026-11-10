@@ -116,7 +116,7 @@ static cserde_status reader_value(ValueReader *state, const DataBindValue *value
     return reader_slice(state, out, CSERDE_BYTES, value->data.bytes_val.ptr,
                          value->data.bytes_val.len);
   case DATA_BIND_VALUE_UUID:
-    return reader_slice(state, out, CSERDE_BYTES, value->data.uuid_val.bytes,
+    return reader_slice(state, out, CSERDE_BYTES, value->data.uuid_val,
                          DATA_BIND_UUID_SIZE);
   case DATA_BIND_VALUE_OBJECT:
   case DATA_BIND_VALUE_LIST:

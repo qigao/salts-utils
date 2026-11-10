@@ -1,49 +1,16 @@
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
+unset(SaltsBase_DIR CACHE)
+unset(CMeta_DIR CACHE)
+find_dependency(SaltsBase @SaltsBase_VERSION@ EXACT CONFIG REQUIRED
+  PATHS "$ENV{SALTS_BASE_ROOT}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+find_dependency(CMeta @CMeta_VERSION@ EXACT CONFIG REQUIRED
+  PATHS "$ENV{CMETA_ROOT}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
-foreach(_dependency_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
-  if(NOT DEFINED ENV{${_dependency_root}} OR
-     NOT IS_DIRECTORY "$ENV{${_dependency_root}}")
-    message(FATAL_ERROR "${_dependency_root} must name the restored SDK")
-  endif()
-endforeach()
-find_package(SaltsCore 0.1 CONFIG REQUIRED
-  PATHS "$ENV{SALTSCORE_ROOT}"
-  NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-find_package(CMeta 0.1 CONFIG REQUIRED
-  PATHS "$ENV{CMETA_ROOT}"
-  NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-
-# The sole Unicode implementation and target must come from the installed
-# Salts SDK. A local SaltsUtils::Unicode/Salts::Unicode export is forbidden.
-if(NOT TARGET Salts::Unicode)
-  message(FATAL_ERROR "SaltsUtils requires a published Salts SDK exporting Salts::Unicode")
-endif()
-get_target_property(_salts_utils_unicode_imported Salts::Unicode IMPORTED)
-if(NOT _salts_utils_unicode_imported)
-  message(FATAL_ERROR "Salts::Unicode must be an imported Salts SDK target")
-endif()
-unset(_salts_utils_unicode_imported)
-
-# The static Crypto target is part of the exact SaltsCore SDK graph; never
-# discover a second provider from the default package search path.
-get_target_property(_salts_utils_crypto_type Salts::Crypto TYPE)
-get_target_property(_salts_utils_crypto_imported Salts::Crypto IMPORTED)
-if(NOT _salts_utils_crypto_imported OR NOT _salts_utils_crypto_type STREQUAL "STATIC_LIBRARY")
-  message(FATAL_ERROR "SaltsUtils requires imported static Salts::Crypto from SaltsCore")
-endif()
-unset(_salts_utils_crypto_type)
-unset(_salts_utils_crypto_imported)
-
-# Native workflow-only builds do not publish Lua/bindings providers.
-# The full legacy Utils package retains its separate explicit binding graph.
-if(NOT "@SALTS_UTILS_NATIVE_C11_WORKFLOW_SUBSET@" STREQUAL "ON")
-  find_dependency(unofficial-lua CONFIG REQUIRED)
-  find_dependency(qjs CONFIG REQUIRED)
-endif()
-
+find_dependency(qjs CONFIG REQUIRED)
+find_dependency(unofficial-lua CONFIG REQUIRED)
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
 
 set(SaltsUtils_IDLC_HINT "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@")
 include("${CMAKE_CURRENT_LIST_DIR}/IDL.cmake")
-check_required_components(SaltsUtils)
+

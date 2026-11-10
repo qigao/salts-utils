@@ -18,8 +18,8 @@
 #include <cmeta/data.h>
 #include <stdbool.h>
 #include <time.h>
-#include <vstr.h>
-#include <cmeta_uuid.h>
+#include <core/vstr.h>
+#include <core/uuid.h>
 #include <stddef.h>
 #include <stdint.h>
 

@@ -606,7 +606,7 @@ endif()
 
 endif()
 
-if(BUILD_BENCHMARKS)
+if(BUILD_BENCHMARK)
   cmake_add_benchmark(benchmark_data_bind_pool
     SOURCES benchmark_data_bind_pool.c
     LIBS Salts::DataBind Salts::TinyTest

@@ -2,7 +2,7 @@
 #include "tinytest.h"
 
 #include <cstl/byte_buffer.h>
-#include <tstr.h>
+#include <core/tstr.h>
 
 #include <string.h>
 

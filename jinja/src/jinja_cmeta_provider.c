@@ -13,8 +13,8 @@
 #include <cmeta/core_data.h>
 #include <cmeta/object_scope.h>
 #include <cmeta/scope.h>
-#include <salts_unicode.h>
-#include <tstr.h>
+#include <unicode.h>
+#include <core/tstr.h>
 
 #include <errno.h>
 #include <float.h>
@@ -3509,8 +3509,8 @@ static int jinja_normalize_lookup_index(int64_t index, size_t count, size_t *nor
 
 static JINJA_CMETA_STATUS jinja_utf8_scalar_lookup(vstr input, int64_t index, vstr *result,
                                                    int *found) {
-  salts_unicode_scalar scalar;
-  salts_unicode_status unicode_status;
+  unicode_scalar scalar;
+  unicode_status unicode_status;
   size_t cursor = 0u;
   size_t scalar_count = 0u;
   size_t target;
@@ -3518,7 +3518,7 @@ static JINJA_CMETA_STATUS jinja_utf8_scalar_lookup(vstr input, int64_t index, vs
   if (result == NULL || found == NULL || !vstr_is_valid(input)) return JINJA_CMETA_ERR_RENDER;
   *found = 0;
   while (cursor < input.len) {
-    unicode_status = salts_unicode_utf8_next(input, &cursor, &scalar);
+    unicode_status = unicode_utf8_next(input, &cursor, &scalar);
     if (unicode_status != SALTS_UNICODE_OK) return JINJA_CMETA_ERR_METADATA;
     if (scalar_count == SIZE_MAX) return JINJA_CMETA_ERR_CAPACITY;
     ++scalar_count;
@@ -3528,7 +3528,7 @@ static JINJA_CMETA_STATUS jinja_utf8_scalar_lookup(vstr input, int64_t index, vs
   cursor = 0u;
   scalar_count = 0u;
   while (cursor < input.len) {
-    unicode_status = salts_unicode_utf8_next(input, &cursor, &scalar);
+    unicode_status = unicode_utf8_next(input, &cursor, &scalar);
     if (unicode_status != SALTS_UNICODE_OK) return JINJA_CMETA_ERR_METADATA;
     if (scalar_count == target) {
       *result = vstr_from_buf(input.data + scalar.byte_offset, scalar.byte_length);
@@ -4096,14 +4096,14 @@ static JINJA_CMETA_STATUS jinja_slice_string(JINJA_CMETA_PROVIDER *provider,
                                              JINJA_CMETA_VALUE *result) {
   JINJA_CMETA_RANGE slice;
   JINJA_CMETA_STATUS status;
-  salts_unicode_scalar scalar;
+  unicode_scalar scalar;
   size_t cursor = 0u;
   uint64_t count = 0u;
   size_t bytes = 0u;
   size_t output;
   char *destination;
   while (cursor < input.len) {
-    if (salts_unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
+    if (unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
     ++count;
   }
@@ -4116,7 +4116,7 @@ static JINJA_CMETA_STATUS jinja_slice_string(JINJA_CMETA_PROVIDER *provider,
   cursor = 0u;
   count = 0u;
   while (cursor < input.len) {
-    if (salts_unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
+    if (unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
     if (jinja_slice_selects(&slice, count)) bytes += scalar.byte_length;
     ++count;
@@ -4136,7 +4136,7 @@ static JINJA_CMETA_STATUS jinja_slice_string(JINJA_CMETA_PROVIDER *provider,
   cursor = 0u;
   count = 0u;
   while (cursor < input.len) {
-    if (salts_unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
+    if (unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
     if (jinja_slice_selects(&slice, count)) {
       if (slice.step < 0) output -= scalar.byte_length;
@@ -4627,12 +4627,12 @@ static JINJA_CMETA_STATUS jinja_value_length(JINJA_CMETA_PROVIDER *provider,
     return jinja_loop_attribute(provider, operand->loop, vstr_from_cstr("length"), result);
   if (jinja_value_is_string(operand)) {
     JINJA_CMETA_SCALAR scalar;
-    salts_unicode_scalar item;
+    unicode_scalar item;
     size_t cursor = 0u;
     status = jinja_scalar_from_value(provider, operand, &scalar);
     if (status != JINJA_CMETA_OK) return status;
     while (cursor < scalar.size) {
-      if (salts_unicode_utf8_next(vstr_from_buf((const char *)scalar.data, scalar.size), &cursor,
+      if (unicode_utf8_next(vstr_from_buf((const char *)scalar.data, scalar.size), &cursor,
                                   &item) != SALTS_UNICODE_OK)
         return JINJA_CMETA_ERR_METADATA;
       ++count;
@@ -4745,10 +4745,10 @@ static JINJA_CMETA_STATUS jinja_iteration_next(JINJA_CMETA_PROVIDER *provider,
     if (iteration->position >= iteration->length) return JINJA_CMETA_OK;
     if (jinja_value_is_string(input)) {
       JINJA_CMETA_SCALAR string;
-      salts_unicode_scalar scalar;
+      unicode_scalar scalar;
       status = jinja_scalar_from_value(provider, input, &string);
       if (status != JINJA_CMETA_OK) return status;
-      if (salts_unicode_utf8_next(vstr_from_buf((const char *)string.data, string.size),
+      if (unicode_utf8_next(vstr_from_buf((const char *)string.data, string.size),
           &iteration->string_cursor, &scalar) != SALTS_UNICODE_OK) return JINJA_CMETA_ERR_METADATA;
       *item = (JINJA_CMETA_VALUE){.kind = JINJA_CMETA_VALUE_STRING,
           .string = vstr_from_buf((const char *)string.data + scalar.byte_offset, scalar.byte_length)};
@@ -4928,8 +4928,8 @@ static JINJA_CMETA_STATUS jinja_materialize_list(JINJA_CMETA_PROVIDER *provider,
   for (i = 0u; i < count; ++i) {
     JINJA_CMETA_VALUE *item = jinja_cmeta_values_at(&provider->shared.values, offset + i);
     if (jinja_value_is_string(operand)) {
-      salts_unicode_scalar scalar;
-      if (salts_unicode_utf8_next(vstr_from_buf((const char *)string.data, string.size), &cursor,
+      unicode_scalar scalar;
+      if (unicode_utf8_next(vstr_from_buf((const char *)string.data, string.size), &cursor,
                                   &scalar) != SALTS_UNICODE_OK)
         return JINJA_CMETA_ERR_METADATA;
       *item = (JINJA_CMETA_VALUE){
@@ -5157,7 +5157,7 @@ static JINJA_CMETA_STATUS jinja_string_value(JINJA_CMETA_PROVIDER *provider,
 
 static int jinja_concat_write(const char *text, size_t size, void *opaque);
 static JINJA_CMETA_STATUS jinja_case_value(JINJA_CMETA_PROVIDER *provider,
-    JINJA_CMETA_VALUE *operand, salts_unicode_case_mode mode, JINJA_CMETA_VALUE *result);
+    JINJA_CMETA_VALUE *operand, unicode_case_mode mode, JINJA_CMETA_VALUE *result);
 static JINJA_CMETA_STATUS jinja_dump_value_repr(JINJA_CMETA_PROVIDER *provider,
     const JINJA_CMETA_VALUE *value, size_t depth,
     int (*out_fn)(const char *, size_t, void *), void *renderer_data);
@@ -5322,8 +5322,8 @@ static JINJA_CMETA_STATUS jinja_indent_value(JINJA_CMETA_PROVIDER *provider,
     size_t begin = cursor, end = cursor;
     int last = 1;
     while (cursor < string.string.len) {
-      salts_unicode_scalar scalar;
-      if (salts_unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
+      unicode_scalar scalar;
+      if (unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
         return JINJA_CMETA_ERR_METADATA;
       if (jinja_text_linebreak(scalar.value)) {
         end = scalar.byte_offset;
@@ -5439,9 +5439,9 @@ static JINJA_CMETA_STATUS jinja_trim_value(JINJA_CMETA_PROVIDER *provider,
   /* O(input scalars * charset bytes), O(1) extra storage, bounded by render bytes.
      A complete scalar cannot match inside another valid UTF-8 scalar. */
   while (cursor < string.string.len) {
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     int strip;
-    if (salts_unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
+    if (unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
     strip = custom
         ? vstr_contains(characters, vstr_from_buf(string.string.data + scalar.byte_offset,
@@ -5877,11 +5877,11 @@ static JINJA_CMETA_STATUS jinja_attribute_key(vstr segment, JINJA_CMETA_VALUE *k
   *key = (JINJA_CMETA_VALUE){.kind = JINJA_CMETA_VALUE_STRING, .string = segment};
   if (segment.len == 0u) return JINJA_CMETA_OK;
   while (cursor < segment.len) {
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     uint32_t digit;
-    if (salts_unicode_utf8_next(segment, &cursor, &scalar) != SALTS_UNICODE_OK)
+    if (unicode_utf8_next(segment, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
-    if (salts_unicode_decimal_value(scalar.value, &digit) != SALTS_UNICODE_OK)
+    if (unicode_decimal_value(scalar.value, &digit) != SALTS_UNICODE_OK)
       return JINJA_CMETA_OK;
     if (integer > (INT64_MAX - (int64_t)digit) / DECIMAL_RADIX) overflow = 1;
     else if (!overflow) integer = integer * DECIMAL_RADIX + (int64_t)digit;
@@ -6554,7 +6554,7 @@ static JINJA_CMETA_STATUS jinja_pprint_value(JINJA_CMETA_PROVIDER *provider,
   return JINJA_CMETA_OK;
 }
 
-static int jinja_striptags_space(salts_unicode_scalar scalar) {
+static int jinja_striptags_space(unicode_scalar scalar) {
   return (scalar.properties & SALTS_UNICODE_PROPERTY_WHITE_SPACE) != 0u ||
       (scalar.value >= 0x1cu && scalar.value <= 0x1fu);
 }
@@ -6634,7 +6634,7 @@ static int jinja_striptags_entity(vstr name, uint32_t *scalar) {
 }
 
 static JINJA_CMETA_STATUS jinja_striptags_write_scalar(JINJA_CMETA_PROVIDER *provider,
-    salts_unicode_scalar scalar, const char *bytes, size_t size, int *pending_space, int *emitted) {
+    unicode_scalar scalar, const char *bytes, size_t size, int *pending_space, int *emitted) {
   if (jinja_striptags_space(scalar)) {
     if (*emitted) *pending_space = 1;
     return JINJA_CMETA_OK;
@@ -6686,7 +6686,7 @@ static JINJA_CMETA_STATUS jinja_striptags_value(JINJA_CMETA_PROVIDER *provider,
                                   &decoded)) {
           char encoded[4];
           const size_t size = jinja_striptags_utf8(decoded, encoded);
-          salts_unicode_scalar scalar = {.value = decoded,
+          unicode_scalar scalar = {.value = decoded,
               .properties = jinja_striptags_scalar_space(decoded)
                   ? SALTS_UNICODE_PROPERTY_WHITE_SPACE : SALTS_UNICODE_PROPERTY_NONE};
           status = jinja_striptags_write_scalar(provider, scalar, encoded, size, &pending_space, &emitted);
@@ -6696,9 +6696,9 @@ static JINJA_CMETA_STATUS jinja_striptags_value(JINJA_CMETA_PROVIDER *provider,
         }
       }
     }
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     const size_t before = cursor;
-    if (salts_unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
+    if (unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
     status = jinja_striptags_write_scalar(provider, scalar, string.string.data + before,
         cursor - before, &pending_space, &emitted);
@@ -6736,9 +6736,9 @@ static JINJA_CMETA_STATUS jinja_json_string(JINJA_CMETA_PROVIDER *provider, vstr
     return JINJA_CMETA_ERR_METADATA;
   status = jinja_json_write(provider, "\"", 1u);
   while (status == JINJA_CMETA_OK && cursor < string.len) {
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     const size_t before = cursor;
-    if (salts_unicode_utf8_next(string, &cursor, &scalar) != SALTS_UNICODE_OK)
+    if (unicode_utf8_next(string, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
     switch (scalar.value) {
     case '\b': status = jinja_json_write(provider, "\\b", 2u); break;
@@ -7233,8 +7233,8 @@ static JINJA_CMETA_STATUS jinja_urlize_trim(vstr input, int has_limit, int64_t l
   size_t cursor = 0u;
   if (display == NULL || ellipsis == NULL) return JINJA_CMETA_ERR_RENDER;
   while (cursor < input.len) {
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
+    unicode_scalar scalar;
+    if (unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
     ++count;
   }
@@ -7249,8 +7249,8 @@ static JINJA_CMETA_STATUS jinja_urlize_trim(vstr input, int has_limit, int64_t l
   }
   cursor = 0u;
   for (size_t i = 0u; i < retain; ++i) {
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
+    unicode_scalar scalar;
+    if (unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
   }
   *display = vstr_from_buf(input.data, cursor);
@@ -7400,13 +7400,13 @@ static JINJA_CMETA_STATUS jinja_urlize_value(JINJA_CMETA_PROVIDER *provider,
   size_t cursor = 0u;
   while (cursor < string.string.len) {
     const size_t begin = cursor;
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
+    unicode_scalar scalar;
+    if (unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
       return JINJA_CMETA_ERR_METADATA;
     const int space = jinja_striptags_space(scalar);
     while (cursor < string.string.len) {
       const size_t next = cursor;
-      if (salts_unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
+      if (unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
         return JINJA_CMETA_ERR_METADATA;
       if (jinja_striptags_space(scalar) != space) {
         cursor = next;
@@ -7545,8 +7545,8 @@ static JINJA_CMETA_STATUS jinja_replace_value(JINJA_CMETA_PROVIDER *provider,
     cursor = match + needle.len;
     if (needle.len == 0u) {
       if (cursor == source.len) break;
-      salts_unicode_scalar scalar;
-      if (salts_unicode_utf8_next(source, &cursor, &scalar) != SALTS_UNICODE_OK)
+      unicode_scalar scalar;
+      if (unicode_utf8_next(source, &cursor, &scalar) != SALTS_UNICODE_OK)
         return JINJA_CMETA_ERR_METADATA;
       if (jinja_concat_write(source.data + scalar.byte_offset, scalar.byte_length, provider) != 0)
         return provider->shared.status;
@@ -7578,19 +7578,19 @@ static JINJA_CMETA_STATUS jinja_numeric_text(JINJA_CMETA_PROVIDER *provider,
   *text = (JINJA_CMETA_NUMERIC_TEXT){0};
   if (!jinja_cmeta_string_append_fits(0u, scalar->size, provider->shared.max_string_bytes))
     return JINJA_CMETA_ERR_CAPACITY;
-  if (salts_unicode_trim_whitespace(vstr_from_buf((const char *)scalar->data, scalar->size),
+  if (unicode_trim_whitespace(vstr_from_buf((const char *)scalar->data, scalar->size),
                                    &trimmed) != SALTS_UNICODE_OK)
     return JINJA_CMETA_ERR_METADATA;
   char *buffer = (char *)jinja_provider_allocate(provider, trimmed.len + 1u, sizeof(char));
   if (buffer == NULL) return provider->shared.status;
   size_t cursor = 0u, length = 0u;
-  salts_unicode_scalar character;
-  while (salts_unicode_utf8_next(trimmed, &cursor, &character) == SALTS_UNICODE_OK) {
+  unicode_scalar character;
+  while (unicode_utf8_next(trimmed, &cursor, &character) == SALTS_UNICODE_OK) {
     uint32_t digit;
     if (character.value < 128u) {
       char c = (char)character.value;
       buffer[length++] = c >= 'A' && c <= 'Z' ? (char)(c + ('a' - 'A')) : c;
-    } else if (salts_unicode_decimal_value(character.value, &digit) == SALTS_UNICODE_OK) {
+    } else if (unicode_decimal_value(character.value, &digit) == SALTS_UNICODE_OK) {
       buffer[length++] = (char)('0' + digit);
     } else {
       jinja_cmeta_memory_drop(buffer);
@@ -9456,12 +9456,12 @@ static JINJA_CMETA_STATUS jinja_string_finish(JINJA_CMETA_STRING_OUTPUT *output,
 }
 
 static JINJA_CMETA_STATUS jinja_case_value(JINJA_CMETA_PROVIDER *provider,
-    JINJA_CMETA_VALUE *operand, salts_unicode_case_mode mode, JINJA_CMETA_VALUE *result) {
+    JINJA_CMETA_VALUE *operand, unicode_case_mode mode, JINJA_CMETA_VALUE *result) {
   JINJA_CMETA_STRING_OUTPUT output = {.provider = provider};
   JINJA_CMETA_VALUE string;
   JINJA_CMETA_STATUS status = jinja_string_value(provider, operand, &string);
   if (status != JINJA_CMETA_OK) return status;
-  const salts_unicode_status case_status = salts_unicode_case_transform(
+  const unicode_status case_status = unicode_case_transform(
       string.string, mode, jinja_string_write, &output);
   if (case_status == SALTS_UNICODE_ERR_CALLBACK) status = provider->shared.status;
   else if (case_status != SALTS_UNICODE_OK) status = JINJA_CMETA_ERR_METADATA;
@@ -9499,35 +9499,35 @@ static JINJA_CMETA_STATUS jinja_capitalize_value(JINJA_CMETA_PROVIDER *provider,
     JINJA_CMETA_VALUE *operand, JINJA_CMETA_VALUE *result) {
   JINJA_CMETA_STRING_OUTPUT output = {.provider = provider};
   JINJA_CMETA_VALUE string;
-  salts_unicode_scalar first = {0};
+  unicode_scalar first = {0};
   size_t cursor = 0u;
   size_t lowered_first_size = 0u;
   JINJA_CMETA_STATUS status = jinja_string_value(provider, operand, &string);
   if (status != JINJA_CMETA_OK) return status;
   while (cursor < string.string.len) {
-    if (salts_unicode_utf8_next(string.string, &cursor, &first) != SALTS_UNICODE_OK) {
+    if (unicode_utf8_next(string.string, &cursor, &first) != SALTS_UNICODE_OK) {
       status = JINJA_CMETA_ERR_METADATA;
       break;
     }
   }
   cursor = 0u;
   if (status == JINJA_CMETA_OK && string.string.len != 0u &&
-      salts_unicode_utf8_next(string.string, &cursor, &first) != SALTS_UNICODE_OK)
+      unicode_utf8_next(string.string, &cursor, &first) != SALTS_UNICODE_OK)
     status = JINJA_CMETA_ERR_METADATA;
   if (status == JINJA_CMETA_OK && string.string.len != 0u) {
     const vstr first_input = vstr_from_buf(string.string.data, first.byte_length);
-    salts_unicode_status case_status = salts_unicode_case_transform(
+    unicode_status case_status = unicode_case_transform(
         first_input, SALTS_UNICODE_CASE_TITLE, jinja_string_write, &output);
     if (case_status == SALTS_UNICODE_ERR_CALLBACK) status = provider->shared.status;
     else if (case_status != SALTS_UNICODE_OK) status = JINJA_CMETA_ERR_METADATA;
     if (status == JINJA_CMETA_OK) {
-      case_status = salts_unicode_case_transform(first_input, SALTS_UNICODE_CASE_LOWER,
+      case_status = unicode_case_transform(first_input, SALTS_UNICODE_CASE_LOWER,
           jinja_case_count_write, &lowered_first_size);
       if (case_status != SALTS_UNICODE_OK) status = JINJA_CMETA_ERR_METADATA;
     }
     if (status == JINJA_CMETA_OK) {
       JINJA_CMETA_CASE_SKIP_OUTPUT skip = {.output = &output, .skip = lowered_first_size};
-      case_status = salts_unicode_case_transform(
+      case_status = unicode_case_transform(
           string.string, SALTS_UNICODE_CASE_LOWER, jinja_case_skip_write, &skip);
       if (case_status == SALTS_UNICODE_ERR_CALLBACK) status = provider->shared.status;
       else if (case_status != SALTS_UNICODE_OK || skip.skip != 0u) status = JINJA_CMETA_ERR_METADATA;
@@ -9540,29 +9540,29 @@ static JINJA_CMETA_STATUS jinja_capitalize_value(JINJA_CMETA_PROVIDER *provider,
 
 static JINJA_CMETA_STATUS jinja_title_segment(JINJA_CMETA_PROVIDER *provider,
     vstr segment, JINJA_CMETA_STRING_OUTPUT *output) {
-  salts_unicode_scalar first = {0};
+  unicode_scalar first = {0};
   size_t cursor = 0u;
   size_t lowered_first_size = 0u;
   if (segment.len == 0u) return JINJA_CMETA_OK;
-  if (salts_unicode_utf8_next(segment, &cursor, &first) != SALTS_UNICODE_OK)
+  if (unicode_utf8_next(segment, &cursor, &first) != SALTS_UNICODE_OK)
     return JINJA_CMETA_ERR_METADATA;
   const vstr first_input = vstr_from_buf(segment.data, first.byte_length);
-  salts_unicode_status case_status = salts_unicode_case_transform(
+  unicode_status case_status = unicode_case_transform(
       first_input, SALTS_UNICODE_CASE_UPPER, jinja_string_write, output);
   if (case_status == SALTS_UNICODE_ERR_CALLBACK) return provider->shared.status;
   if (case_status != SALTS_UNICODE_OK) return JINJA_CMETA_ERR_METADATA;
-  case_status = salts_unicode_case_transform(first_input, SALTS_UNICODE_CASE_LOWER,
+  case_status = unicode_case_transform(first_input, SALTS_UNICODE_CASE_LOWER,
       jinja_case_count_write, &lowered_first_size);
   if (case_status != SALTS_UNICODE_OK) return JINJA_CMETA_ERR_METADATA;
   JINJA_CMETA_CASE_SKIP_OUTPUT skip = {.output = output, .skip = lowered_first_size};
-  case_status = salts_unicode_case_transform(segment, SALTS_UNICODE_CASE_LOWER,
+  case_status = unicode_case_transform(segment, SALTS_UNICODE_CASE_LOWER,
       jinja_case_skip_write, &skip);
   if (case_status == SALTS_UNICODE_ERR_CALLBACK) return provider->shared.status;
   return case_status == SALTS_UNICODE_OK && skip.skip == 0u
       ? JINJA_CMETA_OK : JINJA_CMETA_ERR_METADATA;
 }
 
-static int jinja_title_separator(salts_unicode_scalar scalar) {
+static int jinja_title_separator(unicode_scalar scalar) {
   return scalar.value == '-' || scalar.value == '(' || scalar.value == '{' ||
       scalar.value == '[' || scalar.value == '<' ||
       (scalar.properties & SALTS_UNICODE_PROPERTY_WHITE_SPACE) != 0u ||
@@ -9577,15 +9577,15 @@ static JINJA_CMETA_STATUS jinja_title_value(JINJA_CMETA_PROVIDER *provider,
   size_t segment_start = 0u;
   JINJA_CMETA_STATUS status = jinja_string_value(provider, operand, &string);
   while (status == JINJA_CMETA_OK && cursor < string.string.len) {
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
+    unicode_scalar scalar;
+    if (unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
       status = JINJA_CMETA_ERR_METADATA;
   }
   cursor = 0u;
   while (status == JINJA_CMETA_OK && cursor < string.string.len) {
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     const size_t scalar_start = cursor;
-    if (salts_unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
+    if (unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK)
       status = JINJA_CMETA_ERR_METADATA;
     else if (jinja_title_separator(scalar)) {
       status = jinja_title_segment(provider,
@@ -10139,8 +10139,8 @@ static JINJA_CMETA_STATUS jinja_wordwrap_value(JINJA_CMETA_PROVIDER *provider,
     const size_t begin = cursor;
     size_t end = cursor;
     while (cursor < string.string.len) {
-      salts_unicode_scalar scalar;
-      if (salts_unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK) {
+      unicode_scalar scalar;
+      if (unicode_utf8_next(string.string, &cursor, &scalar) != SALTS_UNICODE_OK) {
         status = JINJA_CMETA_ERR_METADATA;
         break;
       }
