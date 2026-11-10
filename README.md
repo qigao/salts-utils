@@ -67,6 +67,9 @@ with the matching compiler and rebuild consumers after switching SDK headers.
 
 ## Restore and build
 
+Use the CMake user presets below. The retired Praktor `build.yml` referenced
+drivers removed by the split migration and has been removed with them.
+
 Load the local ignored `.env` into the parent shell before invoking presets.
 Use `.env.example` for nonsecret fields; keep existing machine settings and
 credentials local. CMake consumes explicit installation roots and does not
