@@ -106,6 +106,21 @@ cleanup:
 }
 
 spec("mustache runtime regressions") {
+  it("preserves delimiter whitespace and rejects malformed delimiter pairs") {
+    static const struct { const char *source; int valid; } cases[] = {
+      {"{{=<% %>=}}", 1}, {"{{=<%\t%>=}}", 1},
+      {"{{=<%\v%>=}}", 1}, {"{{=<%\f%>=}}", 1},
+      {"{{= =}}", 0}, {"{{=a=b c=}}", 0}, {"{{=a b c=}}", 0}
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+      MUSTACHE_TEMPLATE *templ = mustache_compile(cases[i].source, strlen(cases[i].source),
+                                                  NULL, NULL, 0);
+      int valid = templ != NULL;
+      if (templ != NULL) mustache_release(templ);
+      check_equal(valid, cases[i].valid);
+    }
+  }
+
   it("does not call the renderer for empty indentation") {
     static const char template_text[] = "{{!comment}}";
     MUSTACHE_TEMPLATE *templ = mustache_compile(template_text, sizeof(template_text) - 1,
