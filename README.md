@@ -1,5 +1,39 @@
 # SaltsUtils
 
+[![CI](https://github.com/qigao/salts-utils/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/qigao/salts-utils/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+**Templates, schema-driven data binding and language integration for Salts.**
+
+## Features and modules
+
+| Module | Responsibility |
+| --- | --- |
+| [Mustache](mustache/) | Template rendering |
+| [Jinja](jinja/) | CMeta-integrated template execution |
+| [IDL / Schema](databind/) | Contracts, data shapes and the salts-idlc compiler |
+| [DataBind](databind/runtime/README.md) | Dynamic/native binding and serialization |
+| [Bindings](bindings/) | C++ facades and Lua/QuickJS integration |
+
+## Quick start
+
+```sh
+git clone https://github.com/qigao/salts-utils.git
+cd salts-utils
+```
+
+Start with [.env.example](.env.example), restore matching upstream SDKs and
+load your local `.env` into the parent shell. Follow the
+[build instructions](#restore-and-build) for your compiler's CMake user preset.
+CMake does not load dotenv files or restore SDKs implicitly.
+
+## Salts ecosystem
+
+- [SaltsBase](https://github.com/qigao/salts-base): native primitives, NativeIO, parsers and foundational utilities.
+- [CMeta](https://github.com/qigao/cmeta): reflection, components, CFlow and containers.
+- [Salts CNet](https://github.com/qigao/salts-cnet): networking, TLS/DTLS and cryptography.
+- [SaltsUtils](https://github.com/qigao/salts-utils): templates, IDL/Schema, DataBind and language bindings.
+
 ## Upstream dependency versions
 
 Select the upstream SDK release through `VCPKG_CACHE_VERSION` in the parent
@@ -217,6 +251,13 @@ See [CI details](docs/CI.md).
 ---
 
 **Salts provides the semantics. SaltsUtils turns them into reusable higher-level tools.**
+
+## Contributing
+
+Open an issue for bugs or design proposals. Keep pull requests focused and
+include reproduction steps and relevant CTest results. Follow
+[AGENTS.md](AGENTS.md), keep tests with their owning module, and update API
+documentation when behavior changes.
 
 ## License
 
