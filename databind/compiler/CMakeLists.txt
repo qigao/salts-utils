@@ -51,6 +51,11 @@ foreach(template_file IN LISTS TBE_COMPILER_TEMPLATE_FILES)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${template_file}"
       "$<TARGET_FILE_DIR:salts_idlc>/${template_relative_dir}"
     VERBATIM)
+  # The installed compiler resolves these same templates beside its executable.
+  # Keep their relative paths identical to the build-tree layout.
+  install(FILES "${template_file}"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}/${template_relative_dir}"
+    COMPONENT DataBind)
 endforeach()
 
 # iOS consumers run the compiler from a separate host SDK.

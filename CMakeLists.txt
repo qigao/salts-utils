@@ -83,6 +83,7 @@ write_basic_package_version_file(
 install(
   FILES "${CMAKE_BINARY_DIR}/SaltsUtilsConfig.cmake"
         "${CMAKE_BINARY_DIR}/SaltsUtilsConfigVersion.cmake"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/IDL.cmake"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils"
   COMPONENT Development)
 
