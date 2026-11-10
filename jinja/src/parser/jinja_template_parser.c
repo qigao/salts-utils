@@ -9,6 +9,7 @@ typedef struct JINJA_TEMPLATE_NODE JINJA_TEMPLATE_NODE;
 #include "jinja_template_lexer.h"
 #include "jinja_expression_grammar_gen.h"
 #include <unicode.h>
+#include <core/scan.h>
 #include <stdlib.h>
 #include <string.h>
 #include <cstl/typed.h>
@@ -135,7 +136,7 @@ static vstr jinja_template_view(vstr source, JINJA_EXPRESSION_SPAN span) {
 }
 
 static int jinja_template_word(vstr word, const char *expected) {
-  return word.len == strlen(expected) && memcmp(word.data, expected, word.len) == 0;
+  return vstr_eq(word, vstr_from_cstr(expected));
 }
 
 static int jinja_template_open(JINJA_TEMPLATE_TOKEN_KIND kind) {
@@ -168,9 +169,10 @@ static JINJA_EXPRESSION_PARSE_STATUS jinja_template_line_tag(vstr source, JINJA_
   cursor = begin;
   while (cursor < source.len) {
     if (comment) {
-      if (source.data[cursor] == '\r' || source.data[cursor] == '\n') { end = cursor; break; }
-      ++cursor;
-      continue;
+      cursor = (size_t)(scan_to_any2(source.data + cursor,
+          source.data + source.len, '\r', '\n') - source.data);
+      end = cursor;
+      break;
     }
     if (depth == 0u && (end = jinja_template_line_end(source, cursor)) != SIZE_MAX) break;
     size_t length = jinja_expression_lexical_token_length(source, cursor);

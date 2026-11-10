@@ -83,6 +83,15 @@ product does not depend on the old monorepo SaltsCore SDK.
 
 ## Repository ownership
 
+Jinja keyword matching and DataBind boolean parsing reuse Base `vstr` views.
+Mustache delimiter parsing, Jinja line comments and DataBind CIDR parsing use
+the counted byte ranges in `core/scan.h`. Mustache output and DataBind XML
+capture reuse `tstr_append()` to update their uniquely owned strings after
+growth. Views are borrowed only for the call; no parser retains a new borrow.
+Existing Unicode whitespace rules, Mustache vertical-tab/form-feed handling,
+empty appends, error returns and allocator ownership remain unchanged.
+This is shared primitive reuse; no performance gain is claimed without measurement.
+
 This split repository owns Mustache, Jinja, IDL/Schema, the `salts-idlc` compiler,
 DataBind and its format/native adapters, and the C++/Lua/QuickJS bindings.
 Parsers, QueryVM, Unicode, Cron, operating-system primitives and media are Base

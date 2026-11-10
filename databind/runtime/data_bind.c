@@ -9,6 +9,7 @@
 #include "data_bind_temporal_adapter.h"
 #include "data_bind_stream_format_state_internal.h"
 #include "core/fmt.h"
+#include <core/scan.h>
 #include "node_tree.h"
 #include "core/re.h"
 #include "binary_scalar_profile.h"
@@ -2379,12 +2380,16 @@ static int db_parse_double_text(const char *text, double *out) {
 }
 
 static int db_parse_bool_text(const char *text, int *out) {
+  vstr input;
   if (text == NULL || out == NULL) return 0;
-  if (strcmp(text, "true") == 0 || strcmp(text, "1") == 0 || strcmp(text, "yes") == 0) {
+  input = vstr_from_cstr(text);
+  if (vstr_eq(input, vstr_from_cstr("true")) || vstr_eq(input, vstr_from_cstr("1")) ||
+      vstr_eq(input, vstr_from_cstr("yes"))) {
     *out = 1;
     return 1;
   }
-  if (strcmp(text, "false") == 0 || strcmp(text, "0") == 0 || strcmp(text, "no") == 0) {
+  if (vstr_eq(input, vstr_from_cstr("false")) || vstr_eq(input, vstr_from_cstr("0")) ||
+      vstr_eq(input, vstr_from_cstr("no"))) {
     *out = 0;
     return 1;
   }
@@ -2483,17 +2488,19 @@ static int db_parse_uint_n(const char *text, size_t len, int *out) {
 }
 
 static int db_validate_cidr(const char *text) {
+  vstr input;
   const char *slash;
   size_t addr_len;
   int prefix = 0;
   int is_v4;
   if (text == NULL) return 0;
-  slash = strchr(text, '/');
+  input = vstr_from_cstr(text);
+  slash = scan_char(input.data, input.data + input.len, '/');
   if (slash == NULL || slash == text || slash[1] == '\0') return 0;
   addr_len = (size_t)(slash - text);
   is_v4 = db_validate_ipv4_n(text, addr_len);
   if (!is_v4 && !db_validate_ipv6_n(text, addr_len)) return 0;
-  if (!db_parse_uint_n(slash + 1, strlen(slash + 1), &prefix)) return 0;
+  if (!db_parse_uint_n(slash + 1, input.len - addr_len - 1u, &prefix)) return 0;
   return prefix >= 0 && prefix <= (is_v4 ? 32 : 128);
 }
 
@@ -6793,14 +6800,12 @@ static int data_bind_stream_json_path_on_array_end(void *ctx) {
 }
 
 static int data_bind_stream_xml_append(data_bind_stream_t *parser, const char *text, size_t len) {
-  tstr next;
   if (parser == NULL || !data_bind_stream_provider_state(parser)->xml_capture_active || len == 0) return 0;
-  next = tstr_cat_len(data_bind_stream_provider_state(parser)->xml_capture, text, len);
-  if (next == NULL) {
+  if (!tstr_append(&data_bind_stream_provider_state(parser)->xml_capture,
+                   vstr_from_buf(text, len))) {
     data_bind_stream_error_msg(parser, "Out of memory extending XML stream item");
     return -1;
   }
-  data_bind_stream_provider_state(parser)->xml_capture = next;
   return 0;
 }
 

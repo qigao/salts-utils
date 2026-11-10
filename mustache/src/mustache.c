@@ -1,6 +1,7 @@
 #include "mustache.h"
 #include "memory/buffer.h"
 #include "core/tstr.h"
+#include <core/scan.h>
 #include <errno.h>
 #include <core/fmt.h>
 #include <stdint.h>
@@ -44,19 +45,12 @@ typedef struct MUSTACHE_TEMPLATE_IMPL {
 static inline void mustache_buffer_free(MUSTACHE_BUFFER *buf) { free(buf->data); }
 
 static int mustache_tstr_append(tstr *s, const char *data, size_t n) {
-  tstr next;
-
   if (!s)
     return -1;
   if (!data && n != 0) return -1;
   if (n == 0) return 0;
 
-  next = tstr_cat_len(*s, data, n);
-  if (!next)
-    return -1;
-
-  *s = next;
-  return 0;
+  return tstr_append(s, vstr_from_buf(data, n)) ? 0 : -1;
 }
 
 static int mustache_buffer_insert(MUSTACHE_BUFFER *buf, off_t off, const void *data, size_t n) {
@@ -326,14 +320,13 @@ static int mustache_parse_delimiters(const char *delim_spec, size_t size, char *
   off_t opener_beg, opener_end;
   off_t closer_beg, closer_end;
 
+  if (size == 0) return -1;
+
   opener_beg = 0;
 
-  opener_end = opener_beg;
-  while (opener_end < size) {
-    if (MUSTACHE_ISWHITESPACE(delim_spec[opener_end])) break;
-    if (delim_spec[opener_end] == '=') return -1;
-    opener_end++;
-  }
+  opener_end = (off_t)(scan_to_any5(delim_spec, delim_spec + size,
+                                   ' ', '\t', '\v', '\f', '=') - delim_spec);
+  if ((size_t)opener_end < size && delim_spec[opener_end] == '=') return -1;
   if (opener_end <= opener_beg || opener_end - opener_beg > MUSTACHE_MAXOPENERLENGTH) return -1;
 
   closer_beg = opener_end;
@@ -343,11 +336,8 @@ static int mustache_parse_delimiters(const char *delim_spec, size_t size, char *
   }
   if (closer_beg <= opener_end) return -1;
 
-  closer_end = closer_beg;
-  while (closer_end < size) {
-    if (MUSTACHE_ISWHITESPACE(delim_spec[closer_end])) return -1;
-    closer_end++;
-  }
+  closer_end = (off_t)(scan_to_any4(delim_spec + closer_beg, delim_spec + size,
+                                   ' ', '\t', '\v', '\f') - delim_spec);
   if (closer_end <= closer_beg || closer_end - closer_beg > MUSTACHE_MAXCLOSERLENGTH) return -1;
   if (closer_end != size) return -1;
 

@@ -1,6 +1,35 @@
 #include "jinja_cmeta_test_support.h"
 
 spec("Jinja CMeta: lexical 2") {
+  it("bounds line comments at CR LF CRLF and the counted end of input") {
+    static const struct { const char *source; const char *expected; } cases[] = {
+      {"A ## ignored", "A"},
+      {"A ## ignored\nB", "A\nB"},
+      {"A ## ignored\rB", "A\nB"},
+      {"A ## ignored\r\nB", "A\nB"}
+    };
+    JINJA_CMETA_COMPILE_OPTIONS options = JINJA_CMETA_COMPILE_OPTIONS_INIT;
+    options.line_comment_prefix = vstr_from_cstr("##");
+    JinjaTestRoot root = {{vstr_from_cstr("Ada"), 0}, false, {NULL, 0u, 0u, NULL}};
+    JinjaTestModel model;
+    jinja_test_model_init(&model);
+    for (size_t i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+      size_t length = strlen(cases[i].source);
+      char *source = (char *)malloc(length);
+      check_not_null(source);
+      memcpy(source, cases[i].source, length);
+      JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
+      JINJA_CMETA_TEMPLATE *templ = jinja_cmeta_compile(vstr_from_buf(source, length), &options, &error);
+      free(source);
+      check_not_null(templ);
+      char *output = NULL;
+      check_equal(jinja_cmeta_render_string(templ, &model.root_desc, &root, NULL, &output, &error), JINJA_CMETA_OK);
+      check_equal(output, cases[i].expected);
+      free(output);
+      jinja_cmeta_release(templ);
+    }
+  }
+
   it("rejects unfinished quoted tags and mismatched brackets without overreading") {
     static const char *const cases[] = {
       "ab{{ '}}'", "ab{{ '}} }}", "ab{{ 'x\\", "ab{{ [1) }}", "ab{% if ('%}' %}"
