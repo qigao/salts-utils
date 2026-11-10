@@ -52,12 +52,7 @@ list(PREPEND CMAKE_PREFIX_PATH
   "${SALTS_UTILS_DEPENDENCY_PREFIX}")
 
 find_package(Threads REQUIRED)
-if(NOT "$ENV{SALTS_BASE_VERSION}" MATCHES "^[0-9]+[.][0-9]+[.][0-9]+$" OR
-   NOT "$ENV{CMETA_VERSION}" MATCHES "^[0-9]+[.][0-9]+[.][0-9]+$")
-  message(FATAL_ERROR "SALTS_BASE_VERSION and CMETA_VERSION must select exact SDK versions without the v prefix")
-endif()
-unset(SaltsBase_DIR CACHE)
-unset(CMeta_DIR CACHE)
+
 find_package(SaltsBase "$ENV{SALTS_BASE_VERSION}" EXACT CONFIG REQUIRED PATHS "$ENV{SALTS_BASE_ROOT}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 find_package(CMeta "$ENV{CMETA_VERSION}" EXACT CONFIG REQUIRED PATHS "$ENV{CMETA_ROOT}"

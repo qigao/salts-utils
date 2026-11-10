@@ -2,14 +2,6 @@
   "name": "salts-utils",
   "version-semver": "0.1.0",
   "dependencies": [
-    {
-      "name": "pkgconf",
-      "host": true,
-      "platform": "!windows"
-    },
-    {
-      "name": "simde"
-    },
     "lua",
     "quickjs-ng",
     {
