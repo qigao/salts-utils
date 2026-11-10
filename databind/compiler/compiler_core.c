@@ -20,9 +20,9 @@
 #include <cmeta/core_data.h>
 #include <cmeta/core_fixed_width.h>
 #include "tbe_error.h"
-#include "salts/fs.h"
-#include "cmeta_uuid.h"
-#include <tstr.h>
+#include "file/fs.h"
+#include "core/uuid.h"
+#include <core/tstr.h>
 #include <cmeta/scope.h>
 #include <cmeta/pp.h>
 
@@ -107,14 +107,14 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
   path_length = directory_length + prefix_length + uuid_length + suffix_length;
 
   for (attempt = 0; attempt < TBE_COMPILER_TEMP_OUTPUT_ATTEMPTS; ++attempt) {
-    cmeta_uuid_t uuid;
+    uuid_t uuid;
     char uuid_text[SALTS_UUID_STRING_SIZE];
     char *temporary_path;
     FILE *file;
     int descriptor;
 
-    if (cmeta_uuid_v4_generate(&uuid) != SALTS_OK ||
-        cmeta_uuid_format(&uuid, uuid_text, sizeof(uuid_text)) != SALTS_OK) {
+    if (uuid_v4_generate(uuid) != SALTS_OK ||
+        uuid_format(uuid, uuid_text, sizeof(uuid_text)) != SALTS_OK) {
       return -1;
     }
     temporary_path = (char *)malloc(path_length);
@@ -139,7 +139,7 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
 #else
       close(descriptor);
 #endif
-      salts_fs_unlink(temporary_path);
+      fs_unlink(temporary_path);
       free(temporary_path);
       return -1;
     }
@@ -388,7 +388,7 @@ static const char *tbe_compiler_cpp_scalar_type(const char *type) {
   if (projection) return projection->cpp_type;
   if (strcmp(type, "string") == 0) return "std::string";
   if (strcmp(type, "bytes") == 0) return "std::vector<std::uint8_t>";
-  if (strcmp(type, "uuid") == 0) return "cmeta_uuid_t";
+  if (strcmp(type, "uuid") == 0) return "uuid_t";
   return type;
 }
 
@@ -452,7 +452,7 @@ static const char *tbe_compiler_typed_c_scalar(const char *type) {
   if (!type) return NULL;
   projection = tbe_compiler_scalar_projection(type);
   if (projection) return projection->c_type;
-  if (strcmp(type, "uuid") == 0) return "cmeta_uuid_t";
+  if (strcmp(type, "uuid") == 0) return "uuid_t";
   return NULL;
 }
 
@@ -3317,7 +3317,7 @@ static const char *tbe_compiler_resolve_resource(const tbe_compiler_options_t *o
     fprintf(stderr, "Built-in template resource directory is unavailable\n");
     return NULL;
   }
-  if (salts_fs_path_join(path, path_size, resource_dir, relative_path) != 0) {
+  if (fs_path_join(path, path_size, resource_dir, relative_path) != 0) {
     fprintf(stderr, "Built-in template path is too long: %s\n", relative_path);
     return NULL;
   }
@@ -3572,7 +3572,7 @@ static int tbe_compiler_render_owned(tbe_compiler_render_t *render,
       goto cleanup;
     }
 #endif
-    if (salts_fs_rename(render->temporary_output_path, output_path) != 0) {
+    if (fs_rename(render->temporary_output_path, output_path) != 0) {
       fprintf(stderr, "Failed to replace output file: %s\n", output_path);
       goto cleanup;
     }
@@ -3588,7 +3588,7 @@ cleanup:
     fprintf(stderr, "Failed to close abandoned temporary output: %s\n", output_path);
     res = 1;
   }
-  if (render->temporary_output_path != NULL && salts_fs_unlink(render->temporary_output_path) != 0) {
+  if (render->temporary_output_path != NULL && fs_unlink(render->temporary_output_path) != 0) {
     fprintf(stderr, "Failed to remove temporary output file: %s\n", render->temporary_output_path);
     res = 1;
   }
@@ -4658,8 +4658,8 @@ typedef struct tbe_compiler_output_transaction {
 
 static int tbe_compiler_txn_unlink(const char *path) {
   if (path == NULL) return 0;
-  if (salts_fs_access(path, SALTS_FS_ACCESS_EXISTS) != 0) return 0;
-  if (salts_fs_unlink(path) == SALTS_OK) return 0;
+  if (fs_access(path, SALTS_FS_ACCESS_EXISTS) != 0) return 0;
+  if (fs_unlink(path) == SALTS_OK) return 0;
   fprintf(stderr, "Failed to remove compiler transaction file: %s\n", path);
   return -1;
 }
@@ -4733,7 +4733,7 @@ static int tbe_compiler_txn_abort(
         tbe_compiler_txn_unlink(item->final_path) != 0)
       failed = 1;
     if (item->original_moved) {
-      if (salts_fs_rename(item->backup_path, item->final_path) != SALTS_OK) {
+      if (fs_rename(item->backup_path, item->final_path) != SALTS_OK) {
         fprintf(stderr,
                 "Failed restoring original %s; recover from %s\n",
                 item->final_path, item->backup_path);
@@ -4823,7 +4823,7 @@ static int tbe_compiler_txn_commit(
   for (i = 0u; i < txn->count; ++i) {
     tbe_compiler_staged_output *item = &txn->items[i];
     if (item->had_original) {
-      if (salts_fs_rename(item->final_path,
+      if (fs_rename(item->final_path,
                           item->backup_path) != SALTS_OK) {
         fprintf(stderr, "Failed to back up output: %s\n", item->final_path);
         goto rollback;
@@ -4834,7 +4834,7 @@ static int tbe_compiler_txn_commit(
 
   for (i = 0u; i < txn->count; ++i) {
     tbe_compiler_staged_output *item = &txn->items[i];
-    if (salts_fs_rename(item->staging_path,
+    if (fs_rename(item->staging_path,
                         item->final_path) != SALTS_OK) {
       fprintf(stderr, "Failed to publish output: %s\n", item->final_path);
       goto rollback;

@@ -65,20 +65,20 @@
 
 优先复用 Salts 及项目内已有能力，再考虑已接入的 vendor/vcpkg 依赖和标准库。复用必须符合模块依赖方向，基础层不得为复用上层能力引入循环依赖。底层系统 API 封装在平台、协程或明确的项目适配层中。
 
-下列能力与源码入口属于 Salts，不要求消费工程具有相同目录。本文的 Salts 资料链接按同级 `salts/` checkout 定位；消费方还应核对其实际使用的 SDK 版本、公开头文件与当前工程构建配置。
+下列能力与源码入口属于 Salts，不要求消费工程具有相同目录。本文的 Salts 资料链接按同级 `salts-base/` 与 `cmeta/` checkout 定位；消费方还应核对其实际使用的 SDK 版本、公开头文件与当前工程构建配置。
 
 | 能力 | 默认入口与约束 |
 | --- | --- |
-| 拥有存储的可变字符串、拼接与构造 | [`tstr.h`](../salts/utils/include/tstr.h) 的 `tstr`；明确唯一所有权、扩容返回值与释放责任 |
-| 借用字符串或字节视图、切片与只读参数 | [`vstr.h`](../salts/utils/include/vstr.h) 的 `vstr`；使用显式长度，底层存储必须覆盖借用期，不假设 NUL 结尾 |
-| 类型化格式化与字符串格式化追加 | 项目 [`fmt.h`](../salts/utils/include/fmt.h)；复用其 `tstr`/`vstr` 集成，不另写格式化器或固定临时缓冲区拼接链 |
-| 诊断日志 | [`tlog.h`](../salts/utils/include/tlog.h) + `logging-guide`；不另建日志系统，不用 `printf`/`fprintf` 代替业务诊断日志 |
-| 有限泛型、Reflection、traits、接口与类型化调用 | [CMeta](../salts/cmeta/README.md) + `cmeta`；链接 `Salts::CMeta`，复用统一声明和描述符，不另建反射或类型系统 |
-| RAII 与结构化资源清理 | CMeta 的 [scope](../salts/cmeta/include/cmeta/scope.h)、[ObjectRef scope](../salts/cmeta/include/cmeta/object_scope.h) 和 Plugin 的 [lease scope](../salts/plugin/include/salts/plugin_scope.h)；按资源归属选入口 |
-| 动态模块发布、发现、契约校验与生命周期 | [Plugin](../salts/plugin/README.md) + `plugin-system`；发布方用 `Salts::PluginABI`，宿主运行时用 `Salts::Plugin` |
+| 拥有存储的可变字符串、拼接与构造 | [`tstr.h`](../salts-base/core/include/core/tstr.h) 的 `tstr`；明确唯一所有权、扩容返回值与释放责任 |
+| 借用字符串或字节视图、切片与只读参数 | [`vstr.h`](../salts-base/core/include/core/vstr.h) 的 `vstr`；使用显式长度，底层存储必须覆盖借用期，不假设 NUL 结尾 |
+| 类型化格式化与字符串格式化追加 | 项目 [`fmt.h`](../salts-base/core/include/core/fmt.h)；复用其 `tstr`/`vstr` 集成，不另写格式化器或固定临时缓冲区拼接链 |
+| 诊断日志 | [`tlog.h`](../salts-base/core/include/core/tlog.h) + `logging-guide`；不另建日志系统，不用 `printf`/`fprintf` 代替业务诊断日志 |
+| 有限泛型、Reflection、traits、接口与类型化调用 | [CMeta](../cmeta/cmeta/README.md) + `cmeta`；链接 `CMeta::CMeta`，复用统一声明和描述符，不另建反射或类型系统 |
+| RAII 与结构化资源清理 | CMeta 的 [scope](../cmeta/cmeta/include/cmeta/scope.h)、[ObjectRef scope](../cmeta/cmeta/include/cmeta/object_scope.h) 和 Plugin 的 [lease scope](../cmeta/plugin/include/cmeta/plugin_scope.h)；按资源归属选入口 |
+| 动态模块发布、发现、契约校验与生命周期 | [Plugin](../cmeta/plugin/README.md) + `plugin-system`；发布方用 `CMeta::PluginABI`，宿主运行时用 `CMeta::Plugin` |
 | 标准容器与 Stream facade | `cstl`；通过公开 typed/raw 入口复用，不手写已有动态数组、哈希表或双端队列 |
 | buffer、arena/slab/object pool、ring/queue | `memory-design-protocols`；按生命周期、线程拓扑与消费语义选已有原语 |
-| 文件、线程与其他共享能力 | 当前模块公开头文件与 README；文件操作优先复用 [`cmeta_fs.h`](../salts/utils/include/cmeta_fs.h)，线程池等能力先检索既有实现 |
+| 文件、线程与其他共享能力 | 当前模块公开头文件与 README；文件操作优先复用 [`file/fs.h`](../salts-base/core/include/file/fs.h)，线程池等能力先检索既有实现 |
 
 字符串统一使用 `tstr`/`vstr`，格式化使用本项目 `fmt.h`，日志使用 `tlog`。新代码不以裸缓冲区拼接、直接使用 sds 或引入另一套字符串/格式化库替代这些入口；第三方边界和基础实现内部保留必要的底层操作，不能为了统一形式改坏既有 ABI。
 
@@ -90,21 +90,21 @@
 ### CMeta：Reflection 与类型语义
 
 - **声明与生成**：复用有限 PP 原语、Schema/Replay、结构体/枚举/flags、traits、接口和 `cmeta_type`。CMeta 提供 Pair/Option/Result 等值类型的声明能力；容器算法与存储归 CSTL，图和执行归 CFlow。
-- **Reflection**：用统一的不可变描述符表示类型、字段、函数签名、接口及数据语义；通过语义校验、相等性和派生查询消费元数据，跨 TU/DSO 不以描述符地址判断类型相等。入口见 [反射查询契约](../salts/cmeta/INSPECTION.md)，不自行维护第二套 RTTI、字段表或签名表。
-- **已有类型接入**：`cmeta_reflect_data` 为已有 C/C++ 类型声明只读字段投影；需要完整字段级值生命周期时才显式使用 `cmeta_reflect_value`。反射可见性不授予写入、构造或执行权限，也不接管原对象所有权；约束见 [CMeta README](../salts/cmeta/README.md)。
+- **Reflection**：用统一的不可变描述符表示类型、字段、函数签名、接口及数据语义；通过语义校验、相等性和派生查询消费元数据，跨 TU/DSO 不以描述符地址判断类型相等。入口见 [反射查询契约](../cmeta/cmeta/INSPECTION.md)，不自行维护第二套 RTTI、字段表或签名表。
+- **已有类型接入**：`cmeta_reflect_data` 为已有 C/C++ 类型声明只读字段投影；需要完整字段级值生命周期时才显式使用 `cmeta_reflect_value`。反射可见性不授予写入、构造或执行权限，也不接管原对象所有权；约束见 [CMeta README](../cmeta/cmeta/README.md)。
 - **对象与调用**：DataDesc、ObjectRef、Function/Invokable 复用同一类型和生命周期契约，支持受约束的对象访问、精确调用及校验后绑定复用。具体入口和 admission 条件由 `cmeta` skill 路由，不将裸函数地址视为已验证调用能力。
 
 ### RAII 与资源作用域
 
-- **C 的结构化清理**：优先评估 `cmeta_scope`；它管理显式资源集合，构造失败时回滚，body 正常或提前返回后按逆序清理。运行时描述符走 `cmeta_scope_checked`；这不是任意 C 代码块的自动析构，不能用跨作用域跳转或 `longjmp` 绕过清理。详见 [structured scope](../salts/cmeta/LANGUAGE_REFERENCE.md#structured-scope)。
+- **C 的结构化清理**：优先评估 `cmeta_scope`；它管理显式资源集合，构造失败时回滚，body 正常或提前返回后按逆序清理。运行时描述符走 `cmeta_scope_checked`；这不是任意 C 代码块的自动析构，不能用跨作用域跳转或 `longjmp` 绕过清理。详见 [structured scope](../cmeta/cmeta/LANGUAGE_REFERENCE.md#structured-scope)。
 - **C++ RAII**：ObjectRef 使用 `cmeta::object_scope`，Plugin lease 使用 `salts::plugin_lease_scope`；复用既有不可复制、显式移动和析构释放契约。通用 C++ owner 设计再使用 `cpp-design-patterns`，不重复包装已有 owner。
 - **释放顺序**：Data/ObjectRef/Plugin 的 cleanup 适配器复用显式清理义务，实际资源权威仍归原 owner。先销毁借用插件代码或数据的对象，再释放 lease，最后停止完成并卸载；scope 不自动延长所有外部借用的生命周期。按 `cmeta`、`plugin-system` 和 `memory-design-protocols` 核对失败与关闭协议。
 
 ### Plugin：声明发布与模块生命周期
 
-- **声明和发布分层**：[`cmeta/plugin.h`](../salts/cmeta/include/cmeta/plugin.h) 的 `cmeta_plugin`、`cmeta_provides`、`cmeta_requires` 描述接口能力关系，属于静态反射元数据，不自动加载模块或解析依赖。真正发布 Function/Interface export 使用 [`salts/plugin_decl.h`](../salts/plugin/include/salts/plugin_decl.h) 的显式声明，复用 CMeta 精确签名和 Interface carrier。
-- **导出聚合**：默认使用显式 export 表；需要跨 TU 分片时评估 [`plugin_linker.h`](../salts/plugin/include/salts/plugin_linker.h)，遵守平台支持、实际链接、预期数量及按 ID 查找的契约，不另建 constructor 驱动的全局注册表。
-- **宿主运行时**：[`salts/plugin.h`](../salts/plugin/include/salts/plugin.h) 提供 manifest/ABI/contract 校验、动态加载、registry、启动、lease 获取释放、停止、quiescence 检查和卸载。registry 是模块与 lease 状态的事实源；只有满足终止与无在途使用条件才可卸载。
+- **声明和发布分层**：[`cmeta/plugin.h`](../cmeta/cmeta/include/cmeta/plugin.h) 的 `cmeta_plugin`、`cmeta_provides`、`cmeta_requires` 描述接口能力关系，属于静态反射元数据，不自动加载模块或解析依赖。真正发布 Function/Interface export 使用 [`cmeta/plugin_decl.h`](../cmeta/plugin/include/cmeta/plugin_decl.h) 的显式声明，复用 CMeta 精确签名和 Interface carrier。
+- **导出聚合**：默认使用显式 export 表；需要跨 TU 分片时评估 [`plugin_linker.h`](../cmeta/plugin/include/cmeta/plugin_linker.h)，遵守平台支持、实际链接、预期数量及按 ID 查找的契约，不另建 constructor 驱动的全局注册表。
+- **宿主运行时**：[`cmeta/plugin.h`](../cmeta/plugin/include/cmeta/plugin.h) 提供 manifest/ABI/contract 校验、动态加载、registry、启动、lease 获取释放、停止、quiescence 检查和卸载。registry 是模块与 lease 状态的事实源；只有满足终止与无在途使用条件才可卸载。
 - **能力边界**：Plugin 复用 CMeta，但独立于 CFlow；反射查询和描述符复制不持有模块 lease。依赖求解、隔离、热重载及状态迁移须按当前实现核实并单独设计，不能把 skill 的通用方案当作现成运行时功能。
 
 ## 检索与结构理解

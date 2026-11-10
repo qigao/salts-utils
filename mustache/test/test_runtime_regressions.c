@@ -3,7 +3,7 @@
 #include "json_parser.h"
 #include "mustache.h"
 #include "mustache_json.h"
-#include "cmeta_buffer.h"
+#include "memory/buffer.h"
 
 #include <stdlib.h>
 #include <string.h>

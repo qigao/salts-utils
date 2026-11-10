@@ -1,6 +1,6 @@
 #ifndef SALTS_BINDINGS_QUICKJS_MODULE_H
 #define SALTS_BINDINGS_QUICKJS_MODULE_H
-#include <salts/bindings/module.h>
+#include <bindings/module.h>
 #include <salts/bindings/quickjs/cmeta.h>
 #ifdef __cplusplus
 extern "C" {

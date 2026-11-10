@@ -1,7 +1,7 @@
 // re2c --lang c
 #include "jinja_expression_grammar_gen.h"
 #include "jinja_expression_parser.h"
-#include "salts_unicode.h"
+#include "unicode.h"
 
 /*!include:re2c "unicode_properties.re" */
 /*!include:re2c "unicode_categories.re" */
@@ -19,7 +19,7 @@ static int jinja_expression_valid_named_escapes(const char *cursor, const char *
     const char *name = cursor;
     uint32_t scalar;
     while (cursor < end && *cursor != '}') ++cursor;
-    if (cursor == end || salts_unicode_name_lookup(
+    if (cursor == end || unicode_name_lookup(
         vstr_from_buf(name, (size_t)(cursor - name)), &scalar) != SALTS_UNICODE_OK) return 0;
     ++cursor;
   }

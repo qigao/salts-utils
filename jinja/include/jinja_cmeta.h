@@ -2,7 +2,7 @@
 #define JINJA_CMETA_H
 
 #include <cmeta/data.h>
-#include <vstr.h>
+#include <core/vstr.h>
 
 #include <stdbool.h>
 #include <stddef.h>

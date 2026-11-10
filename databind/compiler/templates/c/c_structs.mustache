@@ -47,15 +47,13 @@ static inline size_t tbe_generated_strlen(const char *text) {
 #ifndef SALTS_UUID_H
 #define SALTS_UUID_H
 #define SALTS_UUID_SIZE 16U
-typedef struct cmeta_uuid_s {
-    uint8_t bytes[SALTS_UUID_SIZE];
-} cmeta_uuid_t;
+typedef uint8_t uuid_t[SALTS_UUID_SIZE];
 #endif
 #else
 #include <string.h>
-#include <tstr.h>
+#include <core/tstr.h>
 #include <cstl/byte_buffer.h>
-#include "cmeta_uuid.h"
+#include <core/uuid.h>
 #define TBE_GENERATED_MEMCPY memcpy
 #define TBE_GENERATED_STRCMP strcmp
 #define TBE_GENERATED_STRLEN strlen
@@ -595,24 +593,24 @@ static inline {{enum_c_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_v
 {{/is_enum_ref}}
 {{#is_uuid}}
 static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
-                                                const cmeta_uuid_t *value) {
+                                                const uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(view->data + {{offset}}, value->bytes, SALTS_UUID_SIZE);
+    TBE_GENERATED_MEMCPY(view->data + {{offset}}, *value, SALTS_UUID_SIZE);
     return true;
 }
 
 static inline bool {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view,
-                                                cmeta_uuid_t *value) {
+                                                uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(value->bytes, view->data + {{offset}}, SALTS_UUID_SIZE);
+    TBE_GENERATED_MEMCPY(*value, view->data + {{offset}}, SALTS_UUID_SIZE);
     return true;
 }
 
@@ -1227,24 +1225,24 @@ static inline {{enum_c_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_v
 {{/is_enum_ref}}
 {{#is_uuid}}
 static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
-                                                const cmeta_uuid_t *value) {
+                                                const uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(view->data + {{offset}}, value->bytes, SALTS_UUID_SIZE);
+    TBE_GENERATED_MEMCPY(view->data + {{offset}}, *value, SALTS_UUID_SIZE);
     return true;
 }
 
 static inline bool {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view,
-                                                cmeta_uuid_t *value) {
+                                                uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(value->bytes, view->data + {{offset}}, SALTS_UUID_SIZE);
+    TBE_GENERATED_MEMCPY(*value, view->data + {{offset}}, SALTS_UUID_SIZE);
     return true;
 }
 
@@ -1932,24 +1930,24 @@ static inline {{enum_c_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_v
 {{/is_enum_ref}}
 {{#is_uuid}}
 static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
-                                                const cmeta_uuid_t *value) {
+                                                const uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(view->data + {{offset}}, value->bytes, SALTS_UUID_SIZE);
+    TBE_GENERATED_MEMCPY(view->data + {{offset}}, *value, SALTS_UUID_SIZE);
     return true;
 }
 
 static inline bool {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view,
-                                                cmeta_uuid_t *value) {
+                                                uuid_t *value) {
     if (!view || !view->data || !value ||
         view->size < {{offset}} + SALTS_UUID_SIZE) {
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(value->bytes, view->data + {{offset}}, SALTS_UUID_SIZE);
+    TBE_GENERATED_MEMCPY(*value, view->data + {{offset}}, SALTS_UUID_SIZE);
     return true;
 }
 

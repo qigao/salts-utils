@@ -1747,7 +1747,7 @@ spec("data_bind public API") {
     DataBindTime time;
     DataBindDecimal decimal;
     DataBindMoney money;
-    cmeta_uuid_t uuid;
+    uuid_t uuid;
     char text[64];
     const char *source_bigint;
 
@@ -1768,7 +1768,7 @@ spec("data_bind public API") {
       data_bind_value_free(source);
       source = NULL;
       if (copy) {
-        check(data_bind_value_as_uuid(data_bind_value_get(copy, "id"), uuid.bytes));
+        check(data_bind_value_as_uuid(data_bind_value_get(copy, "id"), uuid));
         check_equal(
             data_bind_value_as_uuid_string(data_bind_value_get(copy, "id"), text, sizeof(text)),
             "01890f3e-5c5a-7cc2-9f2b-8b7f47f0c001");

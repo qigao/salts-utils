@@ -1,7 +1,7 @@
 #ifndef SALTS_BINDINGS_LUA_MODULE_H
 #define SALTS_BINDINGS_LUA_MODULE_H
-#include <salts/bindings/module.h>
-#include <salts/bindings/lua/cmeta.h>
+#include <bindings/module.h>
+#include <bindings/lua/cmeta.h>
 #ifdef __cplusplus
 extern "C" {
 #endif

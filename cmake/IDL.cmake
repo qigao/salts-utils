@@ -4,16 +4,16 @@ include(CMakeParseArguments)
 set(SaltsUtils_IDLC_EXECUTABLE ""
     CACHE FILEPATH
     "Host salts-idlc executable used by salts_idl_target()")
-set(SaltsUtils_IDLC_HOST_SALTSCORE_ROOT ""
+set(SaltsUtils_IDLC_HOST_SALTS_BASE_ROOT ""
     CACHE PATH
-    "Host SaltsCore SDK used to run salts-idlc while cross-compiling")
+    "Host SaltsBase SDK used to run salts-idlc while cross-compiling")
 set(SaltsUtils_IDLC_HOST_CMETA_ROOT ""
     CACHE PATH
     "Host CMeta SDK used to run salts-idlc while cross-compiling")
 
 function(_saltsutils_idl_resolve_compiler
          out_executable out_dependency out_runtime_root
-         out_saltscore_root out_cmeta_root)
+         out_saltsbase_root out_cmeta_root)
   set(_idlc_requires_host_tool ${CMAKE_CROSSCOMPILING})
   if(CMAKE_HOST_SYSTEM_NAME STREQUAL CMAKE_SYSTEM_NAME AND
      CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL CMAKE_SYSTEM_PROCESSOR)
@@ -35,23 +35,23 @@ function(_saltsutils_idl_resolve_compiler
       "${_idlc_bin}" DIRECTORY)
 
     if(_idlc_requires_host_tool)
-      if(NOT SaltsUtils_IDLC_HOST_SALTSCORE_ROOT OR
+      if(NOT SaltsUtils_IDLC_HOST_SALTS_BASE_ROOT OR
          NOT SaltsUtils_IDLC_HOST_CMETA_ROOT)
         message(FATAL_ERROR
                 "Cross-compiling salts_idl_target() requires "
-                "SaltsUtils_IDLC_HOST_SALTSCORE_ROOT and "
+                "SaltsUtils_IDLC_HOST_SALTS_BASE_ROOT and "
                 "SaltsUtils_IDLC_HOST_CMETA_ROOT for the host compiler runtime closure.")
       endif()
-      set(_idlc_saltscore_root "${SaltsUtils_IDLC_HOST_SALTSCORE_ROOT}")
+      set(_idlc_saltsbase_root "${SaltsUtils_IDLC_HOST_SALTS_BASE_ROOT}")
       set(_idlc_cmeta_root "${SaltsUtils_IDLC_HOST_CMETA_ROOT}")
     else()
-      foreach(_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
+      foreach(_root IN ITEMS SALTS_BASE_ROOT CMETA_ROOT)
         if(NOT DEFINED ENV{${_root}} OR "$ENV{${_root}}" STREQUAL "")
           message(FATAL_ERROR
                   "${_root} must identify the host SDK used by salts-idlc")
         endif()
       endforeach()
-      file(TO_CMAKE_PATH "$ENV{SALTSCORE_ROOT}" _idlc_saltscore_root)
+      file(TO_CMAKE_PATH "$ENV{SALTS_BASE_ROOT}" _idlc_saltsbase_root)
       file(TO_CMAKE_PATH "$ENV{CMETA_ROOT}" _idlc_cmeta_root)
     endif()
 
@@ -61,7 +61,7 @@ function(_saltsutils_idl_resolve_compiler
         "${SaltsUtils_IDLC_EXECUTABLE}" PARENT_SCOPE)
     set(${out_runtime_root}
         "${_idlc_prefix}" PARENT_SCOPE)
-    set(${out_saltscore_root} "${_idlc_saltscore_root}" PARENT_SCOPE)
+    set(${out_saltsbase_root} "${_idlc_saltsbase_root}" PARENT_SCOPE)
     set(${out_cmeta_root} "${_idlc_cmeta_root}" PARENT_SCOPE)
     return()
   endif()
@@ -70,24 +70,24 @@ function(_saltsutils_idl_resolve_compiler
     message(FATAL_ERROR
             "salts_idl_target() requires a host salts-idlc while cross-compiling. "
             "Set SaltsUtils_IDLC_EXECUTABLE and "
-            "SaltsUtils_IDLC_HOST_SALTSCORE_ROOT and "
+            "SaltsUtils_IDLC_HOST_SALTS_BASE_ROOT and "
             "SaltsUtils_IDLC_HOST_CMETA_ROOT.")
   endif()
 
-  foreach(_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
+  foreach(_root IN ITEMS SALTS_BASE_ROOT CMETA_ROOT)
     if(NOT DEFINED ENV{${_root}} OR "$ENV{${_root}}" STREQUAL "")
       message(FATAL_ERROR
               "${_root} must identify the host SDK used by salts-idlc")
     endif()
   endforeach()
-  file(TO_CMAKE_PATH "$ENV{SALTSCORE_ROOT}" _idlc_saltscore_root)
+  file(TO_CMAKE_PATH "$ENV{SALTS_BASE_ROOT}" _idlc_saltsbase_root)
   file(TO_CMAKE_PATH "$ENV{CMETA_ROOT}" _idlc_cmeta_root)
 
   if(TARGET salts_idlc)
     set(${out_executable} "$<TARGET_FILE:salts_idlc>" PARENT_SCOPE)
     set(${out_dependency} "salts_idlc" PARENT_SCOPE)
     set(${out_runtime_root} "${CMAKE_BINARY_DIR}" PARENT_SCOPE)
-    set(${out_saltscore_root} "${_idlc_saltscore_root}" PARENT_SCOPE)
+    set(${out_saltsbase_root} "${_idlc_saltsbase_root}" PARENT_SCOPE)
     set(${out_cmeta_root} "${_idlc_cmeta_root}" PARENT_SCOPE)
     return()
   endif()
@@ -130,12 +130,12 @@ function(_saltsutils_idl_resolve_compiler
   set(${out_executable} "${_idlc_program}" PARENT_SCOPE)
   set(${out_dependency} "${_idlc_program}" PARENT_SCOPE)
   set(${out_runtime_root} "${_idlc_prefix}" PARENT_SCOPE)
-  set(${out_saltscore_root} "${_idlc_saltscore_root}" PARENT_SCOPE)
+  set(${out_saltsbase_root} "${_idlc_saltsbase_root}" PARENT_SCOPE)
   set(${out_cmeta_root} "${_idlc_cmeta_root}" PARENT_SCOPE)
 endfunction()
 
 function(_saltsutils_idl_host_command
-         out_command executable runtime_root saltscore_root cmeta_root)
+         out_command executable runtime_root saltsbase_root cmeta_root)
   if(WIN32)
     # Never interpolate the inherited Windows PATH (a semicolon-delimited
     # string) into a CMake COMMAND list. The Visual Studio/MSBuild generator
@@ -147,7 +147,7 @@ function(_saltsutils_idl_host_command
     set(${out_command}
         "${CMAKE_COMMAND};-E;env"
         "--modify"
-        "PATH=path_list_prepend:${saltscore_root}/bin"
+        "PATH=path_list_prepend:${saltsbase_root}/bin"
         "--modify"
         "PATH=path_list_prepend:${cmeta_root}/bin"
         "--modify"
@@ -159,13 +159,13 @@ function(_saltsutils_idl_host_command
         PARENT_SCOPE)
   elseif(APPLE)
     set(_runtime_path
-        "${runtime_root}/bin:${runtime_root}/lib:${cmeta_root}/lib:${saltscore_root}/lib:$ENV{DYLD_LIBRARY_PATH}")
+        "${runtime_root}/bin:${runtime_root}/lib:${cmeta_root}/lib:${saltsbase_root}/lib:$ENV{DYLD_LIBRARY_PATH}")
     set(${out_command}
         "${CMAKE_COMMAND};-E;env;DYLD_LIBRARY_PATH=${_runtime_path};${executable}"
         PARENT_SCOPE)
   else()
     set(_runtime_path
-        "${runtime_root}/bin:${runtime_root}/lib:${cmeta_root}/lib:${saltscore_root}/lib:$ENV{LD_LIBRARY_PATH}")
+        "${runtime_root}/bin:${runtime_root}/lib:${cmeta_root}/lib:${saltsbase_root}/lib:$ENV{LD_LIBRARY_PATH}")
     set(${out_command}
         "${CMAKE_COMMAND};-E;env;LD_LIBRARY_PATH=${_runtime_path};${executable}"
         PARENT_SCOPE)
@@ -485,13 +485,13 @@ function(salts_idl_target)
     _idlc
     _idlc_dependency
     _idlc_runtime_root
-    _idlc_saltscore_root
+    _idlc_saltsbase_root
     _idlc_cmeta_root)
   _saltsutils_idl_host_command(
     _idlc_command
     "${_idlc}"
     "${_idlc_runtime_root}"
-    "${_idlc_saltscore_root}"
+    "${_idlc_saltsbase_root}"
     "${_idlc_cmeta_root}")
 
   set(_generated_dir

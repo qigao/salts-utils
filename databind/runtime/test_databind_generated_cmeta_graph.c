@@ -746,7 +746,7 @@ spec("generated native CMeta graph") {
     check_equal(shape->fields[1].value->storage_type->size,
                 sizeof(((FixedValues_t *)0)->id));
     check_equal(shape->fields[1].value->storage_type->align,
-                _Alignof(cmeta_uuid_t));
+                _Alignof(uuid_t));
     check_equal(cmeta_data_fixed_extent(shape->fields[1].value, &fixed_extent),
                 CMETA_OK);
     check_equal(fixed_extent, sizeof(((FixedValues_t *)0)->id));

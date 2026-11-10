@@ -3,8 +3,8 @@
 #include <cmeta/service_host_abi.h>
 #include <cmeta/plugin.h>
 #include <cmeta/service_host.h>
-#include <salts/thread.h>
-#include <salts/clock.h>
+#include <threads/threads.h>
+#include <core/clock.h>
 
 #include <stdio.h>
 #include <stdint.h>
@@ -26,7 +26,7 @@ CMETA_FUNCTION_METADATA_AS_ABI_RESULT(
 typedef struct provider_worker_context {
   salts_service_host_runtime *runtime;
   const cmeta_interface_desc *interface_desc;
-  cmeta_mutex_t gate;
+  sync_mutex_t gate;
   bool ready;
   bool stop;
   bool close_observed;
@@ -36,10 +36,10 @@ typedef struct provider_worker_context {
 } provider_worker_context;
 
 static void provider_worker_fail(provider_worker_context *context) {
-  cmeta_mutex_lock(&context->gate);
+  sync_mutex_lock(&context->gate);
   context->failed = true;
   context->ready = true;
-  cmeta_mutex_unlock(&context->gate);
+  sync_mutex_unlock(&context->gate);
 }
 
 static void provider_worker_main(void *user) {
@@ -69,26 +69,26 @@ static void provider_worker_main(void *user) {
 
   request.left = 5u;
   request.right = 6u;
-  cmeta_mutex_lock(&context->gate);
+  sync_mutex_lock(&context->gate);
   context->ready = true;
-  cmeta_mutex_unlock(&context->gate);
+  sync_mutex_unlock(&context->gate);
 
   for (;;) {
     bool stop;
     bool close_observed;
     int invoke_status;
 
-    cmeta_mutex_lock(&context->gate);
+    sync_mutex_lock(&context->gate);
     stop = context->stop;
     close_observed = context->close_observed;
-    cmeta_mutex_unlock(&context->gate);
+    sync_mutex_unlock(&context->gate);
     if (stop) break;
 
     memset(&response, 0, sizeof(response));
     invoke_status = databind_11_WasmRuntime_4_Calc_3_Add__component_service_invoke(
         &port, &request, &response);
 
-    cmeta_mutex_lock(&context->gate);
+    sync_mutex_lock(&context->gate);
     if (invoke_status != 0 || response.sum != 11u || response.product != 30u)
       context->failed = true;
     else
@@ -96,14 +96,14 @@ static void provider_worker_main(void *user) {
     if (close_observed && invoke_status == 0 &&
         response.sum == 11u && response.product == 30u)
       ++context->post_close_invocations;
-    cmeta_mutex_unlock(&context->gate);
-    cmeta_thread_yield();
+    sync_mutex_unlock(&context->gate);
+    sync_thread_yield();
   }
 
   if (salts_service_host_scope_release(&scope) != SALTS_SERVICE_HOST_OK) {
-    cmeta_mutex_lock(&context->gate);
+    sync_mutex_lock(&context->gate);
     context->failed = true;
-    cmeta_mutex_unlock(&context->gate);
+    sync_mutex_unlock(&context->gate);
   }
 }
 
@@ -141,7 +141,7 @@ int main(void) {
   AddResponse response = {0};
   bool quiet = false;
   provider_worker_context worker = {0};
-  cmeta_thread_t worker_thread = NULL;
+  sync_thread_t worker_thread = NULL;
 
   /* Verify the actual source-built library's runtime epoch and layouts. */
   REQUIRE(salts_configurator_abi_version() ==
@@ -217,47 +217,47 @@ int main(void) {
    * and the contract that already-acquired scopes remain valid after close. */
   worker.runtime = &runtime;
   worker.interface_desc = iface;
-  cmeta_mutex_init(&worker.gate);
+  sync_mutex_init(&worker.gate);
   REQUIRE(worker.gate != NULL);
-  REQUIRE(cmeta_thread_create(&worker_thread, provider_worker_main, &worker) ==
+  REQUIRE(sync_thread_create(&worker_thread, provider_worker_main, &worker) ==
       SALTS_OK);
   {
-    const uint64_t deadline = cmeta_hrtime() + UINT64_C(5000000000);
+    const uint64_t deadline = hrtime() + UINT64_C(5000000000);
     for (;;) {
       bool ready;
       bool failed;
       size_t calls;
-      cmeta_mutex_lock(&worker.gate);
+      sync_mutex_lock(&worker.gate);
       ready = worker.ready;
       failed = worker.failed;
       calls = worker.invocations;
-      cmeta_mutex_unlock(&worker.gate);
+      sync_mutex_unlock(&worker.gate);
       if (ready && (failed || calls != 0u)) {
         REQUIRE(!failed);
         REQUIRE(calls != 0u);
         break;
       }
-      REQUIRE(cmeta_hrtime() < deadline);
-      cmeta_thread_yield();
+      REQUIRE(hrtime() < deadline);
+      sync_thread_yield();
     }
   }
 
   REQUIRE(salts_service_host_runtime_close(
       &runtime, &previous) == SALTS_SERVICE_HOST_OK);
   REQUIRE(previous == &generation);
-  cmeta_mutex_lock(&worker.gate);
+  sync_mutex_lock(&worker.gate);
   worker.close_observed = true;
-  cmeta_mutex_unlock(&worker.gate);
+  sync_mutex_unlock(&worker.gate);
   {
-    const uint64_t deadline = cmeta_hrtime() + UINT64_C(5000000000);
+    const uint64_t deadline = hrtime() + UINT64_C(5000000000);
     for (;;) {
       size_t calls_after_close;
-      cmeta_mutex_lock(&worker.gate);
+      sync_mutex_lock(&worker.gate);
       calls_after_close = worker.post_close_invocations;
-      cmeta_mutex_unlock(&worker.gate);
+      sync_mutex_unlock(&worker.gate);
       if (calls_after_close != 0u) break;
-      REQUIRE(cmeta_hrtime() < deadline);
-      cmeta_thread_yield();
+      REQUIRE(hrtime() < deadline);
+      sync_thread_yield();
     }
   }
   REQUIRE(salts_service_host_generation_drain(
@@ -265,15 +265,15 @@ int main(void) {
   REQUIRE(cmeta_plugin_registry_get_lifecycle(
       &registry, ref, &info) == CMETA_PLUGIN_OK);
   REQUIRE(info.active_leases == 1u);
-  cmeta_mutex_lock(&worker.gate);
+  sync_mutex_lock(&worker.gate);
   worker.stop = true;
-  cmeta_mutex_unlock(&worker.gate);
-  REQUIRE(cmeta_thread_join(&worker_thread) == SALTS_OK);
-  cmeta_thread_destroy(&worker_thread);
-  cmeta_mutex_lock(&worker.gate);
+  sync_mutex_unlock(&worker.gate);
+  REQUIRE(sync_thread_join(&worker_thread) == SALTS_OK);
+  sync_thread_destroy(&worker_thread);
+  sync_mutex_lock(&worker.gate);
   REQUIRE(!worker.failed);
   REQUIRE(worker.post_close_invocations != 0u);
-  cmeta_mutex_unlock(&worker.gate);
+  sync_mutex_unlock(&worker.gate);
   REQUIRE(salts_service_host_generation_drain(
       &runtime, previous) == SALTS_SERVICE_HOST_BUSY);
 
@@ -300,6 +300,6 @@ int main(void) {
       &registry, ref) == CMETA_PLUGIN_OK);
   REQUIRE(cmeta_plugin_registry_destroy(
       &registry) == CMETA_PLUGIN_OK);
-  cmeta_mutex_destroy(&worker.gate);
+  sync_mutex_destroy(&worker.gate);
   return 0;
 }

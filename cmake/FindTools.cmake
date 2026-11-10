@@ -1,52 +1,35 @@
-set(RE2C_MIN_VERSION "4.6")
-
-if(NOT DEFINED ENV{RE2C_ROOT} OR "$ENV{RE2C_ROOT}" STREQUAL "")
-  message(FATAL_ERROR "RE2C_ROOT is required")
+include("$ENV{VCPKG_CACHE_REPOSITORY_ROOT}/cmake/QigaoLemon.cmake")
+# Host generators must match the machine running CMake, including cross builds.
+string(TOLOWER "${CMAKE_HOST_SYSTEM_PROCESSOR}" _host_arch)
+if(_host_arch MATCHES "^(amd64|x86_64|x64)$")
+  set(_host_arch x64)
+elseif(_host_arch MATCHES "^(aarch64|arm64)$")
+  set(_host_arch arm64)
+else()
+  message(FATAL_ERROR "Unsupported generator host architecture: ${_host_arch}")
 endif()
-if(NOT IS_DIRECTORY "$ENV{RE2C_ROOT}")
-  message(FATAL_ERROR "RE2C_ROOT is not a directory: $ENV{RE2C_ROOT}")
+if(CMAKE_HOST_WIN32)
+  set(_host_os windows)
+  set(_tool_suffix .exe)
+elseif(CMAKE_HOST_APPLE)
+  set(_host_os macos)
+  set(_tool_suffix "")
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+  set(_host_os linux)
+  set(_tool_suffix "")
+else()
+  message(FATAL_ERROR "Unsupported generator host: ${CMAKE_HOST_SYSTEM_NAME}")
 endif()
-
-set(RE2C_ROOT "$ENV{RE2C_ROOT}")
-find_program(RE2C_EXECUTABLE
-  NAMES re2c
-  PATHS "${RE2C_ROOT}/bin"
-  NO_DEFAULT_PATH
-  NO_CACHE
-  REQUIRED)
-file(REAL_PATH "${RE2C_ROOT}" _re2c_root_realpath)
-file(REAL_PATH "${RE2C_EXECUTABLE}" _re2c_executable_realpath)
-cmake_path(IS_PREFIX _re2c_root_realpath "${_re2c_executable_realpath}"
-           NORMALIZE _re2c_executable_in_root)
-if(NOT _re2c_executable_in_root)
-  message(FATAL_ERROR
-          "re2c executable is outside RE2C_ROOT: ${RE2C_EXECUTABLE}")
-endif()
-execute_process(
-  COMMAND "${RE2C_EXECUTABLE}" --version
-  RESULT_VARIABLE RE2C_VERSION_RESULT
-  OUTPUT_VARIABLE RE2C_VERSION_OUTPUT
-  ERROR_VARIABLE RE2C_VERSION_ERROR
-  OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(NOT RE2C_VERSION_RESULT EQUAL 0 OR
-   NOT RE2C_VERSION_OUTPUT MATCHES "re2c ([0-9]+\\.[0-9]+(\\.[0-9]+)?)")
-  message(FATAL_ERROR
-          "Unable to determine re2c version from '${RE2C_EXECUTABLE}': ${RE2C_VERSION_ERROR}")
-endif()
-set(RE2C_VERSION "${CMAKE_MATCH_1}")
-if(RE2C_VERSION VERSION_LESS RE2C_MIN_VERSION)
-  message(FATAL_ERROR
-          "re2c ${RE2C_MIN_VERSION} or newer is required; found ${RE2C_VERSION} at ${RE2C_EXECUTABLE}")
-endif()
+set(_host_rid "${_host_os}-${_host_arch}")
+qigao_restore_native_dependency(
+  LOCK_FILE "${PROJECT_SOURCE_DIR}/cmake/re2c.lock.json"
+  ARCHIVE_FILE "$ENV{RE2C_ARCHIVE_FILE}"
+  PAYLOAD "tools/${_host_rid}"
+  REQUIRED_FILES share/re2c/stdlib/unicode_properties.re share/re2c/stdlib/unicode_categories.re
+  EXECUTABLES "bin/re2c${_tool_suffix}" OUT_ROOT RE2C_ROOT)
+set(RE2C_EXECUTABLE "${RE2C_ROOT}/bin/re2c${_tool_suffix}")
+qigao_setup_lemon(LOCK_FILE "${PROJECT_SOURCE_DIR}/cmake/lemon.lock.json" HOST_RID "${_host_rid}"
+  ARCHIVE_FILE "$ENV{LEMON_ARCHIVE_FILE}")
 
 set(RE2C_UNICODE_PROPERTIES "${RE2C_ROOT}/share/re2c/stdlib/unicode_properties.re")
 set(RE2C_UNICODE_CATEGORIES "${RE2C_ROOT}/share/re2c/stdlib/unicode_categories.re")
-
-if(NOT TARGET lemon)
-  message(FATAL_ERROR "The required in-tree lemon target is missing")
-endif()
-
-set(LEMPAR "${PROJECT_SOURCE_DIR}/tools/lemon/lempar.c")
-if(NOT EXISTS "${LEMPAR}")
-  message(FATAL_ERROR "The required lemon template is missing: ${LEMPAR}")
-endif()

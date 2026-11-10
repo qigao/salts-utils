@@ -12,8 +12,8 @@ typedef struct data_bind_xml_writer_owner {
   cserde_writer writer;
   DataBindWriteFn write;
   void *write_user;
-  salts_xml_document document;
-  salts_xml_node root;
+  xml_document document;
+  xml_node root;
   char *pending_key;
   int root_started;
   int complete;
@@ -37,7 +37,7 @@ static DataBindStatus xml_writer_error(
   return status;
 }
 
-static cserde_status xml_writer_status(salts_xml_status status) {
+static cserde_status xml_writer_status(xml_status status) {
   switch (status) {
   case SALTS_XML_OK:
     return CSERDE_OK;
@@ -153,9 +153,9 @@ static cserde_status xml_root_writer_write(
     void *opaque, const cserde_token *token) {
   data_bind_xml_writer_owner *owner =
       (data_bind_xml_writer_owner *)opaque;
-  salts_xml_node child = {0};
+  xml_node child = {0};
   cserde_status status;
-  salts_xml_status xml_status;
+  xml_status xml_status;
   char *text = NULL;
 
   if (owner == NULL || token == NULL) return CSERDE_INVALID_ARGUMENT;
@@ -182,10 +182,10 @@ static cserde_status xml_root_writer_write(
   status = xml_writer_scalar_text(token, &text);
   if (status != CSERDE_OK) return status;
 
-  xml_status = salts_xml_node_add_element(
+  xml_status = xml_node_add_element(
       owner->root, owner->pending_key, &child);
   if (xml_status == SALTS_XML_OK)
-    xml_status = salts_xml_node_set_text(child, text);
+    xml_status = xml_node_set_text(child, text);
   free(text);
   free(owner->pending_key);
   owner->pending_key = NULL;
@@ -204,11 +204,11 @@ static cserde_status xml_root_writer_finish(void *opaque) {
       owner->pending_key != NULL)
     return CSERDE_UNSUPPORTED;
 
-  output = salts_xml_document_serialize(
+  output = xml_document_serialize(
       &owner->document, &output_len);
   if (output == NULL) return CSERDE_CALLBACK_ERROR;
   write_status = owner->write(output, output_len, owner->write_user);
-  salts_xml_owned_string_free(output);
+  xml_owned_string_free(output);
   return write_status == 0 ? CSERDE_OK : CSERDE_SINK_ERROR;
 }
 
@@ -254,7 +254,7 @@ DataBindStatus data_bind_xml_writer_open_root(
     DataBindXmlWriter *out_writer,
     DataBindError *error) {
   data_bind_xml_writer_owner *owner;
-  salts_xml_status xml_status;
+  xml_status xml_status;
   size_t out_size;
 
   if (out_writer == NULL || out_writer->size < sizeof(*out_writer))
@@ -282,7 +282,7 @@ DataBindStatus data_bind_xml_writer_open_root(
 
   owner->write = write;
   owner->write_user = write_user;
-  xml_status = salts_xml_document_create(&owner->document, root_name);
+  xml_status = xml_document_create(&owner->document, root_name);
   if (xml_status != SALTS_XML_OK) {
     free(owner);
     return xml_writer_error(
@@ -292,11 +292,11 @@ DataBindStatus data_bind_xml_writer_open_root(
             : DATA_BIND_ERR_INVALID_ARG,
         "Unable to create XML writer root element");
   }
-  owner->root = salts_xml_document_root(&owner->document);
+  owner->root = xml_document_root(&owner->document);
 
   if (cserde_writer_init(
           &owner->writer, &XML_ROOT_WRITER_OPS, owner) != CSERDE_OK) {
-    salts_xml_document_destroy(&owner->document);
+    xml_document_destroy(&owner->document);
     free(owner);
     return xml_writer_error(
         error, DATA_BIND_ERR_RUNTIME,
@@ -336,7 +336,7 @@ DataBindStatus data_bind_xml_writer_close(
 
   if (owner != NULL) {
     free(owner->pending_key);
-    salts_xml_document_destroy(&owner->document);
+    xml_document_destroy(&owner->document);
     free(owner);
   }
 

@@ -6,7 +6,7 @@
 
 #include <cmeta/data.h>
 #include <cmeta/core_data.h>
-#include <tstr.h>
+#include <core/tstr.h>
 
 #include <stddef.h>
 #include <stdint.h>

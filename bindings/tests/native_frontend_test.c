@@ -1,6 +1,6 @@
 #include "fixtures/native_math.h"
-#include <salts/bindings/native.h>
-#include <salts/bindings/lua/module.h>
+#include <bindings/native.h>
+#include <bindings/lua/module.h>
 #include <salts/bindings/quickjs/module.h>
 #include <lauxlib.h>
 #include "tinytest.h"

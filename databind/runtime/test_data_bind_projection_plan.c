@@ -1,7 +1,7 @@
 #include "data_bind_projection_plan.h"
 #include "tinytest.h"
 
-#include <tstr.h>
+#include <core/tstr.h>
 #include <stdio.h>
 #include <string.h>
 

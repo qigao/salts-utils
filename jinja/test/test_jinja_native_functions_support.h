@@ -11,7 +11,7 @@
 
 #include <string.h>
 #include <stdlib.h>
-#include <tstr.h>
+#include <core/tstr.h>
 
 static size_t test_native_cell(const JINJA_CMETA_TEMPLATE *templ, size_t owner, const char *name) {
   for (size_t i = 0u; i < templ->cell_count; ++i)

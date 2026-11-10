@@ -2,7 +2,7 @@
 #define SALTS_BINDINGS_LUA_HPP
 
 #include <salts/bindings/object.hpp>
-#include <salts/bindings/lua/cmeta.h>
+#include <bindings/lua/cmeta.h>
 
 extern "C" {
 #include <lua.h>

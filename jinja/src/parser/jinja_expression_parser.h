@@ -1,7 +1,7 @@
 #ifndef JINJA_EXPRESSION_PARSER_H
 #define JINJA_EXPRESSION_PARSER_H
 
-#include <vstr.h>
+#include <core/vstr.h>
 #include <cstl/allocator.h>
 
 #include <stddef.h>

@@ -3,7 +3,7 @@
 #include "data_bind_native_internal.h"
 #include "idl_contract.h"
 
-#include "re.h"
+#include "core/re.h"
 
 #include <errno.h>
 #include <math.h>

@@ -1,8 +1,8 @@
 #ifndef SALTS_BINDINGS_LUA_NATIVE_HPP
 #define SALTS_BINDINGS_LUA_NATIVE_HPP
 #include <salts/bindings/native.hpp>
-#include <salts/bindings/lua.hpp>
-#include <salts/bindings/lua/module.h>
+#include <bindings/lua.hpp>
+#include <bindings/lua/module.h>
 
 namespace Salts::Lua {
 template <typename R, typename... A>

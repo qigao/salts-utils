@@ -70,7 +70,7 @@ Thumbs.db
 
 # User specific settings
 .env
- 
+
 # agents
 .codex-*
 .claude

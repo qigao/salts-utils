@@ -16,19 +16,19 @@ typedef enum data_bind_xml_phase {
 } data_bind_xml_phase;
 
 typedef struct data_bind_xml_frame {
-  salts_xml_node node;
+  xml_node node;
   size_t child_index;
   size_t attribute_index;
-  salts_xml_node pending_child;
-  salts_xml_attribute pending_attribute;
+  xml_node pending_child;
+  xml_attribute pending_attribute;
   data_bind_xml_phase phase;
 } data_bind_xml_frame;
 
 typedef struct data_bind_xml_reader {
   cserde_reader reader;
-  salts_xml_document document;
-  salts_xml_node root;
-  salts_xml_node_list selected;
+  xml_document document;
+  xml_node root;
+  xml_node_list selected;
   size_t max_depth;
   size_t depth;
   size_t selected_index;
@@ -122,7 +122,7 @@ static DataBindStatus xml_query_failure(
   }
 }
 
-static void xml_emit_slice(cserde_token *out, salts_xml_string_view view) {
+static void xml_emit_slice(cserde_token *out, xml_string_view view) {
   memset(out, 0, sizeof(*out));
   out->kind = CSERDE_STRING;
   out->value.slice.data = (const unsigned char *)view.data;
@@ -224,7 +224,7 @@ static int xml_entity_value(
 static cserde_status xml_emit_logical_slice(
     data_bind_xml_reader *context,
     cserde_token *out,
-    salts_xml_string_view view,
+    xml_string_view view,
     int decode_entities) {
   size_t input = 0u;
   size_t output = 0u;
@@ -268,49 +268,49 @@ static cserde_status xml_emit_logical_slice(
   return CSERDE_OK;
 }
 
-static int xml_view_equal(salts_xml_string_view left,
-                          salts_xml_string_view right) {
+static int xml_view_equal(xml_string_view left,
+                          xml_string_view right) {
   return left.size == right.size &&
       (left.size == 0u ||
        (left.data != NULL && right.data != NULL &&
         memcmp(left.data, right.data, left.size) == 0));
 }
 
-static int xml_node_has_element_child(salts_xml_node node) {
-  size_t count = salts_xml_node_child_count(node);
+static int xml_node_has_element_child(xml_node node) {
+  size_t count = xml_node_child_count(node);
   size_t index;
   for (index = 0u; index < count; ++index) {
-    if (salts_xml_node_type(salts_xml_node_child_at(node, index)) ==
+    if (xml_node_type(xml_node_child_at(node, index)) ==
         SALTS_XML_ELEMENT)
       return 1;
   }
   return 0;
 }
 
-static salts_xml_node xml_node_first_text_child(salts_xml_node node) {
-  salts_xml_node empty = {NULL};
-  size_t count = salts_xml_node_child_count(node);
+static xml_node xml_node_first_text_child(xml_node node) {
+  xml_node empty = {NULL};
+  size_t count = xml_node_child_count(node);
   size_t index;
   for (index = 0u; index < count; ++index) {
-    salts_xml_node child = salts_xml_node_child_at(node, index);
-    if (salts_xml_node_type(child) == SALTS_XML_TEXT)
+    xml_node child = xml_node_child_at(node, index);
+    if (xml_node_type(child) == SALTS_XML_TEXT)
       return child;
   }
   return empty;
 }
 
 static int xml_attribute_shadowed_by_child(
-    salts_xml_node node,
-    salts_xml_attribute attribute) {
-  salts_xml_string_view attribute_name =
-      salts_xml_attribute_qualified_name(attribute);
-  size_t count = salts_xml_node_child_count(node);
+    xml_node node,
+    xml_attribute attribute) {
+  xml_string_view attribute_name =
+      xml_attribute_qualified_name(attribute);
+  size_t count = xml_node_child_count(node);
   size_t index;
 
   for (index = 0u; index < count; ++index) {
-    salts_xml_node child = salts_xml_node_child_at(node, index);
-    if (salts_xml_node_type(child) != SALTS_XML_ELEMENT) continue;
-    if (xml_view_equal(salts_xml_node_display_name(child), attribute_name))
+    xml_node child = xml_node_child_at(node, index);
+    if (xml_node_type(child) != SALTS_XML_ELEMENT) continue;
+    if (xml_view_equal(xml_node_display_name(child), attribute_name))
       return 1;
   }
   return 0;
@@ -318,12 +318,12 @@ static int xml_attribute_shadowed_by_child(
 
 static int xml_find_next_child(
     data_bind_xml_frame *frame,
-    salts_xml_node *out) {
-  size_t count = salts_xml_node_child_count(frame->node);
+    xml_node *out) {
+  size_t count = xml_node_child_count(frame->node);
   while (frame->child_index < count) {
-    salts_xml_node child =
-        salts_xml_node_child_at(frame->node, frame->child_index++);
-    if (salts_xml_node_type(child) == SALTS_XML_ELEMENT) {
+    xml_node child =
+        xml_node_child_at(frame->node, frame->child_index++);
+    if (xml_node_type(child) == SALTS_XML_ELEMENT) {
       *out = child;
       return 1;
     }
@@ -333,11 +333,11 @@ static int xml_find_next_child(
 
 static int xml_find_next_attribute(
     data_bind_xml_frame *frame,
-    salts_xml_attribute *out) {
-  size_t count = salts_xml_node_attribute_count(frame->node);
+    xml_attribute *out) {
+  size_t count = xml_node_attribute_count(frame->node);
   while (frame->attribute_index < count) {
-    salts_xml_attribute attribute =
-        salts_xml_node_attribute_at(frame->node, frame->attribute_index++);
+    xml_attribute attribute =
+        xml_node_attribute_at(frame->node, frame->attribute_index++);
     if (!xml_attribute_shadowed_by_child(frame->node, attribute)) {
       *out = attribute;
       return 1;
@@ -348,33 +348,33 @@ static int xml_find_next_attribute(
 
 static cserde_status xml_emit_node(
     data_bind_xml_reader *context,
-    salts_xml_node node,
+    xml_node node,
     cserde_token *out) {
-  salts_xml_node_kind kind = salts_xml_node_type(node);
+  xml_node_kind kind = xml_node_type(node);
   size_t attribute_count;
   int has_element_child;
 
   if (kind == SALTS_XML_ATTRIBUTE)
     return xml_emit_logical_slice(
-        context, out, salts_xml_node_text_view(node), 1);
+        context, out, xml_node_text_view(node), 1);
   if (kind == SALTS_XML_TEXT)
     return xml_emit_logical_slice(
-        context, out, salts_xml_node_text_view(node),
-        salts_xml_node_text_has_entity_reference(node));
+        context, out, xml_node_text_view(node),
+        xml_node_text_has_entity_reference(node));
   if (kind != SALTS_XML_ELEMENT) return CSERDE_UNSUPPORTED;
 
-  attribute_count = salts_xml_node_attribute_count(node);
+  attribute_count = xml_node_attribute_count(node);
   has_element_child = xml_node_has_element_child(node);
 
   if (!has_element_child && attribute_count == 0u) {
-    salts_xml_node text = xml_node_first_text_child(node);
-    if (salts_xml_node_type(text) == SALTS_XML_TEXT)
+    xml_node text = xml_node_first_text_child(node);
+    if (xml_node_type(text) == SALTS_XML_TEXT)
       return xml_emit_logical_slice(
-          context, out, salts_xml_node_text_view(text),
-          salts_xml_node_text_has_entity_reference(text));
+          context, out, xml_node_text_view(text),
+          xml_node_text_has_entity_reference(text));
     return xml_emit_logical_slice(
-        context, out, salts_xml_node_text_view(node),
-        salts_xml_node_text_has_entity_reference(node));
+        context, out, xml_node_text_view(node),
+        xml_node_text_has_entity_reference(node));
   }
 
   if (context->depth >= context->max_depth)
@@ -405,9 +405,9 @@ static cserde_status xml_provider_next(void *opaque, cserde_token *out) {
       return CSERDE_OK;
     }
     if (context->selected_index <
-        salts_xml_node_list_size(&context->selected)) {
-      salts_xml_node node =
-          salts_xml_node_list_at(&context->selected,
+        xml_node_list_size(&context->selected)) {
+      xml_node node =
+          xml_node_list_at(&context->selected,
                                  context->selected_index++);
       return xml_emit_node(context, node, out);
     }
@@ -433,7 +433,7 @@ static cserde_status xml_provider_next(void *opaque, cserde_token *out) {
     switch (frame->phase) {
     case DATA_BIND_XML_CHILD_KEY:
       if (xml_find_next_child(frame, &frame->pending_child)) {
-        xml_emit_slice(out, salts_xml_node_display_name(frame->pending_child));
+        xml_emit_slice(out, xml_node_display_name(frame->pending_child));
         frame->phase = DATA_BIND_XML_CHILD_VALUE;
         return CSERDE_OK;
       }
@@ -447,7 +447,7 @@ static cserde_status xml_provider_next(void *opaque, cserde_token *out) {
     case DATA_BIND_XML_ATTRIBUTE_KEY:
       if (xml_find_next_attribute(frame, &frame->pending_attribute)) {
         xml_emit_slice(
-            out, salts_xml_attribute_qualified_name(frame->pending_attribute));
+            out, xml_attribute_qualified_name(frame->pending_attribute));
         frame->phase = DATA_BIND_XML_ATTRIBUTE_VALUE;
         return CSERDE_OK;
       }
@@ -456,7 +456,7 @@ static cserde_status xml_provider_next(void *opaque, cserde_token *out) {
 
     case DATA_BIND_XML_ATTRIBUTE_VALUE: {
       cserde_status status = xml_emit_logical_slice(
-          context, out, salts_xml_attribute_value(frame->pending_attribute), 1);
+          context, out, xml_attribute_value(frame->pending_attribute), 1);
       frame->phase = DATA_BIND_XML_ATTRIBUTE_KEY;
       return status;
     }
@@ -481,9 +481,9 @@ static data_bind_xml_reader *xml_context_create(
     size_t max_depth,
     DataBindError *error) {
   data_bind_xml_reader *context;
-  salts_xml_limits limits = salts_xml_default_limits();
-  salts_xml_diagnostic diagnostic = {0};
-  salts_xml_status status;
+  xml_limits limits = xml_default_limits();
+  xml_diagnostic diagnostic = {0};
+  xml_status status;
   size_t bytes;
 
   if (max_depth >
@@ -523,7 +523,7 @@ static data_bind_xml_reader *xml_context_create(
   if (max_depth != 0u && max_depth < limits.max_depth)
     limits.max_depth = max_depth;
 
-  status = salts_xml_parse(
+  status = xml_parse(
       &context->document, data, len, &limits, &diagnostic);
   if (status != SALTS_XML_OK) {
     DataBindStatus mapped =
@@ -540,9 +540,9 @@ static data_bind_xml_reader *xml_context_create(
     return NULL;
   }
 
-  context->root = salts_xml_document_root(&context->document);
-  if (salts_xml_node_type(context->root) != SALTS_XML_ELEMENT) {
-    salts_xml_document_destroy(&context->document);
+  context->root = xml_document_root(&context->document);
+  if (xml_node_type(context->root) != SALTS_XML_ELEMENT) {
+    xml_document_destroy(&context->document);
     free(context->decoded);
     free(context);
     xml_provider_error(error, DATA_BIND_ERR_PARSE,
@@ -560,8 +560,8 @@ static DataBindStatus xml_publish_context(
     DataBindError *error) {
   if (cserde_reader_init(&context->reader, &XML_READER_OPS, context) !=
       CSERDE_OK) {
-    salts_xml_node_list_destroy(&context->selected);
-    salts_xml_document_destroy(&context->document);
+    xml_node_list_destroy(&context->selected);
+    xml_document_destroy(&context->document);
     free(context->decoded);
     free(context);
     return xml_provider_error(error, DATA_BIND_ERR_RUNTIME,
@@ -642,14 +642,14 @@ static DataBindStatus xml_provider_open_selected(
     query_diagnostic->size = size;
   }
 
-  query_status = salts_xml_document_xpath_query(
+  query_status = xml_document_xpath_query(
       &context->document, path, &context->selected,
       &native_limits, &native_diagnostic);
   xml_query_diagnostic(query_diagnostic, &native_diagnostic);
   if (query_status != QVM_STATUS_OK) {
     DataBindStatus status = xml_query_failure(query_diagnostic);
-    salts_xml_node_list_destroy(&context->selected);
-    salts_xml_document_destroy(&context->document);
+    xml_node_list_destroy(&context->selected);
+    xml_document_destroy(&context->document);
     free(context->decoded);
     free(context);
     return xml_provider_error(
@@ -660,16 +660,16 @@ static DataBindStatus xml_provider_open_selected(
   }
 
   if (selection == DATA_BIND_STREAM_SELECT_PATH_FIRST) {
-    if (salts_xml_node_list_size(&context->selected) == 0u) {
-      salts_xml_node_list_destroy(&context->selected);
-      salts_xml_document_destroy(&context->document);
+    if (xml_node_list_size(&context->selected) == 0u) {
+      xml_node_list_destroy(&context->selected);
+      xml_document_destroy(&context->document);
       free(context->decoded);
     free(context);
       return xml_provider_error(error, DATA_BIND_ERR_TYPE_MISMATCH,
                                 "XPath selected no value");
     }
     context->root =
-        salts_xml_node_list_at(&context->selected, 0u);
+        xml_node_list_at(&context->selected, 0u);
     context->root_pending = 1;
   } else {
     context->selected_array = 1;
@@ -682,8 +682,8 @@ static void xml_provider_close(cserde_reader *reader, void *opaque) {
   data_bind_xml_reader *context = (data_bind_xml_reader *)opaque;
   (void)reader;
   if (context != NULL) {
-    salts_xml_node_list_destroy(&context->selected);
-    salts_xml_document_destroy(&context->document);
+    xml_node_list_destroy(&context->selected);
+    xml_document_destroy(&context->document);
     free(context->decoded);
     free(context);
   }

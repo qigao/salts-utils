@@ -10,7 +10,7 @@
 #include <cmeta/type_traits.h>
 #include <cstl/typed.h>
 #include <cmeta/core_data.h>
-#include <vstr.h>
+#include <core/vstr.h>
 
 #include <errno.h>
 #include <limits.h>

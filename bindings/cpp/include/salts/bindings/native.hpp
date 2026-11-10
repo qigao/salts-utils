@@ -1,7 +1,7 @@
 #ifndef SALTS_BINDINGS_NATIVE_HPP
 #define SALTS_BINDINGS_NATIVE_HPP
 
-#include <salts/bindings/module.h>
+#include <bindings/module.h>
 #include <array>
 #include <cstring>
 #include <tuple>

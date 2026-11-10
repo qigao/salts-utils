@@ -8,7 +8,7 @@ typedef struct JINJA_TEMPLATE_NODE JINJA_TEMPLATE_NODE;
 #include <cstl/vec_alloc.h>
 #include "jinja_template_lexer.h"
 #include "jinja_expression_grammar_gen.h"
-#include <salts_unicode.h>
+#include <unicode.h>
 #include <stdlib.h>
 #include <string.h>
 #include <cstl/typed.h>
@@ -100,7 +100,7 @@ typedef struct JINJA_TEMPLATE_BINDING_WORK {
   } scratch;
 } JINJA_TEMPLATE_BINDING_WORK;
 
-static int jinja_template_space(salts_unicode_scalar scalar) {
+static int jinja_template_space(unicode_scalar scalar) {
   enum { SEPARATOR_FIRST = 0x1c, SEPARATOR_LAST = 0x1f };
   return (scalar.properties & SALTS_UNICODE_PROPERTY_WHITE_SPACE) != 0u ||
       (scalar.value >= SEPARATOR_FIRST && scalar.value <= SEPARATOR_LAST);
@@ -109,9 +109,9 @@ static int jinja_template_space(salts_unicode_scalar scalar) {
 static JINJA_EXPRESSION_SPAN jinja_template_trim(vstr source, JINJA_EXPRESSION_SPAN span) {
   size_t cursor = span.offset, end = span.offset + span.length, first = end, last = end;
   while (cursor < end) {
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     size_t before = cursor;
-    if (salts_unicode_utf8_next(source, &cursor, &scalar) != SALTS_UNICODE_OK) break;
+    if (unicode_utf8_next(source, &cursor, &scalar) != SALTS_UNICODE_OK) break;
     if (!jinja_template_space(scalar)) {
       if (first == end) first = before;
       last = cursor;
@@ -122,9 +122,9 @@ static JINJA_EXPRESSION_SPAN jinja_template_trim(vstr source, JINJA_EXPRESSION_S
 
 static size_t jinja_template_skip_space(vstr source, size_t cursor) {
   while (cursor < source.len) {
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     size_t next = cursor;
-    if (salts_unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK || !jinja_template_space(scalar)) break;
+    if (unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK || !jinja_template_space(scalar)) break;
     cursor = next;
   }
   return cursor;
@@ -149,9 +149,9 @@ static int jinja_template_open(JINJA_TEMPLATE_TOKEN_KIND kind) {
 static size_t jinja_template_line_end(vstr source, size_t cursor) {
   size_t end = SIZE_MAX;
   while (cursor < source.len) {
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     size_t next = cursor;
-    if (salts_unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK || !jinja_template_space(scalar)) break;
+    if (unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK || !jinja_template_space(scalar)) break;
     if (scalar.value == '\r' || scalar.value == '\n') end = next;
     cursor = next;
   }
@@ -320,9 +320,9 @@ static size_t jinja_template_raw_close(vstr source, size_t offset, vstr delimite
     size_t close = jinja_template_close_at(source, offset, delimiter, allow_plus);
     if (close != SIZE_MAX) { result = close; *content_end = offset; }
     if (offset == source.len) break;
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     size_t next = offset;
-    if (salts_unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK || !jinja_template_space(scalar)) break;
+    if (unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK || !jinja_template_space(scalar)) break;
     offset = next;
   }
   return result;
@@ -525,8 +525,8 @@ static JINJA_EXPRESSION_PARSE_STATUS jinja_template_statement(vstr source, JINJA
   size_t length = 0u;
   while (length < header.len) {
     size_t next = length;
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(header, &next, &scalar) != SALTS_UNICODE_OK || jinja_template_space(scalar)) break;
+    unicode_scalar scalar;
+    if (unicode_utf8_next(header, &next, &scalar) != SALTS_UNICODE_OK || jinja_template_space(scalar)) break;
     uint32_t c = scalar.value;
     if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
         c == '_' || c >= 0x80u)) break;
@@ -743,8 +743,8 @@ JINJA_EXPRESSION_SPAN jinja_template_content_right(vstr source,
   size_t last_nonspace = span.offset, line = span.offset;
   int line_start = span.offset == 0u || source.data[span.offset - 1u] == '\n' || source.data[span.offset - 1u] == '\r';
   while (cursor < end) {
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(source, &cursor, &scalar) != SALTS_UNICODE_OK) break;
+    unicode_scalar scalar;
+    if (unicode_utf8_next(source, &cursor, &scalar) != SALTS_UNICODE_OK) break;
     if (!jinja_template_space(scalar)) last_nonspace = cursor;
     if (scalar.value == '\n' || scalar.value == '\r') { line = cursor; line_start = 1; }
   }
@@ -1055,10 +1055,10 @@ static JINJA_EXPRESSION_PARSE_STATUS jinja_template_binding_trans(vstr source,
     static const char *const modifiers[] = {"trimmed", "notrimmed"};
     const size_t length = strlen(modifiers[i]);
     size_t next = length;
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     if (header.len < length || memcmp(header.data, modifiers[i], length) != 0 ||
         (header.len != length && header.data[length] != ',' &&
-         (salts_unicode_utf8_next(header, &next, &scalar) != SALTS_UNICODE_OK ||
+         (unicode_utf8_next(header, &next, &scalar) != SALTS_UNICODE_OK ||
           !jinja_template_space(scalar)))) continue;
     binding.header = jinja_template_trim(source, (JINJA_EXPRESSION_SPAN){
         binding.header.offset + length, binding.header.length - length});

@@ -6,7 +6,7 @@
 #include "data_bind_projection_plan.h"
 #include <cmeta/cleanup.h>
 #include <cmeta/fixed_array.h>
-#include <salts/thread.h>
+#include <threads/threads.h>
 #include "tinytest.h"
 
 #include <stddef.h>

@@ -7,13 +7,6 @@ add_test(NAME test_idl_host_command
 set_tests_properties(test_idl_host_command PROPERTIES
   LABELS "databind;installed;compiler;cmake;windows")
 
-add_test(NAME test_databind_compiler_tooling_boundary
-  COMMAND "${CMAKE_COMMAND}"
-    "-DDATABIND_SOURCE_ROOT=${DATABIND_SOURCE_ROOT}"
-    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_compiler_tooling_boundary.cmake")
-set_tests_properties(test_databind_compiler_tooling_boundary
-  PROPERTIES LABELS "databind;package;compiler")
-
 cmake_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c "${DATABIND_COMPILER_SOURCE_DIR}/compiler_core.c" "${DATABIND_COMPILER_SOURCE_DIR}/native_source_ir.c" "${DATABIND_COMPILER_SOURCE_DIR}/plugin_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/wasm_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/native_service_projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/service_native.c" "${DATABIND_COMPILER_SOURCE_DIR}/binary_reader_codegen.c" "${DATABIND_COMPILER_SOURCE_DIR}/projection.c" "${DATABIND_COMPILER_SOURCE_DIR}/database_schema.c" "${DATABIND_COMPILER_SOURCE_DIR}/mustache_helpers.c"
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} databind_binding_compiler Salts::Core

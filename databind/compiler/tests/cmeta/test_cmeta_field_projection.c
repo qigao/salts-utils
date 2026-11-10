@@ -42,7 +42,7 @@ static void annotate_language_types_from_tree(Node *root) {
 
 static const ExpectedRuntimeCapability EXPECTED[] = {
     { "bool", "uint8_t", EXPECT_EXPLICIT_ADAPTER },
-    { "uuid", "cmeta_uuid_t", EXPECT_EXPLICIT_ADAPTER },
+    { "uuid", "uuid_t", EXPECT_EXPLICIT_ADAPTER },
     { "bytes[16]", "uint8_t[16]", EXPECT_BOUNDED_ADAPTER },
     { "string", "tstr", EXPECT_LIFECYCLE },
     { "bytes", "stl_byte_buffer", EXPECT_LIFECYCLE },

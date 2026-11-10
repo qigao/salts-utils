@@ -13,14 +13,14 @@ typedef struct JINJA_BLOCK_NAME JINJA_BLOCK_NAME;
 #include "jinja_cmeta_internal.h"
 #include "jinja_cmeta_artifact.h"
 #include "jinja_cmeta_environment.h"
-#include <salts_unicode.h>
+#include <unicode.h>
 #include "jinja_expression_parser.h"
 #include "jinja_expression_grammar_gen.h"
 #include "jinja_template_lexer.h"
 #include "jinja_template_parser.h"
 
-#include <tstr.h>
-#include <vstr.h>
+#include <core/tstr.h>
+#include <core/vstr.h>
 #include <cstl/typed.h>
 #include <cstl/sort.h>
 
@@ -255,7 +255,7 @@ static int jinja_call_keyword_requires_merge(vstr keyword) {
 }
 
 /* Python's regex whitespace adds the four information separators to Unicode White_Space. */
-static int jinja_raw_space(salts_unicode_scalar scalar) {
+static int jinja_raw_space(unicode_scalar scalar) {
   enum { INFORMATION_SEPARATOR_FIRST = 0x1c, INFORMATION_SEPARATOR_LAST = 0x1f };
   return (scalar.properties & SALTS_UNICODE_PROPERTY_WHITE_SPACE) != 0u ||
       (scalar.value >= INFORMATION_SEPARATOR_FIRST && scalar.value <= INFORMATION_SEPARATOR_LAST);
@@ -264,8 +264,8 @@ static int jinja_raw_space(salts_unicode_scalar scalar) {
 static size_t jinja_raw_skip_space(vstr source, size_t cursor) {
   while (cursor < source.len) {
     size_t next = cursor;
-    salts_unicode_scalar scalar;
-    if (salts_unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK ||
+    unicode_scalar scalar;
+    if (unicode_utf8_next(source, &next, &scalar) != SALTS_UNICODE_OK ||
         !jinja_raw_space(scalar)) break;
     cursor = next;
   }
@@ -1006,16 +1006,16 @@ static JINJA_CMETA_STATUS jinja_decode_string(vstr encoded, char *output, size_t
         ++name_start;
         input_offset = name_start;
         while (input_offset < encoded.len && encoded.data[input_offset] != '}') ++input_offset;
-        if (input_offset == encoded.len || salts_unicode_name_lookup(
+        if (input_offset == encoded.len || unicode_name_lookup(
             vstr_from_buf(encoded.data + name_start, input_offset - name_start), &codepoint) != SALTS_UNICODE_OK)
           return JINJA_CMETA_ERR_SYNTAX;
         decoded_size = tstr_utf8_codepoint_size(codepoint);
         if (decoded_size == 0u) return JINJA_CMETA_ERR_SYNTAX;
         jinja_encode_utf8_scalar(codepoint, decoded_size, decoded);
       } else if ((unsigned char)escape_kind > ASCII_MAX) {
-        salts_unicode_scalar scalar;
+        unicode_scalar scalar;
         size_t next = input_offset;
-        if (salts_unicode_utf8_next(encoded, &next, &scalar) != SALTS_UNICODE_OK)
+        if (unicode_utf8_next(encoded, &next, &scalar) != SALTS_UNICODE_OK)
           return JINJA_CMETA_ERR_SYNTAX;
         /* Jinja first ASCII-encodes with backslashreplace, then unescapes. */
         codepoint = scalar.value;
@@ -2490,9 +2490,9 @@ static int jinja_translation_trim_message(tstr *message) {
   if (normalized == NULL) return 0;
   input = vstr_from_buf(*message, tstr_len(*message));
   while (cursor < input.len) {
-    salts_unicode_scalar scalar;
+    unicode_scalar scalar;
     const size_t start = cursor;
-    if (salts_unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK) {
+    if (unicode_utf8_next(input, &cursor, &scalar) != SALTS_UNICODE_OK) {
       tstr_free(normalized);
       return 0;
     }

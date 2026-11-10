@@ -6,8 +6,8 @@
 #include "tinytest.h"
 
 #include <cmeta/data_reflect.h>
-#include <tstr.h>
-#include <vstr.h>
+#include <core/tstr.h>
+#include <core/vstr.h>
 
 #include <locale.h>
 #include <limits.h>

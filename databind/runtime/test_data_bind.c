@@ -6,7 +6,7 @@
 #include "data_bind.h"
 #include "data_bind_binary_wire.h"
 #include "tinytest.h"
-#include <cmeta_uuid.h>
+#include <core/uuid.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -812,31 +812,31 @@ suite("Data Bind") {
 
     given("a schema with a uuid field") {
       const char *id_text = "01890f3e-5c5a-7cc2-9f2b-8b7f47f0c001";
-      cmeta_uuid_t expected;
+      uuid_t expected;
       write_schema("test_uuid.tbe", "message Event { uuid id; }\n");
 
       DataBind *codec = data_bind_create("test_uuid.tbe");
       check_not_null(codec);
-      check_equal(cmeta_uuid_parse(id_text, &expected), SALTS_OK);
+      check_equal(uuid_parse_text(id_text, expected), SALTS_OK);
 
       if (codec) {
         when("parsing binary data") {
           DataBindValue *v = NULL;
           DataBindError error = DATA_BIND_ERROR_INIT;
           DataBindStatus status = test_data_bind_parse_status(
-              codec, "Event", expected.bytes, sizeof(expected.bytes), &v, &error);
+              codec, "Event", expected, sizeof(expected), &v, &error);
           info("UUID Binary decode: %s (%s)", error.message, error.path);
           check_equal(status, DATA_BIND_OK);
 
           then("uuid should bind from its fixed 16 byte payload") {
             const DataBindValue *id;
-            cmeta_uuid_t actual;
+            uuid_t actual;
             char text[SALTS_UUID_STRING_SIZE];
             check_not_null(v);
             id = require_field(v, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
-            check(data_bind_value_get_uuid(id, actual.bytes) == DATA_BIND_OK);
-            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check(data_bind_value_get_uuid(id, actual) == DATA_BIND_OK);
+            check_equal(actual, expected, sizeof(expected));
             check_equal(data_bind_value_as_uuid_string(id, text, sizeof(text)), id_text);
           }
 
@@ -848,12 +848,12 @@ suite("Data Bind") {
           DataBindError error = DATA_BIND_ERROR_INIT;
           uint8_t *encoded = NULL;
           size_t length = 0u;
-          check_equal(data_bind_object_from_bin(codec, "Event", expected.bytes,
-              sizeof(expected.bytes), &object, &error), DATA_BIND_OK);
+          check_equal(data_bind_object_from_bin(codec, "Event", expected,
+              sizeof(expected), &object, &error), DATA_BIND_OK);
           check_equal(data_bind_object_serialize_bin(
               codec, object, &encoded, &length, &error), DATA_BIND_OK);
-          check_equal(length, sizeof(expected.bytes));
-          check_equal(encoded, expected.bytes, sizeof(expected.bytes));
+          check_equal(length, sizeof(expected));
+          check_equal(encoded, expected, sizeof(expected));
           data_bind_serialized_free(encoded);
           data_bind_object_free(object);
         }
@@ -872,31 +872,31 @@ suite("Data Bind") {
 
           then("all text formats should produce native uuid values") {
             const DataBindValue *id;
-            cmeta_uuid_t actual;
+            uuid_t actual;
             check_not_null(from_json);
             id = require_field(from_json, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
-            check(data_bind_value_as_uuid(id, actual.bytes));
-            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check(data_bind_value_as_uuid(id, actual));
+            check_equal(actual, expected, sizeof(expected));
 
             check_equal(yaml_status, DATA_BIND_OK);
             check_not_null(from_yaml);
             id = require_field(from_yaml, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
-            check(data_bind_value_as_uuid(id, actual.bytes));
-            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check(data_bind_value_as_uuid(id, actual));
+            check_equal(actual, expected, sizeof(expected));
 
             check_not_null(from_csv);
             id = require_field(from_csv, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
-            check(data_bind_value_as_uuid(id, actual.bytes));
-            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check(data_bind_value_as_uuid(id, actual));
+            check_equal(actual, expected, sizeof(expected));
 
             check_not_null(from_xml);
             id = require_field(from_xml, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
-            check(data_bind_value_as_uuid(id, actual.bytes));
-            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check(data_bind_value_as_uuid(id, actual));
+            check_equal(actual, expected, sizeof(expected));
           }
 
           data_bind_value_free(from_json);

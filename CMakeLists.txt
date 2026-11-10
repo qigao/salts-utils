@@ -8,14 +8,6 @@ endif()
 
 include(CMakeOptions.cmake)
 
-foreach(_dependency_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
-  if(NOT DEFINED ENV{${_dependency_root}} OR
-     NOT IS_DIRECTORY "$ENV{${_dependency_root}}")
-    message(FATAL_ERROR
-      "${_dependency_root} must name the restored SDK; run cmake/ci/restore-native-sdk first")
-  endif()
-endforeach()
-
 project(
   SaltsUtils
   VERSION 0.1.0
@@ -53,20 +45,38 @@ include(Sanitizers)
 include(CmakeUtils)
 include(GNUInstallDirs)
 
+# Consume the selected preinstalled dependency tree without a toolchain.
+set(SALTS_UTILS_DEPENDENCY_PREFIX "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}")
+list(PREPEND CMAKE_PREFIX_PATH
+  "${SALTS_UTILS_DEPENDENCY_PREFIX}/$ENV{VCPKG_CONFIGURATION_SUBDIR}"
+  "${SALTS_UTILS_DEPENDENCY_PREFIX}")
+
 find_package(Threads REQUIRED)
-find_package(SaltsCore 0.1 CONFIG REQUIRED PATHS "$ENV{SALTSCORE_ROOT}"
+if(NOT "$ENV{SALTS_BASE_VERSION}" MATCHES "^[0-9]+[.][0-9]+[.][0-9]+$" OR
+   NOT "$ENV{CMETA_VERSION}" MATCHES "^[0-9]+[.][0-9]+[.][0-9]+$")
+  message(FATAL_ERROR "SALTS_BASE_VERSION and CMETA_VERSION must select exact SDK versions without the v prefix")
+endif()
+unset(SaltsBase_DIR CACHE)
+unset(CMeta_DIR CACHE)
+find_package(SaltsBase "$ENV{SALTS_BASE_VERSION}" EXACT CONFIG REQUIRED PATHS "$ENV{SALTS_BASE_ROOT}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-find_package(CMeta 0.1 CONFIG REQUIRED PATHS "$ENV{CMETA_ROOT}"
+find_package(CMeta "$ENV{CMETA_VERSION}" EXACT CONFIG REQUIRED PATHS "$ENV{CMETA_ROOT}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 include(FindTools)
+add_subdirectory(vendor)
 add_subdirectory(mustache)
 add_subdirectory(jinja)
 add_subdirectory(databind)
-#add_subdirectory(bindings)
+add_subdirectory(bindings)
 
 # Package Configuration
 include(CMakePackageConfigHelpers)
+
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsUtilsConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/SaltsUtilsConfig.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils")
 
 # Generate the version file
 write_basic_package_version_file(

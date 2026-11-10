@@ -1,7 +1,7 @@
 #ifndef SALTS_BINDINGS_NATIVE_H
 #define SALTS_BINDINGS_NATIVE_H
 
-#include <salts/bindings/module.h>
+#include <bindings/module.h>
 #include <cmeta/invoke_decl.h>
 
 /* C11 declarations live in a separate binding TU. Native headers/definitions
