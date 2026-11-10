@@ -6,13 +6,22 @@ if(POLICY CMP0167)
   cmake_policy(SET CMP0167 OLD)
 endif()
 
+include(CMakeOptions.cmake)
+
+foreach(_dependency_root IN ITEMS SALTSCORE_ROOT CMETA_ROOT)
+  if(NOT DEFINED ENV{${_dependency_root}} OR
+     NOT IS_DIRECTORY "$ENV{${_dependency_root}}")
+    message(FATAL_ERROR
+      "${_dependency_root} must name the restored SDK; run cmake/ci/restore-native-sdk first")
+  endif()
+endforeach()
+
 project(
   SaltsUtils
   VERSION 0.1.0
   DESCRIPTION "Higher-level utilities built on Salts&CMeta"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
-  LANGUAGES ${_salts_utils_languages})
-unset(_salts_utils_languages)
+  LANGUAGES C CXX)
 
 # Project configuration - output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -37,8 +46,6 @@ endif()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "cmake")
 
-include(CMakeOptions.cmake)
-
 if(BUILD_TESTS)
   enable_testing()
 endif()
@@ -47,9 +54,9 @@ include(CmakeUtils)
 include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
-find_package(SaltsCore 0.1 CONFIG REQUIRED PATHS "${SALTSCORE_ROOT_PATH}"
+find_package(SaltsCore 0.1 CONFIG REQUIRED PATHS "$ENV{SALTSCORE_ROOT}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-find_package(CMeta 0.1 CONFIG REQUIRED PATHS "${CMETA_ROOT_PATH}"
+find_package(CMeta 0.1 CONFIG REQUIRED PATHS "$ENV{CMETA_ROOT}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 include(FindTools)

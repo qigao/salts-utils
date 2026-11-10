@@ -8,12 +8,11 @@ if(NOT IS_DIRECTORY "$ENV{RE2C_ROOT}")
 endif()
 
 set(RE2C_ROOT "$ENV{RE2C_ROOT}")
-unset(RE2C_EXECUTABLE CACHE)
-unset(RE2C_EXECUTABLE)
 find_program(RE2C_EXECUTABLE
   NAMES re2c
   PATHS "${RE2C_ROOT}/bin"
   NO_DEFAULT_PATH
+  NO_CACHE
   REQUIRED)
 file(REAL_PATH "${RE2C_ROOT}" _re2c_root_realpath)
 file(REAL_PATH "${RE2C_EXECUTABLE}" _re2c_executable_realpath)

@@ -25,12 +25,12 @@ $resolved = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
 
 if ($Local) {
   function Set-LocalPackageLink([string]$relativePath, [string]$target) {
-    $link = Join-Path $repositoryRoot "stage/dependencies/$relativePath"
+    $link = (Join-Path $repositoryRoot "stage/dependencies/$relativePath").Replace('\', '/')
     New-Item -ItemType Directory -Path (Split-Path $link -Parent) -Force | Out-Null
     $existing = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
     if ($existing) {
       if ($existing.LinkType -ne 'Junction') { throw "refusing to replace non-junction SDK path: $link" }
-      if ($existing.Target -eq $target) { return $link }
+      if ($existing.Target.Replace('\', '/') -eq $target) { return $link }
       Remove-Item -LiteralPath $link -Force
     }
     New-Item -ItemType Junction -Path $link -Target $target | Out-Null
@@ -41,7 +41,7 @@ if ($Local) {
   $env:CMETA_ROOT = Set-LocalPackageLink "cmeta/$SaltsRid" $resolved.CMETA_ROOT
   $env:CMETA_HOST_ROOT = Set-LocalPackageLink "cmeta/$Re2cRid" $resolved.CMETA_HOST_ROOT
   $env:RE2C_ROOT = Set-LocalPackageLink "re2c/$Re2cRid" $resolved.RE2C_ROOT
-  $env:QIGAO_NUGET_PACKAGES = $packages
+  $env:QIGAO_NUGET_PACKAGES = $packages.Replace('\', '/')
   if ($WithTurboWasm) { $env:TURBOWASM_ROOT = $resolved.TURBOWASM_ROOT }
 }
 Write-Host "restored SaltsCore.Native $($resolved.SALTSCORE_VERSION) and CMeta.Native $($resolved.CMETA_VERSION) with curl for $SaltsRid"

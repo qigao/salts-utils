@@ -6,7 +6,7 @@ import hashlib
 import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import subprocess
 import tempfile
 import threading
@@ -17,7 +17,7 @@ import zipfile
 
 from github_packages import (
     BinaryCache, LoopbackServer, PackageMissing, Packages,
-    cache_server, restore_native_sdk, version_key,
+    cache_server, export, restore_native_sdk, version_key,
 )
 
 
@@ -128,6 +128,41 @@ class Feed:
         self.documents[path] = data.getvalue()
 
 
+class EnvironmentExportTests(unittest.TestCase):
+    def test_cmake_paths_use_forward_slashes_in_all_outputs(self):
+        values = {
+            "SALTSCORE_ROOT": PureWindowsPath(
+                r"D:\a\salts-utils\stage\nuget\saltscore.native\0.1.0\sdk\windows-x64"),
+            "CMETA_ROOT": PureWindowsPath(
+                r"\\sdk-host\packages share\cmeta.native\0.1.2\sdk\windows-x64"),
+            "RE2C_ROOT": PurePosixPath("/opt/native SDK/re2c"),
+            "SALTSCORE_VERSION": "0.1.0",
+        }
+        expected = {
+            "SALTSCORE_ROOT":
+                "D:/a/salts-utils/stage/nuget/saltscore.native/0.1.0/sdk/windows-x64",
+            "CMETA_ROOT":
+                "//sdk-host/packages share/cmeta.native/0.1.2/sdk/windows-x64",
+            "RE2C_ROOT": "/opt/native SDK/re2c",
+            "SALTSCORE_VERSION": "0.1.0",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            env = Path(temporary) / "env"
+            path = Path(temporary) / "path"
+            stdout = io.StringIO()
+            with patch.dict(os.environ, {
+                    "GITHUB_ENV": str(env), "GITHUB_PATH": str(path)}), \
+                    patch("sys.stdout", stdout):
+                resolved = export(values, values["SALTSCORE_ROOT"] / "bin")
+            serialized = "".join(f"{key}={value}\n"
+                                 for key, value in expected.items())
+            self.assertEqual(env.read_text(encoding="utf-8"), serialized)
+            self.assertEqual(stdout.getvalue(), serialized)
+            self.assertEqual(path.read_text(encoding="utf-8"),
+                             expected["SALTSCORE_ROOT"] + "/bin\n")
+            self.assertEqual(resolved, expected)
+
+
 class PackageTests(unittest.TestCase):
     def setUp(self):
         self.feed = Feed()
@@ -178,7 +213,7 @@ class PackageTests(unittest.TestCase):
         with patch.dict(os.environ, {"GITHUB_ENV": str(env), "GITHUB_PATH": str(path)}), \
                 patch("github_packages.restore_re2c_for_rid",
                       return_value=("1.0.0", self.root / "re2c")):
-            restore_native_sdk(args, self.packages)
+            resolved = restore_native_sdk(args, self.packages)
         values = env.read_text()
         self.assertIn("SALTSCORE_VERSION=0.1.0", values)
         self.assertIn("CMETA_VERSION=0.1.2", values)
@@ -186,6 +221,9 @@ class PackageTests(unittest.TestCase):
         self.assertIn("CMETA_ROOT=", values)
         self.assertIn("RE2C_ROOT=", values)
         self.assertTrue(args.result.is_file())
+        self.assertEqual(json.loads(args.result.read_text(encoding="utf-8")), resolved)
+        for key, value in resolved.items():
+            self.assertIn(f"{key}={value}\n", values)
 
     def test_explicit_published_component_runtime_version(self):
         version = "0.1.0"

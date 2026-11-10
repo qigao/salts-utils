@@ -120,7 +120,7 @@ The binding targets and their runtime link dependencies remain available.
 
 ### Restore the published SDK and shared dependency cache
 
-Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain/overlays as Salts, but keep binary artifacts in vcpkg's local default cache and do not invoke NuGet or Mono. CI materializes the same immutable cache contract and exposes GitHub Packages as a read-only curl-backed HTTP source, with a writable local L1 cache.
+Local user presets use the same [vcpkg-cache](https://github.com/qigao/vcpkg-cache) toolchain/overlays as Salts, but keep binary artifacts in vcpkg's local default cache and do not invoke NuGet or Mono. CI uses the shared `v0.1.1` setup and restores exact ABI archives from its binary release into a writable local files cache. Missing ABIs are compiled by the ordinary CMake configure and saved by the existing Actions cache; authentication, TLS, archive and digest failures stop the job. No local HTTP adapter is started.
 
 Before configuring, provide `PROJECT_ROOT`, `VCPKG_ROOT`, and a `GITHUB_TOKEN` with `read:packages` in the parent environment. `PROJECT_ROOT/external/pkgs` is the SaltsUtils install location; dependency SDKs are restored separately. Credentials are passed only to the curl package helper at runtime; no tracked NuGet credentials/configuration is used by native dependency restore.
 
@@ -212,6 +212,16 @@ cmake --build --preset install-linux-release-user
 ```
 
 Windows uses the corresponding `win-*` presets. The `databind/` subtree is a component, not an alternative standalone configure/install entry point.
+
+Configuration fails on missing SDK roots, dependencies or tools, unsupported
+requested sanitizers, and `BUILD_BENCHMARKS=ON` with `BUILD_TESTS=OFF`.
+Sanitizers use the `ENABLE_SANITIZER_*` options in `CMakeOptions.cmake`;
+the unused `ENABLE_ASAN` option has been removed.
+
+Supply SDK roots with forward slashes; the native SDK restore helpers export
+paths in this form for both CI and local use. After changing SDK roots or toolchains,
+configure with `cmake --fresh --preset <profile>` (or `FRESH=1` below).
+CMake files do not clear package discovery caches or repair stale configurations.
 
 For local orchestration, the repository also exposes the same Praktor input
 contract used by TurboAgent. The workflow remains repository-local because
