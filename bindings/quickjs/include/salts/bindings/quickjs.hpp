@@ -1,7 +1,7 @@
 #ifndef SALTS_BINDINGS_QUICKJS_HPP
 #define SALTS_BINDINGS_QUICKJS_HPP
 
-#include <salts/bindings/object.hpp>
+#include <bindings/object.hpp>
 #include <salts/bindings/quickjs/cmeta.h>
 
 #include <utility>
