@@ -10,7 +10,7 @@ include(CMakeOptions.cmake)
 
 project(
   SaltsUtils
-  VERSION 0.1.0
+  VERSION 0.1.1
   DESCRIPTION "Higher-level utilities built on Salts&CMeta"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES C CXX)
