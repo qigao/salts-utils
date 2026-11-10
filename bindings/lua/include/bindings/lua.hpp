@@ -1,7 +1,7 @@
 #ifndef SALTS_BINDINGS_LUA_HPP
 #define SALTS_BINDINGS_LUA_HPP
 
-#include <salts/bindings/object.hpp>
+#include <bindings/object.hpp>
 #include <bindings/lua/cmeta.h>
 
 extern "C" {

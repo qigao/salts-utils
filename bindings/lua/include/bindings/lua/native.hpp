@@ -1,6 +1,6 @@
 #ifndef SALTS_BINDINGS_LUA_NATIVE_HPP
 #define SALTS_BINDINGS_LUA_NATIVE_HPP
-#include <salts/bindings/native.hpp>
+#include <bindings/native.hpp>
 #include <bindings/lua.hpp>
 #include <bindings/lua/module.h>
 

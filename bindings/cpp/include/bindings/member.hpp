@@ -1,7 +1,7 @@
 #ifndef SALTS_BINDINGS_MEMBER_HPP
 #define SALTS_BINDINGS_MEMBER_HPP
 
-#include <salts/bindings/object.hpp>
+#include <bindings/object.hpp>
 
 #include <cmeta/invokable.h>
 

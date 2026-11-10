@@ -1,6 +1,6 @@
 #ifndef SALTS_BINDINGS_QUICKJS_NATIVE_HPP
 #define SALTS_BINDINGS_QUICKJS_NATIVE_HPP
-#include <salts/bindings/native.hpp>
+#include <bindings/native.hpp>
 #include <salts/bindings/quickjs.hpp>
 #include <salts/bindings/quickjs/module.h>
 

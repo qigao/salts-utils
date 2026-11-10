@@ -42,7 +42,7 @@ members are listed separately, in the style of the project's historical `moon`
 binding helpers. CMeta descriptors are generated implementation details; callers
 do not have to construct descriptors, invokables or operation providers.
 
-1. In a C++ binding TU, include `salts/bindings/native.hpp` and link
+1. In a C++ binding TU, include `bindings/native.hpp` and link
    `Salts::BindingsCpp`. `SALTS_BIND_FUNCTION(function)` deduces the actual
    function pointer type. `Salts::Binding::object(instance,
    SALTS_BIND_MEMBERS(Class, method, field))` deduces member pointers and builds
