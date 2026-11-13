@@ -49,6 +49,12 @@
   commands retain their source and non-standard flags. Only language extension
   mode changes are expected. The trace has one source project (`SaltsUtils`);
   CMake's five generated compiler probes are not repository projects.
+- The first full CI run (`43398528757`) exposed that Unix IDL `strdup` calls
+  depended on GNU language mode to reveal their declarations. Android's Linux
+  host IDL build failed at the same source file. The root now explicitly selects
+  `_POSIX_C_SOURCE=200809L` for C compilation on Unix, also covering compiler
+  tests' `fileno` call. The existing compiler source guard accepts this same
+  value. Strict C11 remains enabled; no test or error diagnostic is suppressed.
 - Evidence is under `build/cmake-cleanup/`: `generation-audit.json`,
   `configure.log`, `build.log`, `ctest.log`, `ctest.xml`, `install.log` and saved
   installed package/export files. Local runtime qualification covers Windows

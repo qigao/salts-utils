@@ -33,6 +33,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+if(UNIX)
+  # Strict C11 still needs declarations for the POSIX APIs used by IDL and
+  # compiler tests, including strdup and fileno.
+  add_compile_definitions("$<$<COMPILE_LANGUAGE:C>:_POSIX_C_SOURCE=200809L>")
+endif()
+
 if(MSVC)
   add_compile_options(-experimental:c11atomics)
 endif()

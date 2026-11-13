@@ -97,6 +97,8 @@ its generated targets' C11 requirement because it also runs in other projects.
 Lua and QuickJS resolve directly from the selected vcpkg triplet without a
 global dependency search prefix. Static binding consumers resolve Lua/QuickJS,
 SaltsBase and CMeta for the targets they use before loading SaltsUtils.
+On Unix, the root declares POSIX.1-2008 for C compilation so strict C11
+retains the required `strdup` and `fileno` declarations.
 
 ## Repository ownership
 
