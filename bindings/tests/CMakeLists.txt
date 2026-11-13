@@ -19,18 +19,7 @@ cmake_add_test(salts_native_cpp_frontend_test
 set_tests_properties(salts_native_module_test PROPERTIES
   LABELS "bindings;cmeta;lua;quickjs;typescript")
 
-set_target_properties(salts_object_cross_runtime_test PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
-
-
 cmake_add_test(salts_cpp_object_facade_test
   SOURCES cpp_object_facade_test.cpp
   LIBS Salts::BindingsCpp Salts::Lua Salts::QuickJS Salts::DataBindProducer Salts::TinyTest
   FOLDER "bindings/tests")
-
-set_target_properties(salts_cpp_object_facade_test PROPERTIES
-  CXX_STANDARD 17
-  CXX_STANDARD_REQUIRED ON
-  CXX_EXTENSIONS OFF)

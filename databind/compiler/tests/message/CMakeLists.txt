@@ -60,10 +60,7 @@ cmake_add_test(test_databind_message_native
     ${DATABIND_SOURCE_ROOT}/idl/contract
     ${DATABIND_COMPILER_SOURCE_DIR}
   FOLDER "databind/compiler/tests/message")
-set_target_properties(test_databind_message_native PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_message_native PROPERTIES
   LABELS "databind;compiler;message-native;channel")
 
@@ -91,9 +88,7 @@ cmake_add_test(test_databind_nested_native_generics
   FOLDER "databind/compiler/tests/message")
 add_dependencies(test_databind_nested_native_generics
   databind_nested_native_generics_fixture_idl_codegen)
-set_target_properties(test_databind_nested_native_generics PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_nested_native_generics PROPERTIES
   LABELS "databind;compiler;generic;ownership;cpp")
 
@@ -120,13 +115,7 @@ cmake_add_test(test_databind_message_native_artifact
   FOLDER "databind/compiler/tests/message")
 add_dependencies(test_databind_message_native_artifact
   databind_message_native_artifact_fixture_idl_codegen)
-set_target_properties(test_databind_message_native_artifact PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF
-  CXX_STANDARD 17
-  CXX_STANDARD_REQUIRED ON
-  CXX_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_message_native_artifact PROPERTIES
   LABELS "databind;compiler;native;message;artifact;public")
 

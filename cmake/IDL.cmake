@@ -658,6 +658,8 @@ function(salts_idl_target)
       ${_native_target_sources})
     add_dependencies("${DB_TARGET}_native"
       "${DB_TARGET}_idl_codegen")
+    # This installed helper also runs in consumer projects, whose language
+    # defaults are independent of the SaltsUtils root project.
     target_compile_features("${DB_TARGET}_native" PRIVATE c_std_11)
     target_include_directories("${DB_TARGET}_native" PUBLIC
       "${_generated_dir}")

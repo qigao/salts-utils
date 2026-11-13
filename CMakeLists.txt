@@ -24,11 +24,13 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 get_filename_component(CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}" ABSOLUTE)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-# Language standards - unified approach
-set(CMAKE_CXX_STANDARD 17) # C++17 for compatibility
-set(CMAKE_C_STANDARD 11) # C17 to ensure C11 atomic support
+# The root owns language mode and PIC for every module in this project.
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(MSVC)
@@ -47,9 +49,6 @@ include(GNUInstallDirs)
 
 # Consume the selected preinstalled dependency tree without a toolchain.
 set(SALTS_UTILS_DEPENDENCY_PREFIX "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}")
-list(PREPEND CMAKE_PREFIX_PATH
-  "${SALTS_UTILS_DEPENDENCY_PREFIX}/$ENV{VCPKG_CONFIGURATION_SUBDIR}"
-  "${SALTS_UTILS_DEPENDENCY_PREFIX}")
 
 find_package(Threads REQUIRED)
 

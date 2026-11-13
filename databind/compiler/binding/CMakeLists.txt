@@ -16,7 +16,6 @@ target_include_directories(${DATABIND_BINDING_COMPILER_TARGET}
     ${DATABIND_SOURCE_ROOT}/idl/contract)
 target_link_libraries(${DATABIND_BINDING_COMPILER_TARGET}
   PUBLIC Salts::IDL)
-set_target_properties(${DATABIND_BINDING_COMPILER_TARGET} PROPERTIES
-  POSITION_INDEPENDENT_CODE ON)
+
 cmake_config_target(${DATABIND_BINDING_COMPILER_TARGET}
   FOLDER "databind/compiler")

@@ -12,11 +12,11 @@ include("${_saltsutils_root}/cmake/IDL.cmake")
 # Deliberately use directories with spaces. This command must survive the
 # native Windows environment's semicolon-separated PATH in the MSBuild case.
 set(_runtime_root "${CMAKE_CURRENT_LIST_DIR}/host runtime with spaces")
-set(_saltscore_root "${CMAKE_CURRENT_LIST_DIR}/saltscore runtime with spaces")
+set(_root "${CMAKE_CURRENT_LIST_DIR}/saltscore runtime with spaces")
 set(_cmeta_root "${CMAKE_CURRENT_LIST_DIR}/cmeta runtime with spaces")
 _saltsutils_idl_host_command(
   _host_command "${CMAKE_COMMAND}" "${_runtime_root}"
-  "${_saltscore_root}" "${_cmeta_root}")
+  "${_root}" "${_cmeta_root}")
 
 if(WIN32)
   list(LENGTH _host_command _argc)
@@ -28,7 +28,7 @@ if(WIN32)
       "--modify"
       "PATH=path_list_prepend:${_runtime_root}/bin"
       "PATH=path_list_prepend:${_runtime_root}/lib"
-      "PATH=path_list_prepend:${_saltscore_root}/bin"
+      "PATH=path_list_prepend:${_root}/bin"
       "PATH=path_list_prepend:${_cmeta_root}/bin"
       "--")
     if(NOT _required IN_LIST _host_command)

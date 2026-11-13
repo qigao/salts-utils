@@ -1,4 +1,6 @@
-find_package(qjs CONFIG REQUIRED)
+find_package(qjs CONFIG REQUIRED
+  PATHS "${SALTS_UTILS_DEPENDENCY_PREFIX}/share/qjs"
+  NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 add_library(salts_quickjs_binding STATIC salts_quickjs_cmeta.c salts_quickjs_module.c)
 add_library(Salts::QuickJS ALIAS salts_quickjs_binding)

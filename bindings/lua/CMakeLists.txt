@@ -1,4 +1,6 @@
-find_package(unofficial-lua CONFIG REQUIRED)
+find_package(unofficial-lua CONFIG REQUIRED
+  PATHS "${SALTS_UTILS_DEPENDENCY_PREFIX}/share/unofficial-lua"
+  NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 add_library(salts_lua_binding STATIC salts_lua_cmeta.c salts_lua_module.c)
 add_library(Salts::Lua ALIAS salts_lua_binding)

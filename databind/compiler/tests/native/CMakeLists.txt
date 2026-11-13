@@ -132,10 +132,7 @@ cmake_add_test(test_databind_service_native_cleanup_runtime
   FOLDER "databind/compiler/tests/native")
 add_dependencies(test_databind_service_native_cleanup_runtime
   databind_service_native_generated_sources)
-set_target_properties(test_databind_service_native_cleanup_runtime PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_service_native_cleanup_runtime PROPERTIES
   LABELS "databind;compiler;native-service;cleanup;runtime")
 
@@ -151,10 +148,7 @@ cmake_add_test(test_databind_service_native_cleanup_init_failure
   FOLDER "databind/compiler/tests/native")
 add_dependencies(test_databind_service_native_cleanup_init_failure
   databind_service_native_generated_sources)
-set_target_properties(test_databind_service_native_cleanup_init_failure PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_service_native_cleanup_init_failure PROPERTIES
   LABELS "databind;compiler;native-service;cleanup;runtime;init-failure")
 
@@ -170,10 +164,7 @@ cmake_add_test(test_databind_service_native_cleanup_success
   FOLDER "databind/compiler/tests/native")
 add_dependencies(test_databind_service_native_cleanup_success
   databind_service_native_generated_sources)
-set_target_properties(test_databind_service_native_cleanup_success PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_service_native_cleanup_success PROPERTIES
   LABELS "databind;compiler;native-service;cleanup;runtime;success")
 
@@ -185,10 +176,6 @@ cmake_add_test(test_databind_service_native_public_cpp
   FOLDER "databind/compiler/tests/native")
 add_dependencies(test_databind_service_native_public_cpp
   databind_service_native_generated_sources)
-set_target_properties(test_databind_service_native_public_cpp PROPERTIES
-  CXX_STANDARD 17
-  CXX_STANDARD_REQUIRED YES
-  CXX_EXTENSIONS NO)
 
 salts_idl_target(
   TARGET databind_native_service_public_fixture
@@ -214,10 +201,7 @@ cmake_add_test(test_databind_native_service_public_artifact
   FOLDER "databind/compiler/tests/native")
 add_dependencies(test_databind_native_service_public_artifact
   databind_native_service_public_fixture_idl_codegen)
-set_target_properties(test_databind_native_service_public_artifact PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_native_service_public_artifact PROPERTIES
   LABELS "databind;compiler;native-service;method-plan;public")
 
@@ -231,10 +215,7 @@ cmake_add_test(test_databind_native_service_public_artifact_cpp
   FOLDER "databind/compiler/tests/native")
 add_dependencies(test_databind_native_service_public_artifact_cpp
   databind_native_service_public_fixture_idl_codegen)
-set_target_properties(test_databind_native_service_public_artifact_cpp PROPERTIES
-  CXX_STANDARD 17
-  CXX_STANDARD_REQUIRED ON
-  CXX_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_native_service_public_artifact_cpp PROPERTIES
   LABELS "databind;compiler;native-service;public;cpp")
 

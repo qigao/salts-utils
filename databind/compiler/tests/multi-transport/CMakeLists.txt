@@ -29,10 +29,7 @@ cmake_add_test(test_databind_binary_transport_provider
   FOLDER "databind/compiler/tests/multi-transport")
 add_dependencies(test_databind_binary_transport_provider
   databind_binary_transport_provider_fixture_idl_codegen)
-set_target_properties(test_databind_binary_transport_provider PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_binary_transport_provider PROPERTIES
   LABELS "databind;compiler;binary-reader;transport;execution")
 
@@ -46,13 +43,9 @@ cmake_add_test(test_databind_binary_transport_provider_cpp
   FOLDER "databind/compiler/tests/multi-transport")
 add_dependencies(test_databind_binary_transport_provider_cpp
   databind_binary_transport_provider_fixture_idl_codegen)
-set_target_properties(test_databind_binary_transport_provider_cpp PROPERTIES
-  CXX_STANDARD 17
-  CXX_STANDARD_REQUIRED ON
-  CXX_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_binary_transport_provider_cpp PROPERTIES
   LABELS "databind;compiler;binary-reader;transport;public;cpp")
-
 
 salts_idl_target(
   TARGET databind_opaque_transport_fixture
@@ -74,13 +67,9 @@ cmake_add_test(test_databind_opaque_transport
   FOLDER "databind/compiler/tests/multi-transport")
 add_dependencies(test_databind_opaque_transport
   databind_opaque_transport_fixture_idl_codegen)
-set_target_properties(test_databind_opaque_transport PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_opaque_transport PROPERTIES
   LABELS "databind;compiler;opaque;bytes;transport;public")
-
 
 salts_idl_target(
   TARGET databind_opaque_service_fixture
@@ -102,13 +91,9 @@ cmake_add_test(test_databind_opaque_service
   FOLDER "databind/compiler/tests/multi-transport")
 add_dependencies(test_databind_opaque_service
   databind_opaque_service_fixture_idl_codegen)
-set_target_properties(test_databind_opaque_service PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_opaque_service PROPERTIES
   LABELS "databind;compiler;opaque;bytes;service;http;flowmq;public")
-
 
 salts_idl_target(
   TARGET databind_binary_var_data_transport_fixture
@@ -131,10 +116,7 @@ cmake_add_test(test_databind_binary_var_data_transport
   FOLDER "databind/compiler/tests/multi-transport")
 add_dependencies(test_databind_binary_var_data_transport
   databind_binary_var_data_transport_fixture_idl_codegen)
-set_target_properties(test_databind_binary_var_data_transport PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_binary_var_data_transport PROPERTIES
   LABELS "databind;compiler;binary-reader;var-data;transport;public")
 
@@ -149,9 +131,6 @@ cmake_add_test(test_databind_channel_multi_transport
   FOLDER "databind/compiler/tests/multi-transport")
 add_dependencies(test_databind_channel_multi_transport
   databind_channel_multi_transport_fixture_idl_codegen)
-set_target_properties(test_databind_channel_multi_transport PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_channel_multi_transport PROPERTIES
   LABELS "databind;compiler;transport;composition")

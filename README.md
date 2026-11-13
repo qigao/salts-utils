@@ -81,6 +81,23 @@ built against the same Base version. Native platform/FS/process/parser/Unicode
 facilities come from Base. CMeta, CFlow, CSTL and Plugin come from CMeta. The
 product does not depend on the old monorepo SaltsCore SDK.
 
+The current selection uses SaltsBase 0.1.8 and CMeta 0.1.6 built from
+`679710f7e3312811efdd92494744a2499286a6a5` against that Base SDK. The CMeta
+0.1.6 binary published against Base 0.1.6 remains a different dependency
+composition. Use the existing `.github/ci/build-cmeta-sdk.ps1` source SDK entry
+with the selected Base/cache inputs; its install path becomes `CMETA_ROOT`.
+Base 0.1.8 keeps JPEG/libyuv discovery in Media's direct consumers, so Utils
+configuration no longer discovers those unrelated dependencies.
+
+All modules belong to the one `SaltsUtils` CMake project, whose version
+identifies the SDK package. The root owns C11, C++17, extension modes and PIC;
+module libraries have no independent VERSION/SOVERSION. Public compile
+features remain on exported targets. The installed `IDL.cmake` helper retains
+its generated targets' C11 requirement because it also runs in other projects.
+Lua and QuickJS resolve directly from the selected vcpkg triplet without a
+global dependency search prefix. Static binding consumers resolve Lua/QuickJS,
+SaltsBase and CMeta for the targets they use before loading SaltsUtils.
+
 ## Repository ownership
 
 Jinja keyword matching and DataBind boolean parsing reuse Base `vstr` views.
@@ -96,7 +113,7 @@ This split repository owns Mustache, Jinja, IDL/Schema, the `salts-idlc` compile
 DataBind and its format/native adapters, and the C++/Lua/QuickJS bindings.
 Parsers, QueryVM, Unicode, Cron, operating-system primitives and media are Base
 capabilities and are consumed through Base's existing targets. Networking and
-TLS remain SaltsCore capabilities; SaltsUtils does not duplicate their runtime.
+TLS remain SaltsCNet capabilities; SaltsUtils does not duplicate their runtime.
 
 IDL defines transport-neutral contracts, Schema defines data shape and
 DataBind owns binding and serialization. They share one SaltsUtils package.
@@ -226,7 +243,7 @@ Windows can use `msvc-release-user` from a Visual Studio developer environment. 
 
 Configuration fails on missing SDK roots, dependencies, generators and
 unsupported sanitizer profiles. `CMakeOptions.cmake` declares `BUILD_TESTS`,
-`BUILD_BENCHMARK`, `BUILD_EXAMPLES` and the existing `SALTSCORE_ENABLE_*`
+`BUILD_BENCHMARK`, `BUILD_EXAMPLES` and the existing `ENABLE_*`
 sanitizer inputs. SDK versions and paths come from the parent environment;
 use `--fresh` after changing them. The normal build graph and module CTests
 cover generated messages, services, Binary wire values, Plugin leases and

@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.27)
-
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   message(FATAL_ERROR
     "DataBind is a SaltsUtils component; configure the SaltsUtils repository root")

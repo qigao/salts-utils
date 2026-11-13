@@ -30,7 +30,7 @@ target_link_libraries(xml_app PRIVATE
 ```
 
 Installed consumers obtain Core and CMeta targets through SaltsUtils' package
-dependencies. Set `SALTSCORE_ROOT` and `CMETA_ROOT` to matching installed
+dependencies. Set `ROOT` and `CMETA_ROOT` to matching installed
 profiles, then:
 
 ```cmake

@@ -19,10 +19,7 @@ cmake_add_test(test_databind_flowmq_plan_projection
     ${DATABIND_SOURCE_ROOT}/idl/contract
     ${DATABIND_COMPILER_SOURCE_DIR}
   FOLDER "databind/compiler/tests/flowmq")
-set_target_properties(test_databind_flowmq_plan_projection PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_flowmq_plan_projection PROPERTIES
   LABELS "databind;compiler;flowmq-plan;transport")
 
@@ -35,7 +32,6 @@ salts_idl_target(
   TRANSPORTS FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection_config.json")
-
 
 salts_idl_target(
   TARGET databind_flowmq_service_plan_public_fixture
@@ -58,13 +54,9 @@ cmake_add_test(test_databind_flowmq_plan_public_frontend
   FOLDER "databind/compiler/tests/flowmq")
 add_dependencies(test_databind_flowmq_plan_public_frontend
   databind_flowmq_plan_public_fixture_idl_codegen)
-set_target_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
   LABELS "databind;compiler;flowmq-plan;public")
-
 
 cmake_add_test(test_databind_flowmq_service_plan_public_frontend
   SOURCES test_public_flowmq_service_plan.c
@@ -77,10 +69,7 @@ cmake_add_test(test_databind_flowmq_service_plan_public_frontend
   FOLDER "databind/compiler/tests/flowmq")
 add_dependencies(test_databind_flowmq_service_plan_public_frontend
   databind_flowmq_service_plan_public_fixture_idl_codegen)
-set_target_properties(test_databind_flowmq_service_plan_public_frontend PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_flowmq_service_plan_public_frontend PROPERTIES
   LABELS "databind;compiler;flowmq-plan;service;binary;public")
 

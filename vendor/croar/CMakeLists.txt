@@ -1,6 +1,3 @@
-cmake_minimum_required(VERSION 3.10)
-project(croar)
-
 add_library(roaring STATIC roaring.c)
 add_library(roaring::roaring ALIAS roaring)
 

@@ -62,10 +62,6 @@ set_source_files_properties(
   "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
   "${DATABIND_METHOD_PLAN_FIXTURE_RPC}"
   PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE)
-set_target_properties(test_databind_generated_method_plan_projection PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
 
 salts_idl_target(
   TARGET databind_method_plan_public_fixture
@@ -73,7 +69,6 @@ salts_idl_target(
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
   ARTIFACT_NAME "public_calc"
   TRANSPORTS HTTP RPC)
-
 
 salts_idl_target(
   TARGET databind_method_plan_configured_fixture

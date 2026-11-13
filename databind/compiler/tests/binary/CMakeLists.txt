@@ -19,10 +19,7 @@ cmake_add_test(test_databind_method_plan_binary_admission
     ${DATABIND_SOURCE_ROOT}/idl/contract
     ${DATABIND_COMPILER_SOURCE_DIR}
   FOLDER "databind/compiler/tests/binary")
-set_target_properties(test_databind_method_plan_binary_admission PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_method_plan_binary_admission PROPERTIES
   LABELS "databind;compiler;binary-layout;transport")
 
@@ -49,10 +46,7 @@ cmake_add_test(test_databind_binary_reader_codegen
     ${DATABIND_SOURCE_ROOT}/idl/contract
     ${DATABIND_COMPILER_SOURCE_DIR}
   FOLDER "databind/compiler/tests/binary")
-set_target_properties(test_databind_binary_reader_codegen PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_binary_reader_codegen PROPERTIES
   LABELS "databind;compiler;binary-reader")
 
@@ -80,9 +74,6 @@ cmake_add_test(test_databind_binary_layout_ir
     ${DATABIND_SOURCE_ROOT}/idl/contract
     ${DATABIND_COMPILER_SOURCE_DIR}
   FOLDER "databind/compiler/tests/binary")
-set_target_properties(test_databind_binary_layout_ir PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_binary_layout_ir PROPERTIES
   LABELS "databind;compiler;binary-layout")

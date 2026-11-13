@@ -167,7 +167,6 @@ install(
 if(BUILD_TESTS)
 add_executable(test_data_bind_opaque_plan
   test_data_bind_opaque_plan.c)
-target_compile_features(test_data_bind_opaque_plan PRIVATE c_std_11)
 target_link_libraries(test_data_bind_opaque_plan
   PRIVATE Salts::DataBind Salts::TinyTest)
 cmake_config_target(test_data_bind_opaque_plan
@@ -179,7 +178,6 @@ set_tests_properties(test_data_bind_opaque_plan PROPERTIES
 
 add_executable(test_data_bind_format_provider
   test_data_bind_format_provider.c)
-target_compile_features(test_data_bind_format_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_format_provider
   PRIVATE Salts::DataBind)
 cmake_config_target(test_data_bind_format_provider
@@ -189,7 +187,6 @@ add_test(NAME test_data_bind_format_provider
 
 add_executable(test_data_bind_json_provider
   test_data_bind_json_provider.c)
-target_compile_features(test_data_bind_json_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_json_provider
   PRIVATE Salts::DataBind)
 cmake_config_target(test_data_bind_json_provider
@@ -199,7 +196,6 @@ add_test(NAME test_data_bind_json_provider
 
 add_executable(test_data_bind_yaml_provider
   test_data_bind_yaml_provider.c)
-target_compile_features(test_data_bind_yaml_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_yaml_provider
   PRIVATE Salts::DataBind)
 cmake_config_target(test_data_bind_yaml_provider
@@ -209,7 +205,6 @@ add_test(NAME test_data_bind_yaml_provider
 
 add_executable(test_data_bind_csv_provider
   test_data_bind_csv_provider.c)
-target_compile_features(test_data_bind_csv_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_csv_provider
   PRIVATE Salts::DataBind)
 cmake_config_target(test_data_bind_csv_provider
@@ -219,7 +214,6 @@ add_test(NAME test_data_bind_csv_provider
 
 add_executable(test_data_bind_xml_provider
   test_data_bind_xml_provider.c)
-target_compile_features(test_data_bind_xml_provider PRIVATE c_std_11)
 target_link_libraries(test_data_bind_xml_provider
   PRIVATE Salts::DataBind)
 cmake_config_target(test_data_bind_xml_provider
@@ -229,7 +223,6 @@ add_test(NAME test_data_bind_xml_provider
 
 add_executable(test_data_bind_temporal_adapter
   test_data_bind_temporal_adapter.c)
-target_compile_features(test_data_bind_temporal_adapter PRIVATE c_std_11)
 target_link_libraries(test_data_bind_temporal_adapter
   PRIVATE Salts::DataBind)
 cmake_config_target(test_data_bind_temporal_adapter
@@ -250,7 +243,6 @@ cmake_add_test(test_data_bind_public_api
 
 add_executable(test_data_bind_public_header_boundary
   test_data_bind_public_header_boundary.c)
-target_compile_features(test_data_bind_public_header_boundary PRIVATE c_std_11)
 target_link_libraries(test_data_bind_public_header_boundary PRIVATE Salts::DataBind)
 cmake_config_target(test_data_bind_public_header_boundary
   FOLDER "databind/runtime/tests")
@@ -285,8 +277,7 @@ cmake_add_test(test_data_bind_component_public_cpp
   SOURCES test_data_bind_component_public_cpp.cpp
   LIBS Salts::DataBind
   FOLDER "databind/runtime/tests")
-set_target_properties(test_data_bind_component_public_cpp PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
 cmake_add_test(test_data_bind_channel
   SOURCES test_data_bind_channel.c
   LIBS ${DATA_BIND_TEST_LIBS}
@@ -298,15 +289,12 @@ cmake_add_test(test_data_bind_channel_public_cpp
   SOURCES test_data_bind_channel_public_cpp.cpp
   LIBS Salts::DataBind
   FOLDER "databind/runtime/tests")
-set_target_properties(test_data_bind_channel_public_cpp PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 
 cmake_add_test(test_data_bind_socket_plan_public_cpp
   SOURCES test_data_bind_socket_plan_public_cpp.cpp
   LIBS Salts::DataBind
   FOLDER "databind/runtime/tests")
-set_target_properties(test_data_bind_socket_plan_public_cpp PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
 set_tests_properties(test_data_bind_socket_plan_public_cpp PROPERTIES
   LABELS "databind;socket-plan;public;cpp")
 
@@ -314,8 +302,7 @@ cmake_add_test(test_data_bind_flowmq_plan_public_cpp
   SOURCES test_data_bind_flowmq_plan_public_cpp.cpp
   LIBS Salts::DataBind
   FOLDER "databind/runtime/tests")
-set_target_properties(test_data_bind_flowmq_plan_public_cpp PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
 set_tests_properties(test_data_bind_flowmq_plan_public_cpp PROPERTIES
   LABELS "databind;flowmq-plan;public;cpp")
 
@@ -338,13 +325,11 @@ cmake_add_test(test_data_bind_binary_writer
 set_tests_properties(test_data_bind_binary_writer PROPERTIES
   LABELS "databind;binary;writer")
 
-
 cmake_add_test(test_data_bind_plugin_execution_public_cpp
   SOURCES test_data_bind_plugin_execution_public_cpp.cpp
   LIBS Salts::DataBindPlugin
   FOLDER "databind/runtime/tests")
-set_target_properties(test_data_bind_plugin_execution_public_cpp PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
 set_tests_properties(test_data_bind_plugin_execution_public_cpp PROPERTIES
   LABELS "databind;plugin;execution;public;cpp")
 
@@ -359,8 +344,7 @@ cmake_add_test(test_data_bind_object_message_plan_public_cpp
   SOURCES test_data_bind_object_message_plan_public_cpp.cpp
   LIBS Salts::DataBind
   FOLDER "databind/runtime/tests")
-set_target_properties(test_data_bind_object_message_plan_public_cpp PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
 set_tests_properties(test_data_bind_object_message_plan_public_cpp PROPERTIES
   LABELS "databind;cmeta;message-plan;dynamic-object;public;cpp")
 
@@ -382,8 +366,6 @@ cmake_add_test(test_data_bind_cmeta_public_cpp
   SOURCES test_data_bind_cmeta_public_cpp.cpp
   LIBS Salts::DataBind
   FOLDER "databind/runtime/tests")
-set_target_properties(test_data_bind_cmeta_public_cpp PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 
 cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
@@ -423,7 +405,6 @@ cmake_add_test(test_data_bind_binary_native
   FOLDER "databind/runtime/tests")
 set_tests_properties(test_data_bind_binary_native PROPERTIES
   LABELS "databind;cmeta;native;nullable;binary")
-
 
 # This fixture executes salts_idlc during the build. Do not run a target-
 # platform executable on the build host when cross-compiling (e.g. Android).
@@ -549,8 +530,7 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     LIBS ${DATA_BIND_TEST_LIBS}
     INCLUDES "${DATABIND_OWNED_BUFFER_DIR}" "${BINARY_TAIL_ONLY_DIR}"
     FOLDER "databind/runtime/tests")
-  set_target_properties(test_databind_generated_sequence_public_cpp PROPERTIES
-    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+
   set_tests_properties(test_databind_generated_sequence_public_cpp PROPERTIES
     FIXTURES_REQUIRED databind_generated_owned_buffers_contract
     LABELS "databind;cmeta;message-plan;sequence;public;cpp")

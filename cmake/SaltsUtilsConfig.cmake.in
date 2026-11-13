@@ -1,16 +1,6 @@
 @PACKAGE_INIT@
 include(CMakeFindDependencyMacro)
-unset(SaltsBase_DIR CACHE)
-unset(CMeta_DIR CACHE)
-find_dependency(SaltsBase @SaltsBase_VERSION@ EXACT CONFIG REQUIRED
-  PATHS "$ENV{SALTS_BASE_ROOT}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-find_dependency(CMeta @CMeta_VERSION@ EXACT CONFIG REQUIRED
-  PATHS "$ENV{CMETA_ROOT}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-
-find_dependency(qjs CONFIG REQUIRED)
-find_dependency(unofficial-lua CONFIG REQUIRED)
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
-
 set(SaltsUtils_IDLC_HINT "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@")
 include("${CMAKE_CURRENT_LIST_DIR}/IDL.cmake")
 

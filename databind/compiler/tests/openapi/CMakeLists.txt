@@ -20,9 +20,6 @@ cmake_add_test(test_databind_openapi_projection
     ${DATABIND_SOURCE_ROOT}/idl/contract
     ${DATABIND_COMPILER_SOURCE_DIR}
   FOLDER "databind/compiler/tests/openapi")
-set_target_properties(test_databind_openapi_projection PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_openapi_projection PROPERTIES
   LABELS "databind;compiler;openapi;http;validation")

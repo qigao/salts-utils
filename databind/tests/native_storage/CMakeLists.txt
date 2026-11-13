@@ -3,7 +3,6 @@ add_executable(test_data_bind_native_storage_requirements native_storage_require
 target_link_libraries(test_data_bind_native_storage_requirements
   PRIVATE Salts::DataBind Salts::Core Salts::TinyTest)
 set_target_properties(test_data_bind_native_storage_requirements PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   LINKER_LANGUAGE CXX)
 cmake_config_target(test_data_bind_native_storage_requirements
   FOLDER "databind/tests")
@@ -22,7 +21,6 @@ add_executable(test_data_bind_reader_probe reader_probe_test.c reader_probe.h)
 target_link_libraries(test_data_bind_reader_probe
   PRIVATE Salts::CSerde Salts::TinyTest)
 set_target_properties(test_data_bind_reader_probe PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   LINKER_LANGUAGE CXX)
 cmake_config_target(test_data_bind_reader_probe
   FOLDER "databind/tests")
@@ -39,8 +37,6 @@ add_executable(test_data_bind_native_control_records native_control_record_test.
 target_link_libraries(test_data_bind_native_control_records
   PRIVATE Salts::DataBind Salts::Core Salts::TinyTest)
 set_target_properties(test_data_bind_native_control_records PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
   LINKER_LANGUAGE CXX)
 cmake_config_target(test_data_bind_native_control_records
   FOLDER "databind/tests")

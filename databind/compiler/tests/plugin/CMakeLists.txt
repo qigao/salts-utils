@@ -13,7 +13,6 @@ salts_idl_target(
 
 add_executable(test_databind_contract_plugin_lease_c11
   "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_lease_consumer.c")
-target_compile_features(test_databind_contract_plugin_lease_c11 PRIVATE c_std_11)
 target_compile_definitions(test_databind_contract_plugin_lease_c11 PRIVATE
   GENERATED_CONTRACT_PLUGIN_PATH="$<TARGET_FILE:databind_contract_plugin_lease_fixture_plugin>")
 target_link_libraries(test_databind_contract_plugin_lease_c11 PRIVATE
@@ -21,8 +20,7 @@ target_link_libraries(test_databind_contract_plugin_lease_c11 PRIVATE
 add_dependencies(test_databind_contract_plugin_lease_c11
   databind_contract_plugin_lease_fixture_plugin
   databind_contract_plugin_lease_fixture_plugin_client)
-set_target_properties(test_databind_contract_plugin_lease_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_contract_plugin_lease_c11
   COMMAND $<TARGET_FILE:test_databind_contract_plugin_lease_c11>)
 set_tests_properties(test_databind_contract_plugin_lease_c11 PROPERTIES
@@ -157,10 +155,7 @@ cmake_add_test(test_databind_plugin_generic_descriptor_client
 add_dependencies(test_databind_plugin_generic_descriptor_client
   databind_plugin_generic_descriptor_fixture_plugin
   databind_plugin_generic_descriptor_fixture_plugin_client)
-set_target_properties(test_databind_plugin_generic_descriptor_client PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_plugin_generic_descriptor_client PROPERTIES
   LABELS "databind;compiler;plugin;generic;lease")
 
@@ -190,12 +185,9 @@ add_dependencies(test_databind_plugin_typed_error_client
 
 add_executable(test_databind_plugin_typed_error_client_cpp
   test_plugin_typed_error_generated_client_cpp.cpp)
-target_compile_features(test_databind_plugin_typed_error_client_cpp PRIVATE
-  cxx_std_17)
 target_link_libraries(test_databind_plugin_typed_error_client_cpp PRIVATE
   databind_plugin_typed_error_fixture_plugin_client)
-set_target_properties(test_databind_plugin_typed_error_client_cpp PROPERTIES
-  CXX_EXTENSIONS NO)
+
 cmake_config_target(test_databind_plugin_typed_error_client_cpp
   FOLDER "databind/compiler/tests/plugin")
 add_test(NAME test_databind_plugin_typed_error_client_cpp
@@ -226,12 +218,9 @@ add_dependencies(test_databind_plugin_owned_typed_error_client
 
 add_executable(test_databind_plugin_owned_typed_error_client_cpp
   test_plugin_owned_typed_error_generated_client_cpp.cpp)
-target_compile_features(test_databind_plugin_owned_typed_error_client_cpp PRIVATE
-  cxx_std_17)
 target_link_libraries(test_databind_plugin_owned_typed_error_client_cpp PRIVATE
   databind_plugin_owned_typed_error_fixture_plugin_client)
-set_target_properties(test_databind_plugin_owned_typed_error_client_cpp PROPERTIES
-  CXX_EXTENSIONS NO)
+
 cmake_config_target(test_databind_plugin_owned_typed_error_client_cpp
   FOLDER "databind/compiler/tests/plugin")
 add_test(NAME test_databind_plugin_owned_typed_error_client_cpp
@@ -251,17 +240,13 @@ add_dependencies(test_databind_plugin_generated_client
 
 add_executable(test_databind_plugin_generated_client_cpp
   test_plugin_generated_client_cpp.cpp)
-target_compile_features(test_databind_plugin_generated_client_cpp PRIVATE
-  cxx_std_17)
 target_link_libraries(test_databind_plugin_generated_client_cpp PRIVATE
   databind_plugin_generated_fixture_plugin_client)
-set_target_properties(test_databind_plugin_generated_client_cpp PROPERTIES
-  CXX_EXTENSIONS NO)
+
 cmake_config_target(test_databind_plugin_generated_client_cpp
   FOLDER "databind/compiler/tests/plugin")
 add_test(NAME test_databind_plugin_generated_client_cpp
   COMMAND test_databind_plugin_generated_client_cpp)
-
 
 # #620: opt-in compiler-only candidate; do not change the ordinary PLUGIN
 # output, production CMake defaults, provider ABI or loader.
@@ -287,8 +272,6 @@ cmake_add_executable(databind_component_candidate_codegen_tool
   FOLDER "databind/compiler/generated/component-candidate")
 target_link_libraries(databind_component_candidate_codegen_tool
   PRIVATE databind_binding_compiler)
-set_target_properties(databind_component_candidate_codegen_tool PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 
 set(_databind_component_candidate_dir
   "${databind_contract_plugin_lease_fixture_GENERATED_DIR}")
@@ -342,13 +325,11 @@ add_library(databind_component_candidate_provider SHARED
   "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_business.c")
 add_dependencies(databind_component_candidate_provider
   databind_component_candidate_generated)
-target_compile_features(databind_component_candidate_provider PRIVATE c_std_11)
 target_include_directories(databind_component_candidate_provider PRIVATE
   "${_databind_component_candidate_dir}")
 target_link_libraries(databind_component_candidate_provider PRIVATE
   CMeta::ServiceHostProviderABI CMeta::PluginABI CMeta::CMeta Salts::DataBind)
 set_target_properties(databind_component_candidate_provider PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   PREFIX "" OUTPUT_NAME "contract_component_candidate"
   FOLDER "databind/compiler/generated/component-candidate")
 
@@ -364,7 +345,6 @@ target_compile_definitions(test_databind_component_candidate_dso_c11 PRIVATE
 target_link_libraries(test_databind_component_candidate_dso_c11 PRIVATE
   CMeta::ServiceHost CMeta::Plugin Salts::Core CMeta::CMeta Salts::DataBind)
 set_target_properties(test_databind_component_candidate_dso_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   FOLDER "databind/compiler/tests/plugin")
 add_test(NAME test_databind_component_candidate_dso_c11
   COMMAND test_databind_component_candidate_dso_c11)
@@ -398,26 +378,20 @@ foreach(mode IN ITEMS export contract binding)
     "${DATABIND_COMPILER_SOURCE_DIR}/package_config/databind_target/contract_plugin_business.c")
   add_dependencies(databind_component_candidate_bad_${mode}_provider
     databind_component_candidate_generated)
-  target_compile_features(databind_component_candidate_bad_${mode}_provider
-    PRIVATE c_std_11)
   target_include_directories(databind_component_candidate_bad_${mode}_provider
     PRIVATE "${_databind_component_candidate_dir}")
   target_link_libraries(databind_component_candidate_bad_${mode}_provider PRIVATE
     CMeta::ServiceHostProviderABI CMeta::PluginABI CMeta::CMeta Salts::DataBind)
   set_target_properties(databind_component_candidate_bad_${mode}_provider PROPERTIES
-    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     PREFIX "" OUTPUT_NAME "contract_component_candidate_bad_${mode}"
     FOLDER "databind/compiler/tests/plugin/negative-dso")
 endforeach()
 
 add_library(databind_component_candidate_bad_kind_provider SHARED
   test_component_provider_candidate_negative_kind.c)
-target_compile_features(databind_component_candidate_bad_kind_provider
-  PRIVATE c_std_11)
 target_link_libraries(databind_component_candidate_bad_kind_provider PRIVATE
   CMeta::ServiceHostProviderABI CMeta::PluginABI CMeta::CMeta)
 set_target_properties(databind_component_candidate_bad_kind_provider PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   PREFIX "" OUTPUT_NAME "contract_component_candidate_bad_kind"
   FOLDER "databind/compiler/tests/plugin/negative-dso")
 
@@ -441,7 +415,6 @@ add_dependencies(test_databind_component_candidate_negative_dso_c11
   databind_component_candidate_bad_binding_provider
   databind_component_candidate_bad_kind_provider)
 set_target_properties(test_databind_component_candidate_negative_dso_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   FOLDER "databind/compiler/tests/plugin")
 add_test(NAME test_databind_component_candidate_negative_dso_c11
   COMMAND test_databind_component_candidate_negative_dso_c11)
@@ -458,7 +431,6 @@ target_include_directories(test_databind_component_candidate_header_cpp PRIVATE
 target_link_libraries(test_databind_component_candidate_header_cpp PRIVATE
   CMeta::ServiceHostProviderABI CMeta::CMeta Salts::DataBind)
 set_target_properties(test_databind_component_candidate_header_cpp PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
   FOLDER "databind/compiler/tests/plugin")
 # Enforce actual ISO C++17 on the generated Contract-only native header.
 # C++20 designated initializers, C99 compound literals, or _Alignof must not

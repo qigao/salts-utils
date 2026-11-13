@@ -38,11 +38,9 @@ install(
 if(BUILD_TESTS)
   add_executable(test_data_bind_cmeta_adapter_plan
     test_data_bind_cmeta_adapter_plan.c)
-  target_compile_features(test_data_bind_cmeta_adapter_plan PRIVATE c_std_11)
   target_link_libraries(test_data_bind_cmeta_adapter_plan
     PRIVATE Salts::DataBindProducer)
-  set_target_properties(test_data_bind_cmeta_adapter_plan PROPERTIES
-    C_EXTENSIONS OFF)
+
   cmake_config_target(test_data_bind_cmeta_adapter_plan
     FOLDER "databind/compiler")
   add_test(NAME test_data_bind_cmeta_adapter_plan

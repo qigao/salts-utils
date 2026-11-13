@@ -60,15 +60,12 @@ foreach(test_name
     FOLDER "databind/schema/tests")
 endforeach()
 
-
 target_link_libraries(test_tbe_robustness PRIVATE databind_binary_format_objects)
 
 cmake_add_test(test_schema_cmeta_public_cpp
   SOURCES test/test_schema_cmeta_public_cpp.cpp
   LIBS Salts::Schema
   FOLDER "databind/schema/tests")
-set_target_properties(test_schema_cmeta_public_cpp PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 
 target_sources(test_schema_cmeta PRIVATE
   test/test_schema_cmeta_buffer.c test/test_schema_cmeta_profiles.c)

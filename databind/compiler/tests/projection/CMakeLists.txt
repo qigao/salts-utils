@@ -52,10 +52,6 @@ cmake_add_test(test_databind_projection_registry
     ${DATABIND_SOURCE_ROOT}/idl/contract
     ${DATABIND_COMPILER_SOURCE_DIR}
   FOLDER "databind/compiler/tests/projection")
-set_target_properties(test_databind_projection_registry PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
 
 cmake_add_test(test_databind_projection_frontend
   SOURCES
@@ -89,14 +85,9 @@ cmake_add_test(test_databind_projection_frontend
     ${DATABIND_SOURCE_ROOT}/idl/contract
     ${DATABIND_COMPILER_SOURCE_DIR}
   FOLDER "databind/compiler/tests/projection")
-set_target_properties(test_databind_projection_frontend PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
 
 target_link_libraries(test_databind_projection_frontend
   PRIVATE databind_binding_compiler)
-
 
 # Exercise the exact same public TYPES CMake surface in build-tree CTest;
 # the separate installed-SDK consumer qualifies package relocation/linkage.
@@ -113,8 +104,7 @@ target_link_libraries(test_databind_contract_types_public_c11 PRIVATE
   ${databind_contract_types_public_fixture_TYPES_TARGET})
 add_dependencies(test_databind_contract_types_public_c11
   databind_contract_types_public_fixture_idl_codegen)
-set_target_properties(test_databind_contract_types_public_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_contract_types_public_c11
   COMMAND $<TARGET_FILE:test_databind_contract_types_public_c11>)
 set_tests_properties(test_databind_contract_types_public_c11 PROPERTIES
@@ -136,8 +126,7 @@ target_link_libraries(test_databind_contract_value_public_c11 PRIVATE
   ${databind_contract_value_public_fixture_TYPES_TARGET} Salts::DataBind)
 add_dependencies(test_databind_contract_value_public_c11
   databind_contract_value_public_fixture_idl_codegen)
-set_target_properties(test_databind_contract_value_public_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_contract_value_public_c11
   COMMAND $<TARGET_FILE:test_databind_contract_value_public_c11>)
 set_tests_properties(test_databind_contract_value_public_c11 PROPERTIES
@@ -160,8 +149,7 @@ target_link_libraries(test_databind_contract_state_public_c11 PRIVATE
   ${databind_contract_state_public_fixture_TYPES_TARGET} Salts::DataBind)
 add_dependencies(test_databind_contract_state_public_c11
   databind_contract_state_public_fixture_idl_codegen)
-set_target_properties(test_databind_contract_state_public_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_contract_state_public_c11
   COMMAND $<TARGET_FILE:test_databind_contract_state_public_c11>)
 set_tests_properties(test_databind_contract_state_public_c11 PROPERTIES
@@ -195,8 +183,7 @@ target_include_directories(test_databind_contract_native_service_c11
   PRIVATE "${_contract_service_dir}")
 target_link_libraries(test_databind_contract_native_service_c11
   PRIVATE Salts::DataBind)
-set_target_properties(test_databind_contract_native_service_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_contract_native_service_c11
   COMMAND $<TARGET_FILE:test_databind_contract_native_service_c11>)
 set_tests_properties(test_databind_contract_native_service_c11 PROPERTIES
@@ -236,8 +223,7 @@ target_include_directories(test_databind_contract_plugin_c11
   PRIVATE "${_contract_plugin_dir}")
 target_link_libraries(test_databind_contract_plugin_c11
   PRIVATE Salts::DataBind CMeta::PluginABI CMeta::Plugin)
-set_target_properties(test_databind_contract_plugin_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_contract_plugin_c11
   COMMAND $<TARGET_FILE:test_databind_contract_plugin_c11>)
 set_tests_properties(test_databind_contract_plugin_c11 PROPERTIES
@@ -250,8 +236,7 @@ add_executable(databind_native_header_fixture_generator
 target_include_directories(databind_native_header_fixture_generator PRIVATE
   "${DATABIND_COMPILER_SOURCE_DIR}"
   "${DATABIND_SOURCE_ROOT}/idl/include")
-set_target_properties(databind_native_header_fixture_generator PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 set(_native_fixture_header "${CMAKE_CURRENT_BINARY_DIR}/native_contract_fixture.h")
 add_custom_command(OUTPUT "${_native_fixture_header}"
   COMMAND $<TARGET_FILE:databind_native_header_fixture_generator>
@@ -262,8 +247,7 @@ add_executable(test_databind_native_header_c11
   native_header_c11_consumer.c "${_native_fixture_header}")
 target_include_directories(test_databind_native_header_c11 PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
-set_target_properties(test_databind_native_header_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 # Compile the optional CMeta descriptor path with the real Salts headers.
 add_executable(test_databind_native_header_cmeta
   native_header_c11_consumer.c "${_native_fixture_header}")
@@ -274,8 +258,7 @@ target_compile_definitions(test_databind_native_header_cmeta PRIVATE
 target_include_directories(test_databind_native_header_cmeta PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(test_databind_native_header_cmeta PRIVATE Salts::DataBind)
-set_target_properties(test_databind_native_header_cmeta PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_header_cmeta
   COMMAND $<TARGET_FILE:test_databind_native_header_cmeta>)
 set_tests_properties(test_databind_native_header_cmeta PROPERTIES
@@ -285,7 +268,6 @@ add_test(NAME test_databind_native_header_c11
   COMMAND $<TARGET_FILE:test_databind_native_header_c11>)
 set_tests_properties(test_databind_native_header_c11 PROPERTIES
   LABELS "databind;compiler;native-source;c11")
-
 
 # VALUE-mode CMeta data lifecycle is legal only for complete native scalar
 # records without DataBind optional/null overlay state or owned buffers.
@@ -302,8 +284,7 @@ target_include_directories(test_databind_native_cmeta_value_c11 PRIVATE
 target_compile_definitions(test_databind_native_cmeta_value_c11 PRIVATE
   DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
 target_link_libraries(test_databind_native_cmeta_value_c11 PRIVATE Salts::DataBind)
-set_target_properties(test_databind_native_cmeta_value_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_cmeta_value_c11
   COMMAND $<TARGET_FILE:test_databind_native_cmeta_value_c11>)
 set_tests_properties(test_databind_native_cmeta_value_c11 PROPERTIES
@@ -325,8 +306,7 @@ target_compile_definitions(test_databind_native_cmeta_owned_value_c11 PRIVATE
   DATABIND_NATIVE_ENABLE_CMETA DATABIND_NATIVE_ENABLE_DATABIND)
 target_link_libraries(test_databind_native_cmeta_owned_value_c11
   PRIVATE Salts::DataBind)
-set_target_properties(test_databind_native_cmeta_owned_value_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_cmeta_owned_value_c11
   COMMAND $<TARGET_FILE:test_databind_native_cmeta_owned_value_c11>)
 set_tests_properties(test_databind_native_cmeta_owned_value_c11 PROPERTIES
@@ -343,8 +323,7 @@ add_executable(test_databind_native_owned_c11
   native_header_owned_c11_consumer.c "${_native_owned_header}")
 target_include_directories(test_databind_native_owned_c11 PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
-set_target_properties(test_databind_native_owned_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_owned_c11
   COMMAND $<TARGET_FILE:test_databind_native_owned_c11>)
 set_tests_properties(test_databind_native_owned_c11 PROPERTIES
@@ -361,8 +340,7 @@ add_executable(test_databind_native_nested_c11
   native_header_nested_c11_consumer.c "${_native_nested_header}")
 target_include_directories(test_databind_native_nested_c11 PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
-set_target_properties(test_databind_native_nested_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_nested_c11
   COMMAND $<TARGET_FILE:test_databind_native_nested_c11>)
 set_tests_properties(test_databind_native_nested_c11 PROPERTIES
@@ -380,8 +358,7 @@ add_executable(test_databind_native_sequence_c11
 target_include_directories(test_databind_native_sequence_c11 PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(test_databind_native_sequence_c11 PRIVATE CMeta::CSTL)
-set_target_properties(test_databind_native_sequence_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_sequence_c11
   COMMAND $<TARGET_FILE:test_databind_native_sequence_c11>)
 set_tests_properties(test_databind_native_sequence_c11 PROPERTIES
@@ -397,8 +374,7 @@ add_executable(test_databind_native_assoc_c11
   native_header_assoc_c11_consumer.c "${_native_assoc_header}")
 target_include_directories(test_databind_native_assoc_c11 PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(test_databind_native_assoc_c11 PRIVATE CMeta::CSTL)
-set_target_properties(test_databind_native_assoc_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_assoc_c11
   COMMAND $<TARGET_FILE:test_databind_native_assoc_c11>)
 set_tests_properties(test_databind_native_assoc_c11 PROPERTIES
@@ -418,8 +394,7 @@ add_executable(test_databind_native_owned_containers_c11
 target_include_directories(test_databind_native_owned_containers_c11
   PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(test_databind_native_owned_containers_c11 PRIVATE CMeta::CSTL)
-set_target_properties(test_databind_native_owned_containers_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_owned_containers_c11
   COMMAND $<TARGET_FILE:test_databind_native_owned_containers_c11>)
 set_tests_properties(test_databind_native_owned_containers_c11 PROPERTIES
@@ -440,8 +415,7 @@ add_executable(test_databind_native_record_containers_c11
 target_include_directories(test_databind_native_record_containers_c11
   PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(test_databind_native_record_containers_c11 PRIVATE CMeta::CSTL)
-set_target_properties(test_databind_native_record_containers_c11 PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_record_containers_c11
   COMMAND $<TARGET_FILE:test_databind_native_record_containers_c11>)
 set_tests_properties(test_databind_native_record_containers_c11 PROPERTIES
@@ -479,8 +453,7 @@ foreach(_native_profile IN ITEMS alpha alpha_copy beta alpha_v2)
     "NATIVE_IDENTITY_GETTER=native_identity_${_native_profile}")
   target_link_libraries(databind_native_identity_${_native_profile} PRIVATE
     CMeta::CMeta)
-  set_target_properties(databind_native_identity_${_native_profile} PROPERTIES
-    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
   list(APPEND _native_identity_objects
     $<TARGET_OBJECTS:databind_native_identity_${_native_profile}>)
 endforeach()
@@ -488,8 +461,7 @@ endforeach()
 add_executable(test_databind_native_identity
   native_header_identity_compare.c ${_native_identity_objects})
 target_link_libraries(test_databind_native_identity PRIVATE CMeta::CMeta)
-set_target_properties(test_databind_native_identity PROPERTIES
-  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+
 add_test(NAME test_databind_native_identity
   COMMAND $<TARGET_FILE:test_databind_native_identity>)
 set_tests_properties(test_databind_native_identity PROPERTIES

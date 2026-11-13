@@ -19,10 +19,7 @@ cmake_add_test(test_databind_socket_plan_projection
     ${DATABIND_SOURCE_ROOT}/idl/contract
     ${DATABIND_COMPILER_SOURCE_DIR}
   FOLDER "databind/compiler/tests/socket")
-set_target_properties(test_databind_socket_plan_projection PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_socket_plan_projection PROPERTIES
   LABELS "databind;compiler;socket-plan;transport")
 
@@ -47,10 +44,7 @@ cmake_add_test(test_databind_socket_plan_public_frontend
   FOLDER "databind/compiler/tests/socket")
 add_dependencies(test_databind_socket_plan_public_frontend
   databind_socket_plan_public_fixture_idl_codegen)
-set_target_properties(test_databind_socket_plan_public_frontend PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF)
+
 set_tests_properties(test_databind_socket_plan_public_frontend PROPERTIES
   LABELS "databind;compiler;socket-plan;public")
 
