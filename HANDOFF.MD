@@ -59,3 +59,19 @@
   `configure.log`, `build.log`, `ctest.log`, `ctest.xml`, `install.log` and saved
   installed package/export files. Local runtime qualification covers Windows
   LLVM-MinGW x64; other platforms require their formal CI lanes.
+
+# SaltsUtils 0.1.4 release
+
+- The cleanup's final source at `1b369ec81c1b2475d4283a5032bd926d7b374ea8`
+  passed all ten profiles in CI run `43399268079`: eight complete native
+  CTest/build/install lanes and two Android cross-build/install lanes.
+- Version 0.1.4 uses the existing split SDK TAR release contract, with a fresh
+  exact-version CI run before publication. CMake and vcpkg product versions
+  advance together; Base 0.1.8, CMeta 0.1.6 at the declared immutable ref and
+  vcpkg-cache 0.1.3 remain separate dependency identities.
+- The historical manual NuGet workflow expects the former preparation/package
+  layout. Publish the qualified original `utils-sdk-<profile>-<commit>` TARs
+  with a manifest and SHA256SUMS, following the preceding split SDK releases.
+  Check installed versions, source/dependency provenance, original artifact
+  digests and all native JUnit reports. Do not rebuild, repack or alter old
+  release assets, and do not claim Android device execution.
