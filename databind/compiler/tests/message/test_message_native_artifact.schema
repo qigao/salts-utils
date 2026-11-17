@@ -19,3 +19,5 @@ message OverlayContainers {
   nullable set<string> tags;
   optional nullable map<string,uint32> attrs;
 }
+
+message Empty {}

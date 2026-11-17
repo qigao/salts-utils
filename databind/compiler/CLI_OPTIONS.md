@@ -21,6 +21,15 @@ overlay-only.
 
 `salts-idlc` generates code, bootstrap database DDL, and DSL declarations from IDL contract files for multiple target languages and RulesForge integration.
 
+## Empty messages
+
+`message Empty {}` has one byte of native C11/C++17 storage and zero logical
+fields. Contract-only Native IR and Binary-backed C generation use the same
+representation. `_empty_storage` is excluded from reflection and serialization;
+no dummy schema parameter is required. Service generation keeps its existing
+request/response pointer ABI, including typed-error envelopes. Regenerate old
+empty-record output when upgrading. See [the record contract](../runtime/RECORD_ABI.md#空消息与无参-service).
+
 ## Basic Usage
 
 ```bash

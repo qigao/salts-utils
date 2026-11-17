@@ -1,0 +1,9 @@
+schema EmptyService;
+message Empty {}
+message Status { uint32 value; }
+message Failure { uint32 code; }
+service Probe {
+    Ping: Empty -> Empty throws Failure;
+    Status: Empty -> Status;
+    Clear: Status -> Empty;
+}

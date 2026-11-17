@@ -42,6 +42,31 @@ DataBind 使用纯 C schema parser、动态值树和 canonical CMeta/native bind
 描述现有 struct 成员及生命周期。历史 typed runtime 的公开接口已删除；旧调用方
 必须迁移，不提供兼容 alias。
 
+## 空消息与无参 Service
+
+零字段消息是一个完整的逻辑值。C11 和 C++17 生成器统一以一个
+`uint8_t _empty_storage` 成员提供原生存储，`sizeof` 为 1；该成员不进入
+CMeta 逻辑字段、schema、名称映射或序列化结果。CMeta 逻辑字段数为零，
+不生成零长度 C 数组。字段非空的既有 struct 布局保持不变。
+
+Native IR 的字段投影只描述非空字段集合。空消息使用既有的 canonical 完整
+Struct 值描述，shape 中字段数为零；它不生成字段投影或状态 overlay facade。
+候选方案是扩展 CMeta 的字段投影准入，但现有完整值描述已经能准确表示单位值，
+采用它无需改变依赖版本或跨库 ABI。非空记录继续使用已有字段投影。metadata
+仍由调用方在最终地址绑定并持有，计划释放前不得移动它。
+
+MessagePlan 按零字段 MAP 解码和编码空消息。原生存储、每次执行的 workspace
+及结果仍由调用方拥有；不可变计划可以共享，执行上下文和 workspace 分开。
+绑定 metadata 的借用期、关闭和释放规则与其他消息相同；空消息不引入资源 owner。
+
+Service 的 request IN / response OUT 根参数按消息类型认领一次，与字段数量
+无关。因此 Empty→Empty、Empty→Status、Status→Empty 均使用既有的生成函数
+ABI；typed error envelope 继续占用其原有 OUT 参数。真正未认领的参数仍失败，
+不将其作为隐式 context。空消息保留消息语义，既有 `void` response 契约不变。
+
+这项变更不增加 public ABI 记录或版本分发。曾生成空 struct 的 schema 应重新
+生成并编译；不需要添加业务字段、兼容类型或修改 wire schema。
+
 ## 生成动态库
 
 生成头定义 `TBE_GENERATED_API`：

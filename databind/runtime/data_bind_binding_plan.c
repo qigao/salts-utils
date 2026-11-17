@@ -585,6 +585,11 @@ static DataBindStatus plan_compile_ingress(
 
   plan->has_request_root_param = root_param != SIZE_MAX;
   plan->request_root_param = root_param;
+  if (plan->has_request_root_param) {
+    param_used[root_param] = 1u;
+    plan->param_ingress[root_param] = 1u;
+    /* Request root storage belongs to frame.request, outside parameter slots. */
+  }
   plan->ingress = (DataBindBindingPlanEntryOwned *)calloc(
       field_count, sizeof(*plan->ingress));
   if (field_count != 0u && plan->ingress == NULL)
@@ -631,8 +636,6 @@ static DataBindStatus plan_compile_ingress(
       param_index = root_param;
       param = cmeta_function_param(native->function, param_index);
       indirect = root_indirect;
-      param_used[param_index] = 1u;
-      plan->param_ingress[param_index] = 1u;
 
       if (field.is_optional && presence == NULL)
         return plan_diag_fail(
@@ -786,6 +789,11 @@ static DataBindStatus plan_compile_egress(
   plan->response_uses_return = use_return;
   plan->has_response_root_param = root_param != SIZE_MAX;
   plan->response_root_param = root_param;
+  if (plan->has_response_root_param) {
+    param_used[root_param] = 1u;
+    plan->param_egress[root_param] = 1u;
+    plan->param_data[root_param] = native->response->data;
+  }
 
   plan->egress = (DataBindBindingPlanEntryOwned *)calloc(
       field_count, sizeof(*plan->egress));
@@ -833,9 +841,6 @@ static DataBindStatus plan_compile_egress(
       param_index = root_param;
       param = cmeta_function_param(native->function, param_index);
       indirect = root_indirect;
-      param_used[param_index] = 1u;
-      plan->param_egress[param_index] = 1u;
-      plan->param_data[param_index] = native->response->data;
 
       if (field.is_optional && presence == NULL)
         return plan_diag_fail(

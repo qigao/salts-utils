@@ -400,6 +400,10 @@ cmeta_type(Set, {{typed_vector_type}}, {{typed_element_c_type}});
  * Attributes: {{#attributes}}[ {{name}}: {{value}} ] {{/attributes}}
  */
 typedef struct {{name}}_s {
+{{^fields}}
+    /* Native storage only; the logical message has no fields. */
+    uint8_t _empty_storage;
+{{/fields}}
 {{#typed_source_enabled}}
 {{#has_optional_fields}}
     uint8_t _presence[{{presence_bitmap_bytes}}];
@@ -800,6 +804,10 @@ cmeta_type(Set, {{typed_vector_type}}, {{typed_element_c_type}});
  * Attributes: {{#attributes}}[ {{name}}: {{value}} ] {{/attributes}}
  */
 typedef struct {{name}}_s {
+{{^fields}}
+    /* Native storage only; the logical message has no fields. */
+    uint8_t _empty_storage;
+{{/fields}}
 {{#typed_source_enabled}}
 {{#has_optional_fields}}
     uint8_t _presence[{{presence_bitmap_bytes}}];
@@ -1455,6 +1463,10 @@ typedef enum {
 {{/has_nullable_fields}}
 {{^guest_adapter_only}}
 typedef struct {{name}}_s {
+{{^fields}}
+    /* Native storage only; the logical message has no fields. */
+    uint8_t _empty_storage;
+{{/fields}}
 {{#typed_source_enabled}}
 {{#has_optional_fields}}
     uint8_t _presence[{{presence_bitmap_bytes}}];

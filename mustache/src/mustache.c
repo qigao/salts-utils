@@ -918,9 +918,10 @@ MUSTACHE_TEMPLATE *mustache_compile(const char *templ_data, size_t templ_size,
       jmp_pos = POP_JMP_POS();
       lambda_info = POP_LAMBDA_INFO();
       lambda_stack.n -= sizeof(MUSTACHE_LAMBDA_INFO);
-      INSERT_NUM(jmp_pos, insns.n - jmp_pos);
       {
-        size_t insert_size = mustache_num_size((uint64_t)(insns.n - jmp_pos));
+        size_t jump_length = insns.n - jmp_pos;
+        size_t insert_size = mustache_num_size((uint64_t)jump_length);
+        INSERT_NUM(jmp_pos, jump_length);
         if (jmp_pos < lambda_info.len_pos) lambda_info.len_pos += (off_t)insert_size;
       }
       mustache_buffer_write_u64(&insns, lambda_info.len_pos,
@@ -944,9 +945,10 @@ MUSTACHE_TEMPLATE *mustache_compile(const char *templ_data, size_t templ_size,
       jmp_pos = POP_JMP_POS();
       lambda_info = POP_LAMBDA_INFO();
       lambda_stack.n -= sizeof(MUSTACHE_LAMBDA_INFO);
-      INSERT_NUM(jmp_pos, insns.n - jmp_pos);
       {
-        size_t insert_size = mustache_num_size((uint64_t)(insns.n - jmp_pos));
+        size_t jump_length = insns.n - jmp_pos;
+        size_t insert_size = mustache_num_size((uint64_t)jump_length);
+        INSERT_NUM(jmp_pos, jump_length);
         if (jmp_pos < lambda_info.len_pos) lambda_info.len_pos += (off_t)insert_size;
       }
       mustache_buffer_write_u64(&insns, lambda_info.len_pos,

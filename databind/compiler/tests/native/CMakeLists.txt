@@ -221,3 +221,22 @@ set_tests_properties(test_databind_native_service_public_artifact_cpp PROPERTIES
 
 target_link_libraries(databind_service_native_codegen_fixture_tool
   PRIVATE databind_binding_compiler)
+
+# Empty request/response messages use the same public Service path as other DTOs.
+salts_idl_target(
+  TARGET databind_empty_service_fixture
+  FOLDER "databind/compiler/generated/native"
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_empty_service.schema"
+  ARTIFACT_NAME "empty_service"
+  BINARY_CODEC
+  ARTIFACTS NATIVE
+  TRANSPORTS HTTP RPC)
+target_sources(${databind_empty_service_fixture_NATIVE_TARGET}
+  PRIVATE test_empty_service_business.c)
+target_sources(test_databind_native_service_public_artifact PRIVATE test_empty_service.c)
+target_link_libraries(test_databind_native_service_public_artifact
+  PRIVATE ${databind_empty_service_fixture_NATIVE_TARGET})
+target_include_directories(test_databind_native_service_public_artifact
+  PRIVATE "${databind_empty_service_fixture_GENERATED_DIR}")
+add_dependencies(test_databind_native_service_public_artifact
+  databind_empty_service_fixture_idl_codegen)

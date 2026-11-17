@@ -1,16 +1,9 @@
 cmake_minimum_required(VERSION 3.27)
-if(POLICY CMP0144)
-  cmake_policy(SET CMP0144 OLD)
-endif()
-if(POLICY CMP0167)
-  cmake_policy(SET CMP0167 OLD)
-endif()
-
 include(CMakeOptions.cmake)
 
 project(
   SaltsUtils
-  VERSION 0.1.4
+  VERSION 0.1.5
   DESCRIPTION "Higher-level utilities built on Salts&CMeta"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES C CXX)

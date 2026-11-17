@@ -383,9 +383,8 @@ static int native_source_ir_render(
     if (!native_format_stable_id(ir, record->name, stable_type_id,
                                  sizeof(stable_type_id)))
       return -1;
-    /* Empty C structs are not portable C11 and emit invalid declarations. */
-    if (!native_identifier(record->name) || record->field_count == 0u ||
-        record->fields == NULL)
+    if (!native_identifier(record->name) ||
+        (record->field_count != 0u && record->fields == NULL))
       return -1;
     /* A record typedef must not collide with another record's generated
      * lifecycle functions. _init and _clear have different suffix sizes. */
@@ -600,6 +599,10 @@ static int native_source_ir_render(
   for (i = 0u; i < ir->record_count && !failed; ++i) {
     const databind_native_source_record *record = &ir->records[i];
     if (fprintf(out, "typedef struct %s {\n", record->name) < 0)
+      failed = 1;
+    if (record->field_count == 0u && fprintf(out,
+        "    /* Native storage only; the logical record has no fields. */\n"
+        "    uint8_t _empty_storage;\n") < 0)
       failed = 1;
     for (j = 0u; j < record->field_count && !failed; ++j) {
       const databind_native_source_field *field = &record->fields[j];
@@ -1026,104 +1029,118 @@ static int native_source_ir_render(
       failed = 1;
       break;
     }
-    /* Optional/nullable are separate native flags, not fields of the CMeta
-     * logical value view. Preserve their exact byte offsets explicitly. */
-    if (!failed && fprintf(out,
-        "typedef struct %s_native_state_desc {\n"
-        "    const char *name;\n"
-        "    size_t presence_offset;\n"
-        "    size_t null_offset;\n"
-        "} %s_native_state_desc;\n"
-        "static const %s_native_state_desc %s_native_cmeta_states[] = {\n",
-        record->name, record->name, record->name, record->name) < 0)
-      failed = 1;
-    for (j = 0u; j < record->field_count && !failed; ++j) {
-      const databind_native_source_field *field = &record->fields[j];
-      if (fprintf(out, "    {\"%s\", ", field->name) < 0)
-        failed = 1;
-      if (!failed && (field->optional
-          ? fprintf(out, "offsetof(%s, has_%s), ", record->name, field->name)
-          : fprintf(out, "SIZE_MAX, ")) < 0)
-        failed = 1;
-      if (!failed && (field->nullable
-          ? fprintf(out, "offsetof(%s, is_null_%s)", record->name, field->name)
-          : fprintf(out, "SIZE_MAX")) < 0)
-        failed = 1;
-      if (!failed && fprintf(out, "},\n") < 0)
-        failed = 1;
-    }
-    if (!failed && fprintf(out, "};\n") < 0)
-      failed = 1;
-    if (fprintf(out, "static const cmeta_field_desc %s_native_cmeta_fields[] = {\n",
-                record->name) < 0)
-      failed = 1;
-    for (j = 0u; j < record->field_count && !failed; ++j) {
-      const databind_native_source_field *field = &record->fields[j];
+    if (record->field_count == 0u) {
       if (fprintf(out,
-          "    {\"%s\", \"%s\", offsetof(%s, %s), "
-          "sizeof(((%s *)0)->%s), CMETA_ALIGNOF(%s), NULL, NULL},\n",
-          field->name, field->name, record->name, field->name,
-          record->name, field->name, field->c_type) < 0)
+          "static const cmeta_struct_desc %s_native_cmeta_layout = {\n"
+          "    \"%s\", sizeof(%s), CMETA_ALIGNOF(%s), NULL, 0u\n"
+          "};\n"
+          "static inline int %s_native_cmeta_data_fields(\n"
+          "    cmeta_data_field_desc *out, size_t capacity) {\n"
+          "    (void)out; (void)capacity; return 0;\n"
+          "}\n",
+          record->name, record->name, record->name, record->name,
+          record->name) < 0)
         failed = 1;
-    }
-    if (!failed && fprintf(out, "};\n") < 0)
-      failed = 1;
-    if (!failed && fprintf(out,
-        "static const cmeta_struct_desc %s_native_cmeta_layout = {\n"
-        "    \"%s\", sizeof(%s), CMETA_ALIGNOF(%s),\n"
-        "    %s_native_cmeta_fields, %zuu\n"
-        "};\n",
-        record->name, record->name, record->name, record->name,
-        record->name, record->field_count) < 0)
-      failed = 1;
-    /* Bind DLL-imported scalar CMeta descriptors at call time, not in
-     * file-scope initializers (which MSVC rejects). Caller owns the array. */
-    if (!failed && fprintf(out,
-        "static inline int %s_native_cmeta_data_fields(\n"
-        "    cmeta_data_field_desc *out, size_t capacity) {\n"
-        "    if (out == NULL || capacity < %zuu) return -1;\n",
-        record->name, record->field_count) < 0)
-      failed = 1;
-    for (j = 0u; j < record->field_count && !failed; ++j) {
-      const databind_native_source_field *field = &record->fields[j];
-      const char *scalar = NULL;
-      size_t k;
-      for (k = 0u; k < sizeof(NATIVE_SCALARS)/sizeof(NATIVE_SCALARS[0]); ++k)
-        if (strcmp(field->c_type, NATIVE_SCALARS[k].c) == 0) {
-          scalar = NATIVE_SCALARS[k].idl;
-          break;
-        }
-      if (scalar == NULL &&
-          field->ownership == DATABIND_NATIVE_OWNED_TEXT)
-        scalar = "native_text";
-      if (scalar == NULL &&
-          field->ownership == DATABIND_NATIVE_OWNED_BYTES)
-        scalar = "native_bytes";
-      if (scalar == NULL) {
+    } else {
+      /* Optional/nullable are separate native flags, not fields of the CMeta
+       * logical value view. Preserve their exact byte offsets explicitly. */
+      if (!failed && fprintf(out,
+          "typedef struct %s_native_state_desc {\n"
+          "    const char *name;\n"
+          "    size_t presence_offset;\n"
+          "    size_t null_offset;\n"
+          "} %s_native_state_desc;\n"
+          "static const %s_native_state_desc %s_native_cmeta_states[] = {\n",
+          record->name, record->name, record->name, record->name) < 0)
         failed = 1;
-      } else if (strcmp(scalar, "native_text") == 0 ||
-                 strcmp(scalar, "native_bytes") == 0) {
-        const char *symbol = field->ownership == DATABIND_NATIVE_OWNED_TEXT
-            ? "databind_native_text_cmeta_data" : "databind_native_bytes_cmeta_data";
+      for (j = 0u; j < record->field_count && !failed; ++j) {
+        const databind_native_source_field *field = &record->fields[j];
+        if (fprintf(out, "    {\"%s\", ", field->name) < 0)
+          failed = 1;
+        if (!failed && (field->optional
+            ? fprintf(out, "offsetof(%s, has_%s), ", record->name, field->name)
+            : fprintf(out, "SIZE_MAX, ")) < 0)
+          failed = 1;
+        if (!failed && (field->nullable
+            ? fprintf(out, "offsetof(%s, is_null_%s)", record->name, field->name)
+            : fprintf(out, "SIZE_MAX")) < 0)
+          failed = 1;
+        if (!failed && fprintf(out, "},\n") < 0)
+          failed = 1;
+      }
+      if (!failed && fprintf(out, "};\n") < 0)
+        failed = 1;
+      if (fprintf(out, "static const cmeta_field_desc %s_native_cmeta_fields[] = {\n",
+                  record->name) < 0)
+        failed = 1;
+      for (j = 0u; j < record->field_count && !failed; ++j) {
+        const databind_native_source_field *field = &record->fields[j];
         if (fprintf(out,
+            "    {\"%s\", \"%s\", offsetof(%s, %s), "
+            "sizeof(((%s *)0)->%s), CMETA_ALIGNOF(%s), NULL, NULL},\n",
+            field->name, field->name, record->name, field->name,
+            record->name, field->name, field->c_type) < 0)
+          failed = 1;
+      }
+      if (!failed && fprintf(out, "};\n") < 0)
+        failed = 1;
+      if (!failed && fprintf(out,
+          "static const cmeta_struct_desc %s_native_cmeta_layout = {\n"
+          "    \"%s\", sizeof(%s), CMETA_ALIGNOF(%s),\n"
+          "    %s_native_cmeta_fields, %zuu\n"
+          "};\n",
+          record->name, record->name, record->name, record->name,
+          record->name, record->field_count) < 0)
+        failed = 1;
+      /* Bind DLL-imported scalar CMeta descriptors at call time, not in
+       * file-scope initializers (which MSVC rejects). Caller owns the array. */
+      if (!failed && fprintf(out,
+          "static inline int %s_native_cmeta_data_fields(\n"
+          "    cmeta_data_field_desc *out, size_t capacity) {\n"
+          "    if (out == NULL || capacity < %zuu) return -1;\n",
+          record->name, record->field_count) < 0)
+        failed = 1;
+      for (j = 0u; j < record->field_count && !failed; ++j) {
+        const databind_native_source_field *field = &record->fields[j];
+        const char *scalar = NULL;
+        size_t k;
+        for (k = 0u; k < sizeof(NATIVE_SCALARS)/sizeof(NATIVE_SCALARS[0]); ++k)
+          if (strcmp(field->c_type, NATIVE_SCALARS[k].c) == 0) {
+            scalar = NATIVE_SCALARS[k].idl;
+            break;
+          }
+        if (scalar == NULL &&
+            field->ownership == DATABIND_NATIVE_OWNED_TEXT)
+          scalar = "native_text";
+        if (scalar == NULL &&
+            field->ownership == DATABIND_NATIVE_OWNED_BYTES)
+          scalar = "native_bytes";
+        if (scalar == NULL) {
+          failed = 1;
+        } else if (strcmp(scalar, "native_text") == 0 ||
+                   strcmp(scalar, "native_bytes") == 0) {
+          const char *symbol = field->ownership == DATABIND_NATIVE_OWNED_TEXT
+              ? "databind_native_text_cmeta_data" : "databind_native_bytes_cmeta_data";
+          if (fprintf(out,
+              "    { const cmeta_data_field_desc entry = {"
+              "\"%s.%s\", \"%s\", offsetof(%s, %s), &%s};\n"
+              "      out[%zuu] = entry; }\n",
+              stable_type_id, field->name, field->name,
+              record->name, field->name, symbol, j) < 0)
+            failed = 1;
+        } else if (fprintf(out,
             "    { const cmeta_data_field_desc entry = {"
-            "\"%s.%s\", \"%s\", offsetof(%s, %s), &%s};\n"
+            "\"%s.%s\", \"%s\", offsetof(%s, %s), "
+            "&cmeta_data_%s};\n"
             "      out[%zuu] = entry; }\n",
             stable_type_id, field->name, field->name,
-            record->name, field->name, symbol, j) < 0)
+            record->name, field->name, scalar, j) < 0) {
           failed = 1;
-      } else if (fprintf(out,
-          "    { const cmeta_data_field_desc entry = {"
-          "\"%s.%s\", \"%s\", offsetof(%s, %s), "
-          "&cmeta_data_%s};\n"
-          "      out[%zuu] = entry; }\n",
-          stable_type_id, field->name, field->name,
-          record->name, field->name, scalar, j) < 0) {
-        failed = 1;
+        }
       }
+      if (!failed && fprintf(out, "    return 0;\n}\n") < 0)
+        failed = 1;
     }
-    if (!failed && fprintf(out, "    return 0;\n}\n") < 0)
-      failed = 1;
     if (!failed && fprintf(out,
         "static const cmeta_type_identity %s_native_cmeta_identity =\n"
         "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
@@ -1147,6 +1164,54 @@ static int native_source_ir_render(
                                  sizeof(stable_type_id))) {
       failed = 1;
       break;
+    }
+    /* A unit is a complete Struct value, not a projection of native fields.
+     * Field reflection requires at least one field; the canonical Struct
+     * descriptor already represents a complete zero-field value. */
+    if (record->field_count == 0u) {
+      if (fprintf(out,
+          "typedef struct %s_native_cmeta_binding {\n"
+          "    cmeta_struct_desc layout;\n"
+          "    cmeta_data_struct_shape shape;\n"
+          "    cmeta_data_desc data;\n"
+          "} %s_native_cmeta_binding;\n"
+          "static inline int %s_native_cmeta_bind(\n"
+          "    %s_native_cmeta_binding *binding) {\n"
+          "    if (binding == NULL) return -1;\n"
+          "    binding->layout = %s_native_cmeta_layout;\n"
+          "    binding->shape.layout = &binding->layout;\n"
+          "    binding->shape.fields = NULL;\n"
+          "    binding->shape.field_count = 0u;\n"
+          "    { const cmeta_data_desc zero = {0}; binding->data = zero; }\n"
+          "    binding->data.struct_size = sizeof(cmeta_data_desc);\n"
+          "    binding->data.abi_version = CMETA_DATA_DESC_ABI_VERSION;\n"
+          "    binding->data.stable_id = \"%s.data\";\n"
+          "    binding->data.display_name = \"%s\";\n"
+          "    binding->data.kind = CMETA_DATA_STRUCT;\n"
+          "    binding->data.storage_type = &%s_native_cmeta_type;\n"
+          "    binding->data.shape = &binding->shape;\n"
+          "    return cmeta_data_desc_valid(&binding->data) ? 0 : -1;\n"
+          "}\n"
+          "static inline int %s_native_cmeta_value_bind(\n"
+          "    %s_native_cmeta_binding *binding) {\n"
+          "    return %s_native_cmeta_bind(binding);\n"
+          "}\n"
+          "#ifdef DATABIND_NATIVE_ENABLE_DATABIND\n"
+          "static inline int %s_native_type_binding(\n"
+          "    %s_native_cmeta_binding *metadata, DataBindNativeTypeBinding *out) {\n"
+          "    if (out == NULL || %s_native_cmeta_value_bind(metadata) != 0) return -1;\n"
+          "    { const DataBindNativeTypeBinding initial =\n"
+          "        DATA_BIND_NATIVE_TYPE_BINDING_INIT(\"%s\", &metadata->data);\n"
+          "      *out = initial; }\n"
+          "    return 0;\n"
+          "}\n"
+          "#endif\n",
+          record->name, record->name, record->name, record->name,
+          record->name, stable_type_id, record->name, record->name,
+          record->name, record->name, record->name,
+          record->name, record->name, record->name, record->name) < 0)
+        failed = 1;
+      continue;
     }
     if (fprintf(out,
         "typedef struct %s_native_cmeta_binding {\n"

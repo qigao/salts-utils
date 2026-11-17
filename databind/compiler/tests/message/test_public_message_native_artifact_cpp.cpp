@@ -2,6 +2,9 @@
 
 #include <type_traits>
 
+static_assert(sizeof(Empty_t) == 1u, "Empty C and C++ message layouts agree");
+extern "C" size_t databind_message_native_artifact_empty_size(void);
+
 static_assert(std::is_standard_layout<DataBindMessageNativeArtifact>::value,
               "Message native artifact must remain C-compatible");
 static_assert(std::is_standard_layout<DataBindNativeTypeBinding>::value,
@@ -63,6 +66,7 @@ extern "C" size_t databind_message_native_artifact_c_overlay_attrs_size(void);
 extern "C" size_t databind_message_native_artifact_c_overlay_attrs_raw_offset(void);
 
 extern "C" int databind_message_native_artifact_cpp_probe(void) {
+  if (databind_message_native_artifact_empty_size() != sizeof(Empty_t)) return 1;
   const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
   Event_t event{};
 

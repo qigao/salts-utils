@@ -106,6 +106,39 @@ cleanup:
 }
 
 spec("mustache runtime regressions") {
+  it("preserves section tails across variable-length jump boundaries") {
+    char template_text[384];
+    char expected[304];
+    const char *openers[] = {"L{{#items}}", "L{{^items}}"};
+    const char *values[] = {"{\"items\":[]}", "{\"items\":[1]}"};
+    size_t section, filled, padding;
+    for (section = 0u; section < 2u; ++section) {
+      for (filled = 0u; filled < 2u; ++filled) {
+        for (padding = 0u; padding <= 300u; ++padding) {
+          const char *opener = openers[section];
+          size_t prefix = strlen(opener);
+          char *result;
+          int matches;
+          memcpy(template_text, opener, prefix);
+          memset(template_text + prefix, 'x', padding);
+          memcpy(template_text + prefix + padding, "{{/items}}R", sizeof("{{/items}}R"));
+          expected[0] = 'L';
+          if (section != filled) {
+            memset(expected + 1u, 'x', padding);
+            expected[padding + 1u] = 'R';
+            expected[padding + 2u] = '\0';
+          } else {
+            memcpy(expected, "LR", sizeof("LR"));
+          }
+          result = render_json_text(template_text, values[filled]);
+          matches = result != NULL && strcmp(result, expected) == 0;
+          free(result);
+          check_true(matches);
+        }
+      }
+    }
+  }
+
   it("preserves delimiter whitespace and rejects malformed delimiter pairs") {
     static const struct { const char *source; int valid; } cases[] = {
       {"{{=<% %>=}}", 1}, {"{{=<%\t%>=}}", 1},

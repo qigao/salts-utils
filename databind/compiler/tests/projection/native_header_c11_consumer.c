@@ -4,7 +4,27 @@
 #include <string.h>
 #endif
 
+_Static_assert(sizeof(EmptyNative) == 1u, "Empty native records have C11 storage");
+
 int main(void) {
+  EmptyNative empty = {0};
+  EmptyNative copied = {0};
+  EmptyNative_init(&empty);
+  if (EmptyNative_clone(&copied, &empty) != 0) return 20;
+  EmptyNative_clear(&empty);
+  EmptyNative_clear(&copied);
+#if defined(DATABIND_NATIVE_ENABLE_CMETA) && defined(DATABIND_NATIVE_ENABLE_DATABIND)
+  EmptyNative_native_cmeta_binding empty_metadata = {0};
+  DataBindNativeTypeBinding empty_binding = {0};
+  if (EmptyNative_native_type_binding(&empty_metadata, &empty_binding) != 0 ||
+      !cmeta_data_desc_valid(empty_binding.data) ||
+      empty_binding.data->storage_type->size != 1u ||
+      empty_metadata.layout.field_count != 0u ||
+      empty_metadata.layout.fields != NULL ||
+      empty_metadata.shape.field_count != 0u ||
+      empty_metadata.shape.fields != NULL)
+    return 21;
+#endif
 #ifdef DATABIND_NATIVE_ENABLE_CMETA
   cmeta_data_field_desc fields[3];
   if (Packet_native_cmeta_data_fields(fields, 2u) == 0 ||

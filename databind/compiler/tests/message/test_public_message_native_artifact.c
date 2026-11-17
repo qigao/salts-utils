@@ -1,9 +1,38 @@
 #include "tinytest.h"
 
 #include "message_native_artifact_native.h"
+#include "data_bind_message_plan.h"
+#include "../../../tests/native_storage/reader_probe.h"
 
 #include <stddef.h>
 #include <string.h>
+
+_Static_assert(sizeof(Empty_t) == 1u, "Empty messages have one native storage byte");
+
+size_t databind_message_native_artifact_empty_size(void) { return sizeof(Empty_t); }
+
+static DataBind *empty_message_codec;
+static cserde_reader empty_message_reader;
+static cserde_writer empty_message_writer;
+static NativeReaderProbe empty_message_probe;
+static size_t empty_message_tokens;
+static NativeReaderProbeStep empty_message_steps[2];
+
+static cserde_status empty_message_write(void *context, const cserde_token *token) {
+  size_t *count = (size_t *)context;
+  const cserde_token_kind expected[] = {CSERDE_MAP_BEGIN, CSERDE_MAP_END};
+  if (*count >= 2u || token->kind != expected[*count]) return CSERDE_LIMIT_EXCEEDED;
+  ++*count;
+  return CSERDE_OK;
+}
+
+static cserde_status empty_message_finish(void *context) {
+  return *(size_t *)context == 2u ? CSERDE_OK : CSERDE_INVALID_ARGUMENT;
+}
+
+static const cserde_writer_ops EMPTY_MESSAGE_WRITER_OPS = {
+    sizeof(cserde_writer_ops), CSERDE_WRITER_OPS_ABI_VERSION,
+    empty_message_write, empty_message_finish};
 
 size_t databind_message_native_artifact_c_values_vec_size(void) {
   return sizeof(Event_values_vec_t);
@@ -159,6 +188,41 @@ static void check_generated_generic_field(
 }
 
 spec("DataBind public Message native artifact") {
+  after_each() {
+    data_bind_free(empty_message_codec);
+    empty_message_codec = NULL;
+    empty_message_tokens = 0u;
+  }
+
+  it("decodes and encodes an empty message without exposing native storage") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    const DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic = DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    unsigned char workspace[4096];
+    Empty_t value;
+    empty_message_steps[0] = native_reader_probe_token(CSERDE_MAP_BEGIN);
+    empty_message_steps[1] = native_reader_probe_token(CSERDE_MAP_END);
+    check_equal(MessageNativeArtifact_codec_create(&empty_message_codec, &error), DATA_BIND_OK);
+    check_equal(data_bind_message_plan_acquire_generated(
+        empty_message_codec, Empty_native_artifact(), &plan, &error), DATA_BIND_OK);
+    check_equal(data_bind_message_plan_field_count(plan), (size_t)0u);
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+    options.max_depth = 8u;
+    options.max_items = 16u;
+    options.max_owned_bytes = sizeof(workspace);
+    check_equal(native_reader_probe_open(&empty_message_probe, empty_message_steps, 2u, &empty_message_reader), CSERDE_OK);
+    check_equal(data_bind_message_plan_decode_native(
+        plan, &options, &empty_message_reader, &value, sizeof(value), &diagnostic), DATA_BIND_OK);
+    check_equal(cserde_writer_init(&empty_message_writer, &EMPTY_MESSAGE_WRITER_OPS, &empty_message_tokens), CSERDE_OK);
+    check_equal(data_bind_message_plan_encode_native(
+        plan, &options, &value, sizeof(value), &empty_message_writer, &diagnostic), DATA_BIND_OK);
+    check_equal(empty_message_tokens, (size_t)2u);
+    check_equal(cserde_writer_finish(&empty_message_writer), CSERDE_OK);
+    Empty_clear(&value);
+  }
+
   it("publishes exact optional and nullable overlays") {
     const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
     DataBindNativeTypeBinding binding = {0};

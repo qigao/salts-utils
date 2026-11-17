@@ -2029,7 +2029,7 @@ describe("compiler integration") {
     (void)remove(output);
   }
 
-  it("rejects empty records and lifecycle symbol collisions before publication") {
+  it("rejects lifecycle symbol collisions before publication") {
     static const char output[] = "native_invalid_symbols.h";
     databind_native_source_field field = {"value", "uint32_t", 0, 0, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL};
     databind_native_source_record records[2] = {
@@ -2041,10 +2041,6 @@ describe("compiler integration") {
     check_equal(databind_native_source_ir_write_header(&ir, output), -1);
     check_true(file_matches(output, "previous-header"));
     records[1].name = "Packet_clear";
-    check_equal(databind_native_source_ir_write_header(&ir, output), -1);
-    check_true(file_matches(output, "previous-header"));
-    ir.record_count = 1u;
-    records[0].field_count = 0u;
     check_equal(databind_native_source_ir_write_header(&ir, output), -1);
     check_true(file_matches(output, "previous-header"));
     (void)remove(output);

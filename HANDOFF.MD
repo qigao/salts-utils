@@ -75,3 +75,64 @@
   Check installed versions, source/dependency provenance, original artifact
   digests and all native JUnit reports. Do not rebuild, repack or alter old
   release assets, and do not claim Android device execution.
+
+
+# Empty Service DTO audit at 0.1.4 (2026-11-17)
+
+- Source checkout `7b17781593c4f74e1791f8c8633a66e561b1db85` matches the
+  source recorded in TurboRaft's selected SaltsUtils 0.1.4 SDK manifest.
+- `databind/runtime/data_bind_binding_plan.c` finds request/response root
+  parameters before iterating fields, but marks their parameter ownership
+  inside those loops. With zero fields, the final unused-parameter check
+  rejects an existing root parameter as outside the Service contract.
+- Empty records are explicitly unsupported by the Contract-only Native IR
+  validator (`databind/compiler/native_source_ir.c`) and its existing
+  `test_projection_registry.c` regression. The Mustache C struct templates
+  instead emit an empty struct for an empty message, which is not portable C11.
+  Supporting no-argument Services therefore requires a consistent native
+  representation contract, generator behavior and root-parameter admission;
+  changing only the ownership flag does not complete that support.
+- This was a source audit. No production source or `.env` selections changed.
+  Existing native-release-user cache still selects Base/CMeta 0.1.4, while
+  `.env` selects Base 0.1.8 and CMeta 0.1.6; no stale-cache tests were run and
+  no build/test pass is claimed. A later implementation must fresh-configure
+  with the selected environment and extend the owning formal test suites.
+
+
+# SaltsUtils 0.1.5 empty-message refactor
+
+- Empty C records now have one `_empty_storage` byte and zero logical fields in
+  both NativeSourceIR and Binary-backed C generation. C11/C++17 layout agrees;
+  canonical MessagePlan decode/encode emits only MAP_BEGIN/MAP_END. Nonempty
+  record layouts and existing Service function signatures are preserved.
+- NativeSourceIR units bind the existing canonical complete Struct value.
+  Empty values have no field projection or state overlay. CMeta's bounded
+  reflection contract requires a nonempty field projection; changing that SDK
+  contract is unnecessary for a complete zero-field value. Metadata still
+  borrows the caller-owned binder at a stable address until plan destruction.
+- Service roots are claimed before field iteration. The request remains owned
+  by `frame.request`, rather than being initialized again through parameter
+  slots. Response roots retain their existing OUT-slot ownership. Unclaimed
+  parameters still fail admission.
+- Adding the empty-record template exposed a Mustache bytecode bug: insertion
+  changes the instruction-buffer length before the encoded jump width was
+  measured. Cache the jump length/width before insertion for ordinary and
+  inverted sections. The new boundary regression failed before this fix and
+  passed afterwards; it checks body lengths 0..300 with empty/nonempty lists.
+- Formal coverage extends existing targets with Native IR C11/metadata checks,
+  generated Message C/C++ layout and token round trips, and generated HTTP/RPC
+  Service plans for Empty->Empty (typed error), Empty->Status and Status->Empty.
+- Loaded only the existing `.env` dependency selections: Base 0.1.8, declared
+  CMeta 0.1.6 source SDK and vcpkg-cache 0.1.3. No `.env` fields or SDK roots were
+  changed. Product/CMake and vcpkg versions are 0.1.5; obsolete OLD policies are
+  removed, with no public ABI epoch or compatibility branch added.
+- `cmake --fresh --preset native-release-user`, the complete
+  `cmake --build --preset native-release-user`,
+  `ctest --preset native-release-user --output-on-failure --output-junit empty-dto-ctest.xml`
+  and `cmake --build --preset install-native-release-user` passed locally.
+  CTest: 188/188, no failures/errors/skips, 6.07 seconds. The formal Plugin DSO
+  regression verifies that request-root storage remains separate from slots.
+- Release qualification uses the existing ten-profile split SDK CI and original
+  SDK TAR bytes. This commit's remote CI and publication receipts are recorded
+  under ignored `build/` after qualification; publication must not rebuild or
+  repack producer SDKs. Android qualification remains cross-build/install only.

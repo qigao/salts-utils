@@ -6,8 +6,9 @@ int main(int argc, char **argv) {
       {"delta", "int16_t", 0, 1, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL},
       {"active", "bool", 1, 1, DATABIND_NATIVE_TRIVIAL, NULL, 0, NULL, NULL, NULL, NULL, NULL}
   };
-  databind_native_source_record record = {"Packet", 3u, fields};
-  databind_native_source_ir ir = {1u, &record, "NativeFixture", "1"};
+  databind_native_source_record records[] = {
+      {"Packet", 3u, fields}, {"EmptyNative", 0u, NULL}};
+  databind_native_source_ir ir = {2u, records, "NativeFixture", "1"};
   if (argc == 3 && argv[2][0] == 'w') {
     databind_native_source_field owned[] = {
         {"label", "databind_native_text", 0, 0, DATABIND_NATIVE_OWNED_TEXT,
