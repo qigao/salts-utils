@@ -81,10 +81,9 @@ built against the same Base version. Native platform/FS/process/parser/Unicode
 facilities come from Base. CMeta, CFlow, CSTL and Plugin come from CMeta. The
 product does not depend on the old monorepo SaltsCore SDK.
 
-The current selection uses SaltsBase 0.1.8 and CMeta 0.1.6 built from
-`679710f7e3312811efdd92494744a2499286a6a5` against that Base SDK. The CMeta
-0.1.6 binary published against Base 0.1.6 remains a different dependency
-composition. Use the existing `.github/ci/build-cmeta-sdk.ps1` source SDK entry
+The current selection uses SaltsBase 0.1.8 and CMeta 0.1.8 built from
+`fc4427f0e3f23487c34f1f5d595f96e605ba0191` against that Base SDK, including
+bounded asynchronous IOCP file FLUSH. Use the existing `.github/ci/build-cmeta-sdk.ps1` source SDK entry
 with the selected Base/cache inputs; its install path becomes `CMETA_ROOT`.
 Base 0.1.8 keeps JPEG/libyuv discovery in Media's direct consumers, so Utils
 configuration no longer discovers those unrelated dependencies.
