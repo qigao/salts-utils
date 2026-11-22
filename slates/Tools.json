@@ -1,0 +1,20 @@
+{
+  "tools": {
+    "cmake": {
+      "program": "cmake"
+    },
+    "python": {
+      "program": "python3"
+    },
+    "re2c": {
+      "program": "${envPath:SLATE_RE2C_ROOT}/tools/${host:rid}/bin/re2c${host:exe}"
+    },
+    "lemon": {
+      "program": "${envPath:SLATE_LEMON_ROOT}/tools/${host:rid}/bin/lemon${host:exe}",
+      "args": [
+        "-q",
+        "-T${envPath:SLATE_LEMON_ROOT}/tools/${host:rid}/share/lemon/lempar.c"
+      ]
+    }
+  }
+}

@@ -1,0 +1,273 @@
+{
+  "targets": {
+    "salts_cpp_object_facade_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "cpp_object_facade_test.cpp"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../cpp/include",
+          "../common/include",
+          "../lua/include",
+          "../quickjs/include",
+          "../../databind/compiler/cmeta"
+        ],
+        "deps": [
+          "salts_lua_binding",
+          "salts_quickjs_binding",
+          "data_bind_producer",
+          "saltsbase_tinytest",
+          "vcpkg_lua",
+          "vcpkg_qjs",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      }
+    },
+    "salts_native_c_frontend_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_frontend_test.c",
+          "fixtures/native_math.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../lua/include",
+          "../common/include",
+          "../quickjs/include"
+        ],
+        "deps": [
+          "salts_lua_binding",
+          "salts_quickjs_binding",
+          "saltsbase_tinytest",
+          "vcpkg_lua",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "vcpkg_qjs"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "salts_native_cpp_frontend_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_frontend_test.cpp",
+          "fixtures/native_math.c",
+          "fixtures/native_counter.cpp"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../cpp/include",
+          "../common/include",
+          "../lua/include",
+          "../quickjs/include",
+          "../../databind/compiler/cmeta"
+        ],
+        "deps": [
+          "salts_lua_binding",
+          "salts_quickjs_binding",
+          "data_bind_producer",
+          "saltsbase_tinytest",
+          "vcpkg_lua",
+          "vcpkg_qjs",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "salts_native_module_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_module_test.c",
+          "fixtures/native_math.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "bindings",
+          "cmeta",
+          "lua",
+          "quickjs",
+          "typescript"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../lua/include",
+          "../common/include",
+          "../quickjs/include",
+          "../../databind/compiler/cmeta"
+        ],
+        "deps": [
+          "salts_lua_binding",
+          "salts_quickjs_binding",
+          "data_bind_producer",
+          "saltsbase_tinytest",
+          "vcpkg_lua",
+          "vcpkg_qjs",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "salts_object_cross_runtime_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "object_cross_runtime_test.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../lua/include",
+          "../common/include",
+          "../quickjs/include"
+        ],
+        "deps": [
+          "salts_lua_binding",
+          "salts_quickjs_binding",
+          "saltsbase_tinytest",
+          "vcpkg_lua",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "vcpkg_qjs"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

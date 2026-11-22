@@ -1,0 +1,177 @@
+{
+  "include": [
+    "scripts/module.json"
+  ],
+  "targets": {
+    "test_tbe_compiler": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_tbe_compiler.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../native_service_projection.c",
+          "../../service_native.c",
+          "../../binary_reader_codegen.c",
+          "../../projection.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../..",
+          "../../../idl/contract",
+          "../../../formats/binary/include",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "saltsbase_tinytest",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "CPP_TYPES_TEMPLATE_FILE": "\"$root/databind/compiler/templates/cpp/cpp_types.mustache\"",
+          "C_STRUCT_TEMPLATE_FILE": "\"$root/databind/compiler/templates/c/c_structs.mustache\"",
+          "GO_TYPES_TEMPLATE_FILE": "\"$root/databind/compiler/templates/go/go_types.mustache\"",
+          "POSTGRESQL_SECURITY_PROBE_SCHEMA_FILE": "\"$root/databind/compiler/tests/core/test_postgresql_security_probe.schema\"",
+          "PYTHON_DATACLASS_TEMPLATE_FILE": "\"$root/databind/compiler/templates/python/python_dataclass.mustache\"",
+          "RUST_STRUCTS_TEMPLATE_FILE": "\"$root/databind/compiler/templates/rust/rust_structs.mustache\"",
+          "SCHEMA_EXAMPLE_FILE": "\"$root/databind/compiler/tests/core/example.schema\"",
+          "TBE_COMPILER_RESOURCE_DIR": "\"$root/databind/compiler\"",
+          "TS_TYPES_TEMPLATE_FILE": "\"$root/databind/compiler/templates/typescript/ts_types.mustache\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_tbe_compiler_schema_boundary": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_schema_boundary.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../native_service_projection.c",
+          "../../service_native.c",
+          "../../binary_reader_codegen.c",
+          "../../projection.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c",
+          "test_scalar_projection.c",
+          "test_sql_projection_independence.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../..",
+          "../../../idl/contract",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "saltsbase_tinytest",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "TBE_COMPILER_RESOURCE_DIR": "\"$root/databind/compiler\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

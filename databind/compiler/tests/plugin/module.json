@@ -1,0 +1,941 @@
+{
+  "include": [
+    "fixtures/module.json",
+    "scripts/module.json"
+  ],
+  "targets": {
+    "databind_component_candidate_codegen_tool": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_component_provider_candidate_codegen_tool.c",
+          "../../component_provider_candidate.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../binary_reader_codegen.c",
+          "../../projection.c",
+          "../../service_native.c",
+          "../../native_service_projection.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    },
+    "test_databind_contract_plugin_lease_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "../../package_config/databind_target/contract_plugin_lease_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "contract-only",
+          "databind",
+          "lease",
+          "no-binary",
+          "plugin"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_contract_plugin_lease_fixture_plugin_client",
+          "cmeta_plugin",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_contract_plugin_lease_fixture_plugin"
+      ],
+      "variants": [
+        {
+          "when": {
+            "os": "windows"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_CONTRACT_PLUGIN_PATH": "\"$builddir/bin/databind_contract_plugin_lease_fixture_plugin.dll\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": "macos"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_CONTRACT_PLUGIN_PATH": "\"$builddir/lib/databind_contract_plugin_lease_fixture_plugin.dylib\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "GENERATED_CONTRACT_PLUGIN_PATH": "\"$builddir/lib/databind_contract_plugin_lease_fixture_plugin.so\""
+            }
+          }
+        },
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    },
+    "test_databind_plugin_generated_client": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_plugin_generated_client.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_plugin_generated_fixture_plugin_client",
+          "saltsbase_tinytest",
+          "cmeta_plugin",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_plugin_generated_fixture_plugin"
+      ],
+      "variants": [
+        {
+          "when": {
+            "os": "windows"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_DATABIND_PLUGIN_PATH": "\"$builddir/bin/databind_plugin_generated_fixture_plugin.dll\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": "macos"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_DATABIND_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_generated_fixture_plugin.dylib\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "GENERATED_DATABIND_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_generated_fixture_plugin.so\""
+            }
+          }
+        },
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    },
+    "test_databind_plugin_generated_client_cpp": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_plugin_generated_client_cpp.cpp"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_plugin_generated_fixture_plugin_client",
+          "cmeta_plugin",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    },
+    "test_databind_plugin_generated_dso": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_plugin_generated_dso.c",
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.databind/image_binding_native.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.databind",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "saltsbase_tinytest",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "cmeta_plugin",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc",
+        "databind_plugin_generated_fixture_plugin"
+      ],
+      "variants": [
+        {
+          "when": {
+            "os": "windows"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_DATABIND_PLUGIN_PATH": "\"$builddir/bin/databind_plugin_generated_fixture_plugin.dll\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": "macos"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_DATABIND_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_generated_fixture_plugin.dylib\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "GENERATED_DATABIND_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_generated_fixture_plugin.so\""
+            }
+          }
+        },
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    },
+    "test_databind_plugin_generic_descriptor_client": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_plugin_generic_descriptor_client.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "compiler",
+          "databind",
+          "generic",
+          "lease",
+          "plugin"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_plugin_generic_descriptor_fixture_plugin_client",
+          "saltsbase_tinytest",
+          "cmeta_plugin",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_plugin_generic_descriptor_fixture_plugin"
+      ],
+      "variants": [
+        {
+          "when": {
+            "os": "windows"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_GENERIC_PLUGIN_PATH": "\"$builddir/bin/databind_plugin_generic_descriptor_fixture_plugin.dll\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": "macos"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_GENERIC_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_generic_descriptor_fixture_plugin.dylib\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "GENERATED_GENERIC_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_generic_descriptor_fixture_plugin.so\""
+            }
+          }
+        },
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    },
+    "test_databind_plugin_owned_typed_error_client": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_plugin_owned_typed_error_generated_client.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_plugin_owned_typed_error_fixture_plugin_client",
+          "saltsbase_tinytest",
+          "cmeta_plugin",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_plugin_owned_typed_error_fixture_plugin"
+      ],
+      "variants": [
+        {
+          "when": {
+            "os": "windows"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_OWNED_TYPED_ERROR_PLUGIN_PATH": "\"$builddir/bin/databind_plugin_owned_typed_error_fixture_plugin.dll\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": "macos"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_OWNED_TYPED_ERROR_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_owned_typed_error_fixture_plugin.dylib\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "GENERATED_OWNED_TYPED_ERROR_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_owned_typed_error_fixture_plugin.so\""
+            }
+          }
+        },
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    },
+    "test_databind_plugin_owned_typed_error_client_cpp": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_plugin_owned_typed_error_generated_client_cpp.cpp"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_plugin_owned_typed_error_fixture_plugin_client",
+          "cmeta_plugin",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    },
+    "test_databind_plugin_typed_error_client": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_plugin_typed_error_generated_client.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_plugin_typed_error_fixture_plugin_client",
+          "saltsbase_tinytest",
+          "cmeta_plugin",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_plugin_typed_error_fixture_plugin"
+      ],
+      "variants": [
+        {
+          "when": {
+            "os": "windows"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_TYPED_ERROR_PLUGIN_PATH": "\"$builddir/bin/databind_plugin_typed_error_fixture_plugin.dll\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": "macos"
+          },
+          "private": {
+            "defines": {
+              "GENERATED_TYPED_ERROR_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_typed_error_fixture_plugin.dylib\""
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "GENERATED_TYPED_ERROR_PLUGIN_PATH": "\"$builddir/lib/databind_plugin_typed_error_fixture_plugin.so\""
+            }
+          }
+        },
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    },
+    "test_databind_plugin_typed_error_client_cpp": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_plugin_typed_error_generated_client_cpp.cpp"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_plugin_typed_error_fixture_plugin_client",
+          "cmeta_plugin",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "os": [
+              "linux",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "dl"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

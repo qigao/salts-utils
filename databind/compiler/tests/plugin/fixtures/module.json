@@ -1,0 +1,838 @@
+{
+  "targets": {
+    "databind_contract_plugin_lease_fixture_plugin": {
+      "kind": "shared",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.plugin.c",
+          "../../../package_config/databind_target/contract_plugin_business.c"
+        ]
+      },
+      "testOnly": true,
+      "outputPrefix": "",
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_contract_plugin_lease_fixture_plugin_client": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.plugin_client.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_plugin_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_plugin_generated_fixture_plugin": {
+      "kind": "shared",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image.plugin.c",
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image_native.c",
+          "../test_plugin_business_fixture.c"
+        ]
+      },
+      "testOnly": true,
+      "outputPrefix": "",
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_plugin_generated_fixture_plugin_client": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image.plugin_client.c",
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_plugin_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_plugin_generic_descriptor_fixture_plugin": {
+      "kind": "shared",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin.plugin.c",
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin_native.c",
+          "../test_plugin_generic_descriptor_business.c"
+        ]
+      },
+      "testOnly": true,
+      "outputPrefix": "",
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_plugin_generic_descriptor_fixture_plugin_client": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin.plugin_client.c",
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_plugin_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_plugin_owned_typed_error_fixture_plugin": {
+      "kind": "shared",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error.plugin.c",
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error_native.c",
+          "../test_plugin_owned_typed_error_business_fixture.c"
+        ]
+      },
+      "testOnly": true,
+      "outputPrefix": "",
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_plugin_owned_typed_error_fixture_plugin_client": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error.plugin_client.c",
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_plugin_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_plugin_typed_error_fixture_plugin": {
+      "kind": "shared",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error.plugin.c",
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error_native.c",
+          "../test_plugin_typed_error_business_fixture.c"
+        ]
+      },
+      "testOnly": true,
+      "outputPrefix": "",
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_plugin_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_plugin_typed_error_fixture_plugin_client": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error.plugin_client.c",
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_plugin_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_compiler_tests_plugin_codegen": {
+      "kind": "header_only",
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "preTasks": [
+        {
+          "name": "contract_plugin_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/package_config/databind_target/native_contract_service.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin_native.h",
+            "--artifact-name",
+            "contract_plugin",
+            "--artifacts",
+            "plugin",
+            "--component",
+            "WasmRuntime.Calculator",
+            "--artifact-version",
+            "1.0.0"
+          ],
+          "inputs": [
+            "$root/databind/compiler/package_config/databind_target/native_contract_service.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin_native.h",
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.plugin.h",
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.plugin.c",
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.plugin_client.h",
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.plugin_client.c"
+          ]
+        },
+        {
+          "name": "image_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/plugin/test_plugin_projection.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "image",
+            "--artifacts",
+            "plugin",
+            "--source-output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image_native.c",
+            "--component",
+            "Image.ImageProcessor",
+            "--artifact-version",
+            "1.0.0"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/plugin/test_plugin_projection.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image_native.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image_native.c",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image.plugin.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image.plugin.c",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image.plugin_client.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.idl/image.plugin_client.c"
+          ]
+        },
+        {
+          "name": "image_binding_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/plugin/test_plugin_projection.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.databind/image_binding_native.h",
+            "--source-output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.databind/image_binding_native.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/plugin/test_plugin_projection.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.databind/image_binding_native.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generated_fixture.databind/image_binding_native.c"
+          ]
+        },
+        {
+          "name": "generic_plugin_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/plugin/test_plugin_generic_descriptor.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "generic_plugin",
+            "--artifacts",
+            "plugin",
+            "--source-output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin_native.c",
+            "--component",
+            "GenericPlugin.GenericProcessor",
+            "--artifact-version",
+            "1.0.0"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/plugin/test_plugin_generic_descriptor.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin_native.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin_native.c",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin.plugin.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin.plugin.c",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin.plugin_client.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_generic_descriptor_fixture.idl/generic_plugin.plugin_client.c"
+          ]
+        },
+        {
+          "name": "error_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/plugin/test_plugin_typed_error.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "error",
+            "--artifacts",
+            "plugin",
+            "--source-output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error_native.c",
+            "--component",
+            "ErrorPlugin.StorePlugin",
+            "--artifact-version",
+            "1.0.0"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/plugin/test_plugin_typed_error.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error_native.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error_native.c",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error.plugin.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error.plugin.c",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error.plugin_client.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_typed_error_fixture.idl/error.plugin_client.c"
+          ]
+        },
+        {
+          "name": "owned_error_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/plugin/test_plugin_owned_typed_error.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "owned_error",
+            "--artifacts",
+            "plugin",
+            "--source-output",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error_native.c",
+            "--component",
+            "OwnedErrorPlugin.StorePlugin",
+            "--artifact-version",
+            "1.0.0"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/plugin/test_plugin_owned_typed_error.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error_native.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error_native.c",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error.plugin.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error.plugin.c",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error.plugin_client.h",
+            "$builddir/databind/compiler/tests/plugin/databind_plugin_owned_typed_error_fixture.idl/owned_error.plugin_client.c"
+          ]
+        },
+        {
+          "name": "contract_plugin_component_h",
+          "tool": "databind_component_candidate_codegen_tool",
+          "args": [
+            "$root/databind/compiler/package_config/databind_target/native_contract_service.schema",
+            "WasmRuntime.Calculator",
+            "contract_plugin.plugin.h",
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.component.h",
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.component.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/package_config/databind_target/native_contract_service.schema"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.component.h",
+            "$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.component.c"
+          ]
+        }
+      ]
+    }
+  }
+}

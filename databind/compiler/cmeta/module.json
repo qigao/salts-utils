@@ -1,0 +1,71 @@
+{
+  "include": [
+    "tests/module.json"
+  ],
+  "targets": {
+    "data_bind_producer": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "data_bind_cmeta_adapter_plan.c",
+          "data_bind_typescript.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "."
+        ],
+        "deps": [
+          "salts_bindings"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "../../../bindings/common/include"
+        ],
+        "deps": [
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ],
+      "install": {
+        "headers": [
+          {
+            "from": "data_bind_cmeta_adapter_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_typescript.h",
+            "to": "include"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "targets": {
+    "test_mustache_bench": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_mustache_bench.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "bench"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "mustache",
+          "saltsbase_json",
+          "saltsbase_tinytest",
+          "saltsbase_xml",
+          "saltsbase_query",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

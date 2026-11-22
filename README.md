@@ -27,6 +27,38 @@ load your local `.env` into the parent shell. Follow the
 [build instructions](#restore-and-build) for your compiler's CMake user preset.
 CMake does not load dotenv files or restore SDKs implicitly.
 
+## Build with Slate
+
+Run Slate from this directory using the project entry point in [slate.json](slate.json).
+Restore SaltsBase, CMeta, and the vcpkg triplet for the selected compiler and
+architecture. Slate reads the declared settings from your local
+[.env](.env.example). Point `SLATE_RE2C_ROOT` and `SLATE_LEMON_ROOT` at the
+extracted roots of the packages pinned in [cmake/](cmake/). Each root contains
+`tools/<host-rid>/bin` and `tools/<host-rid>/share`.
+
+```sh
+slate doctor --preset release
+slate build --preset release
+slate test --preset tests --list
+slate test --preset tests
+slate run --preset tests --target mustache_json_example
+slate test --preset benchmark --filter benchmark_
+slate install --preset release --components runtime,dev --prefix out/slate-install
+```
+
+Use `debug` for a debug build and `debug-tests` for a debug test run.
+On Windows, `debug-mingw` and `debug-msvc` select the compiler explicitly.
+The MSVC preset reads `VSDEVCMD_BAT` and requires a matching MSVC SDK and triplet.
+The VS Code Slate extension can open this directory and select the `tests`
+preset to browse and run the test targets.
+Each suite can include its own `fixtures/module.json` for test libraries and
+generated fixtures, and `scripts/module.json` for declared script tests.
+
+The build uses Slate and Ninja with the declared re2c and Lemon executables.
+The native test suite also runs the existing CMake script checks and the
+Python 3 Wasm fixture generator. Use a Slate build that stages a module
+tool’s runtime dependencies before running its tasks.
+
 ## Salts ecosystem
 
 - [SaltsBase](https://github.com/qigao/salts-base): native primitives, NativeIO, parsers and foundational utilities.

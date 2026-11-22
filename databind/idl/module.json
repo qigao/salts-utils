@@ -1,0 +1,81 @@
+{
+  "include": [
+    "parser/module.json"
+  ],
+  "targets": {
+    "databind_idl": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "core/node_tree.c",
+          "core/tbe_error.c",
+          "contract/idl_contract.c",
+          "contract/idl_type_ref.c",
+          "contract/idl_type_check.c",
+          "frontend/idl_frontend.c",
+          "frontend/schema_enum.c",
+          "frontend/schema_type_ref.c",
+          "frontend/schema_service.c",
+          "frontend/schema_channel.c",
+          "frontend/schema_component.c",
+          "$builddir/databind/idl/parser/schema_lexer_gen.c",
+          "$builddir/databind/idl/parser/schema_grammar_gen.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "include"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "contract",
+          "frontend",
+          "parser",
+          "$builddir/databind/idl/parser",
+          "../schema/include"
+        ],
+        "deps": [
+          "databind_schema",
+          "saltsbase_core",
+          "databind_idl_parser_codegen",
+          "cmeta_cmeta"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ],
+      "install": {
+        "headers": [
+          {
+            "from": "include/idl_contract.h",
+            "to": "include"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,880 @@
+{
+  "include": [
+    "fixtures/module.json"
+  ],
+  "forEach": [
+    {
+      "files": [
+        "test_jinja_assignment_parser.c",
+        "test_jinja_expression_memory.c",
+        "test_jinja_header_memory.c"
+      ],
+      "target": {
+        "kind": "executable",
+        "sources": {
+          "files": [
+            "../src/parser/jinja_expression_parser.c",
+            "../src/jinja_float.c",
+            "$builddir/jinja/jinja_expression_lexer_gen.c",
+            "$builddir/jinja/jinja_expression_grammar_gen.c"
+          ]
+        },
+        "test": {
+          "labels": [
+            "jinja",
+            "parser",
+            "unit"
+          ]
+        },
+        "when": {
+          "native": true
+        },
+        "private": {
+          "includeDirs": [
+            "../include",
+            "../src",
+            "../src/parser",
+            "$builddir/jinja/test/.."
+          ],
+          "deps": [
+            "saltsbase_unicode",
+            "cmeta_cstl",
+            "saltsbase_tinytest",
+            "saltsbase_simd",
+            "cmeta_cmeta",
+            "saltsbase_core",
+            "jinja_codegen"
+          ]
+        },
+        "variants": [
+          {
+            "when": {
+              "driver": "msvc"
+            },
+            "private": {
+              "flags": [
+                "/experimental:c11atomics"
+              ]
+            }
+          },
+          {
+            "when": {
+              "os": [
+                "linux",
+                "macos",
+                "android"
+              ]
+            },
+            "private": {
+              "defines": {
+                "_POSIX_C_SOURCE": "200809L"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "test_jinja_cmeta_*.c"
+      ],
+      "target": {
+        "kind": "executable",
+        "test": {
+          "labels": [
+            "cmeta",
+            "jinja",
+            "unit"
+          ]
+        },
+        "when": {
+          "native": true
+        },
+        "private": {
+          "includeDirs": [
+            "../include",
+            "../src"
+          ],
+          "deps": [
+            "jinja_cmeta",
+            "saltsbase_tinytest",
+            "cmeta_cmeta",
+            "saltsbase_core"
+          ]
+        },
+        "variants": [
+          {
+            "when": {
+              "driver": "msvc"
+            },
+            "private": {
+              "flags": [
+                "/experimental:c11atomics"
+              ]
+            }
+          },
+          {
+            "when": {
+              "os": [
+                "linux",
+                "macos",
+                "android"
+              ]
+            },
+            "private": {
+              "defines": {
+                "_POSIX_C_SOURCE": "200809L"
+              }
+            }
+          }
+        ]
+      },
+      "exclude": [
+        "test_jinja_cmeta_collections.c",
+        "test_jinja_cmeta_cstl_collections.c"
+      ]
+    },
+    {
+      "files": [
+        "test_jinja_native_functions_*.c"
+      ],
+      "target": {
+        "kind": "executable",
+        "sources": {
+          "files": [
+            "../src/jinja_cmeta.c",
+            "../src/jinja_cmeta_provider.c",
+            "../src/jinja_cmeta_layout.c",
+            "../src/jinja_float.c",
+            "../src/jinja_cmeta_cells.c",
+            "../src/jinja_cmeta_environment.c",
+            "../src/jinja_cmeta_runtime.c",
+            "../src/parser/jinja_template_parser.c",
+            "../src/parser/jinja_expression_parser.c",
+            "$builddir/jinja/jinja_text_lexer_gen.c",
+            "$builddir/jinja/jinja_expression_lexer_gen.c",
+            "$builddir/jinja/jinja_expression_grammar_gen.c",
+            "$builddir/jinja/jinja_template_lexer_gen.c"
+          ]
+        },
+        "test": {
+          "labels": [
+            "compiler",
+            "jinja",
+            "unit"
+          ]
+        },
+        "when": {
+          "native": true
+        },
+        "private": {
+          "includeDirs": [
+            "../include",
+            "../src",
+            "../src/parser",
+            "$builddir/jinja/test/.."
+          ],
+          "deps": [
+            "cmeta_cmeta",
+            "cmeta_cstl",
+            "saltsbase_unicode",
+            "saltsbase_tinytest",
+            "saltsbase_core",
+            "saltsbase_simd",
+            "jinja_codegen"
+          ]
+        },
+        "variants": [
+          {
+            "when": {
+              "os": [
+                "linux",
+                "macos",
+                "android"
+              ]
+            },
+            "private": {
+              "libs": [
+                "m"
+              ]
+            }
+          },
+          {
+            "when": {
+              "driver": "msvc"
+            },
+            "private": {
+              "flags": [
+                "/experimental:c11atomics"
+              ]
+            }
+          },
+          {
+            "when": {
+              "os": [
+                "linux",
+                "macos",
+                "android"
+              ]
+            },
+            "private": {
+              "defines": {
+                "_POSIX_C_SOURCE": "200809L"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "targets": {
+    "test_jinja_artifact_storage": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_artifact_storage.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "compiler",
+          "jinja",
+          "storage",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "saltsbase_tinytest",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_jinja_cmeta_collections": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_cmeta_collections.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "jinja",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_jinja_cmeta_cstl_collections": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_cmeta_cstl_collections.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "cstl",
+          "jinja",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "cmeta_cstl",
+          "saltsbase_tinytest",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_jinja_cmeta_header_cpp": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_cmeta_header_cpp.cpp"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "headers",
+          "jinja"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "saltsbase_tinytest",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      }
+    },
+    "test_jinja_environment": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_environment.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "environment",
+          "jinja",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "saltsbase_tinytest",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_jinja_environment_memory": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_environment_memory.c",
+          "../src/jinja_cmeta.c",
+          "../src/jinja_cmeta_provider.c",
+          "../src/jinja_cmeta_layout.c",
+          "../src/jinja_float.c",
+          "../src/jinja_cmeta_cells.c",
+          "../src/jinja_cmeta_runtime.c",
+          "../src/parser/jinja_template_parser.c",
+          "../src/parser/jinja_expression_parser.c",
+          "$builddir/jinja/jinja_text_lexer_gen.c",
+          "$builddir/jinja/jinja_expression_lexer_gen.c",
+          "$builddir/jinja/jinja_expression_grammar_gen.c",
+          "$builddir/jinja/jinja_template_lexer_gen.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "compiler",
+          "jinja",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src",
+          "../src/parser",
+          "$builddir/jinja/test/.."
+        ],
+        "deps": [
+          "cmeta_cmeta",
+          "cmeta_cstl",
+          "saltsbase_unicode",
+          "saltsbase_tinytest",
+          "saltsbase_core",
+          "saltsbase_simd",
+          "jinja_codegen"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "m"
+            ]
+          }
+        },
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_jinja_reflection": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_reflection.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "jinja",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "saltsbase_tinytest",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_jinja_template_memory": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_template_memory.c",
+          "../src/parser/jinja_template_parser.c",
+          "../src/parser/jinja_expression_parser.c",
+          "../src/jinja_float.c",
+          "$builddir/jinja/jinja_expression_lexer_gen.c",
+          "$builddir/jinja/jinja_expression_grammar_gen.c",
+          "$builddir/jinja/jinja_template_lexer_gen.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "jinja",
+          "parser",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src",
+          "../src/parser",
+          "$builddir/jinja/test/.."
+        ],
+        "deps": [
+          "saltsbase_unicode",
+          "cmeta_cstl",
+          "saltsbase_tinytest",
+          "saltsbase_simd",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "jinja_codegen"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_jinja_template_parser": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_template_parser.c",
+          "../src/parser/jinja_template_parser.c",
+          "../src/parser/jinja_expression_parser.c",
+          "../src/jinja_float.c",
+          "$builddir/jinja/jinja_expression_lexer_gen.c",
+          "$builddir/jinja/jinja_expression_grammar_gen.c",
+          "$builddir/jinja/jinja_template_lexer_gen.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "jinja",
+          "parser",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src",
+          "../src/parser",
+          "$builddir/jinja/test/.."
+        ],
+        "deps": [
+          "saltsbase_unicode",
+          "cmeta_cstl",
+          "saltsbase_tinytest",
+          "saltsbase_simd",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "jinja_codegen"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_jinja_text_storage": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_text_storage.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "jinja",
+          "storage",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "cmeta_cstl",
+          "saltsbase_tinytest",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_jinja_value_storage": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_jinja_value_storage.c",
+          "../src/jinja_cmeta_cells.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "jinja",
+          "storage",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "cmeta_cstl",
+          "saltsbase_tinytest",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

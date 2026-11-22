@@ -1,0 +1,163 @@
+{
+  "include": [
+    "test/module.json",
+    "benchmarks/module.json"
+  ],
+  "targets": {
+    "mustache": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "src/mustache.c",
+          "src/mustache_json.c",
+          "src/mustache_xml.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "include"
+        ],
+        "deps": [
+          "saltsbase_core"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "src"
+        ],
+        "deps": [
+          "saltsbase_json",
+          "saltsbase_xml"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ],
+      "install": {
+        "headers": [
+          {
+            "from": "include",
+            "to": "include/mustache"
+          }
+        ]
+      }
+    },
+    "mustache_json_example": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "examples/json_example.c"
+        ]
+      },
+      "testOnly": true,
+      "private": {
+        "includeDirs": [
+          "include"
+        ],
+        "deps": [
+          "mustache",
+          "saltsbase_json",
+          "saltsbase_xml",
+          "saltsbase_query",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "mustache_xml_example": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "examples/xml_example.c"
+        ]
+      },
+      "testOnly": true,
+      "private": {
+        "includeDirs": [
+          "include"
+        ],
+        "deps": [
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

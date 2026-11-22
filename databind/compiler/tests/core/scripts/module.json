@@ -1,0 +1,25 @@
+{
+  "targets": {
+    "test_idl_host_command": {
+      "kind": "header_only",
+      "when": {
+        "native": true
+      },
+      "test": {
+        "tool": "cmake",
+        "args": [
+          "-DDATABIND_SOURCE_ROOT=$root/databind",
+          "-P",
+          "$root/databind/compiler/tests/core/test_idl_host_command.cmake"
+        ],
+        "labels": [
+          "cmake",
+          "compiler",
+          "databind",
+          "installed",
+          "windows"
+        ]
+      }
+    }
+  }
+}

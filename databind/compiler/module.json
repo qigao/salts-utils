@@ -1,0 +1,209 @@
+{
+  "include": [
+    "binary/module.json",
+    "binding/module.json",
+    "cmeta/module.json",
+    "tests/module.json"
+  ],
+  "targets": {
+    "salts-idlc": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "main.c",
+          "compiler_core.c",
+          "native_source_ir.c",
+          "component_provider_candidate.c",
+          "projection.c",
+          "projection_frontend.c",
+          "projection_config.c",
+          "service_native.c",
+          "native_service_projection.c",
+          "plugin_projection.c",
+          "wasm_projection.c",
+          "openapi_projection.c",
+          "method_plan_projection.c",
+          "socket_plan_projection.c",
+          "flowmq_plan_projection.c",
+          "binary_reader_codegen.c",
+          "opaque_plan_codegen.c",
+          "database_schema.c",
+          "mustache_helpers.c"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "../idl/contract",
+          "binding",
+          "../idl/include",
+          "../../mustache/include",
+          "../schema/include",
+          "../formats/binary/include",
+          "binary/include",
+          "../formats/binary/internal"
+        ],
+        "deps": [
+          "databind_binding_compiler",
+          "databind_idl",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "saltsbase_cserde"
+        ]
+      },
+      "preTasks": [
+        {
+          "name": "copy_templates_c_c_guest_adapter_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/c/c_guest_adapter.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/c/c_guest_adapter.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_c_c_structs_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/c/c_structs.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/c/c_structs.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_c_c_typed_source_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_cpp_cpp_types_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/cpp/cpp_types.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/cpp/cpp_types.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_go_go_types_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/go/go_types.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/go/go_types.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_python_python_dataclass_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/python/python_dataclass.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/python/python_dataclass.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_rust_rust_structs_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/rust/rust_structs.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/rust/rust_structs.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_typescript_ts_types_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/typescript/ts_types.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/typescript/ts_types.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_reflection_rfl_types_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/reflection/rfl_types.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/reflection/rfl_types.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_sql_sqlite_schema_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/sql/sqlite_schema.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/sql/sqlite_schema.mustache"
+          ]
+        },
+        {
+          "name": "copy_templates_sql_postgresql_schema_mustache",
+          "builtin": "copy",
+          "inputs": [
+            "templates/sql/postgresql_schema.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/templates/sql/postgresql_schema.mustache"
+          ]
+        }
+      ],
+      "install": {
+        "assets": [
+          {
+            "from": "templates",
+            "to": "bin/templates"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

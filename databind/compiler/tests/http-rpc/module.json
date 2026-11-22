@@ -1,0 +1,211 @@
+{
+  "include": [
+    "fixtures/module.json"
+  ],
+  "targets": {
+    "databind_method_plan_projection_fixture_gen": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_method_plan_projection_generate.c",
+          "../../projection.c",
+          "../../method_plan_projection.c",
+          "../../opaque_plan_codegen.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../native_service_projection.c",
+          "../../service_native.c",
+          "../../binary_reader_codegen.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_generated_method_plan_projection": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_generated_method_plan_projection.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/http-rpc",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_http_rpc_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_method_plan_projection_fixture_gen"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_method_plan_public_frontend": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_method_plan_frontend.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_public_fixture.idl",
+          "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_configured_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_http_rpc_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

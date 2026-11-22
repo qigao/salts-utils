@@ -1,0 +1,276 @@
+{
+  "targets": {
+    "databind_empty_service_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service_native.c",
+          "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service.service_native.c",
+          "../test_empty_service_business.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_native_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_native_service_public_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public_native.c",
+          "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public.service_native.c",
+          "../test_public_native_service_business.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_native_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_compiler_tests_native_codegen": {
+      "kind": "header_only",
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "preTasks": [
+        {
+          "name": "service_native_records_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/native/test_service_native_lowering.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_records.h",
+            "--source-output",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_records.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/native/test_service_native_lowering.schema",
+            "$root/databind/compiler/tests/native/test_service_native_optional.schema",
+            "$root/databind/compiler/tests/native/test_service_native_owned_error.schema",
+            "$root/databind/compiler/tests/native/test_service_native_cleanup_error.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_records.h",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_records.c"
+          ]
+        },
+        {
+          "name": "service_native_records_h_1",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/native/test_service_native_cleanup_error.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_records.h",
+            "--source-output",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_records.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/native/test_service_native_lowering.schema",
+            "$root/databind/compiler/tests/native/test_service_native_optional.schema",
+            "$root/databind/compiler/tests/native/test_service_native_owned_error.schema",
+            "$root/databind/compiler/tests/native/test_service_native_cleanup_error.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_records.h",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_records.c"
+          ]
+        },
+        {
+          "name": "service_native_records_h_2",
+          "tool": "databind_service_native_codegen_fixture_tool",
+          "args": [
+            "$root/databind/compiler/tests/native/test_service_native_lowering.schema",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_generated.h",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_generated.c",
+            "service_native_records.h",
+            "$root/databind/compiler/tests/native/test_service_native_optional.schema",
+            "$root/databind/compiler/tests/native/test_service_native_owned_error.schema",
+            "$root/databind/compiler/tests/native/test_service_native_cleanup_error.schema",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_generated.h",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_generated.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/native/test_service_native_lowering.schema",
+            "$root/databind/compiler/tests/native/test_service_native_optional.schema",
+            "$root/databind/compiler/tests/native/test_service_native_owned_error.schema",
+            "$root/databind/compiler/tests/native/test_service_native_cleanup_error.schema",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_records.h",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_records.h"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_generated.h",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_generated.c",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_generated.h",
+            "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_generated.c"
+          ]
+        },
+        {
+          "name": "service_native_public_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/native/test_service_native_lowering.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "service_native_public",
+            "--artifacts",
+            "native",
+            "--transports",
+            "http,rpc",
+            "--source-output",
+            "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public_native.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/native/test_service_native_lowering.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public_native.h",
+            "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public_native.c",
+            "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public.service_native.h",
+            "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public.service_native.c",
+            "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public.http.h",
+            "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl/service_native_public.rpc.h"
+          ]
+        },
+        {
+          "name": "empty_service_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/native/test_empty_service.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "empty_service",
+            "--artifacts",
+            "native",
+            "--transports",
+            "http,rpc",
+            "--source-output",
+            "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service_native.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/native/test_empty_service.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service_native.h",
+            "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service_native.c",
+            "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service.service_native.h",
+            "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service.service_native.c",
+            "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service.http.h",
+            "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl/empty_service.rpc.h"
+          ]
+        }
+      ]
+    }
+  }
+}

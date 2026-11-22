@@ -1,3 +1,6 @@
+#ifndef TINYTEST_NO_MAIN
+#define TINYTEST_NO_MAIN
+#endif
 #include "tinytest.h"
 #include "compiler_core.h"
 #include "idl_contract_internal.h"

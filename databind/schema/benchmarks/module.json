@@ -1,0 +1,106 @@
+{
+  "targets": {
+    "benchmark_encoding": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "../test/benchmark_encoding.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "config": "benchmark",
+        "native": true
+      },
+      "private": {
+        "deps": [
+          "saltsbase_tinytest",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "benchmark_tbe_simple": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "../test/benchmark_tbe_simple.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "config": "benchmark",
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../idl/include",
+          "../../formats/binary/include",
+          "../../compiler/binary/include",
+          "../../formats/binary/internal"
+        ],
+        "deps": [
+          "databind_schema",
+          "databind_binary_contract",
+          "saltsbase_tinytest",
+          "databind_idl",
+          "cmeta_cmeta",
+          "saltsbase_cserde",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

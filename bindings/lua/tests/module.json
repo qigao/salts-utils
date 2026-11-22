@@ -1,0 +1,160 @@
+{
+  "targets": {
+    "salts_lua_conversion_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "lua_cmeta_conversion_test.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../common/include"
+        ],
+        "deps": [
+          "salts_lua_binding",
+          "saltsbase_tinytest",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "vcpkg_lua"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "salts_lua_invokable_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "lua_cmeta_invokable_test.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../common/include"
+        ],
+        "deps": [
+          "salts_lua_binding",
+          "saltsbase_tinytest",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "vcpkg_lua"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "salts_lua_object_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "lua_cmeta_object_test.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../common/include"
+        ],
+        "deps": [
+          "salts_lua_binding",
+          "saltsbase_tinytest",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "vcpkg_lua"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

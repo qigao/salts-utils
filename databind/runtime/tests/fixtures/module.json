@@ -1,0 +1,210 @@
+{
+  "targets": {
+    "databind_runtime_codegen": {
+      "kind": "header_only",
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "preTasks": [
+        {
+          "name": "optional_scalar_lifecycle_generated_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/runtime/test_optional_scalar_lifecycle.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/runtime/optional_scalar_lifecycle_generated/optional_scalar_lifecycle_generated.h",
+            "--source-output",
+            "$builddir/databind/runtime/optional_scalar_lifecycle_generated/optional_scalar_lifecycle_generated.c"
+          ],
+          "inputs": [
+            "$root/databind/runtime/test_optional_scalar_lifecycle.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/runtime/optional_scalar_lifecycle_generated/optional_scalar_lifecycle_generated.h",
+            "$builddir/databind/runtime/optional_scalar_lifecycle_generated/optional_scalar_lifecycle_generated.c"
+          ]
+        },
+        {
+          "name": "binary_tail_only_generated_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/runtime/test_binary_tail_only.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/runtime/binary_tail_only_generated/binary_tail_only_generated.h",
+            "--source-output",
+            "$builddir/databind/runtime/binary_tail_only_generated/binary_tail_only_generated.c"
+          ],
+          "inputs": [
+            "$root/databind/runtime/test_binary_tail_only.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/runtime/binary_tail_only_generated/binary_tail_only_generated.h",
+            "$builddir/databind/runtime/binary_tail_only_generated/binary_tail_only_generated.c"
+          ]
+        },
+        {
+          "name": "binary_array_big_generated_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/runtime/test_binary_array_big.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/runtime/binary_tail_only_generated/binary_array_big_generated.h",
+            "--source-output",
+            "$builddir/databind/runtime/binary_tail_only_generated/binary_array_big_generated.c"
+          ],
+          "inputs": [
+            "$root/databind/runtime/test_binary_array_big.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/runtime/binary_tail_only_generated/binary_array_big_generated.h",
+            "$builddir/databind/runtime/binary_tail_only_generated/binary_array_big_generated.c"
+          ]
+        },
+        {
+          "name": "binary_admission_generated_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/core/example.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/runtime/binary_admission_generated/binary_admission_generated.h",
+            "--source-output",
+            "$builddir/databind/runtime/binary_admission_generated/binary_admission_generated.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/core/example.schema",
+            "$root/databind/compiler/templates/c/c_structs.mustache",
+            "$root/databind/compiler/templates/c/c_typed_source.mustache",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/runtime/binary_admission_generated/binary_admission_generated.h",
+            "$builddir/databind/runtime/binary_admission_generated/binary_admission_generated.c"
+          ]
+        },
+        {
+          "name": "generated_owned_buffers_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/runtime/test_generated_owned_buffers.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/runtime/generated_owned_buffers/generated_owned_buffers.h",
+            "--source-output",
+            "$builddir/databind/runtime/generated_owned_buffers/generated_owned_buffers.c"
+          ],
+          "inputs": [
+            "$root/databind/runtime/test_generated_owned_buffers.schema",
+            "$root/databind/compiler/templates/c/c_structs.mustache",
+            "$root/databind/compiler/templates/c/c_typed_source.mustache",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/runtime/generated_owned_buffers/generated_owned_buffers.h",
+            "$builddir/databind/runtime/generated_owned_buffers/generated_owned_buffers.c"
+          ]
+        },
+        {
+          "name": "cmeta_graph_generated_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/runtime/test_cmeta_graph.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/runtime/cmeta_graph_generated/cmeta_graph_generated.h",
+            "--source-output",
+            "$builddir/databind/runtime/cmeta_graph_generated/cmeta_graph_generated.c"
+          ],
+          "inputs": [
+            "$root/databind/runtime/test_cmeta_graph.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/runtime/cmeta_graph_generated/cmeta_graph_generated.h",
+            "$builddir/databind/runtime/cmeta_graph_generated/cmeta_graph_generated.c"
+          ]
+        }
+      ]
+    },
+    "tbe_cmeta_graph_public_fixture": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/runtime/cmeta_graph_generated/cmeta_graph_generated.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/runtime/cmeta_graph_generated",
+          "../..",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_runtime_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "targets": {
+    "databind_idl_parser_codegen": {
+      "kind": "header_only",
+      "preTasks": [
+        {
+          "name": "schema_lexer_gen_c",
+          "tool": "re2c",
+          "args": [
+            "-o",
+            "$builddir/databind/idl/parser/schema_lexer_gen.c",
+            "$root/databind/idl/parser/schema_lexer.re"
+          ],
+          "inputs": [
+            "$root/databind/idl/parser/schema_lexer.re"
+          ],
+          "outputs": [
+            "$builddir/databind/idl/parser/schema_lexer_gen.c"
+          ]
+        },
+        {
+          "name": "schema_grammar_gen_c_input",
+          "builtin": "copy",
+          "inputs": [
+            "$root/databind/idl/parser/schema_grammar.y"
+          ],
+          "outputs": [
+            "$builddir/databind/idl/parser/schema_grammar_gen.y"
+          ]
+        },
+        {
+          "name": "schema_grammar_gen_c",
+          "tool": "lemon",
+          "args": [
+            "$builddir/databind/idl/parser/schema_grammar_gen.y"
+          ],
+          "inputs": [
+            "$root/databind/idl/parser/schema_grammar.y",
+            "${envPath:SLATE_LEMON_ROOT}/tools/${host:rid}/share/lemon/lempar.c",
+            "$builddir/databind/idl/parser/schema_grammar_gen.y"
+          ],
+          "outputs": [
+            "$builddir/databind/idl/parser/schema_grammar_gen.c",
+            "$builddir/databind/idl/parser/schema_grammar_gen.h"
+          ]
+        }
+      ]
+    }
+  }
+}

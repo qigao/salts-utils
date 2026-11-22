@@ -1,0 +1,347 @@
+{
+  "targets": {
+    "test_mustache_json": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_json_integration.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "integration"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "mustache",
+          "saltsbase_json",
+          "saltsbase_tinytest",
+          "saltsbase_xml",
+          "saltsbase_query",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_mustache_runtime": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_runtime_regressions.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "regression",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "mustache",
+          "saltsbase_json",
+          "saltsbase_tinytest",
+          "saltsbase_xml",
+          "saltsbase_query",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_mustache_spec": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_spec_adapted.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "specification"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "mustache",
+          "saltsbase_json",
+          "saltsbase_tinytest",
+          "saltsbase_xml",
+          "saltsbase_query",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_mustache_xml": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_xml_integration.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "integration",
+          "xml"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "mustache",
+          "saltsbase_json",
+          "saltsbase_tinytest",
+          "saltsbase_xml",
+          "saltsbase_query",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_scope": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_scope.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "scope",
+          "unit"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "mustache",
+          "saltsbase_json",
+          "saltsbase_tinytest",
+          "saltsbase_xml",
+          "saltsbase_query",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_spec_runner": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_spec_runner.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "runner",
+          "specification"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../src"
+        ],
+        "deps": [
+          "mustache",
+          "saltsbase_json",
+          "saltsbase_tinytest",
+          "saltsbase_xml",
+          "saltsbase_query",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "SPEC_JSON_DIR": "\"$root/mustache/test/spec\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

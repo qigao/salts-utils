@@ -1,0 +1,9 @@
+{
+  "include": [
+    "common/module.json",
+    "cpp/module.json",
+    "lua/module.json",
+    "quickjs/module.json",
+    "tests/module.json"
+  ]
+}

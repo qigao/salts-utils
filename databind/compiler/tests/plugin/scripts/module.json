@@ -1,0 +1,32 @@
+{
+  "targets": {
+    "test_databind_component_candidate_codegen_content": {
+      "kind": "header_only",
+      "when": {
+        "native": true
+      },
+      "test": {
+        "tool": "cmake",
+        "args": [
+          "-DHEADER=$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.component.h",
+          "-DSOURCE=$builddir/databind/compiler/tests/plugin/databind_contract_plugin_lease_fixture.idl/contract_plugin.component.c",
+          "-P",
+          "$root/databind/compiler/tests/plugin/check_component_candidate_content.cmake"
+        ],
+        "labels": [
+          "candidate",
+          "codegen",
+          "compiler",
+          "component",
+          "databind",
+          "no-fallback"
+        ]
+      },
+      "private": {
+        "deps": [
+          "databind_compiler_tests_plugin_codegen"
+        ]
+      }
+    }
+  }
+}

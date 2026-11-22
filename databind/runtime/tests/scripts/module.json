@@ -1,0 +1,22 @@
+{
+  "targets": {
+    "test_tbe_cmeta_cli_gates": {
+      "kind": "header_only",
+      "when": {
+        "native": true
+      },
+      "test": {
+        "tool": "cmake",
+        "args": [
+          "-DTBE_COMPILER=$builddir/bin/salts-idlc${host:exe}",
+          "-DWORK_DIR=$builddir/databind/runtime/cmeta_cli_gates",
+          "-P",
+          "$root/databind/runtime/test_cmeta_cli_gates.cmake"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ]
+    }
+  }
+}

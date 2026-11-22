@@ -1,0 +1,188 @@
+{
+  "include": [
+    "test/module.json",
+    "benchmarks/module.json"
+  ],
+  "targets": {
+    "jinja_cmeta": {
+      "kind": "shared",
+      "sources": {
+        "files": [
+          "src/jinja_cmeta_reflection.c",
+          "src/jinja_cmeta_runtime.c",
+          "src/jinja_cmeta.c",
+          "src/jinja_cmeta_environment.c",
+          "src/jinja_cmeta_layout.c",
+          "src/jinja_cmeta_cells.c",
+          "src/jinja_cmeta_provider.c",
+          "src/jinja_float.c",
+          "src/parser/jinja_expression_parser.c",
+          "src/parser/jinja_template_parser.c",
+          "$builddir/jinja/jinja_text_lexer_gen.c",
+          "$builddir/jinja/jinja_expression_lexer_gen.c",
+          "$builddir/jinja/jinja_expression_grammar_gen.c",
+          "$builddir/jinja/jinja_template_lexer_gen.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "include"
+        ],
+        "deps": [
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "src",
+          "src/parser",
+          "$builddir/jinja"
+        ],
+        "deps": [
+          "saltsbase_unicode",
+          "cmeta_cstl",
+          "jinja_codegen"
+        ],
+        "defines": {
+          "JINJA_CMETA_BUILD_DLL": null
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "m"
+            ]
+          }
+        },
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ],
+      "install": {
+        "headers": [
+          {
+            "from": "include",
+            "to": "include/jinja"
+          }
+        ]
+      }
+    },
+    "jinja_codegen": {
+      "kind": "header_only",
+      "preTasks": [
+        {
+          "name": "jinja_template_lexer_gen_c",
+          "tool": "re2c",
+          "args": [
+            "-o",
+            "$builddir/jinja/jinja_template_lexer_gen.c",
+            "$root/jinja/src/parser/jinja_template_lexer.re"
+          ],
+          "inputs": [
+            "$root/jinja/src/parser/jinja_template_lexer.re",
+            "$root/jinja/src/parser/jinja_template_lexer.h"
+          ],
+          "outputs": [
+            "$builddir/jinja/jinja_template_lexer_gen.c"
+          ]
+        },
+        {
+          "name": "jinja_expression_lexer_gen_c",
+          "tool": "re2c",
+          "args": [
+            "-I",
+            "${envPath:SLATE_RE2C_ROOT}/tools/${host:rid}/share/re2c/stdlib",
+            "-o",
+            "$builddir/jinja/jinja_expression_lexer_gen.c",
+            "$root/jinja/src/parser/jinja_expression_lexer.re"
+          ],
+          "inputs": [
+            "$root/jinja/src/parser/jinja_expression_lexer.re",
+            "$root/jinja/src/parser/jinja_expression_parser.h",
+            "${envPath:SLATE_RE2C_ROOT}/tools/${host:rid}/share/re2c/stdlib/unicode_properties.re",
+            "${envPath:SLATE_RE2C_ROOT}/tools/${host:rid}/share/re2c/stdlib/unicode_categories.re",
+            "$builddir/jinja/jinja_expression_grammar_gen.h"
+          ],
+          "outputs": [
+            "$builddir/jinja/jinja_expression_lexer_gen.c"
+          ]
+        },
+        {
+          "name": "jinja_expression_grammar_gen_c_input",
+          "builtin": "copy",
+          "inputs": [
+            "$root/jinja/src/parser/jinja_expression_grammar.y"
+          ],
+          "outputs": [
+            "$builddir/jinja/jinja_expression_grammar_gen.y"
+          ]
+        },
+        {
+          "name": "jinja_expression_grammar_gen_c",
+          "tool": "lemon",
+          "args": [
+            "$builddir/jinja/jinja_expression_grammar_gen.y"
+          ],
+          "inputs": [
+            "$root/jinja/src/parser/jinja_expression_grammar.y",
+            "${envPath:SLATE_LEMON_ROOT}/tools/${host:rid}/share/lemon/lempar.c",
+            "$builddir/jinja/jinja_expression_grammar_gen.y"
+          ],
+          "outputs": [
+            "$builddir/jinja/jinja_expression_grammar_gen.c",
+            "$builddir/jinja/jinja_expression_grammar_gen.h"
+          ]
+        },
+        {
+          "name": "jinja_text_lexer_gen_c",
+          "tool": "re2c",
+          "args": [
+            "-I",
+            "${envPath:SLATE_RE2C_ROOT}/tools/${host:rid}/share/re2c/stdlib",
+            "-o",
+            "$builddir/jinja/jinja_text_lexer_gen.c",
+            "$root/jinja/src/parser/jinja_text_lexer.re"
+          ],
+          "inputs": [
+            "$root/jinja/src/parser/jinja_text_lexer.re",
+            "$root/jinja/src/parser/jinja_text_lexer.h",
+            "${envPath:SLATE_RE2C_ROOT}/tools/${host:rid}/share/re2c/stdlib/unicode_categories.re"
+          ],
+          "outputs": [
+            "$builddir/jinja/jinja_text_lexer_gen.c"
+          ]
+        }
+      ]
+    }
+  }
+}

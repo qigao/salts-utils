@@ -1,0 +1,166 @@
+{
+  "include": [
+    "fixtures/module.json"
+  ],
+  "targets": {
+    "test_databind_socket_plan_projection": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_socket_plan_projection.c",
+          "../../projection.c",
+          "../../socket_plan_projection.c",
+          "../../binary_reader_codegen.c",
+          "../../opaque_plan_codegen.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../native_service_projection.c",
+          "../../service_native.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "compiler",
+          "databind",
+          "socket-plan",
+          "transport"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "saltsbase_tinytest",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_socket_codegen"
+        ],
+        "defines": {
+          "SOCKET_PLAN_SCHEMA": "\"$root/databind/compiler/tests/socket/test_socket_plan_projection.schema\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_socket_plan_public_frontend": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_socket_plan_frontend.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "compiler",
+          "databind",
+          "public",
+          "socket-plan"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/socket/databind_socket_plan_public_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "saltsbase_tinytest",
+          "databind_socket_plan_public_fixture_native",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_socket_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

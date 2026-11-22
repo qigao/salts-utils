@@ -1,0 +1,53 @@
+{
+  "targets": {
+    "databind_binding_compiler": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "message_native.c",
+          "service_binding.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "."
+        ],
+        "deps": [
+          "databind_idl"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "../../idl/contract",
+          "../../idl/include"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

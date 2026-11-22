@@ -1,0 +1,1283 @@
+{
+  "include": [
+    "fixtures/module.json",
+    "scripts/module.json"
+  ],
+  "targets": {
+    "databind_native_header_fixture_generator": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_fixture_generator.c",
+          "../../native_source_ir.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../..",
+          "../../../idl/include"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_contract_native_service_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_service_contract_c11_consumer.c",
+          "$builddir/databind/compiler/tests/projection/contract_service/contract_service.service_native.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "contract-only",
+          "databind",
+          "execution",
+          "native-service"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection/contract_service",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_contract_plugin_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "../../package_config/databind_target/contract_plugin_consumer.c",
+          "../../package_config/databind_target/contract_plugin_business.c",
+          "$builddir/databind/compiler/tests/projection/contract_plugin/contract_plugin.plugin.c",
+          "$builddir/databind/compiler/tests/projection/contract_plugin/contract_plugin.plugin_client.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "contract-only",
+          "databind",
+          "execution",
+          "plugin"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection/contract_plugin",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_plugin",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_contract_state_public_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "../../package_config/databind_target/contract_state_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "contract-only",
+          "databind",
+          "native-source",
+          "public",
+          "state"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection/databind_contract_state_public_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ],
+        "defines": {
+          "DATABIND_NATIVE_ENABLE_CMETA": null,
+          "DATABIND_NATIVE_ENABLE_DATABIND": null
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_contract_types_public_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "../../package_config/databind_target/contract_types_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "contract-only",
+          "databind",
+          "native-source",
+          "public"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection/databind_contract_types_public_fixture.idl"
+        ],
+        "deps": [
+          "cmeta_cstl",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_contract_value_public_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "../../package_config/databind_target/contract_value_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "cmeta",
+          "compiler",
+          "contract-only",
+          "databind",
+          "native-source",
+          "owned",
+          "public"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection/databind_contract_value_public_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ],
+        "defines": {
+          "DATABIND_NATIVE_ENABLE_CMETA": null,
+          "DATABIND_NATIVE_ENABLE_DATABIND": null
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_assoc_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_assoc_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "cstl",
+          "databind",
+          "map",
+          "native-source",
+          "set"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "cmeta_cstl",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_cmeta_owned_value_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_cmeta_owned_value_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "cmeta",
+          "compiler",
+          "databind",
+          "native-source",
+          "owned",
+          "value"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ],
+        "defines": {
+          "DATABIND_NATIVE_ENABLE_CMETA": null,
+          "DATABIND_NATIVE_ENABLE_DATABIND": null
+        }
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_cmeta_value_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_cmeta_value_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "cmeta",
+          "compiler",
+          "databind",
+          "native-source",
+          "value"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ],
+        "defines": {
+          "DATABIND_NATIVE_ENABLE_CMETA": null,
+          "DATABIND_NATIVE_ENABLE_DATABIND": null
+        }
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_header_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "databind",
+          "native-source"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "databind_compiler_tests_projection_codegen"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_header_cmeta": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "compiler",
+          "databind",
+          "native-source"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ],
+        "defines": {
+          "DATABIND_NATIVE_ENABLE_CMETA": null,
+          "DATABIND_NATIVE_ENABLE_DATABIND": null
+        }
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_identity": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_identity_compare.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "compiler",
+          "databind",
+          "identity",
+          "native-source"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "deps": [
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_native_identity_alpha",
+          "databind_native_identity_alpha_copy",
+          "databind_native_identity_beta",
+          "databind_native_identity_alpha_v2",
+          "databind_compiler_tests_projection_codegen"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_nested_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_nested_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "databind",
+          "native-source",
+          "nested",
+          "ownership"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "databind_compiler_tests_projection_codegen"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_owned_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_owned_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "databind",
+          "native-source",
+          "ownership"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "databind_compiler_tests_projection_codegen"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_owned_containers_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_owned_containers_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "cstl",
+          "databind",
+          "native-source",
+          "ownership"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "cmeta_cstl",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_record_containers_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_record_containers_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "cstl",
+          "databind",
+          "native-source",
+          "ownership",
+          "record"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "cmeta_cstl",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_sequence_c11": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_header_sequence_c11_consumer.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "c11",
+          "compiler",
+          "cstl",
+          "databind",
+          "native-source",
+          "sequence"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "cmeta_cstl",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ]
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_projection_frontend": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_projection_frontend.c",
+          "../../projection_frontend.c",
+          "../../projection_config.c",
+          "../../projection.c",
+          "../../service_native.c",
+          "../../native_source_ir.c",
+          "../../native_service_projection.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../openapi_projection.c",
+          "../../method_plan_projection.c",
+          "../../socket_plan_projection.c",
+          "../../flowmq_plan_projection.c",
+          "../../binary_reader_codegen.c",
+          "../../opaque_plan_codegen.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "saltsbase_tinytest",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ],
+        "defines": {
+          "DATABIND_FLOWMQ_PROJECTION_CONFIG_FILE": "\"$root/databind/compiler/tests/flowmq/test_flowmq_plan_projection_config.json\"",
+          "DATABIND_PROJECTION_CONFIG_FILE": "\"$root/databind/compiler/tests/http-rpc/test_method_plan_projection_config.json\"",
+          "DATABIND_PROJECTION_CONFIG_INVALID_FILE": "\"$root/databind/compiler/tests/http-rpc/test_method_plan_projection_config_invalid.json\"",
+          "DATABIND_SOCKET_PROJECTION_CONFIG_FILE": "\"$root/databind/compiler/tests/socket/test_socket_plan_projection_config.json\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_projection_registry": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_projection_registry.c",
+          "../../projection.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../native_service_projection.c",
+          "../../wasm_projection.c",
+          "../../plugin_projection.c",
+          "../../service_native.c",
+          "../../binary_reader_codegen.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "saltsbase_tinytest",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_compiler_tests_projection_codegen"
+        ],
+        "defines": {
+          "SCHEMA_EXAMPLE_FILE": "\"$root/databind/compiler/tests/core/example.schema\"",
+          "SCHEMA_NATIVE_SERVICE_FILE": "\"$root/databind/compiler/tests/native/test_service_native_lowering.schema\"",
+          "SCHEMA_WASM_EXECUTION_FILE": "\"$root/databind/compiler/package_config/wasm_execution/wasm_execution.schema\"",
+          "TBE_COMPILER_RESOURCE_DIR": "\"$root/databind/compiler\"",
+          "WASM_CORE_FIXTURE_FILE": "\"$builddir/databind/compiler/tests/projection/projection_wasm_execution_core.wasm\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "targets": {
+    "databind_schema_test_codegen": {
+      "kind": "header_only",
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "preTasks": [
+        {
+          "name": "test_enum_enhanced_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/schema/test/test_enum_enhanced.schema",
+            "--template",
+            "$root/databind/compiler/templates/c/c_structs.mustache",
+            "--lang",
+            "c",
+            "--binary-codec",
+            "--output",
+            "$builddir/bin/test_enum_enhanced.h"
+          ],
+          "inputs": [
+            "$root/databind/schema/test/test_enum_enhanced.schema",
+            "$root/databind/compiler/templates/c/c_structs.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/test_enum_enhanced.h"
+          ]
+        },
+        {
+          "name": "test_enum_enhanced_simple_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/schema/test/test_enum_enhanced_simple.schema",
+            "--template",
+            "$root/databind/compiler/templates/c/c_structs.mustache",
+            "--lang",
+            "c",
+            "--binary-codec",
+            "--output",
+            "$builddir/bin/test_enum_enhanced_simple.h"
+          ],
+          "inputs": [
+            "$root/databind/schema/test/test_enum_enhanced_simple.schema",
+            "$root/databind/compiler/templates/c/c_structs.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/test_enum_enhanced_simple.h"
+          ]
+        },
+        {
+          "name": "test_union_types_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/schema/test/test_union_types.schema",
+            "--template",
+            "$root/databind/compiler/templates/c/c_structs.mustache",
+            "--lang",
+            "c",
+            "--binary-codec",
+            "--output",
+            "$builddir/bin/test_union_types.h"
+          ],
+          "inputs": [
+            "$root/databind/schema/test/test_union_types.schema",
+            "$root/databind/compiler/templates/c/c_structs.mustache"
+          ],
+          "outputs": [
+            "$builddir/bin/test_union_types.h"
+          ]
+        }
+      ]
+    }
+  }
+}

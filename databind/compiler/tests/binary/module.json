@@ -1,0 +1,282 @@
+{
+  "targets": {
+    "test_databind_binary_layout_ir": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_binary_layout_ir.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../native_service_projection.c",
+          "../../service_native.c",
+          "../../binary_reader_codegen.c",
+          "../../projection.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "binary-layout",
+          "compiler",
+          "databind"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../../../mustache/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "data_bind",
+          "saltsbase_tinytest",
+          "databind_binding_compiler",
+          "cmeta_cstl",
+          "cmeta_cflow",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "libs": [
+          "ws2_32"
+        ],
+        "defines": {
+          "BINARY_ARRAY_SCHEMA": "\"$root/databind/compiler/tests/binary/test_binary_fixed_array.schema\"",
+          "BINARY_COUNTED_SCHEMA": "\"$root/databind/compiler/tests/binary/test_binary_counted.schema\"",
+          "BINARY_SCALAR_SCHEMA": "\"$root/databind/compiler/tests/binary/test_binary_layout_scalar.schema\"",
+          "BINARY_VAR_DATA_SCHEMA": "\"$root/databind/compiler/tests/binary/test_binary_reader_var_data.schema\"",
+          "SCHEMA_EXAMPLE_FILE": "\"$root/databind/compiler/tests/core/example.schema\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_binary_reader_codegen": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_binary_reader_codegen.c",
+          "../../binary_reader_codegen.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../native_service_projection.c",
+          "../../service_native.c",
+          "../../projection.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "binary-reader",
+          "compiler",
+          "databind"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "saltsbase_tinytest",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "BINARY_ARRAY_SCHEMA": "\"$root/databind/compiler/tests/binary/test_binary_fixed_array.schema\"",
+          "BINARY_GROUP_SCHEMA": "\"$root/databind/runtime/test_binary_tail_only.schema\"",
+          "BINARY_SCALAR_SCHEMA": "\"$root/databind/compiler/tests/binary/test_binary_layout_scalar.schema\"",
+          "BINARY_VAR_DATA_SCHEMA": "\"$root/databind/compiler/tests/binary/test_binary_reader_var_data.schema\"",
+          "SCHEMA_EXAMPLE_FILE": "\"$root/databind/compiler/tests/core/example.schema\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_method_plan_binary_admission": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_method_plan_binary_admission.c",
+          "../../projection.c",
+          "../../method_plan_projection.c",
+          "../../opaque_plan_codegen.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../native_service_projection.c",
+          "../../service_native.c",
+          "../../binary_reader_codegen.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "binary-layout",
+          "compiler",
+          "databind",
+          "transport"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "saltsbase_tinytest",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "BINARY_ADMISSION_SCHEMA": "\"$root/databind/compiler/tests/binary/test_method_plan_binary_admission.schema\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

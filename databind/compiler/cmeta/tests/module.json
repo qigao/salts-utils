@@ -1,0 +1,61 @@
+{
+  "targets": {
+    "test_data_bind_cmeta_adapter_plan": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "../test_data_bind_cmeta_adapter_plan.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "adapter-plan",
+          "cmeta",
+          "databind",
+          "producer"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "..",
+          "../../../../bindings/common/include"
+        ],
+        "deps": [
+          "data_bind_producer",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

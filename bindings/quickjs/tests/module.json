@@ -1,0 +1,111 @@
+{
+  "targets": {
+    "salts_quickjs_cmeta_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "quickjs_cmeta_test.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../common/include",
+          "../../../databind/compiler/cmeta"
+        ],
+        "deps": [
+          "salts_quickjs_binding",
+          "cmeta_cstl",
+          "data_bind_producer",
+          "saltsbase_tinytest",
+          "vcpkg_qjs",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "salts_quickjs_object_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "quickjs_cmeta_object_test.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../common/include"
+        ],
+        "deps": [
+          "salts_quickjs_binding",
+          "saltsbase_tinytest",
+          "vcpkg_qjs",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "targets": {
+    "databind_monocypher": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "databind_monocypher.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "."
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

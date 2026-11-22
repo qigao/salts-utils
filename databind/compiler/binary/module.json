@@ -1,0 +1,65 @@
+{
+  "targets": {
+    "databind_binary_contract": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "src/binary_contract_overlay.c",
+          "src/binary_layout_ir.c",
+          "src/binary_layout_lowering.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "../../formats/binary/include",
+          "include",
+          "../../formats/binary/internal"
+        ],
+        "deps": [
+          "databind_idl",
+          "saltsbase_cserde"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "../../runtime",
+          "../../schema/include",
+          "../../idl/contract",
+          "../../idl/parser",
+          "../../idl/include"
+        ],
+        "deps": [
+          "databind_schema",
+          "saltsbase_core",
+          "cmeta_cmeta"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

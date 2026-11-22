@@ -1,4 +1,7 @@
 #include "compiler_core.h"
+#ifndef TINYTEST_NO_MAIN
+#define TINYTEST_NO_MAIN
+#endif
 #include "tinytest.h"
 
 #include <stdio.h>

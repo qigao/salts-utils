@@ -1,0 +1,59 @@
+{
+  "targets": {
+    "salts_bindings": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "module.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "include"
+        ],
+        "deps": [
+          "cmeta_cmeta"
+        ]
+      },
+      "private": {
+        "deps": [
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ],
+      "install": {
+        "headers": [
+          {
+            "from": "include",
+            "to": "include"
+          }
+        ]
+      }
+    }
+  }
+}

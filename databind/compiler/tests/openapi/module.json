@@ -1,0 +1,95 @@
+{
+  "targets": {
+    "test_databind_openapi_projection": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_openapi_projection.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../native_service_projection.c",
+          "../../service_native.c",
+          "../../binary_reader_codegen.c",
+          "../../projection.c",
+          "../../openapi_projection.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "compiler",
+          "databind",
+          "http",
+          "openapi",
+          "validation"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "saltsbase_tinytest",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "OPENAPI_BYTES_SIZE_SCHEMA": "\"$root/databind/compiler/tests/openapi/test_openapi_bytes_size.schema\"",
+          "OPENAPI_OPTIONAL_PATH_SCHEMA": "\"$root/databind/compiler/tests/openapi/test_openapi_optional_path.schema\"",
+          "OPENAPI_SCHEMA": "\"$root/databind/compiler/tests/openapi/test_openapi_projection.schema\""
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,525 @@
+{
+  "include": [
+    "fixtures/module.json"
+  ],
+  "targets": {
+    "databind_service_native_codegen_fixture_tool": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_service_native_codegen_tool.c",
+          "../../compiler_core.c",
+          "../../native_source_ir.c",
+          "../../plugin_projection.c",
+          "../../wasm_projection.c",
+          "../../binary_reader_codegen.c",
+          "../../projection.c",
+          "../../service_native.c",
+          "../../native_service_projection.c",
+          "../../database_schema.c",
+          "../../mustache_helpers.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../../idl/contract",
+          "../..",
+          "../../../idl/include",
+          "../../../../mustache/include",
+          "../../../schema/include",
+          "../../../formats/binary/include",
+          "../../binary/include",
+          "../../../formats/binary/internal",
+          "../../binding"
+        ],
+        "deps": [
+          "databind_idl",
+          "databind_binding_compiler",
+          "saltsbase_cmd",
+          "saltsbase_dotenv",
+          "mustache",
+          "saltsbase_xml",
+          "saltsbase_json",
+          "saltsbase_query",
+          "databind_binary_contract",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_service_public_artifact": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_native_service_artifact.c",
+          "test_empty_service.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "compiler",
+          "databind",
+          "method-plan",
+          "native-service",
+          "public"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl",
+          "$builddir/databind/compiler/tests/native/databind_empty_service_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "saltsbase_tinytest",
+          "databind_native_service_public_fixture_native",
+          "databind_empty_service_fixture_native",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_native_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_native_service_public_artifact_cpp": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_native_service_artifact_cpp.cpp"
+        ]
+      },
+      "test": {
+        "labels": [
+          "compiler",
+          "cpp",
+          "databind",
+          "native-service",
+          "public"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/native/databind_native_service_public_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_native_service_public_fixture_native",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_native_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      }
+    },
+    "test_databind_service_native_cleanup_init_failure": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_service_native_cleanup_init_failure.c",
+          "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_records.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cleanup",
+          "compiler",
+          "databind",
+          "init-failure",
+          "native-service",
+          "runtime"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/native/generated-service-native",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_native_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc",
+        "databind_service_native_codegen_fixture_tool"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_service_native_cleanup_runtime": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_service_native_cleanup_runtime.c",
+          "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_records.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cleanup",
+          "compiler",
+          "databind",
+          "native-service",
+          "runtime"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/native/generated-service-native",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_native_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc",
+        "databind_service_native_codegen_fixture_tool"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_service_native_cleanup_success": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_service_native_cleanup_success.c",
+          "$builddir/databind/compiler/tests/native/generated-service-native/service_native_cleanup_records.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cleanup",
+          "compiler",
+          "databind",
+          "native-service",
+          "runtime",
+          "success"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/native/generated-service-native",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_native_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc",
+        "databind_service_native_codegen_fixture_tool"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_service_native_lowering": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_service_native_lowering.c",
+          "test_service_native_business.c",
+          "$builddir/databind/compiler/tests/native/generated-service-native/service_native_records.c",
+          "$builddir/databind/compiler/tests/native/generated-service-native/service_native_generated.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/native/generated-service-native",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cflow",
+          "saltsbase_tinytest",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "cmeta_cstl",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "saltsbase_cserde",
+          "databind_compiler_tests_native_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc",
+        "databind_service_native_codegen_fixture_tool"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_service_native_public_cpp": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_service_native_public_cpp.cpp"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/native/generated-service-native",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_native_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      }
+    }
+  }
+}

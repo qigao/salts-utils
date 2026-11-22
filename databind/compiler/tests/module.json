@@ -1,0 +1,16 @@
+{
+  "include": [
+    "core/module.json",
+    "cmeta/module.json",
+    "projection/module.json",
+    "message/module.json",
+    "native/module.json",
+    "binary/module.json",
+    "http-rpc/module.json",
+    "socket/module.json",
+    "flowmq/module.json",
+    "multi-transport/module.json",
+    "openapi/module.json",
+    "plugin/module.json"
+  ]
+}

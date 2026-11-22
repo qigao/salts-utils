@@ -1,0 +1,403 @@
+{
+  "include": [
+    "fixtures/module.json"
+  ],
+  "targets": {
+    "test_databind_binary_transport_provider": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_binary_transport_provider.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "binary-reader",
+          "compiler",
+          "databind",
+          "execution",
+          "transport"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "saltsbase_tinytest",
+          "databind_binary_transport_provider_fixture_native",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_multi_transport_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_binary_transport_provider_cpp": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_binary_transport_provider_cpp.cpp"
+        ]
+      },
+      "test": {
+        "labels": [
+          "binary-reader",
+          "compiler",
+          "cpp",
+          "databind",
+          "public",
+          "transport"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "databind_binary_transport_provider_fixture_native",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_multi_transport_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      }
+    },
+    "test_databind_binary_var_data_transport": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_binary_var_data_transport.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "binary-reader",
+          "compiler",
+          "databind",
+          "public",
+          "transport",
+          "var-data"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_binary_var_data_transport_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "saltsbase_tinytest",
+          "databind_binary_var_data_transport_fixture_native",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_multi_transport_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_channel_multi_transport": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_channel_multi_transport.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "compiler",
+          "composition",
+          "databind",
+          "transport"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_channel_multi_transport_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "saltsbase_tinytest",
+          "databind_channel_multi_transport_fixture_native",
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_multi_transport_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_opaque_service": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_opaque_service.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "bytes",
+          "compiler",
+          "databind",
+          "flowmq",
+          "http",
+          "opaque",
+          "public",
+          "service"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_opaque_service_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_multi_transport_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_databind_opaque_transport": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_public_opaque_transport.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "bytes",
+          "compiler",
+          "databind",
+          "opaque",
+          "public",
+          "transport"
+        ]
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_opaque_transport_fixture.idl",
+          "../../../runtime",
+          "../../../schema/include",
+          "../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core",
+          "databind_compiler_tests_multi_transport_codegen"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

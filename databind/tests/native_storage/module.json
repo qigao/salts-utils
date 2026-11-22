@@ -1,0 +1,492 @@
+{
+  "targets": {
+    "test_data_bind_native_bytes_json": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_bytes_json_test.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "bytes",
+          "cmeta",
+          "databind",
+          "json",
+          "native"
+        ],
+        "timeout": 60
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../runtime",
+          "../../schema/include",
+          "../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_tinytest",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_data_bind_native_collection_message": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_collection_message_test.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "collection",
+          "databind",
+          "native"
+        ],
+        "timeout": 60
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../runtime",
+          "../../schema/include",
+          "../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_tinytest",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_data_bind_native_control_records": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_control_record_test.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "abi",
+          "cmeta",
+          "databind",
+          "native"
+        ],
+        "timeout": 60
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../runtime",
+          "../../schema/include",
+          "../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_data_bind_native_ownership_boundary": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_ownership_boundary_test.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "databind",
+          "native",
+          "ownership"
+        ],
+        "timeout": 60
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../runtime",
+          "../../schema/include",
+          "../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_data_bind_native_storage_requirements": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_storage_requirements.c"
+        ]
+      },
+      "test": {
+        "timeout": 60
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../runtime",
+          "../../schema/include",
+          "../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_data_bind_native_value_reader": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_value_reader_test.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "databind",
+          "dynamic",
+          "native",
+          "ownership"
+        ],
+        "timeout": 60
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../runtime",
+          "../../schema/include",
+          "../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "cmeta_cstl",
+          "saltsbase_tinytest",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_data_bind_native_value_reader_cpp": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "native_value_reader_cpp_test.cpp"
+        ]
+      },
+      "test": {
+        "labels": [
+          "cmeta",
+          "cpp",
+          "databind",
+          "dynamic",
+          "native",
+          "public"
+        ],
+        "timeout": 60
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../runtime",
+          "../../schema/include",
+          "../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "saltsbase_tinytest",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow",
+          "cmeta_cmeta",
+          "saltsbase_native_io",
+          "saltsbase_coroutine",
+          "saltsbase_core"
+        ],
+        "libs": [
+          "ws2_32"
+        ]
+      }
+    },
+    "test_data_bind_reader_probe": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "reader_probe_test.c"
+        ]
+      },
+      "test": {
+        "timeout": 60
+      },
+      "when": {
+        "native": true
+      },
+      "private": {
+        "deps": [
+          "saltsbase_cserde",
+          "saltsbase_tinytest",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

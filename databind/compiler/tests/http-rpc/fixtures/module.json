@@ -1,0 +1,84 @@
+{
+  "targets": {
+    "databind_compiler_tests_http_rpc_codegen": {
+      "kind": "header_only",
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "preTasks": [
+        {
+          "name": "generated_http_projection_h",
+          "tool": "databind_method_plan_projection_fixture_gen",
+          "args": [
+            "$root/databind/compiler/tests/http-rpc/test_method_plan_projection.schema",
+            "$builddir/databind/compiler/tests/http-rpc/generated_http_projection.h",
+            "$builddir/databind/compiler/tests/http-rpc/generated_rpc_projection.h"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/http-rpc/test_method_plan_projection.schema"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/http-rpc/generated_http_projection.h",
+            "$builddir/databind/compiler/tests/http-rpc/generated_rpc_projection.h"
+          ]
+        },
+        {
+          "name": "public_calc_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/http-rpc/test_method_plan_projection.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_public_fixture.idl/public_calc_native.h",
+            "--artifact-name",
+            "public_calc",
+            "--transports",
+            "http,rpc"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/http-rpc/test_method_plan_projection.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_public_fixture.idl/public_calc_native.h",
+            "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_public_fixture.idl/public_calc.http.h",
+            "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_public_fixture.idl/public_calc.rpc.h"
+          ]
+        },
+        {
+          "name": "configured_calc_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/http-rpc/test_method_plan_projection.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_configured_fixture.idl/configured_calc_native.h",
+            "--artifact-name",
+            "configured_calc",
+            "--transports",
+            "http,rpc",
+            "--projection-config",
+            "$root/databind/compiler/tests/http-rpc/test_method_plan_projection_config.json"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/http-rpc/test_method_plan_projection.schema",
+            "$root/databind/compiler/tests/http-rpc/test_method_plan_projection_config.json",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_configured_fixture.idl/configured_calc_native.h",
+            "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_configured_fixture.idl/configured_calc.http.h",
+            "$builddir/databind/compiler/tests/http-rpc/databind_method_plan_configured_fixture.idl/configured_calc.rpc.h"
+          ]
+        }
+      ]
+    }
+  }
+}

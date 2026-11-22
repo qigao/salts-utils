@@ -1,0 +1,238 @@
+{
+  "include": [
+    "tests/module.json",
+    "benchmarks/module.json"
+  ],
+  "targets": {
+    "data_bind": {
+      "kind": "shared",
+      "sources": {
+        "files": [
+          "data_bind_format_provider.c",
+          "data_bind_native.c",
+          "data_bind_json_provider.c",
+          "data_bind_yaml_provider.c",
+          "data_bind_csv_provider.c",
+          "data_bind_xml_provider.c",
+          "data_bind_temporal_adapter.c",
+          "data_bind_cmeta.c",
+          "data_bind_cflow.c",
+          "data_bind.c",
+          "data_bind_contract_fingerprint.c",
+          "data_bind_value_reader.c",
+          "data_bind_record.c",
+          "data_bind_builtin_format_provider.c",
+          "data_bind_binary_reader.c",
+          "data_bind_binary_writer.c",
+          "data_bind_binding_plan.c",
+          "data_bind_message_plan.c",
+          "data_bind_opaque_plan.c",
+          "data_bind_method_plan.c",
+          "data_bind_projection_plan.c",
+          "data_bind_socket_execution_plan.c",
+          "data_bind_validation_plan.c",
+          "data_bind_xml_writer.c",
+          "data_bind_stream_format_state.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          ".",
+          "../schema/include",
+          "../formats/binary/include"
+        ],
+        "deps": [
+          "saltsbase_core",
+          "cmeta_cmeta",
+          "cmeta_cstl",
+          "saltsbase_cserde",
+          "cmeta_cflow"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "../schema/parser",
+          "../formats/binary/internal",
+          "../compiler/binary/include",
+          "../../vendor/monocypher",
+          "../idl/include"
+        ],
+        "deps": [
+          "databind_monocypher",
+          "saltsbase_json_cserde",
+          "saltsbase_yaml_json",
+          "saltsbase_csv",
+          "saltsbase_xml",
+          "saltsbase_datetime",
+          "databind_schema",
+          "databind_idl",
+          "databind_binary_contract"
+        ],
+        "defines": {
+          "DATA_BIND_BUILD_DLL": null
+        }
+      },
+      "variants": [
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "libs": [
+              "m"
+            ]
+          }
+        },
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ],
+      "install": {
+        "headers": [
+          {
+            "from": "data_bind.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_value_reader.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_format_provider.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_native.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_binary_layout.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_binary_reader.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_binary_writer.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_binding_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_plugin_catalog.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_plugin_execution.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_message_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_native_binding.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_opaque_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_method_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_projection_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_flowmq_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_socket_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_socket_execution_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_validation_plan.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_json_provider.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_yaml_provider.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_csv_provider.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_xml_provider.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_xml_writer.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_temporal_adapter.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_cflow.h",
+            "to": "include"
+          },
+          {
+            "from": "data_bind_cmeta.h",
+            "to": "include"
+          }
+        ]
+      }
+    },
+    "data_bind_plugin": {
+      "kind": "header_only",
+      "public": {
+        "deps": [
+          "data_bind",
+          "cmeta_plugin"
+        ]
+      }
+    }
+  }
+}

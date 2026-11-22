@@ -136,3 +136,20 @@
   SDK TAR bytes. This commit's remote CI and publication receipts are recorded
   under ignored `build/` after qualification; publication must not rebuild or
   repack producer SDKs. Android qualification remains cross-build/install only.
+
+# Slate native build
+
+- `slate.json` and the owning modules’ manifests declare the Jinja and IDL
+  grammar generators, generated DataBind fixtures, and the native test suite.
+  Use `slate test --preset tests --list` to compare test registration with the
+  existing CMake suite. The `benchmark` preset includes the two registered
+  benchmarks.
+- Extract re2c and Lemon from the package archives verified by
+  `cmake/re2c.lock.json` and `cmake/lemon.lock.json`. Set `SLATE_RE2C_ROOT` and
+  `SLATE_LEMON_ROOT` to the package roots. Both host tools resolve using
+  `tools/<host-rid>` independently of the target SDK architecture.
+- On a clean Windows build, code generation must wait for `salts-idlc` and
+  its staged runtime DLLs. The Slate Ninja task dependency on the tool’s
+  module alias fixes a missing-DLL start failure that can otherwise be masked
+  by another `libsalts.dll` on `PATH`. Verified with a serial Ninja build
+  with the installed Slate directory excluded from `PATH`.

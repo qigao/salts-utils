@@ -1,0 +1,68 @@
+{
+  "include": [
+    "tests/module.json"
+  ],
+  "targets": {
+    "salts_quickjs_binding": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "salts_quickjs_cmeta.c",
+          "salts_quickjs_module.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "include"
+        ],
+        "deps": [
+          "salts_bindings",
+          "vcpkg_qjs"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "../common/include"
+        ],
+        "deps": [
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ],
+      "install": {
+        "headers": [
+          {
+            "from": "include",
+            "to": "include"
+          }
+        ]
+      }
+    }
+  }
+}

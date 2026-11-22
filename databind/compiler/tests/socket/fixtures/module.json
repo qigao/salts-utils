@@ -1,0 +1,100 @@
+{
+  "targets": {
+    "databind_socket_plan_public_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/socket/databind_socket_plan_public_fixture.idl/device_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/socket/databind_socket_plan_public_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_socket_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_compiler_tests_socket_codegen": {
+      "kind": "header_only",
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "preTasks": [
+        {
+          "name": "device_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/socket/test_socket_plan_public.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/socket/databind_socket_plan_public_fixture.idl/device_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "device",
+            "--transports",
+            "socket",
+            "--source-output",
+            "$builddir/databind/compiler/tests/socket/databind_socket_plan_public_fixture.idl/device_native.c",
+            "--projection-config",
+            "$root/databind/compiler/tests/socket/test_socket_plan_projection_config.json"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/socket/test_socket_plan_public.schema",
+            "$root/databind/compiler/tests/socket/test_socket_plan_projection_config.json",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/socket/databind_socket_plan_public_fixture.idl/device_native.h",
+            "$builddir/databind/compiler/tests/socket/databind_socket_plan_public_fixture.idl/device_native.c",
+            "$builddir/databind/compiler/tests/socket/databind_socket_plan_public_fixture.idl/device.socket.h"
+          ]
+        }
+      ]
+    }
+  }
+}

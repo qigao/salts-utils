@@ -1,0 +1,330 @@
+{
+  "include": [
+    "fixtures/module.json"
+  ],
+  "forEach": [
+    {
+      "files": [
+        "test_benchmark_schemas_bdd.c",
+        "test_enum_helpers.c",
+        "test_flags_bdd.c",
+        "test_optional_and_defaults.c",
+        "test_schema_boundaries.c",
+        "test_schema_cmeta_fields.c",
+        "test_schema_enum_conformance.c",
+        "test_tbe_parser.c",
+        "test_tbe_parser_bdd.c",
+        "test_validation_constraints.c"
+      ],
+      "target": {
+        "kind": "executable",
+        "test": {},
+        "when": {
+          "native": true
+        },
+        "private": {
+          "includeDirs": [
+            "../include",
+            "../../idl/include",
+            "../../formats/binary/include",
+            "../../compiler/binary/include",
+            "../../formats/binary/internal"
+          ],
+          "deps": [
+            "databind_schema",
+            "databind_binary_contract",
+            "saltsbase_tinytest",
+            "databind_idl",
+            "cmeta_cmeta",
+            "saltsbase_cserde",
+            "saltsbase_core"
+          ]
+        },
+        "variants": [
+          {
+            "when": {
+              "driver": "msvc"
+            },
+            "private": {
+              "flags": [
+                "/experimental:c11atomics"
+              ]
+            }
+          },
+          {
+            "when": {
+              "os": [
+                "linux",
+                "macos",
+                "android"
+              ]
+            },
+            "private": {
+              "defines": {
+                "_POSIX_C_SOURCE": "200809L"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "test_enum_enhanced_functional.c",
+        "test_enum_enhanced_simple_functional.c",
+        "test_union_types_functional.c"
+      ],
+      "target": {
+        "kind": "executable",
+        "test": {},
+        "when": {
+          "native": true
+        },
+        "private": {
+          "includeDirs": [
+            "$builddir/bin",
+            "../include",
+            "../../idl/include",
+            "../../formats/binary/include",
+            "../../compiler/binary/include",
+            "../../formats/binary/internal"
+          ],
+          "deps": [
+            "databind_schema",
+            "databind_binary_contract",
+            "saltsbase_tinytest",
+            "databind_idl",
+            "cmeta_cmeta",
+            "saltsbase_cserde",
+            "saltsbase_core",
+            "databind_schema_test_codegen"
+          ]
+        },
+        "runtimeDeps": [
+          "salts-idlc"
+        ],
+        "variants": [
+          {
+            "when": {
+              "driver": "msvc"
+            },
+            "private": {
+              "flags": [
+                "/experimental:c11atomics"
+              ]
+            }
+          },
+          {
+            "when": {
+              "os": [
+                "linux",
+                "macos",
+                "android"
+              ]
+            },
+            "private": {
+              "defines": {
+                "_POSIX_C_SOURCE": "200809L"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "targets": {
+    "test_schema_cmeta": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_schema_cmeta.c",
+          "test_schema_cmeta_buffer.c",
+          "test_schema_cmeta_profiles.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../idl/include",
+          "../../formats/binary/include",
+          "../../compiler/binary/include",
+          "../../formats/binary/internal"
+        ],
+        "deps": [
+          "databind_schema",
+          "databind_binary_contract",
+          "saltsbase_tinytest",
+          "databind_idl",
+          "cmeta_cmeta",
+          "saltsbase_cserde",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "test_schema_cmeta_public_cpp": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_schema_cmeta_public_cpp.cpp"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../idl/include"
+        ],
+        "deps": [
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      }
+    },
+    "test_tbe_robustness": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "test_tbe_robustness.c"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../idl/include",
+          "../../formats/binary/include",
+          "../../compiler/binary/include",
+          "../../formats/binary/internal"
+        ],
+        "deps": [
+          "databind_schema",
+          "databind_binary_contract",
+          "saltsbase_tinytest",
+          "databind_idl",
+          "cmeta_cmeta",
+          "saltsbase_cserde",
+          "saltsbase_core",
+          "databind_binary_format_objects"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "verify_fixes": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "verify_fixes.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../formats/binary/include",
+          "../../compiler/binary/include",
+          "../../formats/binary/internal",
+          "../../idl/include"
+        ],
+        "deps": [
+          "databind_binary_contract",
+          "databind_idl",
+          "saltsbase_cserde",
+          "databind_schema",
+          "cmeta_cmeta",
+          "saltsbase_core",
+          "databind_binary_format_objects"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

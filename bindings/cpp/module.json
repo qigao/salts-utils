@@ -1,0 +1,26 @@
+{
+  "include": [
+    "tests/module.json"
+  ],
+  "targets": {
+    "salts_bindings_cpp": {
+      "kind": "header_only",
+      "public": {
+        "includeDirs": [
+          "include"
+        ],
+        "deps": [
+          "salts_bindings"
+        ]
+      },
+      "install": {
+        "headers": [
+          {
+            "from": "include",
+            "to": "include"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,528 @@
+{
+  "targets": {
+    "databind_native_identity_alpha": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "../native_header_identity_source.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "databind_compiler_tests_projection_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "DATABIND_NATIVE_ENABLE_CMETA": null,
+          "NATIVE_IDENTITY_GETTER": "native_identity_alpha",
+          "NATIVE_IDENTITY_HEADER": "\"native_identity_alpha.h\""
+        }
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_native_identity_alpha_copy": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "../native_header_identity_source.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "databind_compiler_tests_projection_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "DATABIND_NATIVE_ENABLE_CMETA": null,
+          "NATIVE_IDENTITY_GETTER": "native_identity_alpha_copy",
+          "NATIVE_IDENTITY_HEADER": "\"native_identity_alpha_copy.h\""
+        }
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_native_identity_alpha_v2": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "../native_header_identity_source.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "databind_compiler_tests_projection_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "DATABIND_NATIVE_ENABLE_CMETA": null,
+          "NATIVE_IDENTITY_GETTER": "native_identity_alpha_v2",
+          "NATIVE_IDENTITY_HEADER": "\"native_identity_alpha_v2.h\""
+        }
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_native_identity_beta": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "../native_header_identity_source.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/projection"
+        ],
+        "deps": [
+          "databind_compiler_tests_projection_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ],
+        "defines": {
+          "DATABIND_NATIVE_ENABLE_CMETA": null,
+          "NATIVE_IDENTITY_GETTER": "native_identity_beta",
+          "NATIVE_IDENTITY_HEADER": "\"native_identity_beta.h\""
+        }
+      },
+      "runtimeDeps": [
+        "databind_native_header_fixture_generator"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_compiler_tests_projection_codegen": {
+      "kind": "header_only",
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "preTasks": [
+        {
+          "name": "contract_types_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/package_config/databind_target/contract_types.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/projection/databind_contract_types_public_fixture.idl/contract_types_native.h"
+          ],
+          "inputs": [
+            "$root/databind/compiler/package_config/databind_target/contract_types.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/databind_contract_types_public_fixture.idl/contract_types_native.h"
+          ]
+        },
+        {
+          "name": "contract_value_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/package_config/databind_target/contract_value.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/projection/databind_contract_value_public_fixture.idl/contract_value_native.h"
+          ],
+          "inputs": [
+            "$root/databind/compiler/package_config/databind_target/contract_value.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/databind_contract_value_public_fixture.idl/contract_value_native.h"
+          ]
+        },
+        {
+          "name": "contract_state_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/package_config/databind_target/contract_state.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/projection/databind_contract_state_public_fixture.idl/contract_state_native.h"
+          ],
+          "inputs": [
+            "$root/databind/compiler/package_config/databind_target/contract_state.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/databind_contract_state_public_fixture.idl/contract_state_native.h"
+          ]
+        },
+        {
+          "name": "contract_service_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/package_config/wasm_execution/wasm_execution.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/projection/contract_service/contract_service.h",
+            "--artifacts",
+            "native",
+            "--artifact-name",
+            "contract_service"
+          ],
+          "inputs": [
+            "$root/databind/compiler/package_config/wasm_execution/wasm_execution.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/contract_service/contract_service.h",
+            "$builddir/databind/compiler/tests/projection/contract_service/contract_service.service_native.h",
+            "$builddir/databind/compiler/tests/projection/contract_service/contract_service.service_native.c"
+          ]
+        },
+        {
+          "name": "contract_plugin_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/package_config/wasm_execution/wasm_execution.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/projection/contract_plugin/contract_plugin_native.h",
+            "--artifacts",
+            "plugin",
+            "--artifact-name",
+            "contract_plugin",
+            "--component",
+            "WasmRuntime.Calculator",
+            "--artifact-version",
+            "1.0.0"
+          ],
+          "inputs": [
+            "$root/databind/compiler/package_config/wasm_execution/wasm_execution.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/contract_plugin/contract_plugin_native.h",
+            "$builddir/databind/compiler/tests/projection/contract_plugin/contract_plugin.plugin.h",
+            "$builddir/databind/compiler/tests/projection/contract_plugin/contract_plugin.plugin.c",
+            "$builddir/databind/compiler/tests/projection/contract_plugin/contract_plugin.plugin_client.h",
+            "$builddir/databind/compiler/tests/projection/contract_plugin/contract_plugin.plugin_client.c"
+          ]
+        },
+        {
+          "name": "native_contract_fixture_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_contract_fixture.h"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_contract_fixture.h"
+          ]
+        },
+        {
+          "name": "native_value_fixture_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_value_fixture.h",
+            "value"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_value_fixture.h"
+          ]
+        },
+        {
+          "name": "native_owned_value_fixture_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_owned_value_fixture.h",
+            "writable"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_owned_value_fixture.h"
+          ]
+        },
+        {
+          "name": "native_owned_fixture_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_owned_fixture.h",
+            "owned"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_owned_fixture.h"
+          ]
+        },
+        {
+          "name": "native_nested_fixture_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_nested_fixture.h",
+            "nested"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_nested_fixture.h"
+          ]
+        },
+        {
+          "name": "native_sequence_fixture_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_sequence_fixture.h",
+            "sequence"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_sequence_fixture.h"
+          ]
+        },
+        {
+          "name": "native_assoc_fixture_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_assoc_fixture.h",
+            "associative"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_assoc_fixture.h"
+          ]
+        },
+        {
+          "name": "native_owned_containers_fixture_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_owned_containers_fixture.h",
+            "traits"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_owned_containers_fixture.h"
+          ]
+        },
+        {
+          "name": "native_record_containers_fixture_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_record_containers_fixture.h",
+            "record"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_record_containers_fixture.h"
+          ]
+        },
+        {
+          "name": "native_identity_alpha_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_identity_alpha.h",
+            "Alpha",
+            "1"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_identity_alpha.h"
+          ]
+        },
+        {
+          "name": "native_identity_alpha_copy_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_identity_alpha_copy.h",
+            "Alpha",
+            "1"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_identity_alpha_copy.h"
+          ]
+        },
+        {
+          "name": "native_identity_beta_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_identity_beta.h",
+            "Beta",
+            "1"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_identity_beta.h"
+          ]
+        },
+        {
+          "name": "native_identity_alpha_v2_h",
+          "tool": "databind_native_header_fixture_generator",
+          "args": [
+            "$builddir/databind/compiler/tests/projection/native_identity_alpha_v2.h",
+            "Alpha",
+            "2"
+          ],
+          "inputs": [],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/native_identity_alpha_v2.h"
+          ]
+        },
+        {
+          "name": "wasm_core_fixture",
+          "tool": "python",
+          "args": [
+            "$root/databind/compiler/package_config/wasm_execution/write_core.py",
+            "$builddir/databind/compiler/tests/projection/projection_wasm_execution_core.wasm"
+          ],
+          "inputs": [
+            "$root/databind/compiler/package_config/wasm_execution/write_core.py"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/projection/projection_wasm_execution_core.wasm"
+          ]
+        }
+      ]
+    }
+  }
+}

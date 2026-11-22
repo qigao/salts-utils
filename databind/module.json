@@ -1,0 +1,10 @@
+{
+  "include": [
+    "formats/binary/module.json",
+    "schema/module.json",
+    "idl/module.json",
+    "compiler/module.json",
+    "runtime/module.json",
+    "tests/module.json"
+  ]
+}

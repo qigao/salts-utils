@@ -1,0 +1,453 @@
+{
+  "targets": {
+    "databind_binary_transport_provider_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl/binary_exec_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_multi_transport_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_binary_var_data_transport_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_binary_var_data_transport_fixture.idl/binary_var_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_binary_var_data_transport_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_multi_transport_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_channel_multi_transport_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_channel_multi_transport_fixture.idl/device_multi_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_channel_multi_transport_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_multi_transport_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_opaque_service_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_opaque_service_fixture.idl/opaque_service_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_opaque_service_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_multi_transport_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_opaque_transport_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_opaque_transport_fixture.idl/opaque_bytes_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/multi-transport/databind_opaque_transport_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_multi_transport_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_compiler_tests_multi_transport_codegen": {
+      "kind": "header_only",
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "preTasks": [
+        {
+          "name": "device_multi_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/flowmq/test_flowmq_plan_public.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_channel_multi_transport_fixture.idl/device_multi_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "device_multi",
+            "--transports",
+            "socket,flowmq",
+            "--source-output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_channel_multi_transport_fixture.idl/device_multi_native.c",
+            "--projection-config",
+            "$root/databind/compiler/tests/multi-transport/test_flowmq_socket_projection_config.json"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/flowmq/test_flowmq_plan_public.schema",
+            "$root/databind/compiler/tests/multi-transport/test_flowmq_socket_projection_config.json",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/multi-transport/databind_channel_multi_transport_fixture.idl/device_multi_native.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_channel_multi_transport_fixture.idl/device_multi_native.c",
+            "$builddir/databind/compiler/tests/multi-transport/databind_channel_multi_transport_fixture.idl/device_multi.socket.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_channel_multi_transport_fixture.idl/device_multi.flowmq.h"
+          ]
+        },
+        {
+          "name": "binary_exec_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/multi-transport/test_binary_transport_provider.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl/binary_exec_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "binary_exec",
+            "--transports",
+            "socket,flowmq",
+            "--source-output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl/binary_exec_native.c",
+            "--projection-config",
+            "$root/databind/compiler/tests/multi-transport/test_binary_transport_provider_config.json"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/multi-transport/test_binary_transport_provider.schema",
+            "$root/databind/compiler/tests/multi-transport/test_binary_transport_provider_config.json",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl/binary_exec_native.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl/binary_exec_native.c",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl/binary_exec.socket.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_transport_provider_fixture.idl/binary_exec.flowmq.h"
+          ]
+        },
+        {
+          "name": "opaque_bytes_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/flowmq/test_flowmq_plan_public.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_transport_fixture.idl/opaque_bytes_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "opaque_bytes",
+            "--transports",
+            "socket,flowmq",
+            "--source-output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_transport_fixture.idl/opaque_bytes_native.c",
+            "--projection-config",
+            "$root/databind/compiler/tests/multi-transport/test_opaque_transport_config.json"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/flowmq/test_flowmq_plan_public.schema",
+            "$root/databind/compiler/tests/multi-transport/test_opaque_transport_config.json",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_transport_fixture.idl/opaque_bytes_native.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_transport_fixture.idl/opaque_bytes_native.c",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_transport_fixture.idl/opaque_bytes.socket.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_transport_fixture.idl/opaque_bytes.flowmq.h"
+          ]
+        },
+        {
+          "name": "opaque_service_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/multi-transport/test_opaque_service.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_service_fixture.idl/opaque_service_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "opaque_service",
+            "--transports",
+            "http,flowmq",
+            "--source-output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_service_fixture.idl/opaque_service_native.c",
+            "--projection-config",
+            "$root/databind/compiler/tests/multi-transport/test_opaque_service_config.json"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/multi-transport/test_opaque_service.schema",
+            "$root/databind/compiler/tests/multi-transport/test_opaque_service_config.json",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_service_fixture.idl/opaque_service_native.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_service_fixture.idl/opaque_service_native.c",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_service_fixture.idl/opaque_service.http.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_opaque_service_fixture.idl/opaque_service.flowmq.h"
+          ]
+        },
+        {
+          "name": "binary_var_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/binary/test_binary_reader_var_data.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_var_data_transport_fixture.idl/binary_var_native.h",
+            "--binary-codec",
+            "--artifact-name",
+            "binary_var",
+            "--transports",
+            "socket,flowmq",
+            "--source-output",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_var_data_transport_fixture.idl/binary_var_native.c",
+            "--projection-config",
+            "$root/databind/compiler/tests/multi-transport/test_binary_var_data_transport_config.json"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/binary/test_binary_reader_var_data.schema",
+            "$root/databind/compiler/tests/multi-transport/test_binary_var_data_transport_config.json",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_var_data_transport_fixture.idl/binary_var_native.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_var_data_transport_fixture.idl/binary_var_native.c",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_var_data_transport_fixture.idl/binary_var.socket.h",
+            "$builddir/databind/compiler/tests/multi-transport/databind_binary_var_data_transport_fixture.idl/binary_var.flowmq.h"
+          ]
+        }
+      ]
+    }
+  }
+}

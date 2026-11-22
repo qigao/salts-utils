@@ -1,0 +1,29 @@
+{
+  "targets": {
+    "test_databind_projection_config_stale_rejected": {
+      "kind": "header_only",
+      "when": {
+        "native": true
+      },
+      "test": {
+        "tool": "cmake",
+        "args": [
+          "-DDATABINDC=$builddir/bin/salts-idlc${host:exe}",
+          "-DSCHEMA=$root/databind/compiler/tests/http-rpc/test_method_plan_projection.schema",
+          "-DCONFIG=$root/databind/compiler/tests/http-rpc/test_method_plan_projection_config_stale.json",
+          "-DWORK_DIR=$builddir/databind/compiler/tests/projection/projection-config-stale",
+          "-P",
+          "$root/databind/compiler/tests/projection/test_projection_config_stale_rejection.cmake"
+        ],
+        "labels": [
+          "compiler",
+          "databind",
+          "projection-config"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ]
+    }
+  }
+}

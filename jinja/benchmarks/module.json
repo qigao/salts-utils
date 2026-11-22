@@ -1,0 +1,61 @@
+{
+  "targets": {
+    "benchmark_jinja_cmeta": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "benchmark_jinja_cmeta.c"
+        ]
+      },
+      "test": {
+        "labels": [
+          "bench",
+          "cmeta",
+          "jinja"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "config": "benchmark",
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "saltsbase_tinytest",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

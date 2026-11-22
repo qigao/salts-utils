@@ -1,3 +1,6 @@
+#ifndef TINYTEST_NO_MAIN
+#define TINYTEST_NO_MAIN
+#endif
 #include "tinytest.h"
 #include "schema_cmeta.h"
 #include "binary_contract_overlay.h"

@@ -1,0 +1,194 @@
+{
+  "targets": {
+    "databind_message_native_artifact_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/message/databind_message_native_artifact_fixture.idl/message_native_artifact_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/message/databind_message_native_artifact_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_message_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_nested_native_generics_fixture_native": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "$builddir/databind/compiler/tests/message/databind_nested_native_generics_fixture.idl/nested_native_generics_native.c"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "$builddir/databind/compiler/tests/message/databind_nested_native_generics_fixture.idl",
+          "../../../../runtime",
+          "../../../../schema/include",
+          "../../../../formats/binary/include"
+        ],
+        "deps": [
+          "data_bind",
+          "databind_compiler_tests_message_codegen",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      },
+      "runtimeDeps": [
+        "salts-idlc"
+      ],
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ]
+    },
+    "databind_compiler_tests_message_codegen": {
+      "kind": "header_only",
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "preTasks": [
+        {
+          "name": "nullable_generated_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/message/test_nullable_codegen.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/message/nullable_generated/nullable_generated.h",
+            "--source-output",
+            "$builddir/databind/compiler/tests/message/nullable_generated/nullable_generated.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/message/test_nullable_codegen.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/message/nullable_generated/nullable_generated.h",
+            "$builddir/databind/compiler/tests/message/nullable_generated/nullable_generated.c"
+          ]
+        },
+        {
+          "name": "message_native_artifact_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/message/test_message_native_artifact.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/message/databind_message_native_artifact_fixture.idl/message_native_artifact_native.h",
+            "--binary-codec",
+            "--source-output",
+            "$builddir/databind/compiler/tests/message/databind_message_native_artifact_fixture.idl/message_native_artifact_native.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/message/test_message_native_artifact.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/message/databind_message_native_artifact_fixture.idl/message_native_artifact_native.h",
+            "$builddir/databind/compiler/tests/message/databind_message_native_artifact_fixture.idl/message_native_artifact_native.c"
+          ]
+        },
+        {
+          "name": "nested_native_generics_native_h",
+          "tool": "salts-idlc",
+          "args": [
+            "$root/databind/compiler/tests/message/test_nested_native_generics.schema",
+            "--lang",
+            "c",
+            "--output",
+            "$builddir/databind/compiler/tests/message/databind_nested_native_generics_fixture.idl/nested_native_generics_native.h",
+            "--binary-codec",
+            "--source-output",
+            "$builddir/databind/compiler/tests/message/databind_nested_native_generics_fixture.idl/nested_native_generics_native.c"
+          ],
+          "inputs": [
+            "$root/databind/compiler/tests/message/test_nested_native_generics.schema",
+            "$builddir/bin/templates/c/c_guest_adapter.mustache",
+            "$builddir/bin/templates/c/c_structs.mustache",
+            "$builddir/bin/templates/c/c_typed_source.mustache"
+          ],
+          "outputs": [
+            "$builddir/databind/compiler/tests/message/databind_nested_native_generics_fixture.idl/nested_native_generics_native.h",
+            "$builddir/databind/compiler/tests/message/databind_nested_native_generics_fixture.idl/nested_native_generics_native.c"
+          ]
+        }
+      ]
+    }
+  }
+}

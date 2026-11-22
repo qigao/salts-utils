@@ -1,0 +1,68 @@
+{
+  "include": [
+    "test/module.json",
+    "benchmarks/module.json"
+  ],
+  "targets": {
+    "databind_schema": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "src/schema_cmeta.c",
+          "src/schema_cmeta_buffer.c"
+        ]
+      },
+      "public": {
+        "includeDirs": [
+          "include",
+          "../idl/include"
+        ],
+        "deps": [
+          "cmeta_cmeta"
+        ]
+      },
+      "private": {
+        "includeDirs": [
+          "src"
+        ],
+        "deps": [
+          "saltsbase_core"
+        ]
+      },
+      "variants": [
+        {
+          "when": {
+            "driver": "msvc"
+          },
+          "private": {
+            "flags": [
+              "/experimental:c11atomics"
+            ]
+          }
+        },
+        {
+          "when": {
+            "os": [
+              "linux",
+              "macos",
+              "android"
+            ]
+          },
+          "private": {
+            "defines": {
+              "_POSIX_C_SOURCE": "200809L"
+            }
+          }
+        }
+      ],
+      "install": {
+        "headers": [
+          {
+            "from": "include/schema_cmeta.h",
+            "to": "include"
+          }
+        ]
+      }
+    }
+  }
+}

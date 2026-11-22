@@ -1,0 +1,27 @@
+{
+  "targets": {
+    "test_jinja_runtime_header_cpp": {
+      "kind": "static",
+      "sources": {
+        "files": [
+          "../test_jinja_runtime_header_cpp.cpp"
+        ]
+      },
+      "testOnly": true,
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../../include",
+          "../../src"
+        ],
+        "deps": [
+          "jinja_cmeta",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      }
+    }
+  }
+}

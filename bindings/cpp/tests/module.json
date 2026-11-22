@@ -1,0 +1,36 @@
+{
+  "targets": {
+    "salts_cpp_member_thunk_test": {
+      "kind": "executable",
+      "sources": {
+        "files": [
+          "cpp_member_thunk_test.cpp"
+        ]
+      },
+      "test": {},
+      "when": {
+        "native": true
+      },
+      "private": {
+        "includeDirs": [
+          "../include",
+          "../../common/include",
+          "../../lua/include",
+          "../../quickjs/include",
+          "../../../databind/compiler/cmeta"
+        ],
+        "deps": [
+          "salts_lua_binding",
+          "salts_quickjs_binding",
+          "data_bind_producer",
+          "saltsbase_tinytest",
+          "vcpkg_lua",
+          "vcpkg_qjs",
+          "salts_bindings",
+          "cmeta_cmeta",
+          "saltsbase_core"
+        ]
+      }
+    }
+  }
+}
