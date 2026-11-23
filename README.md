@@ -48,7 +48,11 @@ slate install --preset release --components runtime,dev --prefix out/slate-insta
 
 Use `debug` for a debug build and `debug-tests` for a debug test run.
 On Windows, `debug-mingw` and `debug-msvc` select the compiler explicitly.
-The MSVC preset reads `VSDEVCMD_BAT` and requires a matching MSVC SDK and triplet.
+For `debug-msvc`, set `VSDEVCMD_BAT` and `VCPKG_INSTALLED_DIR_MSVC` in `.env`.
+The vcpkg root must contain the `x64-windows` triplet with Lua and QuickJS
+debug packages. Use `SALTS_BASE_ROOT_MSVC` and `CMETA_ROOT_MSVC` for matching
+Debug MSVC SDKs. LLVM-MinGW uses `VCPKG_INSTALLED_DIR`, `SALTS_BASE_ROOT`,
+and `CMETA_ROOT`.
 The VS Code Slate extension can open this directory and select the `tests`
 preset to browse and run the test targets.
 Each suite can include its own `fixtures/module.json` for test libraries and

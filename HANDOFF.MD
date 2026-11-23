@@ -144,6 +144,10 @@
   Use `slate test --preset tests --list` to compare test registration with the
   existing CMake suite. The `benchmark` preset includes the two registered
   benchmarks.
+- TinyTest auto-detects terminal output, so OpenIDEA's captured Run output
+  needs TinyTest's `--color` argument. The six Mustache suites declare it in
+  `test.args`. All six passed with their original ANSI status colors under
+  redirected stdout using the `debug-mingw` preset.
 - Extract re2c and Lemon from the package archives verified by
   `cmake/re2c.lock.json` and `cmake/lemon.lock.json`. Set `SLATE_RE2C_ROOT` and
   `SLATE_LEMON_ROOT` to the package roots. Both host tools resolve using
@@ -153,3 +157,10 @@
   module alias fixes a missing-DLL start failure that can otherwise be masked
   by another `libsalts.dll` on `PATH`. Verified with a serial Ninja build
   with the installed Slate directory excluded from `PATH`.
+- `debug-msvc` uses `VCPKG_INSTALLED_DIR_MSVC`, `SALTS_BASE_ROOT_MSVC`, and
+  `CMETA_ROOT_MSVC`. The LLVM-MinGW cache contains only its own triplet, and
+  the shared MSVC cache lacks the Lua and QuickJS ports used here. The local
+  MSVC preset uses the SaltsUtils manifest's `vcpkg_installed/x64-windows`
+  tree with SaltsBase 0.1.8 and the pinned CMeta 0.1.8 source built in Debug.
+  This resolved both the missing triplet and the CRT mismatch from Release
+  SDKs. The MSVC build and the six Lua, QuickJS, and Mustache suites passed.

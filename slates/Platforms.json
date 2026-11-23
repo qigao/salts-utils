@@ -12,7 +12,7 @@
         {
           "id": "msvc-win64",
           "vcpkgTriplet": "x64-windows",
-          "vcpkgRoot": "${env:VCPKG_INSTALLED_DIR}"
+          "vcpkgRoot": "${envPath:VCPKG_INSTALLED_DIR_MSVC}"
         }
       ]
     },
@@ -28,7 +28,7 @@
         {
           "id": "msvc-arm64",
           "vcpkgTriplet": "arm64-windows",
-          "vcpkgRoot": "${env:VCPKG_INSTALLED_DIR}"
+          "vcpkgRoot": "${envPath:VCPKG_INSTALLED_DIR_MSVC}"
         }
       ]
     },

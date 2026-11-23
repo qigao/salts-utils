@@ -8,6 +8,7 @@
         ]
       },
       "test": {
+        "args": ["--color"],
         "labels": [
           "integration"
         ]
@@ -64,6 +65,7 @@
         ]
       },
       "test": {
+        "args": ["--color"],
         "labels": [
           "regression",
           "unit"
@@ -121,6 +123,7 @@
         ]
       },
       "test": {
+        "args": ["--color"],
         "labels": [
           "specification"
         ]
@@ -177,6 +180,7 @@
         ]
       },
       "test": {
+        "args": ["--color"],
         "labels": [
           "integration",
           "xml"
@@ -234,6 +238,7 @@
         ]
       },
       "test": {
+        "args": ["--color"],
         "labels": [
           "scope",
           "unit"
@@ -291,6 +296,7 @@
         ]
       },
       "test": {
+        "args": ["--color"],
         "labels": [
           "runner",
           "specification"
