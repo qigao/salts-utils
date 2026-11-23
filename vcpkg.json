@@ -1,6 +1,6 @@
 {
   "name": "salts-utils",
-  "version-semver": "0.1.9",
+  "version-semver": "0.1.10",
   "dependencies": [
     "lua",
     "quickjs-ng",

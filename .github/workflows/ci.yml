@@ -5,10 +5,10 @@ concurrency:
   group: salts-utils-sdk-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 env:
-  VCPKG_CACHE_VERSION: ${{ vars.VCPKG_CACHE_VERSION }}
-  SALTS_BASE_VERSION: ${{ vars.SALTS_BASE_VERSION }}
-  CMETA_REF: ${{ vars.CMETA_REF }}
-  CMETA_VERSION: ${{ vars.CMETA_VERSION }}
+  VCPKG_CACHE_VERSION: ${{ inputs.vcpkg_cache_version || vars.VCPKG_CACHE_VERSION }}
+  SALTS_BASE_VERSION: ${{ inputs.salts_base_version || vars.SALTS_BASE_VERSION }}
+  CMETA_REF: ${{ inputs.cmeta_ref || vars.CMETA_REF }}
+  CMETA_VERSION: ${{ inputs.cmeta_version || vars.CMETA_VERSION }}
 jobs:
   prepare:
     name: Download shared SDK inputs once
@@ -199,4 +199,21 @@ jobs:
   push:
     branches:
     - master
-  workflow_dispatch: null
+  workflow_dispatch:
+    inputs:
+      vcpkg_cache_version:
+        description: Exact published vcpkg-cache version
+        required: false
+        type: string
+      salts_base_version:
+        description: Exact published SaltsBase SDK version
+        required: false
+        type: string
+      cmeta_version:
+        description: Exact published CMeta SDK version
+        required: false
+        type: string
+      cmeta_ref:
+        description: Exact source commit of the matching CMeta SDK
+        required: false
+        type: string
